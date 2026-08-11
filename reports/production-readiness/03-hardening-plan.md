@@ -25,7 +25,7 @@ No item above is marked complete by static tests.
 
 - Read-only source security review: no shell execution, unsafe deserialization, or secret values found; upload sizes, CSRF, rate limiting, and data-root containment are present in source.
 - Expanded regression suite: PASS, 5/5 tests, including melonDS startup/touch, IndexedDB core contract/report-first selection, persistent cache, and NDS ZIP/Range assertions.
-- Staging health `http://192.168.1.11:8092/health`: UNVERIFIED; connection refused from this environment.
-- Production health `https://an3tocom.space/health`: UNVERIFIED; hostname did not resolve from this environment.
+- Staging health was verified before and immediately after deployment, then became unavailable during subsequent verification; see report 04.
+- Production health was verified before deployment, then returned HTTP 530 after the shared host became unavailable; see report 04.
 
 These runtime checks are not deployment failures attributable to the new workspace, but they block any claim of staging or production readiness.

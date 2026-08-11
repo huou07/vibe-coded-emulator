@@ -1,6 +1,6 @@
 # Staging verification checklist
 
-Status: BLOCKED before deployment — endpoint reachable, SSH authentication unavailable.
+Status: PARTIAL — deployment and browser smoke passed; host outage interrupted remaining checks.
 
 Current evidence:
 

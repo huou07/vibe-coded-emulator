@@ -4,6 +4,5 @@
 - New workspace: `/Users/meomeo/Documents/Codex/2026-08-11/an3-arcade`
 - Legacy source: `/Users/meomeo/Documents/Codex/2026-08-08/v/outputs/an3-arcade`
 - Legacy Git metadata: unavailable
-- Production/staging runtime: not contacted during bootstrap
-- Baseline: pending
-
+- Production/staging runtime: not contacted during bootstrap; verified later in Phase 5
+- Baseline: PASS, recorded in `reports/production-readiness/02-baseline.md`
