@@ -24,6 +24,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('Object.defineProperty(event,name', PLAYER)
         self.assertIn('"offsetX"', PLAYER)
         self.assertIn('"offsetY"', PLAYER)
+        self.assertIn("const offsetX=cssX,offsetY=cssY", PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
 
