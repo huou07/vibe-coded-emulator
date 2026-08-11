@@ -32,5 +32,9 @@ All pages use the same NDS game and differ only by the `touch` query variant:
 - Native EmulatorJS path: `http://192.168.1.11:8092/play/pmd-eos?touch=native`
 - Delegated root bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=root`
 - TouchEvent-only bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=touch`
+- TouchEvent without preventDefault: `http://192.168.1.11:8092/play/pmd-eos?touch=touch-passive`
+- PointerEvent without pointer capture: `http://192.168.1.11:8092/play/pmd-eos?touch=pointer-no-capture`
+- Delegated root TouchEvent bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=root-touch`
+- Delegated root PointerEvent bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=overlay`
 
 The default with no query remains the click-preserving baseline. The current `touch` variant additionally tracks `touchmove/touchend/touchcancel` at document capture and reads both active and changed touches, specifically targeting the observed “click works, movement does not” result. Test each page with the same sequence: first tap to start/skip the opening, then touch and drag on several points of the DS touch screen. These pages are staging-only and do not change production.
