@@ -145,13 +145,29 @@
     }
     canvas.dispatchEvent(event);
   };
+  const dispatchNdsPointer = (canvas, type, source, buttons) => {
+    const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
+    const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
+    const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
+    const previous=canvas.__an3NdsLastPoint;
+    const movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
+    canvas.__an3NdsLastPoint=type === "pointerup" || type === "pointercancel" ? null : {x:cssX,y:cssY};
+    const event=new PointerEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons,pointerId:source.identifier ?? source.pointerId ?? 1,pointerType:"touch",isPrimary:true,width:1,height:1,pressure:buttons?0.5:0});
+    for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY],["movementX",movementX],["movementY",movementY]]) {
+      try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
+    }
+    canvas.dispatchEvent(event);
+  };
+  const dispatchNdsEvent = (canvas, type, source, buttons) => touchVariant === "pointer-touch"
+    ? dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons)
+    : dispatchNdsMouse(canvas, type, source, buttons);
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
     if (["native","root","root-touch","overlay"].includes(touchVariant)) return;
     const touchNoPrevent=touchVariant === "touch-passive";
     const pointerNoCapture=touchVariant === "pointer-no-capture";
-    if ("PointerEvent" in window && !["touch","touch-passive"].includes(touchVariant)) {
+    if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch"].includes(touchVariant)) {
       let pointerId=null;
       canvas.addEventListener("pointerdown",event=>{if(event.pointerType!=="touch" || pointerId!==null)return;pointerId=event.pointerId;if(!pointerNoCapture)event.preventDefault();canvas.focus?.({preventScroll:true});try{if(!pointerNoCapture)canvas.setPointerCapture(pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
       canvas.addEventListener("pointermove",event=>{if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;if(!pointerNoCapture)event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);},true);
@@ -160,9 +176,9 @@
     } else {
       let touchId=null;
       const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
-      canvas.addEventListener("touchstart",event=>{if(touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;if(!touchNoPrevent)event.preventDefault();dispatchNdsMouse(canvas,"mousedown",touch,1);},{capture:true,passive:false});
-      const move=event=>{const touch=findTouch(event);if(!touch)return;if(!touchNoPrevent)event.preventDefault();dispatchNdsMouse(canvas,"mousemove",touch,1);};
-      const release=event=>{const touch=findTouch(event);if(!touch)return;if(!touchNoPrevent)event.preventDefault();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
+      canvas.addEventListener("touchstart",event=>{if(touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;if(!touchNoPrevent)event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);},{capture:true,passive:false});
+      const move=event=>{const touch=findTouch(event);if(!touch)return;if(!touchNoPrevent)event.preventDefault();dispatchNdsEvent(canvas,"mousemove",touch,1);};
+      const release=event=>{const touch=findTouch(event);if(!touch)return;if(!touchNoPrevent)event.preventDefault();dispatchNdsEvent(canvas,"mouseup",touch,0);touchId=null;};
       // Track movement on document: Android can retarget a touch after the
       // finger leaves the canvas even though the gesture is still active.
       document.addEventListener("touchmove",move,{capture:true,passive:false});
