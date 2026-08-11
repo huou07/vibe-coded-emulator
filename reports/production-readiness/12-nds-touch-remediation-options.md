@@ -42,3 +42,13 @@ All pages use the same NDS game and differ only by the `touch` query variant:
 - Root hybrid MouseEvent + PointerEvent bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=hybrid-root`
 
 The default with no query remains the click-preserving baseline. The current `touch` variant additionally tracks `touchmove/touchend/touchcancel` at document capture and reads both active and changed touches, specifically targeting the observed “click works, movement does not” result. Test each page with the same sequence: first tap to start/skip the opening, then touch and drag on several points of the DS touch screen. These pages are staging-only and do not change production.
+
+## Android AVD verification
+
+An Apple Silicon Android 15 ARM64 AVD (`codex-nds-api35`) was installed locally with Chrome, ADB, and Chrome DevTools Protocol access. The `hybrid-root` candidate was deployed to staging and verified in the AVD:
+
+- `window.EJS_emulator.gameManager` exists and the NDS canvas reports `data-an3-nds-touch=1`.
+- A real `adb shell input swipe` produced `pointermove` events on the canvas with `pointerType=touch` and non-zero `movementX/movementY` values.
+- The bridge emits PointerEvents before compatibility MouseEvents, preserving deltas while retaining the click-compatible path.
+
+This is stronger than desktop smoke coverage, but it is still an emulator/runtime proof rather than a physical Android-device proof. The candidate URL is `http://192.168.1.11:8092/play/pmd-eos?touch=hybrid-root`.
