@@ -33,6 +33,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('document.addEventListener("touchmove",move', PLAYER)
         self.assertIn('touchVariant === "touch-passive"', PLAYER)
         self.assertIn('touchVariant === "pointer-no-capture"', PLAYER)
+        self.assertIn('touchVariant === "delta"', PLAYER)
         self.assertIn('touchVariant === "root-touch"', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
