@@ -124,6 +124,7 @@
   const customPad = ["gba", "gb", "nds"].includes(config.system);
   const ndsPad = config.system === "nds";
   const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "hybrid-root" : "baseline";
+  const isolatedNdsMovement = ["geometry-only","geometry-mapped"].includes(touchVariant);
   const ndsDebugEnabled = ndsPad && config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1";
   document.documentElement.classList.toggle("custom-pad", customPad);
   stage.classList.toggle("nds-stage", ndsPad);
@@ -277,13 +278,60 @@
     window.AN3NdsDebug=Object.freeze({snapshot:ndsDebugSnapshot,clear:()=>{ndsDebugEvents.length=0;},exportJSON});
   };
 
+  const ndsViewportCache = new WeakMap();
+  let ndsMappedCursor = {x:0,y:0};
+  const resolveNdsVideoViewport = (canvas, rect) => {
+    const backingWidth=canvas.width||rect.width,backingHeight=canvas.height||rect.height;
+    const cached=ndsViewportCache.get(canvas);
+    if (cached && cached.rectWidth===rect.width && cached.rectHeight===rect.height && cached.backingWidth===backingWidth && cached.backingHeight===backingHeight) return cached;
+    const manager=window.EJS_emulator?.gameManager;
+    const videoWidth=Number(manager?.getVideoDimensions?.("width"))||256;
+    const videoHeight=Number(manager?.getVideoDimensions?.("height"))||384;
+    let left=0,top=0,width=0,height=0;
+    try {
+      const gl=canvas.getContext("webgl2")||canvas.getContext("webgl");
+      const raw=gl?.getParameter(gl.VIEWPORT);
+      if (raw?.[2]>0 && raw?.[3]>0 && backingWidth>0 && backingHeight>0) {
+        const scaleX=rect.width/backingWidth,scaleY=rect.height/backingHeight;
+        left=raw[0]*scaleX;
+        top=rect.height-(raw[1]+raw[3])*scaleY;
+        width=raw[2]*scaleX;
+        height=raw[3]*scaleY;
+      }
+    } catch (_) {}
+    if (!(width>0 && height>0)) {
+      const scale=Math.min(rect.width/videoWidth,rect.height/videoHeight)||1;
+      width=videoWidth*scale;
+      height=videoHeight*scale;
+      left=(rect.width-width)/2;
+      top=innerWidth<=innerHeight ? 0 : (rect.height-height)/2;
+    }
+    const viewport={rectWidth:rect.width,rectHeight:rect.height,backingWidth,backingHeight,left,top,width,height,videoWidth,videoHeight};
+    ndsViewportCache.set(canvas,viewport);
+    return viewport;
+  };
+  const mapNdsCursor = (canvas, rect, source) => {
+    const viewport=resolveNdsVideoViewport(canvas,rect);
+    const frameX=source.clientX-rect.left-viewport.left;
+    const touchY=source.clientY-rect.top-viewport.top-(viewport.height/2);
+    const x=Math.round(Math.max(0,Math.min(viewport.videoWidth-1,frameX*viewport.videoWidth/viewport.width)));
+    const y=Math.round(Math.max(0,Math.min((viewport.videoHeight/2)-1,touchY*viewport.videoHeight/viewport.height)));
+    return {x,y};
+  };
   const dispatchNdsMouse = (canvas, type, source, buttons) => {
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
     const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
     const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
-    const pointKey=touchVariant === "geometry-only" ? "__an3NdsLastMousePoint" : "__an3NdsLastPoint";
+    const pointKey=isolatedNdsMovement ? "__an3NdsLastMousePoint" : "__an3NdsLastPoint";
     const previous=canvas[pointKey];
-    const movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
+    let movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
+    if (touchVariant === "geometry-mapped") {
+      if (type === "mousedown") ndsViewportCache.delete(canvas);
+      const mapped=mapNdsCursor(canvas,rect,source);
+      movementX=mapped.x-ndsMappedCursor.x;
+      movementY=mapped.y-ndsMappedCursor.y;
+      ndsMappedCursor=mapped;
+    }
     canvas[pointKey]=type === "mouseup" ? null : {x:cssX,y:cssY};
     const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons});
     // EmulatorJS reads local canvas coordinates. Synthetic MouseEvents otherwise
@@ -291,7 +339,7 @@
     for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
-    if (["delta","geometry-only"].includes(touchVariant)) for (const [name,value] of [["movementX",movementX],["movementY",movementY]]) {
+    if (["delta","geometry-only","geometry-mapped"].includes(touchVariant)) for (const [name,value] of [["movementX",movementX],["movementY",movementY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
     canvas.dispatchEvent(event);
@@ -300,7 +348,7 @@
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
     const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
     const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
-    const pointKey=touchVariant === "geometry-only" ? "__an3NdsLastPointerPoint" : "__an3NdsLastPoint";
+    const pointKey=isolatedNdsMovement ? "__an3NdsLastPointerPoint" : "__an3NdsLastPoint";
     const previous=canvas[pointKey];
     const movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
     canvas[pointKey]=type === "pointerup" || type === "pointercancel" ? null : {x:cssX,y:cssY};
@@ -312,7 +360,7 @@
   };
   const dispatchNdsEvent = (canvas, type, source, buttons) => {
     if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
-    if (["hybrid","hybrid-root","geometry-only"].includes(touchVariant)) {
+    if (["hybrid","hybrid-root","geometry-only","geometry-mapped"].includes(touchVariant)) {
       dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
       dispatchNdsMouse(canvas, type, source, buttons);
       return;
@@ -322,7 +370,7 @@
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
-    if (["native","root","root-touch","overlay","hybrid-root","geometry-only"].includes(touchVariant)) return;
+    if (["native","root","root-touch","overlay","hybrid-root","geometry-only","geometry-mapped"].includes(touchVariant)) return;
     const touchNoPrevent=touchVariant === "touch-passive";
     const pointerNoCapture=touchVariant === "pointer-no-capture";
     if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch","hybrid"].includes(touchVariant)) {
@@ -345,7 +393,7 @@
     }
   };
   const bindRootNdsTouch = gameRoot => {
-    if (!["root","root-touch","overlay","hybrid-root","core-touch","geometry-only"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
+    if (!["root","root-touch","overlay","hybrid-root","core-touch","geometry-only","geometry-mapped"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
     gameRoot.dataset.an3RootTouch="1";
     let active=null;
     const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
@@ -353,7 +401,7 @@
       const hit=document.elementFromPoint(event.clientX,event.clientY);
       return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
     };
-    if (["root-touch","hybrid-root","geometry-only"].includes(touchVariant) || touchVariant === "core-touch") {
+    if (["root-touch","hybrid-root","geometry-only","geometry-mapped"].includes(touchVariant) || touchVariant === "core-touch") {
       let touchId=null;
       const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
       const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);};
