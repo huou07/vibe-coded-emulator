@@ -1,4 +1,4 @@
-const CACHE = "an3-arcade-pwa-v16";
+const CACHE = "an3-arcade-pwa-v17";
 const CORE_CACHE = "an3-arcade-cores-v1";
 const APP_SHELL = [
   "/", "/offline", "/static/site.css", "/static/site.js", "/static/player.js",
@@ -42,7 +42,10 @@ self.addEventListener("fetch", event => {
     event.respondWith(fetch(event.request).then(async response => {
       if (response.ok) await caches.open(CACHE).then(cache => cache.put(event.request, response.clone())).catch(() => {});
       return response;
-    }).catch(() => caches.match(event.request).then(response => response || caches.match("/offline"))));
+    }).catch(() => {
+      const pathname = new URL(event.request.url).pathname || "/";
+      return caches.match(pathname).then(response => response || caches.match("/")).then(response => response || caches.match("/offline"));
+    }));
     return;
   }
   const cacheName=emulatorAsset ? CORE_CACHE : CACHE;

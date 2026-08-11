@@ -41,6 +41,8 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('["root-touch","hybrid-root"].includes(touchVariant)', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
+        self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v17', SERVICE_WORKER)
 
     def test_core_storage_is_emulatorjs_indexeddb_and_report_first(self):
         for source in (PLAYER, OFFLINE):
