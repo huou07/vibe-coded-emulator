@@ -160,7 +160,7 @@
   };
   const dispatchNdsEvent = (canvas, type, source, buttons) => {
     if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
-    if (touchVariant === "hybrid") {
+    if (["hybrid","hybrid-root"].includes(touchVariant)) {
       dispatchNdsMouse(canvas, type, source, buttons);
       dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
       return;
@@ -170,7 +170,7 @@
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
-    if (["native","root","root-touch","overlay"].includes(touchVariant)) return;
+    if (["native","root","root-touch","overlay","hybrid-root"].includes(touchVariant)) return;
     const touchNoPrevent=touchVariant === "touch-passive";
     const pointerNoCapture=touchVariant === "pointer-no-capture";
     if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch","hybrid"].includes(touchVariant)) {
@@ -193,7 +193,7 @@
     }
   };
   const bindRootNdsTouch = gameRoot => {
-    if (!["root","root-touch","overlay"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
+    if (!["root","root-touch","overlay","hybrid-root"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
     gameRoot.dataset.an3RootTouch="1";
     let active=null;
     const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
@@ -201,12 +201,12 @@
       const hit=document.elementFromPoint(event.clientX,event.clientY);
       return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
     };
-    if (touchVariant === "root-touch") {
+    if (["root-touch","hybrid-root"].includes(touchVariant)) {
       let touchId=null;
       const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
-      const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsMouse(canvas,"mousedown",touch,1);};
-      const move=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(!canvas)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",touch,1);};
-      const end=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(canvas)dispatchNdsMouse(canvas,"mouseup",touch,0);event.preventDefault();touchId=null;};
+      const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);};
+      const move=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(!canvas)return;event.preventDefault();dispatchNdsEvent(canvas,"mousemove",touch,1);};
+      const end=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(canvas)dispatchNdsEvent(canvas,"mouseup",touch,0);event.preventDefault();touchId=null;};
       gameRoot.addEventListener("touchstart",start,{capture:true,passive:false});
       document.addEventListener("touchmove",move,{capture:true,passive:false});
       document.addEventListener("touchend",end,{capture:true,passive:false});
