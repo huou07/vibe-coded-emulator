@@ -20,6 +20,6 @@ On Android, the first tap may reach the emulator, but the Nintendo DS pointer do
 
 ## Current candidate and evidence
 
-The candidate combining options 2–6 was rejected by the user's Android smoke test because the game no longer accepted the first click. The runtime source was rolled back, then the safer CSS-pixel coordinate correction was applied to the click-preserving bridge. Local regression tests pass 3/3; staging reaches the ready state with an active bridge and no browser errors. Real Android finger verification remains required. No production deploy or database change was made.
+The candidate combining options 2–6 was rejected by the user's Android smoke test because the game no longer accepted the first click. The subsequent CSS-pixel coordinate correction was also rejected for the same reason. The runtime source is now being restored to the click-preserving baseline. Local regression tests pass 3/3; real Android movement remains unresolved. No production deploy or database change was made.
 
 The next untried implementation should be option 7 (delegated root bridge with `elementFromPoint`) behind a feature flag or separate staging release, so the click-preserving baseline remains recoverable.

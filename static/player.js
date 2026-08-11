@@ -127,10 +127,9 @@
   stage.classList.toggle("nds-stage", ndsPad);
 
   const dispatchNdsMouse = (canvas, type, source, buttons) => {
-    const rect=canvas.getBoundingClientRect();
+    const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
     const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
-    // MouseEvent.offsetX/offsetY are CSS-pixel coordinates, not backing-store pixels.
-    const offsetX=cssX,offsetY=cssY;
+    const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
     const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons});
     // EmulatorJS reads local canvas coordinates. Synthetic MouseEvents otherwise
     // expose offsetX/offsetY as 0, which traps the DS pointer in the top-left.
