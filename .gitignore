@@ -1,0 +1,23 @@
+# Local runtime data and SQLite WAL files
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Generated Python/runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local scratch and inspection files
+work/
+
+# Local secrets and environment files
+.env
+.env.*
+*.secret
+*.key
+
+# Temporary release archives
+*.tgz
+*.tar.gz

@@ -1,0 +1,12 @@
+{
+    email nguyen.tntl88@gmail.com
+    http_port 8088
+}
+
+an3tocom.space, www.an3tocom.space {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8091
+    header {
+        -Server
+    }
+}

@@ -1,0 +1,14 @@
+NEW_WORKSPACE=/Users/meomeo/Documents/Codex/2026-08-11/an3-arcade
+LEGACY_SOURCE_REPOSITORY=/Users/meomeo/Documents/Codex/2026-08-08/v/outputs/an3-arcade
+SOURCE_BASELINE_SHA=NO_GIT_REPOSITORY_LEGACY_WORKTREE
+CURRENT_BRANCH=bootstrap
+CURRENT_PHASE=PHASE 3 — ARCHITECTURE / MATERIALIZATION
+LAST_PASSING_GATE=PHASE 2 BASELINE
+STAGING_STATUS=HEALTH PASS; RELEASE NOT DEPLOYED (SSH AUTH BLOCKED)
+PRODUCTION_STATUS=HEALTH PASS; CODE NOT DEPLOYED
+CURRENT_RELEASE_CANDIDATE=NONE
+LAST_BACKUP=HANDOFF_ONLY_NO_NEW_BACKUP
+OPEN_BLOCKERS=Default compileall cache path restricted; staging SSH authentication unavailable; staging E2E/manual checks pending; production code deploy approval pending
+NEXT_ACTION=Obtain explicitly authorized staging SSH access or user-directed deployment credentials; then run staging checklist before any production consideration
+SESSION_STARTED=2026-08-11
+HANDOFF_SOURCE=/Users/meomeo/Documents/Codex/2026-08-09/l-m-th-m-ph-n/outputs/AN3-ARCADE-FULL-SESSION-HANDOFF-2026-08-09.md
