@@ -5,11 +5,10 @@ data_dir="${AN3_DATA_DIR:-/srv/an3-arcade}"
 backup_dir="${AN3_BACKUP_DIR:-$data_dir/backups}"
 db_path="$data_dir/arcade.db"
 stamp="$(date +%Y%m%d-%H%M%S)"
-tmp_dir="$(mktemp -d "$backup_dir/.an3-backup.XXXXXX")"
-trap 'rm -rf "$tmp_dir"' EXIT
-
 test -f "$db_path"
 install -d -m 0750 "$backup_dir"
+tmp_dir="$(mktemp -d "$backup_dir/.an3-backup.XXXXXX")"
+trap 'rm -rf "$tmp_dir"' EXIT
 
 python3 - "$db_path" "$tmp_dir/arcade-$stamp.db" <<'PY'
 import sqlite3
