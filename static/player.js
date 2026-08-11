@@ -123,6 +123,7 @@
 
   const customPad = ["gba", "gb", "nds"].includes(config.system);
   const ndsPad = config.system === "nds";
+  const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "baseline" : "baseline";
   document.documentElement.classList.toggle("custom-pad", customPad);
   stage.classList.toggle("nds-stage", ndsPad);
 
@@ -141,7 +142,8 @@
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
-    if ("PointerEvent" in window) {
+    if (touchVariant === "native" || touchVariant === "root") return;
+    if ("PointerEvent" in window && touchVariant !== "touch") {
       let pointerId=null;
       canvas.addEventListener("pointerdown",event=>{if(event.pointerType!=="touch" || pointerId!==null)return;pointerId=event.pointerId;event.preventDefault();canvas.focus?.({preventScroll:true});try{canvas.setPointerCapture(pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
       canvas.addEventListener("pointermove",event=>{if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);},true);
@@ -156,6 +158,20 @@
       canvas.addEventListener("touchend",release,{capture:true,passive:false});canvas.addEventListener("touchcancel",release,{capture:true,passive:false});
     }
   };
+  const bindRootNdsTouch = gameRoot => {
+    if (touchVariant !== "root" || gameRoot.dataset.an3RootTouch === "1") return;
+    gameRoot.dataset.an3RootTouch="1";
+    let active=null;
+    const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
+    const resolveCanvas=event=>{
+      const hit=document.elementFromPoint(event.clientX,event.clientY);
+      return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
+    };
+    gameRoot.addEventListener("pointerdown",event=>{if(!isTouch(event)||active)return;const canvas=resolveCanvas(event);if(!canvas)return;active={id:event.pointerId,canvas};event.preventDefault();canvas.focus?.({preventScroll:true});try{gameRoot.setPointerCapture(event.pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
+    gameRoot.addEventListener("pointermove",event=>{if(!isTouch(event)||!active||event.pointerId!==active.id)return;event.preventDefault();dispatchNdsMouse(active.canvas,"mousemove",event,1);},true);
+    const release=event=>{if(!isTouch(event)||!active||event.pointerId!==active.id)return;event.preventDefault();dispatchNdsMouse(active.canvas,"mouseup",event,0);try{gameRoot.releasePointerCapture(active.id);}catch(_){}active=null;};
+    gameRoot.addEventListener("pointerup",release,true);gameRoot.addEventListener("pointercancel",release,true);
+  };
   const protectNdsCanvas = () => {
     if (!ndsPad) return;
     document.querySelectorAll("#game .ejs_canvas,#game canvas").forEach(canvas=>{
@@ -169,6 +185,7 @@
     const gameRoot=document.getElementById("game");
     new MutationObserver(protectNdsCanvas).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
     protectNdsCanvas();
+    bindRootNdsTouch(gameRoot);
   }
 
   async function fetchGame() {

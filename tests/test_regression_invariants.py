@@ -24,6 +24,12 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('Object.defineProperty(event,name', PLAYER)
         self.assertIn('"offsetX"', PLAYER)
         self.assertIn('"offsetY"', PLAYER)
+        self.assertIn('new URLSearchParams(location.search).get("touch")', PLAYER)
+        self.assertIn('touchVariant === "root"', PLAYER)
+        self.assertIn('elementFromPoint(event.clientX,event.clientY)', PLAYER)
+        self.assertIn('gameRoot.setPointerCapture(event.pointerId)', PLAYER)
+        self.assertIn('touchVariant === "native"', PLAYER)
+        self.assertIn('touchVariant !== "touch"', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
 

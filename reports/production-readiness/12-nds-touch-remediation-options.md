@@ -23,3 +23,14 @@ On Android, the first tap may reach the emulator, but the Nintendo DS pointer do
 The candidate combining options 2–6 was rejected by the user's Android smoke test because the game no longer accepted the first click. The subsequent CSS-pixel coordinate correction was also rejected for the same reason. The runtime source is now being restored to the click-preserving baseline. Local regression tests pass 3/3; real Android movement remains unresolved. No production deploy or database change was made.
 
 The next untried implementation should be option 7 (delegated root bridge with `elementFromPoint`) behind a feature flag or separate staging release, so the click-preserving baseline remains recoverable.
+
+## Staging test pages
+
+All pages use the same NDS game and differ only by the `touch` query variant:
+
+- Baseline: `http://192.168.1.11:8092/play/pmd-eos?touch=baseline`
+- Native EmulatorJS path: `http://192.168.1.11:8092/play/pmd-eos?touch=native`
+- Delegated root bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=root`
+- TouchEvent-only bridge: `http://192.168.1.11:8092/play/pmd-eos?touch=touch`
+
+The default with no query remains the click-preserving baseline. Test each page with the same sequence: first tap to start/skip the opening, then touch and drag on several points of the DS touch screen. These pages are staging-only and do not change production.
