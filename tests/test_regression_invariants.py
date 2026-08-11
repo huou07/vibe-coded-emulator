@@ -44,6 +44,8 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('const pointKey=isolatedNdsMovement', PLAYER)
         self.assertIn('const mapNdsCursor =', PLAYER)
         self.assertIn('gl?.getParameter(gl.VIEWPORT)', PLAYER)
+        self.assertIn('raw[0]+raw[2]<=backingWidth', PLAYER)
+        self.assertIn('raw[1]+raw[3]<=backingHeight', PLAYER)
         self.assertIn('movementX=mapped.x-ndsMappedCursor.x', PLAYER)
         self.assertIn('movementY=mapped.y-ndsMappedCursor.y', PLAYER)
         self.assertIn('if (type === "mousedown") ndsViewportCache.delete(canvas)', PLAYER)

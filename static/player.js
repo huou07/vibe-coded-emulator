@@ -291,7 +291,9 @@
     try {
       const gl=canvas.getContext("webgl2")||canvas.getContext("webgl");
       const raw=gl?.getParameter(gl.VIEWPORT);
-      if (raw?.[2]>0 && raw?.[3]>0 && backingWidth>0 && backingHeight>0) {
+      const viewportInBounds=raw?.[0]>=0 && raw?.[1]>=0 && raw?.[2]>0 && raw?.[3]>0 &&
+        raw[0]+raw[2]<=backingWidth && raw[1]+raw[3]<=backingHeight;
+      if (viewportInBounds && backingWidth>0 && backingHeight>0) {
         const scaleX=rect.width/backingWidth,scaleY=rect.height/backingHeight;
         left=raw[0]*scaleX;
         top=rect.height-(raw[1]+raw[3])*scaleY;
