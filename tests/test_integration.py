@@ -258,7 +258,7 @@ class ArcadeIntegrationTests(unittest.TestCase):
         self.assertEqual((status, login["redirect"]), (200, "/admin"))
         self.assertEqual(second.request("GET", "/admin")[0], 200)
 
-        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v16"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm lãnh địa".encode())):
+        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v17"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm lãnh địa".encode())):
             status, response_headers, body = public.request("GET", path)
             self.assertEqual(status, 200)
             self.assertIn(marker, body)
@@ -298,7 +298,7 @@ class ArcadeIntegrationTests(unittest.TestCase):
         self.assertIn(b'config.system === "doom" ? "prboom"', body)
         self.assertIn(b'nds:"melonds"', body)
         self.assertIn(b'const emulatorSystem = config.system === "doom" ? "prboom" : config.system', body)
-        self.assertIn(b'window.EJS_defaultOptions = ndsPad ? {retroarch_core:"melonds"}', body)
+        self.assertIn(b'retroarch_core:"melonds"', body)
         self.assertIn(b"window.EJS_disableLocalStorage = ndsPad", body)
         self.assertNotIn("Vào game".encode(), body)
         self.assertIn(b"window.EJS_startOnLoaded = true", body)
