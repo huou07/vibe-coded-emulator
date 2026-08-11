@@ -43,7 +43,7 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 
 ## Open gates
 
-- Save-state export did not produce a browser download event; keep OPEN.
+- User subsequently confirmed save-state works on a real device; browser download-event evidence remains unavailable, but requirement is treated as PASS with user/device evidence.
 - Real Chrome Android/Firefox Android finger-touch verification remains OPEN.
 - Installed PWA offline after network loss/restart remains OPEN.
 - Full approximately 1.7 GB 3DS upload remains OPEN.

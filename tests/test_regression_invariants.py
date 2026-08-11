@@ -20,6 +20,10 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('setProperty("touch-action","none","important")', PLAYER)
         self.assertIn("new MutationObserver(protectNdsCanvas)", PLAYER)
         self.assertIn("dispatchNdsMouse", PLAYER)
+        self.assertIn("getBoundingClientRect", PLAYER)
+        self.assertIn('Object.defineProperty(event,name', PLAYER)
+        self.assertIn('"offsetX"', PLAYER)
+        self.assertIn('"offsetY"', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
 

@@ -16,8 +16,8 @@
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
 | Real-device NDS touch | no Chrome Android/Firefox Android device evidence | OPEN |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
-| Save-state export | browser download event not observed | OPEN |
+| Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | response headers only; no dashboard/API inspection | OPEN |
-| Production preflight and deployment | production code untouched; no explicit approval | NOT AUTHORIZED / OPEN |
+| Production preflight and deployment | user has explicitly approved production; backup timer activation and final preflight remain pending | AUTHORIZED / OPEN |
 
 This matrix is the authoritative handoff summary. No OPEN item may be reported as PASS without stronger evidence matching its scope.
