@@ -128,11 +128,9 @@
 
   const dispatchNdsMouse = (canvas, type, source, buttons) => {
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
-    const clientX=Number.isFinite(source.clientX) ? source.clientX : source.pageX-window.scrollX;
-    const clientY=Number.isFinite(source.clientY) ? source.clientY : source.pageY-window.scrollY;
-    const cssX=Math.max(0,Math.min(rect.width,clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,clientY-rect.top));
+    const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
     const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
-    const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX,clientY,screenX:source.screenX||clientX,screenY:source.screenY||clientY,button:0,buttons});
+    const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons});
     // EmulatorJS reads local canvas coordinates. Synthetic MouseEvents otherwise
     // expose offsetX/offsetY as 0, which traps the DS pointer in the top-left.
     for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY]]) {
@@ -143,22 +141,20 @@
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
-    let pointerId=null;
-    let touchId=null;
-    const isTouchPointer=event=>event.pointerType==="touch" || event.pointerType==="";
-    const findTouch=event=>[...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
     if ("PointerEvent" in window) {
-      canvas.addEventListener("pointerdown",event=>{if(!isTouchPointer(event) || pointerId!==null)return;pointerId=event.pointerId;canvas.focus?.({preventScroll:true});try{canvas.setPointerCapture(pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
-      canvas.addEventListener("pointermove",event=>{if(!isTouchPointer(event) || event.pointerId!==pointerId)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);},true);
-      const release=event=>{if(!isTouchPointer(event) || event.pointerId!==pointerId)return;dispatchNdsMouse(canvas,"mouseup",event,0);try{canvas.releasePointerCapture(pointerId);}catch(_){}pointerId=null;};
+      let pointerId=null;
+      canvas.addEventListener("pointerdown",event=>{if(event.pointerType!=="touch" || pointerId!==null)return;pointerId=event.pointerId;event.preventDefault();canvas.focus?.({preventScroll:true});try{canvas.setPointerCapture(pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
+      canvas.addEventListener("pointermove",event=>{if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);},true);
+      const release=event=>{if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;event.preventDefault();dispatchNdsMouse(canvas,"mouseup",event,0);try{canvas.releasePointerCapture(pointerId);}catch(_){}pointerId=null;};
       canvas.addEventListener("pointerup",release,true);canvas.addEventListener("pointercancel",release,true);
+    } else {
+      let touchId=null;
+      const findTouch=event=>[...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
+      canvas.addEventListener("touchstart",event=>{if(touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mousedown",touch,1);},{capture:true,passive:false});
+      canvas.addEventListener("touchmove",event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mousemove",touch,1);},{capture:true,passive:false});
+      const release=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
+      canvas.addEventListener("touchend",release,{capture:true,passive:false});canvas.addEventListener("touchcancel",release,{capture:true,passive:false});
     }
-    // Keep a direct TouchEvent fallback even on browsers exposing PointerEvent.
-    // Some Android WebViews expose PointerEvent but omit pointer dispatch for canvas.
-    canvas.addEventListener("touchstart",event=>{if(pointerId!==null || touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;event.preventDefault();dispatchNdsMouse(canvas,"mousedown",touch,1);},{capture:true,passive:false});
-    canvas.addEventListener("touchmove",event=>{const touch=findTouch(event);if(!touch || pointerId!==null)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",touch,1);},{capture:true,passive:false});
-    const releaseTouch=event=>{const touch=findTouch(event);if(!touch || pointerId!==null)return;event.preventDefault();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
-    canvas.addEventListener("touchend",releaseTouch,{capture:true,passive:false});canvas.addEventListener("touchcancel",releaseTouch,{capture:true,passive:false});
   };
   const protectNdsCanvas = () => {
     if (!ndsPad) return;

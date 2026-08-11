@@ -14,7 +14,7 @@
 | Local/staging backup and restore | local + staging Linux backup, integrity `ok`; staging restore: 15 tables/2 games | PASS for staging drill |
 | Scheduled production backup timer | assets prepared; TVBox audit found no timer; production not deployed | OPEN |
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
-| Real-device NDS touch | remediation options in `12-nds-touch-remediation-options.md`; staging candidate reaches ready with active bridge, but no Android finger evidence | OPEN; Android test required |
+| Real-device NDS touch | candidate 2–6 failed user's Android first-click smoke; runtime rolled back to click-preserving bridge; options and next delegated-root plan in `12-nds-touch-remediation-options.md` | OPEN; Android movement test required |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |

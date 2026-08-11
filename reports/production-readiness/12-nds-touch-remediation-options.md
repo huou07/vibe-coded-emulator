@@ -20,4 +20,6 @@ On Android, the first tap may reach the emulator, but the Nintendo DS pointer do
 
 ## Current candidate and evidence
 
-The candidate combines options 2–6. Local regression tests pass 3/3; staging NDS reaches the ready state with a live canvas at `1280×672`, `pointer-events:auto`, `touch-action:none`, active bridge marker, and no browser errors. Real Android finger verification remains required. No production deploy or database change was made for this candidate.
+The candidate combining options 2–6 was rejected by the user's Android smoke test because the game no longer accepted the first click. The runtime source has therefore been rolled back to the previous click-preserving bridge (options 2 plus normalized `offsetX/offsetY`); local regression tests pass 3/3. Real Android finger verification remains required. No production deploy or database change was made for either candidate.
+
+The next untried implementation should be option 7 (delegated root bridge with `elementFromPoint`) behind a feature flag or separate staging release, so the click-preserving baseline remains recoverable.
