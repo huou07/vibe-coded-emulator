@@ -24,6 +24,9 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('Object.defineProperty(event,name', PLAYER)
         self.assertIn('"offsetX"', PLAYER)
         self.assertIn('"offsetY"', PLAYER)
+        self.assertIn('event.pointerType===""', PLAYER)
+        self.assertIn("direct TouchEvent fallback", PLAYER)
+        self.assertIn('source.pageX-window.scrollX', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
 
