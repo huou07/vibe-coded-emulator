@@ -151,11 +151,15 @@
       canvas.addEventListener("pointerup",release,true);canvas.addEventListener("pointercancel",release,true);
     } else {
       let touchId=null;
-      const findTouch=event=>[...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
-      canvas.addEventListener("touchstart",event=>{if(touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mousedown",touch,1);},{capture:true,passive:false});
-      canvas.addEventListener("touchmove",event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mousemove",touch,1);},{capture:true,passive:false});
-      const release=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();event.stopImmediatePropagation();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
-      canvas.addEventListener("touchend",release,{capture:true,passive:false});canvas.addEventListener("touchcancel",release,{capture:true,passive:false});
+      const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
+      canvas.addEventListener("touchstart",event=>{if(touchId!==null || !event.changedTouches?.length)return;const touch=event.changedTouches[0];touchId=touch.identifier;event.preventDefault();dispatchNdsMouse(canvas,"mousedown",touch,1);},{capture:true,passive:false});
+      const move=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",touch,1);};
+      const release=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
+      // Track movement on document: Android can retarget a touch after the
+      // finger leaves the canvas even though the gesture is still active.
+      document.addEventListener("touchmove",move,{capture:true,passive:false});
+      document.addEventListener("touchend",release,{capture:true,passive:false});
+      document.addEventListener("touchcancel",release,{capture:true,passive:false});
     }
   };
   const bindRootNdsTouch = gameRoot => {

@@ -30,6 +30,8 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('gameRoot.setPointerCapture(event.pointerId)', PLAYER)
         self.assertIn('touchVariant === "native"', PLAYER)
         self.assertIn('touchVariant !== "touch"', PLAYER)
+        self.assertIn('event.touches||[]', PLAYER)
+        self.assertIn('document.addEventListener("touchmove",move', PLAYER)
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
 
