@@ -32,6 +32,7 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Staging NDS delivery: ZIP, 46,342,391 bytes; Range `bytes=0-15` returned HTTP 206 and exactly 16 bytes.
 - Staging `/offline` UI reports mGBA and melonDS cores downloaded with sizes and enabled delete controls.
 - Read-only production HTTPS headers show Cloudflare, HSTS, CSP, no-sniff, and expected security policies; Cloudflare WAF/rate-limit/Bot configuration remains unverified.
+- Read-only TVBox audit: application, staging, and tunnel services active; production backup file exists; no dedicated AN3 backup timer found; Cloudflared has registered connections but also transient network errors.
 - Production health: PASS, current live asset `7f143995ae30`. Production code was not deployed.
 
 ## Open gates
