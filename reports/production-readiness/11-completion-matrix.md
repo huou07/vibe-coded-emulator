@@ -14,10 +14,10 @@
 | Local/staging backup and restore | local + staging Linux backup, integrity `ok`; staging restore: 15 tables/2 games | PASS for staging drill |
 | Scheduled production backup timer | assets prepared; TVBox audit found no timer; production not deployed | OPEN |
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
-| NDS touch runtime | Android 15 ARM64 AVD + Chrome/ADB/CDP: default no-query route now uses `hybrid-root`, starts EmulatorJS, and receives repeated non-zero `pointermove` deltas; physical Android confirmation remains open | PASS for AVD event/runtime scope; OPEN for physical device |
+| NDS touch runtime | `EXP-C02-geometry-mapped` on commit `15697a6`, staging asset `def955887c68`: exact 3x3 DS targets, all drag axes, hold/release, portrait/rotation/landscape/fullscreen, stale-viewport fallback, save state, and core-rendered X/Y displacement matching measured scale; default remains `hybrid-root` | PASS for AVD browser/runtime/mapped/core-render scope; OPEN for physical device |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |
-| Production preflight and deployment | user has explicitly approved production; backup timer activation and final preflight remain pending | AUTHORIZED / OPEN |
+| NDS touch production promotion | Requires physical Chrome PASS, physical Firefox PASS or documented exception, full regression, known rollback, and explicit approval for this candidate; none was inferred from earlier unrelated production work | OPEN / NOT APPROVED |
 
 This matrix is the authoritative handoff summary. No OPEN item may be reported as PASS without stronger evidence matching its scope.

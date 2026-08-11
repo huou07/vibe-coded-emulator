@@ -21,11 +21,13 @@ Current source is a small single-host Python/SQLite application with client-side
 
 No item above is marked complete by static tests.
 
-## Current verification
+## Verification history and current state
 
 - Read-only source security review: no shell execution, unsafe deserialization, or secret values found; upload sizes, CSRF, rate limiting, and data-root containment are present in source.
-- Expanded regression suite: PASS, 5/5 tests, including melonDS startup/touch, IndexedDB core contract/report-first selection, persistent cache, and NDS ZIP/Range assertions.
-- Staging health was verified before and immediately after deployment, then became unavailable during subsequent verification; see report 04.
-- Production health was verified before deployment, then returned HTTP 530 after the shared host became unavailable; see report 04.
+- Expanded regression suite: PASS, now 6/6 tests, including melonDS startup/touch, IndexedDB core contract/report-first selection, persistent cache, and NDS ZIP/Range assertions.
+- The outage recorded in report 04 was historical and the host later recovered without intervention.
+- Current NDS staging health passed on commit `15697a6`, asset `def955887c68`, with Android 15 AVD mapped/core-render validation. Physical Android remains OPEN.
+- Production health was previously verified at asset `7f143995ae30`; it was not re-queried or changed during the current NDS touch loop.
 
-These runtime checks are not deployment failures attributable to the new workspace, but they block any claim of staging or production readiness.
+The current blocker for NDS touch promotion is physical Android validation,
+followed by a fresh preflight and explicit approval for the exact candidate.
