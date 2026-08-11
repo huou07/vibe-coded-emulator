@@ -36,6 +36,7 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Read-only TVBox audit: application, staging, and tunnel services active; production backup file exists; no dedicated AN3 backup timer found; Cloudflared has registered connections but also transient network errors.
 - Added and locally verified scheduled-backup deployment assets (SQLite backup, media manifest, service, timer); not activated in production.
 - Staging Linux backup rehearsal passed: integrity `ok`, WAL retained, database/manifest mode `0600`, 2 manifest entries.
+- Staging restore drill passed from that backup: integrity `ok`, 15 tables, 2 games, temporary restore removed.
 - Production health: PASS, current live asset `7f143995ae30`. Production code was not deployed.
 
 ## Open gates
