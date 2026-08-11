@@ -38,6 +38,7 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Staging Linux backup rehearsal passed: integrity `ok`, WAL retained, database/manifest mode `0600`, 2 manifest entries.
 - Staging restore drill passed from that backup: integrity `ok`, 15 tables, 2 games, temporary restore removed.
 - Host-side systemd verification confirmed the existing arcade units; backup-unit verification is pending the production-only helper installation path.
+- Requirement-by-requirement evidence is summarized in `reports/production-readiness/11-completion-matrix.md`.
 - Production health: PASS, current live asset `7f143995ae30`. Production code was not deployed.
 
 ## Open gates
