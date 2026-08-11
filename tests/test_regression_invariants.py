@@ -25,6 +25,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('"offsetX"', PLAYER)
         self.assertIn('"offsetY"', PLAYER)
         self.assertIn('new URLSearchParams(location.search).get("touch")', PLAYER)
+        self.assertIn('get("touch") || "hybrid-root"', PLAYER)
         self.assertIn('["native","root","root-touch","overlay","hybrid-root"]', PLAYER)
         self.assertIn('elementFromPoint(event.clientX,event.clientY)', PLAYER)
         self.assertIn('gameRoot.setPointerCapture(event.pointerId)', PLAYER)

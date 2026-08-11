@@ -123,7 +123,7 @@
 
   const customPad = ["gba", "gb", "nds"].includes(config.system);
   const ndsPad = config.system === "nds";
-  const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "baseline" : "baseline";
+  const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "hybrid-root" : "baseline";
   document.documentElement.classList.toggle("custom-pad", customPad);
   stage.classList.toggle("nds-stage", ndsPad);
 
