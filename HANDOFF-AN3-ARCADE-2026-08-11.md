@@ -7,7 +7,8 @@
 - Legacy Git metadata: unavailable; source was copied from the legacy working tree.
 - Source baseline commit: `d389e226542436a470a051e37d82da46695fcebd`
 - Current repository HEAD: `d142d06a1392da1fb763e37cbce4996c736e26b8`
-- Staging release candidate: `fd84f27a0ef006f3931e14ff99be2e12aa3b6091`
+- Last staging release candidate: `fd84f27a0ef006f3931e14ff99be2e12aa3b6091`
+- Current local release candidate: `b07b7f6f6d7e6832b81472f086b194de7e8dd2eb` (backup directory initialization fix; staging redeploy pending if this asset must be exercised remotely).
 
 ## Current architecture
 
