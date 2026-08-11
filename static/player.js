@@ -281,16 +281,17 @@
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
     const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
     const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
-    const previous=canvas.__an3NdsLastPoint;
+    const pointKey=touchVariant === "geometry-only" ? "__an3NdsLastMousePoint" : "__an3NdsLastPoint";
+    const previous=canvas[pointKey];
     const movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
-    canvas.__an3NdsLastPoint=type === "mouseup" ? null : {x:cssX,y:cssY};
+    canvas[pointKey]=type === "mouseup" ? null : {x:cssX,y:cssY};
     const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons});
     // EmulatorJS reads local canvas coordinates. Synthetic MouseEvents otherwise
     // expose offsetX/offsetY as 0, which traps the DS pointer in the top-left.
     for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
-    if (touchVariant === "delta") for (const [name,value] of [["movementX",movementX],["movementY",movementY]]) {
+    if (["delta","geometry-only"].includes(touchVariant)) for (const [name,value] of [["movementX",movementX],["movementY",movementY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
     canvas.dispatchEvent(event);
@@ -299,9 +300,10 @@
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
     const cssX=Math.max(0,Math.min(rect.width,source.clientX-rect.left)),cssY=Math.max(0,Math.min(rect.height,source.clientY-rect.top));
     const offsetX=rect.width ? cssX*width/rect.width : 0,offsetY=rect.height ? cssY*height/rect.height : 0;
-    const previous=canvas.__an3NdsLastPoint;
+    const pointKey=touchVariant === "geometry-only" ? "__an3NdsLastPointerPoint" : "__an3NdsLastPoint";
+    const previous=canvas[pointKey];
     const movementX=previous ? cssX-previous.x : 0,movementY=previous ? cssY-previous.y : 0;
-    canvas.__an3NdsLastPoint=type === "pointerup" || type === "pointercancel" ? null : {x:cssX,y:cssY};
+    canvas[pointKey]=type === "pointerup" || type === "pointercancel" ? null : {x:cssX,y:cssY};
     const event=new PointerEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons,pointerId:source.identifier ?? source.pointerId ?? 1,pointerType:"touch",isPrimary:true,width:1,height:1,pressure:buttons?0.5:0});
     for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY],["movementX",movementX],["movementY",movementY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
@@ -310,7 +312,7 @@
   };
   const dispatchNdsEvent = (canvas, type, source, buttons) => {
     if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
-    if (["hybrid","hybrid-root"].includes(touchVariant)) {
+    if (["hybrid","hybrid-root","geometry-only"].includes(touchVariant)) {
       dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
       dispatchNdsMouse(canvas, type, source, buttons);
       return;
@@ -320,7 +322,7 @@
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
-    if (["native","root","root-touch","overlay","hybrid-root"].includes(touchVariant)) return;
+    if (["native","root","root-touch","overlay","hybrid-root","geometry-only"].includes(touchVariant)) return;
     const touchNoPrevent=touchVariant === "touch-passive";
     const pointerNoCapture=touchVariant === "pointer-no-capture";
     if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch","hybrid"].includes(touchVariant)) {
@@ -343,7 +345,7 @@
     }
   };
   const bindRootNdsTouch = gameRoot => {
-    if (!["root","root-touch","overlay","hybrid-root","core-touch"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
+    if (!["root","root-touch","overlay","hybrid-root","core-touch","geometry-only"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
     gameRoot.dataset.an3RootTouch="1";
     let active=null;
     const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
@@ -351,7 +353,7 @@
       const hit=document.elementFromPoint(event.clientX,event.clientY);
       return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
     };
-    if (["root-touch","hybrid-root"].includes(touchVariant) || touchVariant === "core-touch") {
+    if (["root-touch","hybrid-root","geometry-only"].includes(touchVariant) || touchVariant === "core-touch") {
       let touchId=null;
       const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
       const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);};
