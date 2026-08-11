@@ -193,7 +193,7 @@
     }
   };
   const bindRootNdsTouch = gameRoot => {
-    if (!["root","root-touch","overlay","hybrid-root"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
+    if (!["root","root-touch","overlay","hybrid-root","core-touch"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
     gameRoot.dataset.an3RootTouch="1";
     let active=null;
     const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
@@ -201,7 +201,7 @@
       const hit=document.elementFromPoint(event.clientX,event.clientY);
       return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
     };
-    if (["root-touch","hybrid-root"].includes(touchVariant)) {
+    if (["root-touch","hybrid-root"].includes(touchVariant) || touchVariant === "core-touch") {
       let touchId=null;
       const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
       const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);};
@@ -255,7 +255,10 @@
       let gameStarted = false;
       window.EJS_player = "#game";
       window.EJS_core = emulatorSystem;
-      window.EJS_defaultOptions = ndsPad ? {retroarch_core:"melonds"} : undefined;
+      window.EJS_defaultOptions = ndsPad ? {
+        retroarch_core:"melonds",
+        ...(touchVariant === "core-touch" ? {melonds_touch_mode:"Touch"} : {})
+      } : undefined;
       window.EJS_disableLocalStorage = ndsPad;
       window.EJS_gameName = config.slug;
       window.EJS_gameUrl = file;
