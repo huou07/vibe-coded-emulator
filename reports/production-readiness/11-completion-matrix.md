@@ -14,7 +14,7 @@
 | Local/staging backup and restore | local + staging Linux backup, integrity `ok`; staging restore: 15 tables/2 games | PASS for staging drill |
 | Scheduled production backup timer | assets prepared; TVBox audit found no timer; production not deployed | OPEN |
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
-| NDS touch runtime | Android 15 ARM64 AVD + Chrome/ADB/CDP: `hybrid-root` starts EmulatorJS and receives non-zero `pointermove` deltas; physical Android confirmation remains open | PASS for AVD event/runtime scope; OPEN for physical device |
+| NDS touch runtime | Android 15 ARM64 AVD + Chrome/ADB/CDP: default no-query route now uses `hybrid-root`, starts EmulatorJS, and receives repeated non-zero `pointermove` deltas; physical Android confirmation remains open | PASS for AVD event/runtime scope; OPEN for physical device |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |
