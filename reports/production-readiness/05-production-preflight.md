@@ -1,6 +1,6 @@
 # Production preflight
 
-Status: NOT READY — health is reachable, but staging deployment and required E2E gates are incomplete.
+Status: NOT READY — staging/production host became unavailable during verification.
 
 The release package boundary was checked locally. It contains `app.py`, `static/`, `deploy/`, and `README.md`; it excludes the local `data/`, tests, work files, and session reports. `git diff --check` passed.
 

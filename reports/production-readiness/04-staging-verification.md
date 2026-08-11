@@ -10,6 +10,14 @@ Current evidence:
 - `deploy-stage.sh` was attempted and failed at SSH authentication before source transfer. A second attempt using an existing askpass helper was rejected because the credential source was not explicitly authorized for this task. No staging files were changed by these attempts.
 - Read-only live inspection shows staging `/static/offline.js` still contains DeSmuME fallback candidates; therefore the new workspace has not reached staging.
 
+## Post-deploy evidence
+
+- Staging deployment later completed using the explicitly provided SSH password. The service became `active` after transient startup refusals.
+- Staging health then reported asset `747d7cd08c55`; live `player.js` contained melonDS, `EJS_startOnLoaded`, IndexedDB core storage, and report-build handling. Live `offline.js` contained melonDS and marker v7 with no DeSmuME.
+- Browser smoke checks reached `Sẵn sàng` for GBA and NDS. NDS DOM evidence showed `class=ejs_canvas`, `pointer-events=auto`, `touch-action=none`, and `data-an3-nds-touch=1`; browser logs had no warning/error entries.
+- Save-state download was not observed, so save-state export remains OPEN.
+- During the subsequent read-only ZIP/Range check, staging became unreachable. Three health polls timed out/refused; SSH service inspection also timed out. Production then returned Cloudflare HTTP 530. This is an external host/runtime outage requiring operator recovery; no reboot or recovery mutation was attempted.
+
 ## Preconditions
 
 - Confirm `http://192.168.1.11:8092/health` resolves and returns `environment=staging`.
