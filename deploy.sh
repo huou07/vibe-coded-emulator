@@ -58,8 +58,12 @@ if [ ! -f /etc/an3-arcade.env ]; then
 fi
 
 install -m 0644 "$tmp/deploy/an3-arcade.service" /etc/systemd/system/an3-arcade.service
+install -D -m 0750 "$tmp/deploy/an3-arcade-backup.sh" /usr/local/libexec/an3-arcade-backup
+install -m 0644 "$tmp/deploy/an3-arcade-backup.service" /etc/systemd/system/an3-arcade-backup.service
+install -m 0644 "$tmp/deploy/an3-arcade-backup.timer" /etc/systemd/system/an3-arcade-backup.timer
 systemctl daemon-reload
 systemctl enable an3-arcade.service
+systemctl enable --now an3-arcade-backup.timer
 systemctl restart an3-arcade.service
 
 for _ in $(seq 1 30); do
