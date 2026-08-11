@@ -161,8 +161,8 @@
   const dispatchNdsEvent = (canvas, type, source, buttons) => {
     if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
     if (["hybrid","hybrid-root"].includes(touchVariant)) {
-      dispatchNdsMouse(canvas, type, source, buttons);
       dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
+      dispatchNdsMouse(canvas, type, source, buttons);
       return;
     }
     dispatchNdsMouse(canvas, type, source, buttons);
