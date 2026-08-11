@@ -19,6 +19,7 @@ Current evidence:
 - During the subsequent read-only ZIP/Range check, staging became unreachable. Three health polls timed out/refused; SSH service inspection also timed out. Production then returned Cloudflare HTTP 530. This is an external host/runtime outage requiring operator recovery; no reboot or recovery mutation was attempted.
 - The TVBox later recovered without intervention. Current health: staging `747d7cd08c55` PASS; production `7f143995ae30` PASS.
 - Current staging NDS delivery: `Content-Type: application/zip`, `Content-Length: 46342391`, `Accept-Ranges: bytes`. A `Range: bytes=0-15` request returned `206`, `Content-Range: bytes 0-15/46342391`, and exactly 16 bytes.
+- Staging `/offline` browser UI reports `Đã tải mgba · 1.0 MB` and `Đã tải melonds · 1.1 MB`, with delete controls enabled. This verifies the visible offline-core state for GBA/NDS; the in-app browser does not expose Service Worker/CacheStorage APIs for a deeper browser-storage assertion.
 
 ## Preconditions
 

@@ -30,6 +30,7 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Staging deployment completed for the release candidate; live asset `747d7cd08c55`.
 - Staging browser smoke: GBA and NDS reached `Sẵn sàng`; NDS canvas had `pointer-events:auto`, `touch-action:none`, and `data-an3-nds-touch=1`; no browser warning/error logs.
 - Staging NDS delivery: ZIP, 46,342,391 bytes; Range `bytes=0-15` returned HTTP 206 and exactly 16 bytes.
+- Staging `/offline` UI reports mGBA and melonDS cores downloaded with sizes and enabled delete controls.
 - Production health: PASS, current live asset `7f143995ae30`. Production code was not deployed.
 
 ## Open gates
