@@ -158,16 +158,22 @@
     }
     canvas.dispatchEvent(event);
   };
-  const dispatchNdsEvent = (canvas, type, source, buttons) => touchVariant === "pointer-touch"
-    ? dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons)
-    : dispatchNdsMouse(canvas, type, source, buttons);
+  const dispatchNdsEvent = (canvas, type, source, buttons) => {
+    if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
+    if (touchVariant === "hybrid") {
+      dispatchNdsMouse(canvas, type, source, buttons);
+      dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
+      return;
+    }
+    dispatchNdsMouse(canvas, type, source, buttons);
+  };
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
     canvas.dataset.an3NdsTouch="1";
     if (["native","root","root-touch","overlay"].includes(touchVariant)) return;
     const touchNoPrevent=touchVariant === "touch-passive";
     const pointerNoCapture=touchVariant === "pointer-no-capture";
-    if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch"].includes(touchVariant)) {
+    if ("PointerEvent" in window && !["touch","touch-passive","pointer-touch","hybrid"].includes(touchVariant)) {
       let pointerId=null;
       canvas.addEventListener("pointerdown",event=>{if(event.pointerType!=="touch" || pointerId!==null)return;pointerId=event.pointerId;if(!pointerNoCapture)event.preventDefault();canvas.focus?.({preventScroll:true});try{if(!pointerNoCapture)canvas.setPointerCapture(pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
       canvas.addEventListener("pointermove",event=>{if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;if(!pointerNoCapture)event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);},true);
