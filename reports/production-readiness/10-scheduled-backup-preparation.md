@@ -9,6 +9,6 @@ Added deployment assets:
 - `deploy/an3-arcade-backup.timer`: daily persistent timer at 03:30 with randomized delay.
 - `deploy.sh` installs and enables the timer during an explicitly approved future production deployment.
 
-Local verification created a backup and manifest from the copied workspace database, returned `integrity_check=ok`, and passed Bash syntax. The script was corrected to avoid GNU-only `find -printf`, so it works on macOS development and Linux TVBox. The updated package was redeployed to staging; staging health and invariants passed.
+Local verification created a backup and manifest from the copied workspace database, returned `integrity_check=ok`, and passed Bash syntax. The script was corrected to avoid GNU-only `find -printf` and to create the backup directory before `mktemp`, so it works on macOS development and Linux TVBox. The backup-fixed package was redeployed to staging; staging health passed with asset `747d7cd08c55`.
 
 Production timer activation and restore verification remain pending explicit production workflow/approval.
