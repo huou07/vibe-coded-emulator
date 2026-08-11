@@ -17,6 +17,8 @@ Current evidence:
 - Browser smoke checks reached `Sẵn sàng` for GBA and NDS. NDS DOM evidence showed `class=ejs_canvas`, `pointer-events=auto`, `touch-action=none`, and `data-an3-nds-touch=1`; browser logs had no warning/error entries.
 - Save-state download was not observed, so save-state export remains OPEN.
 - During the subsequent read-only ZIP/Range check, staging became unreachable. Three health polls timed out/refused; SSH service inspection also timed out. Production then returned Cloudflare HTTP 530. This is an external host/runtime outage requiring operator recovery; no reboot or recovery mutation was attempted.
+- The TVBox later recovered without intervention. Current health: staging `747d7cd08c55` PASS; production `7f143995ae30` PASS.
+- Current staging NDS delivery: `Content-Type: application/zip`, `Content-Length: 46342391`, `Accept-Ranges: bytes`. A `Range: bytes=0-15` request returned `206`, `Content-Range: bytes 0-15/46342391`, and exactly 16 bytes.
 
 ## Preconditions
 

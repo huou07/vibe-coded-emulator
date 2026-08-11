@@ -1,6 +1,6 @@
 # Production preflight
 
-Status: NOT READY — staging/production host became unavailable during verification.
+Status: NOT READY — staging verification is partial; production code deployment and approval remain pending.
 
 The release package boundary was checked locally. It contains `app.py`, `static/`, `deploy/`, and `README.md`; it excludes the local `data/`, tests, work files, and session reports. `git diff --check` passed.
 
