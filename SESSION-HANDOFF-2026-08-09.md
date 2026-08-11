@@ -1,3 +1,7 @@
+# Historical handoff — superseded
+
+> This file was imported from the legacy source tree for provenance only. It contains historical runtime descriptions that are no longer authoritative, including earlier DeSmuME/manual-start behavior. Use `HANDOFF-AN3-ARCADE-2026-08-11.md` and `.codex/` for the current session state and invariants.
+
 # Ban giao he thong: An 3 To Com lanh dia
 
 Ngay cap nhat: 2026-08-09  
