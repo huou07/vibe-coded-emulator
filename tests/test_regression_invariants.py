@@ -44,6 +44,32 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
         self.assertIn('an3-arcade-pwa-v17', SERVICE_WORKER)
 
+    def test_nds_debug_is_bounded_exportable_and_fail_closed(self):
+        self.assertIn('NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}', APP)
+        self.assertIn('"ndsDebugAllowed": NDS_DEBUG_ALLOWED', APP)
+        self.assertIn('config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1"', PLAYER)
+        self.assertIn('const NDS_DEBUG_LIMIT = 160', PLAYER)
+        self.assertIn('ndsDebugEvents.splice(0,ndsDebugEvents.length-NDS_DEBUG_LIMIT)', PLAYER)
+        self.assertIn('window.AN3NdsDebug=Object.freeze', PLAYER)
+        self.assertIn('exportJSON', PLAYER)
+        self.assertIn('{capture:true,passive:true}', PLAYER)
+        debug_block = PLAYER[PLAYER.index("const NDS_DEBUG_LIMIT"):PLAYER.index("const dispatchNdsMouse")]
+        self.assertNotIn("preventDefault", debug_block)
+        self.assertNotIn("setPointerCapture", debug_block)
+        self.assertNotIn("dispatchEvent", debug_block)
+        self.assertNotIn("getComputedStyle", debug_block)
+        self.assertIn("activeTouchIds", debug_block)
+        self.assertIn("activePointerIds", debug_block)
+        self.assertIn("!inside && !trackedTouch && !trackedPointer", debug_block)
+        for field in (
+            "eventType", "isTrusted", "pointerType", "clientX", "clientY", "pageX", "pageY",
+            "target", "pointerCaptureOwner", "canvasRect", "canvasBackingWidth", "canvasBackingHeight",
+            "canvasCssWidth", "canvasCssHeight", "devicePixelRatio", "mappedX", "mappedY",
+            "normalizedX", "normalizedY", "movementX", "movementY", "orientation", "viewportOrientation",
+            "screenOrientation", "fullscreen", "touchVariant", "activeCore", "configuredCore", "runtimeCore",
+        ):
+            self.assertIn(field, debug_block)
+
     def test_core_storage_is_emulatorjs_indexeddb_and_report_first(self):
         for source in (PLAYER, OFFLINE):
             self.assertIn('indexedDB.open("EmulatorJS-core",1)', source)

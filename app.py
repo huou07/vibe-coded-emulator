@@ -67,6 +67,7 @@ VISITOR_TTL = 365 * 86400
 SITE_NAME = "Ăn 3 Tô Cơm lãnh địa"
 MAX_JSON_BYTES = 1024 * 1024
 ENVIRONMENT = os.environ.get("AN3_ENVIRONMENT", "production").strip().lower()
+NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}
 AUTH_PEPPER = os.environ.get("AN3_AUTH_PEPPER", "")
 EMULATOR_CDN = "https://cdn.emulatorjs.org"
 EMULATOR_CACHE_LOCK = threading.Lock()
@@ -826,7 +827,7 @@ def player_page(game, lang, user, csrf):
     config = {
         "mode": mode, "title": title, "slug": game["slug"], "system": game["system"],
         "romUrl": f"/game-file/{game['slug']}/{quote(browser_rom_name(game))}", "channel": SYSTEMS[game["system"]][1],
-        "downloadName": game["rom_name"], "lang": lang,
+        "downloadName": game["rom_name"], "lang": lang, "ndsDebugAllowed": NDS_DEBUG_ALLOWED,
     }
     back_path = f"/game/{game['slug']}"
     body = f"""<main class="player-shell" data-player='{esc(json.dumps(config,ensure_ascii=False))}'>

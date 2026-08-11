@@ -124,8 +124,158 @@
   const customPad = ["gba", "gb", "nds"].includes(config.system);
   const ndsPad = config.system === "nds";
   const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "hybrid-root" : "baseline";
+  const ndsDebugEnabled = ndsPad && config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1";
   document.documentElement.classList.toggle("custom-pad", customPad);
   stage.classList.toggle("nds-stage", ndsPad);
+
+  const NDS_DEBUG_LIMIT = 160;
+  const ndsDebugEvents = [];
+  let ndsDebugSequence = 0;
+  const describeNdsDebugNode = node => {
+    if (!node?.nodeName) return null;
+    const id=node.id ? `#${node.id}` : "";
+    const classes=typeof node.className === "string" && node.className.trim() ? `.${node.className.trim().split(/\s+/).join(".")}` : "";
+    return `${node.nodeName.toLowerCase()}${id}${classes}`;
+  };
+  const ndsDebugPoint = event => {
+    const touch=[...(event?.touches||[]),...(event?.changedTouches||[])][0];
+    return touch || event;
+  };
+  const finiteNdsDebugValue = value => Number.isFinite(value) ? Number(value) : null;
+  let ndsDebugGeometryCache = new WeakMap();
+  let ndsDebugGeometryResetPending = false;
+  const ndsDebugGeometry = canvas => {
+    if (!canvas) return null;
+    const now=performance.now(),cached=ndsDebugGeometryCache.get(canvas);
+    if (cached && now-cached.recordedAt<20) return cached;
+    const source=canvas.getBoundingClientRect();
+    const geometry={
+      recordedAt:now,
+      rect:{left:source.left,top:source.top,right:source.right,bottom:source.bottom,width:source.width,height:source.height},
+      backingWidth:canvas.width||source.width||0,
+      backingHeight:canvas.height||source.height||0
+    };
+    ndsDebugGeometryCache.set(canvas,geometry);
+    if (!ndsDebugGeometryResetPending) {
+      ndsDebugGeometryResetPending=true;
+      requestAnimationFrame(()=>{ndsDebugGeometryCache=new WeakMap();ndsDebugGeometryResetPending=false;});
+    }
+    return geometry;
+  };
+  const configuredNdsDebugCore = () => window.EJS_defaultOptions?.retroarch_core || primaryCores[config.system] || null;
+  const runtimeNdsDebugCore = () => window.EJS_emulator?.gameManager?.core || window.EJS_emulator?.core || null;
+  const recordNdsDebugEvent = (event, canvas, gameRoot) => {
+    if (!ndsDebugEnabled) return;
+    const point=ndsDebugPoint(event),geometry=ndsDebugGeometry(canvas),rect=geometry?.rect;
+    const clientX=finiteNdsDebugValue(point?.clientX),clientY=finiteNdsDebugValue(point?.clientY);
+    const backingWidth=geometry?.backingWidth ?? null;
+    const backingHeight=geometry?.backingHeight ?? null;
+    const cssX=rect && clientX!==null ? Math.max(0,Math.min(rect.width,clientX-rect.left)) : null;
+    const cssY=rect && clientY!==null ? Math.max(0,Math.min(rect.height,clientY-rect.top)) : null;
+    const mappedX=rect?.width && cssX!==null ? cssX*backingWidth/rect.width : null;
+    const mappedY=rect?.height && cssY!==null ? cssY*backingHeight/rect.height : null;
+    const pointerId=finiteNdsDebugValue(event?.pointerId);
+    const captureOwner=pointerId===null ? null : [canvas,gameRoot].find(node=>{
+      try { return Boolean(node?.hasPointerCapture?.(pointerId)); } catch (_) { return false; }
+    });
+    const type=event?.type || "unknown";
+    const viewportOrientation=innerWidth>innerHeight ? "landscape" : "portrait";
+    const entry={
+      sequence:++ndsDebugSequence,
+      timestampMs:Date.now(),
+      phase:event?.isTrusted ? "native" : "forwarded",
+      eventType:type,
+      isTrusted:Boolean(event?.isTrusted),
+      pointerType:event?.pointerType || (type.startsWith("touch") ? "touch" : (type.startsWith("mouse") || type === "click" ? "mouse" : null)),
+      clientX,
+      clientY,
+      pageX:finiteNdsDebugValue(point?.pageX),
+      pageY:finiteNdsDebugValue(point?.pageY),
+      movementX:finiteNdsDebugValue(event?.movementX),
+      movementY:finiteNdsDebugValue(event?.movementY),
+      buttons:finiteNdsDebugValue(event?.buttons),
+      pressure:finiteNdsDebugValue(event?.pressure),
+      target:describeNdsDebugNode(event?.target),
+      pointerId,
+      pointerCaptureOwner:describeNdsDebugNode(captureOwner),
+      defaultPreventedAtCapture:Boolean(event?.defaultPrevented),
+      canvas:describeNdsDebugNode(canvas),
+      canvasRect:rect || null,
+      canvasBackingWidth:backingWidth,
+      canvasBackingHeight:backingHeight,
+      canvasCssWidth:rect?.width ?? null,
+      canvasCssHeight:rect?.height ?? null,
+      devicePixelRatio:window.devicePixelRatio || 1,
+      cssX,
+      cssY,
+      mappedX,
+      mappedY,
+      normalizedX:backingWidth && mappedX!==null ? mappedX/backingWidth : null,
+      normalizedY:backingHeight && mappedY!==null ? mappedY/backingHeight : null,
+      orientation:viewportOrientation,
+      viewportOrientation,
+      screenOrientation:screen.orientation?.type || null,
+      screenOrientationAngle:finiteNdsDebugValue(screen.orientation?.angle),
+      fullscreen:Boolean(document.fullscreenElement),
+      fullscreenElement:describeNdsDebugNode(document.fullscreenElement),
+      touchVariant,
+      activeCore:configuredNdsDebugCore(),
+      configuredCore:configuredNdsDebugCore(),
+      runtimeCore:runtimeNdsDebugCore(),
+      activeSystem:window.EJS_core || emulatorSystem
+    };
+    ndsDebugEvents.push(entry);
+    if (ndsDebugEvents.length>NDS_DEBUG_LIMIT) ndsDebugEvents.splice(0,ndsDebugEvents.length-NDS_DEBUG_LIMIT);
+  };
+  const ndsDebugSnapshot = () => JSON.parse(JSON.stringify({
+    schema:"an3-nds-touch-debug-v1",
+    generatedAt:new Date().toISOString(),
+    url:location.href,
+    touchVariant,
+    activeCore:configuredNdsDebugCore(),
+    configuredCore:configuredNdsDebugCore(),
+    runtimeCore:runtimeNdsDebugCore(),
+    eventLimit:NDS_DEBUG_LIMIT,
+    eventCount:ndsDebugEvents.length,
+    events:ndsDebugEvents
+  }));
+  const bindNdsDebug = gameRoot => {
+    if (!ndsDebugEnabled || gameRoot.dataset.an3NdsDebug === "1") return;
+    gameRoot.dataset.an3NdsDebug="1";
+    const activeTouchIds=new Set(),activePointerIds=new Set();
+    const observe=event=>{
+      const path=event.composedPath?.() || [];
+      const inside=path.includes(gameRoot) || Boolean(event.target?.nodeType && gameRoot.contains(event.target));
+      const changedTouchIds=[...(event.changedTouches||[])].map(touch=>touch.identifier);
+      const allTouchIds=[...(event.touches||[]),...(event.changedTouches||[])].map(touch=>touch.identifier);
+      const pointerId=finiteNdsDebugValue(event.pointerId);
+      if (event.type === "touchstart" && inside) changedTouchIds.forEach(id=>activeTouchIds.add(id));
+      if (event.type === "pointerdown" && inside && pointerId!==null) activePointerIds.add(pointerId);
+      const trackedTouch=allTouchIds.some(id=>activeTouchIds.has(id));
+      const trackedPointer=pointerId!==null && activePointerIds.has(pointerId);
+      if (!inside && !trackedTouch && !trackedPointer) return;
+      const canvas=path.find(node=>node?.nodeName === "CANVAS") || event.target?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
+      recordNdsDebugEvent(event,canvas,gameRoot);
+      if (["touchend","touchcancel"].includes(event.type)) changedTouchIds.forEach(id=>activeTouchIds.delete(id));
+      if (["pointerup","pointercancel"].includes(event.type) && pointerId!==null) activePointerIds.delete(pointerId);
+    };
+    ["pointerdown","pointermove","pointerup","pointercancel","touchstart","touchmove","touchend","touchcancel","mousedown","mousemove","mouseup","click","gotpointercapture","lostpointercapture"].forEach(type=>{
+      document.addEventListener(type,observe,{capture:true,passive:true});
+    });
+    const exportJSON=()=>{
+      const json=JSON.stringify(ndsDebugSnapshot(),null,2);
+      const url=URL.createObjectURL(new Blob([json],{type:"application/json"}));
+      const anchor=document.createElement("a");
+      anchor.href=url;
+      anchor.download=`an3-nds-touch-${Date.now()}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+      return json;
+    };
+    window.AN3NdsDebug=Object.freeze({snapshot:ndsDebugSnapshot,clear:()=>{ndsDebugEvents.length=0;},exportJSON});
+  };
 
   const dispatchNdsMouse = (canvas, type, source, buttons) => {
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
@@ -229,6 +379,7 @@
   };
   if (ndsPad) {
     const gameRoot=document.getElementById("game");
+    bindNdsDebug(gameRoot);
     new MutationObserver(protectNdsCanvas).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
     protectNdsCanvas();
     bindRootNdsTouch(gameRoot);

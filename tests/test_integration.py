@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import http.client
 import hashlib
+import html
 import io
 import json
 import os
@@ -101,6 +102,7 @@ class ArcadeIntegrationTests(unittest.TestCase):
             "AN3_ADMIN_NAME": "rootadmin",
             "AN3_ADMIN_PASSWORD": "admin-pass-123",
             "AN3_COOKIE_SECURE": "0",
+            "AN3_ENVIRONMENT": "production",
         })
         cls.server = subprocess.Popen([sys.executable, APP], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         deadline = time.time() + 12
@@ -206,6 +208,16 @@ class ArcadeIntegrationTests(unittest.TestCase):
         status, _, player_body = public.request("GET", f"/play/{zipped_nds['slug']}")
         self.assertEqual(status, 200)
         self.assertIn(f"/game-file/{zipped_nds['slug']}/prepared-game.nds".encode(), player_body)
+        player_config_match = re.search(rb"data-player='([^']+)'", player_body)
+        self.assertIsNotNone(player_config_match)
+        player_config = json.loads(html.unescape(player_config_match.group(1).decode()))
+        self.assertEqual(player_config["ndsDebugAllowed"], False)
+        status, _, debug_player_body = public.request("GET", f"/play/{zipped_nds['slug']}?ndsdebug=1")
+        self.assertEqual(status, 200)
+        debug_config_match = re.search(rb"data-player='([^']+)'", debug_player_body)
+        self.assertIsNotNone(debug_config_match)
+        debug_config = json.loads(html.unescape(debug_config_match.group(1).decode()))
+        self.assertEqual(debug_config["ndsDebugAllowed"], False)
         status, _, playable_named = public.request("GET", f"/game-file/{zipped_nds['slug']}/prepared-game.nds")
         self.assertEqual((status, playable_named), (200, zipped_bytes))
         status, _, original_download = public.request("GET", f"/download/{zipped_nds['slug']}")
