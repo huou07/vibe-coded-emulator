@@ -1,5 +1,19 @@
 # Current phase
 
-PHASE 5 — STAGING
+NDS TOUCH RECOVERY — PHASE C, P1 GEOMETRY-ONLY
 
-Phase 1 audit passed. Phase 2 corrected the stale README and removed the DeSmuME fallback candidates from offline core selection, with explicit regression tests. Expanded baseline passed: 5/5 tests, all JS/shell syntax checks, and compileall using a writable cache prefix. Phase 3 source security review, release-package boundary checks, local SQLite Online Backup API rehearsal, repository safety checks, and a reproducible root commit passed. Staging deployment completed for backup-fixed release candidate `b07b7f6f6d7e6832b81472f086b194de7e8dd2eb`; staging health passed with asset `747d7cd08c55`. Earlier browser smoke reached ready for GBA/NDS and verified the NDS touch bridge; staging NDS ZIP/Range checks passed, `/offline` visibly reported downloaded mGBA/melonDS cores, and live HTTPS/security headers were observed. Read-only TVBox audit confirms services active and no dedicated AN3 backup timer. Scheduled-backup assets are prepared, locally and on staging Linux verified (WAL, integrity `ok`, mode `0600`); production activation/restore verification remains open. Save-state export, real-device touch/PWA, full upload, Cloudflare WAF/rate-limit/Bot configuration, and production approval remain open. Production code was not deployed.
+Phase A recorded the clean `ed0a32d` baseline, corrected two stale integration
+assertions without changing runtime behavior, and passed the explicit full
+suite. Phase B commit `f47e511` added a fail-closed staging/development-only
+`?ndsdebug=1` recorder. The regression gate passes 6/6. Staging is healthy at
+asset `b5e759b8d6b7`; the no-debug control has no diagnostics global and both
+control/debug pages start melonDS. Android 15 AVD evidence proves trusted native
+events, forwarded Pointer/Mouse events, bounded JSON export, non-zero mapped
+movement, release, save-state availability, and portrait/landscape geometry.
+This remains browser/bridge evidence only: runtime Libretro pointer state and
+melonDS stylus movement are unproven, and physical Android is open. Production
+touch deployment is not approved and was not performed.
+
+Next: run `EXP-C01-geometry-only` from the unchanged `hybrid-root` event model,
+using measured canvas/touchscreen geometry. Reject P1 and move layers if correct
+mapped coordinates still leave the stylus fixed.
