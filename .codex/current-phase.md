@@ -1,6 +1,6 @@
 # Current phase
 
-NDS TOUCH RECOVERY — PHYSICAL ANDROID GATE
+NDS TOUCH RECOVERY — PHYSICAL ANDROID MATRIX COMPLETION
 
 Phase A recorded the clean `ed0a32d` baseline before source changes, corrected
 two stale integration expectations, and passed the explicit full suite. Phase B
@@ -29,7 +29,13 @@ The default remains `hybrid-root`; `geometry-mapped` is query-only. Production
 touch code is untouched and unapproved. Do not start P2/P3 unless physical
 evidence rejects or materially limits this second and final P1 candidate.
 
-Next: physical Chrome Android, then Firefox Android or a documented exception,
-using exactly:
+A real-phone user report now passes startup, click, and cursor movement for C02.
+That is a physical basic-smoke PASS, not the complete matrix: drag axes, hold,
+release, rotation, virtual pad, fullscreen, save-state, and Firefox remain
+unreported. The post-physical local gate passes 6/6 and staging remains healthy
+on `def955887c68`.
+
+Next: complete the remaining physical matrix on Chrome Android, then Firefox
+Android or a documented exception, using exactly:
 
 `http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6`

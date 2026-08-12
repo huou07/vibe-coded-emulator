@@ -3,14 +3,14 @@ LEGACY_SOURCE_REPOSITORY=/Users/meomeo/Documents/Codex/2026-08-08/v/outputs/an3-
 SOURCE_BASELINE_SHA=d389e226542436a470a051e37d82da46695fcebd
 NDS_RECOVERY_BASELINE_SHA=ed0a32d50944f32bda9052bc6e41be3173d7f2c4
 CURRENT_BRANCH=main
-CURRENT_PHASE=NDS TOUCH RECOVERY — PHYSICAL ANDROID GATE
-LAST_PASSING_GATE=EXP-C02 GEOMETRY-MAPPED AVD CORE-RENDERED COORDINATE PASS; LOCAL REGRESSION 6/6
+CURRENT_PHASE=NDS TOUCH RECOVERY — PHYSICAL ANDROID MATRIX COMPLETION
+LAST_PASSING_GATE=REAL-PHONE C02 STARTUP/CLICK/CURSOR PASS; POST-PHYSICAL LOCAL REGRESSION 6/6
 STAGING_STATUS=DEPLOYED 15697a6; ASSET def955887c68; HEALTH PASS; GEOMETRY-MAPPED AVD PASS
 PRODUCTION_STATUS=HEALTH PREVIOUSLY PASS; NDS TOUCH CODE NOT DEPLOYED OR APPROVED
 CURRENT_RELEASE_CANDIDATE=15697a6 (STAGING QUERY-ONLY; DEFAULT REMAINS HYBRID-ROOT)
 LAST_BACKUP=LOCAL_REHEARSAL_PASS; PRODUCTION_BACKUP_INVENTORY_VERIFIED READ-ONLY
-OPEN_BLOCKERS=physical Android Chrome validation; physical Firefox validation or documented exception; explicit NDS touch production approval; unrelated PWA/upload/Cloudflare/backup items remain out of scope
-NEXT_ACTION=Validate one exact physical URL: http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6
+OPEN_BLOCKERS=remaining physical matrix (drag axes, hold/release, rotation, virtual pad, fullscreen, save-state); physical Firefox validation or documented exception; explicit NDS touch production approval; unrelated PWA/upload/Cloudflare/backup items remain out of scope
+NEXT_ACTION=Complete the remaining physical matrix on one exact URL: http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6
 SESSION_STARTED=2026-08-11
-LAST_UPDATED=2026-08-12T01:19:49+07:00
+LAST_UPDATED=2026-08-12T07:01:57+07:00
 HANDOFF_SOURCE=/Users/meomeo/Documents/Codex/2026-08-11/an3-arcade-new-codex-session-bootstrap/outputs/AN3-ARCADE-NDS-TOUCH-HANDOFF-2026-08-11.md

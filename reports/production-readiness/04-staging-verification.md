@@ -37,8 +37,10 @@ Historical bootstrap evidence:
 - Android 15 AVD passes startup, exact mapped 3x3 targets, all drag axes,
   hold/release, rotation, fullscreen, stale-viewport fallback, and save-state
   serialization. Core-rendered cursor displacement matches the measured scale.
-- Physical Chrome/Firefox Android remains OPEN, so this checklist remains
-  PARTIAL for promotion even though the current staging technical checks pass.
+- A real-phone basic smoke now passes startup, click, and cursor movement for
+  C02. The remaining Chrome matrix and Firefox/exception remain OPEN, so this
+  checklist remains PARTIAL for promotion even though the current staging
+  technical checks pass.
 - Production was not queried or changed by this staging deployment.
 
 ## Preconditions

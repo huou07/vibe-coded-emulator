@@ -240,7 +240,8 @@ P1_C02_AVD=PASS; final P1 candidate
 DEFAULT=hybrid-root unchanged
 P2_NATIVE_SURFACE=not started
 P3_DIRECT_LIBRETRO=not started; no supported direct pointer API was found
-PHYSICAL_ANDROID_CHROME=OPEN
+PHYSICAL_ANDROID_BASIC_SMOKE=PASS; real-phone startup, click, cursor movement
+PHYSICAL_ANDROID_FULL_MATRIX=PARTIAL; remaining checks open
 PHYSICAL_ANDROID_FIREFOX=OPEN or documented exception required
 PRODUCTION=untouched and not approved
 ```

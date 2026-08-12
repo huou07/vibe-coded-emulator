@@ -14,7 +14,7 @@
 | Local/staging backup and restore | local + staging Linux backup, integrity `ok`; staging restore: 15 tables/2 games | PASS for staging drill |
 | Scheduled production backup timer | assets prepared; TVBox audit found no timer; production not deployed | OPEN |
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
-| NDS touch runtime | `EXP-C02-geometry-mapped` on commit `15697a6`, staging asset `def955887c68`: exact 3x3 DS targets, all drag axes, hold/release, portrait/rotation/landscape/fullscreen, stale-viewport fallback, save state, and core-rendered X/Y displacement matching measured scale; default remains `hybrid-root` | PASS for AVD browser/runtime/mapped/core-render scope; OPEN for physical device |
+| NDS touch runtime | `EXP-C02-geometry-mapped` on commit `15697a6`, staging asset `def955887c68`: exact 3x3 DS targets, all drag axes, hold/release, portrait/rotation/landscape/fullscreen, stale-viewport fallback, save state, and core-rendered X/Y displacement matching measured scale; a real phone now passes startup, click, and cursor movement; default remains `hybrid-root` | PASS for AVD browser/runtime/mapped/core-render scope; PARTIAL for physical device, remaining matrix open |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |

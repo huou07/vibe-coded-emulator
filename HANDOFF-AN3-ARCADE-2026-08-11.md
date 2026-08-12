@@ -54,6 +54,9 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Controlled fullscreen frames prove exact core mapping: `+102` DS X moved the
   cursor 85 rendered pixels in the 213-pixel viewport; `+48` DS Y moved it 40
   rendered pixels in the 320-pixel viewport.
+- Real-phone user evidence now passes game startup, click, and cursor movement
+  for C02. The remaining physical matrix is still open; see
+  `reports/nds-touch/04-physical-android.md`.
 - Staging `/offline` UI reports mGBA and melonDS cores downloaded with sizes and enabled delete controls.
 - Read-only production HTTPS headers show Cloudflare, HSTS, CSP, no-sniff, and expected security policies; Cloudflare WAF/rate-limit/Bot configuration remains unverified.
 - Read-only TVBox audit: application, staging, and tunnel services active; production backup file exists; no dedicated AN3 backup timer found; Cloudflared has registered connections but also transient network errors.
@@ -67,7 +70,8 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 ## Open gates
 
 - User subsequently confirmed save-state works on a real device; browser download-event evidence remains unavailable, but requirement is treated as PASS with user/device evidence.
-- Physical Chrome Android finger-touch verification remains OPEN.
+- Physical Chrome Android basic smoke (startup, click, cursor movement): PASS;
+  the remaining physical matrix remains OPEN.
 - Physical Firefox Android verification remains OPEN, or needs a documented
   exception before a production proposal.
 - Installed PWA offline after network loss/restart remains OPEN.
@@ -84,7 +88,7 @@ and explicit NDS touch production approval.
 
 ## Exact next step
 
-Stop for physical Android validation using exactly:
+Complete the remaining physical Android matrix using exactly:
 
 `http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6`
 

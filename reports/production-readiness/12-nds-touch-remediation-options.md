@@ -110,3 +110,7 @@ Test Chrome first, then the same URL in Firefox if available: startup, first
 tap, corners/center, horizontal/vertical/diagonal drag, hold, release, portrait,
 landscape, virtual pad, fullscreen, and save state. Record only PASS, FAIL, or
 PARTIAL. AVD success must not be promoted to physical PASS.
+
+Current physical result: a real phone passes startup, click, and cursor movement
+for C02. This is a basic-smoke PASS only; the remaining matrix and Firefox or a
+documented exception are still required before a production proposal.
