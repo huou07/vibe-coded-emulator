@@ -123,7 +123,7 @@
 
   const customPad = ["gba", "gb", "nds"].includes(config.system);
   const ndsPad = config.system === "nds";
-  const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "hybrid-root" : "baseline";
+  const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "geometry-mapped" : "baseline";
   const isolatedNdsMovement = ["geometry-only","geometry-mapped"].includes(touchVariant);
   const ndsDebugEnabled = ndsPad && config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1";
   document.documentElement.classList.toggle("custom-pad", customPad);
