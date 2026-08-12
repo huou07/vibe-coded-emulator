@@ -18,6 +18,6 @@
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |
-| NDS touch production promotion | Physical acceptance complete for the user-defined scope; final 6/6 gate, staging health, production health, rollback code/database path, and package scope recorded. Deployment still changes the whole package and installs/enables the missing production backup timer. | READY FOR EXPLICIT APPROVAL / NOT APPROVED |
+| NDS touch production promotion | User explicitly approved the full package; `deploy.sh` completed; production asset `def955887c68`, service, backup timer, rollback code/database artifacts, served-player hash, and public AVD startup smoke all verified | PASS |
 
 This matrix is the authoritative handoff summary. No OPEN item may be reported as PASS without stronger evidence matching its scope.
