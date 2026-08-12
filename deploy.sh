@@ -11,7 +11,7 @@ ARCHIVE="$(mktemp -t an3-arcade.XXXXXX.tgz)"
 REMOTE_ARCHIVE="/tmp/an3-arcade-deploy-$$.tgz"
 trap 'rm -f "$ARCHIVE"' EXIT
 
-tar -czf "$ARCHIVE" -C "$PACKAGE_DIR" app.py static deploy README.md
+COPYFILE_DISABLE=1 tar -czf "$ARCHIVE" -C "$PACKAGE_DIR" app.py static deploy README.md
 scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   "$ARCHIVE" "$TVBOX_USER@$TVBOX_HOST:$REMOTE_ARCHIVE"
 
@@ -33,6 +33,7 @@ fi
 install -d -m 0755 /opt/an3-arcade /opt/an3-arcade/static
 install -m 0755 "$tmp/app.py" /opt/an3-arcade/app.py
 cp -a "$tmp/static/." /opt/an3-arcade/static/
+find /opt/an3-arcade/static -type f -name '._*' -delete
 find /opt/an3-arcade/static -type d -exec chmod 0755 {} +
 find /opt/an3-arcade/static -type f -exec chmod 0644 {} +
 install -d -o tvshare -g tvshare -m 0750 /srv/an3-arcade
