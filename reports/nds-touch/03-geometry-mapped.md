@@ -10,9 +10,9 @@ ONE_CHANGE=For geometry-mapped only, resolve the displayed 256x384 core viewport
 OBSERVABLE=Exact mapped targets, forwarded mouse deltas, core-rendered cursor position, startup, hold/release, orientation, fullscreen, save-state, and stale-viewport fallback.
 EXPECTED_IF_TRUE=Grid points map to the intended DS coordinates and the core-rendered cursor lands at the corresponding scaled pixels in both axes without changing the default or core option.
 EXPECTED_IF_FALSE=Scale varies by orientation, the cursor and finger diverge, the first tap fails, release sticks, or stale renderer geometry produces an incorrect target.
-RESULT=PASS on Android 15 AVD at browser, bridge, exact-runtime, mapped-coordinate, and melonDS-rendered-cursor layers; physical Android remains OPEN.
-CONCLUSION=C02 is the second and final P1 candidate. Stop at the physical Android gate; do not start P2/P3 unless physical evidence rejects or materially limits C02.
-NEXT_ACTION=Use one exact C02 URL on physical Chrome Android, then the same URL on Firefox Android or record a justified exception.
+RESULT=PASS on Android 15 AVD at browser, bridge, exact-runtime, mapped-coordinate, and melonDS-rendered-cursor layers. Physical acceptance subsequently passed for the user-defined scope; see `04-physical-android.md`.
+CONCLUSION=C02 is the second and final P1 candidate. Do not start P2/P3; physical evidence accepted C02, and the remaining gate is explicit production approval.
+NEXT_ACTION=Stop for explicit approval of the current production package.
 ```
 
 ## Why C01 does not rule this out

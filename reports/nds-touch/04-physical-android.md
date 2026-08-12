@@ -13,27 +13,28 @@ STAGING_ASSET=def955887c68
 STARTUP=PASS
 CLICK=PASS
 CURSOR_MOVEMENT=PASS
+ALL_DRAG_DIRECTIONS=PASS
+HOLD=PASS
+RELEASE=PASS
+SAVE_STATE=PASS
+FULLSCREEN=PASS
+CURSOR_ANIMATION=PASS
+VIRTUAL_PAD=PASS
+PORTRAIT_LANDSCAPE=WAIVED by explicit user instruction; not needed on this phone
+FIREFOX_ANDROID=PASS; normal play confirmed
 ```
 
 This is physical-device evidence and upgrades those three acceptance items beyond
 the AVD. Browser name/version, device model, and the rest of the matrix were not
 reported, so they are deliberately not inferred.
 
-## Remaining physical scope
+## Physical acceptance scope
 
 ```text
-3X3_CORNERS_AND_CENTER=OPEN
-HORIZONTAL_DRAG=OPEN
-VERTICAL_DRAG=OPEN
-DIAGONAL_DRAG=OPEN
-HOLD=OPEN
-RELEASE=OPEN
-PORTRAIT=OPEN
-LANDSCAPE=OPEN
-VIRTUAL_PAD=OPEN
-FULLSCREEN=OPEN
-SAVE_STATE=OPEN
-FIREFOX_ANDROID=OPEN or documented exception
+PRIMARY_REAL_PHONE_BROWSER=PASS; browser name/version not reported
+FIREFOX_ANDROID=PASS
+PORTRAIT_LANDSCAPE=explicitly waived by the user for this phone
+UNREPORTED_DEVICE_METADATA=model and browser version
 ```
 
 ## Post-physical technical gate
@@ -55,7 +56,7 @@ STAGING_HEALTH=PASS; environment=staging; asset=def955887c68
 
 ```text
 PHYSICAL_BASIC_SMOKE=PASS
-PHYSICAL_FULL_MATRIX=PARTIAL
+PHYSICAL_FULL_MATRIX=PASS with the explicit portrait/landscape waiver
 PRODUCTION=untouched and not approved
-NEXT_ACTION=Collect the remaining matrix results on the same exact candidate URL, then stop for explicit production approval only if all required evidence is PASS or an exception is documented.
+NEXT_ACTION=Run the final production preflight, then stop for explicit production approval.
 ```

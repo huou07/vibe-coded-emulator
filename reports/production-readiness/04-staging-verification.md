@@ -37,10 +37,11 @@ Historical bootstrap evidence:
 - Android 15 AVD passes startup, exact mapped 3x3 targets, all drag axes,
   hold/release, rotation, fullscreen, stale-viewport fallback, and save-state
   serialization. Core-rendered cursor displacement matches the measured scale.
-- A real-phone basic smoke now passes startup, click, and cursor movement for
-  C02. The remaining Chrome matrix and Firefox/exception remain OPEN, so this
-  checklist remains PARTIAL for promotion even though the current staging
-  technical checks pass.
+- A real phone now passes the accepted C02 scope: startup, click, cursor and
+  animation, all drags, hold/release, virtual pad, fullscreen, and save-state;
+  Firefox Android normal play passes. Portrait/landscape was explicitly waived.
+  The current staging technical and physical gates pass; only explicit production
+  approval remains for this NDS promotion.
 - Production was not queried or changed by this staging deployment.
 
 ## Preconditions

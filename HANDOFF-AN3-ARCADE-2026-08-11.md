@@ -54,9 +54,10 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Controlled fullscreen frames prove exact core mapping: `+102` DS X moved the
   cursor 85 rendered pixels in the 213-pixel viewport; `+48` DS Y moved it 40
   rendered pixels in the 320-pixel viewport.
-- Real-phone user evidence now passes game startup, click, and cursor movement
-  for C02. The remaining physical matrix is still open; see
-  `reports/nds-touch/04-physical-android.md`.
+- Real-phone user evidence now passes startup, click, cursor/animation, all drag
+  directions, hold/release, virtual pad, fullscreen, and save-state for C02.
+  Firefox Android normal play passes; portrait/landscape was explicitly waived.
+  See `reports/nds-touch/04-physical-android.md`.
 - Staging `/offline` UI reports mGBA and melonDS cores downloaded with sizes and enabled delete controls.
 - Read-only production HTTPS headers show Cloudflare, HSTS, CSP, no-sniff, and expected security policies; Cloudflare WAF/rate-limit/Bot configuration remains unverified.
 - Read-only TVBox audit: application, staging, and tunnel services active; production backup file exists; no dedicated AN3 backup timer found; Cloudflared has registered connections but also transient network errors.
@@ -70,10 +71,9 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 ## Open gates
 
 - User subsequently confirmed save-state works on a real device; browser download-event evidence remains unavailable, but requirement is treated as PASS with user/device evidence.
-- Physical Chrome Android basic smoke (startup, click, cursor movement): PASS;
-  the remaining physical matrix remains OPEN.
-- Physical Firefox Android verification remains OPEN, or needs a documented
-  exception before a production proposal.
+- Physical Android accepted scope: PASS, with portrait/landscape explicitly
+  waived for the tested phone.
+- Firefox Android normal play: PASS.
 - Installed PWA offline after network loss/restart remains OPEN.
 - Full approximately 1.7 GB 3DS upload remains OPEN.
 - Cloudflare WAF/rate-limit/Bot configuration verification remains OPEN.
@@ -88,11 +88,7 @@ and explicit NDS touch production approval.
 
 ## Exact next step
 
-Complete the remaining physical Android matrix using exactly:
-
-`http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6`
-
-If physical movement fails or is materially limited, record the result before
-deciding whether P2 is warranted; both allowed P1 candidates are now consumed.
-If physical Chrome and Firefox pass, rerun the promotion gate and stop for
-explicit production approval.
+The promotion gate now passes and production is still unchanged. Stop for
+explicit approval of the current package: it deploys `app.py`, `static/`,
+`deploy/`, and `README.md`; creates timestamped code/database rollback backups;
+restarts the production service; and installs/enables the production backup timer.
