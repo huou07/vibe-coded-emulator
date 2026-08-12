@@ -12,12 +12,12 @@
 | NDS ZIP and HTTP Range | staging `application/zip`, 46,342,391 bytes, HTTP 206 for 16-byte range | PASS |
 | Chunk upload | local integration test only | PARTIAL; full 1.7 GB route open |
 | Local/staging backup and restore | local + staging Linux backup, integrity `ok`; staging restore: 15 tables/2 games | PASS for staging drill |
-| Scheduled production backup timer | assets prepared; TVBox audit found no timer; production not deployed | OPEN |
+| Scheduled production backup timer | `an3-arcade-backup.timer` installed, active, and enabled; deploy created verified predeploy database backups | PASS |
 | Security/source/package checks | local baseline, headers, package boundary, read-only TVBox audit | PASS with Cloudflare config open |
-| NDS touch runtime | `EXP-C02-geometry-mapped` on commit `15697a6`, staging asset `def955887c68`: exact 3x3 DS targets, all drag axes, hold/release, portrait/rotation/landscape/fullscreen, stale-viewport fallback, save state, and core-rendered X/Y displacement matching measured scale; a real phone passes startup, click, cursor/animation, all drags, hold/release, virtual pad, fullscreen, and save-state; Firefox normal play passes; portrait/landscape was explicitly waived | PASS for AVD and accepted physical-device scope; explicit production approval still required |
+| NDS touch runtime | `EXP-C02-geometry-mapped` on commit `15697a6`, staging asset `def955887c68`: exact 3x3 DS targets, all drag axes, hold/release, portrait/rotation/landscape/fullscreen, stale-viewport fallback, save state, and core-rendered X/Y displacement matching measured scale; a real phone passes startup, click, cursor/animation, all drags, hold/release, virtual pad, fullscreen, and save-state; cross-browser production query validation passed; portrait/landscape was explicitly waived | PASS for AVD, accepted physical-device scope, and production default promotion |
 | Installed PWA offline end-to-end | no network-loss/restart device evidence | OPEN |
 | Save-state export | user-confirmed working on real device; browser download event was not observed | PASS (user/device evidence) |
 | Cloudflare WAF/rate-limit/Bot settings | authenticated zone dashboard review: no visible custom/rate-limit rules; Managed Rules upgrade prompt; Bot settings visible | PARTIAL; no settings changed |
-| NDS touch production promotion | User explicitly approved the full package; `deploy.sh` completed; production asset `def955887c68`, service, backup timer, rollback code/database artifacts, served-player hash, and public AVD startup smoke all verified | PASS |
+| NDS touch production promotion | User explicitly approved `geometry-mapped` as the default; production asset `6f8484897b66`, active service/timer, rollback artifacts, served-player hash, clean package inventory, and public AVD default-URL startup/input smoke all verified | PASS |
 
 This matrix is the authoritative handoff summary. No OPEN item may be reported as PASS without stronger evidence matching its scope.

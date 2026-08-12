@@ -25,9 +25,10 @@ byte save state. Controlled fullscreen frames prove the melonDS cursor moved 85
 rendered pixels for the mapped `+102` DS X delta and 40 rendered pixels for the
 mapped `+48` DS Y delta, exactly matching the measured viewport scales.
 
-The default remains `hybrid-root`; `geometry-mapped` remains query-only in the
-now-deployed production code. Physical evidence accepted the final P1 candidate,
-so P2/P3 are not started.
+`geometry-mapped` is now the default NDS touch variant in production. The
+previous `hybrid-root` control remains available explicitly through the query
+parameter for rollback diagnostics. Physical evidence accepted the final P1
+candidate, so P2/P3 were not started.
 
 A real-phone report now passes startup, click, cursor movement/animation, all
 drag directions, hold/release, virtual pad, fullscreen, and save-state for C02.
@@ -35,8 +36,11 @@ Firefox Android also passes normal play. The user explicitly waived
 portrait/landscape testing for this phone. The final promotion gate passes 6/6;
 staging remains healthy on `def955887c68`.
 
-The user explicitly approved production deployment. `deploy.sh` completed,
-production now serves asset `def955887c68`, the service and backup timer are
-active/enabled, and code/database rollback artifacts were created. Public AVD
-smoke passed with melonDS startup and fail-closed diagnostics. See
-`reports/production-readiness/13-nds-touch-production-deployment.md`.
+After the initial query-only deployment, cross-browser physical validation
+confirmed that `geometry-mapped` starts, clicks, and moves correctly on Chrome,
+Firefox, and other Android browsers. The user then explicitly approved making it
+the default and deploying production. Production now serves asset
+`6f8484897b66`; the service and backup timer are active/enabled. A public AVD
+smoke on a URL without `touch=` passed melonDS startup and emitted non-zero
+mapped MouseEvent movement with a clean release. See
+`reports/production-readiness/14-nds-touch-default-promotion.md`.

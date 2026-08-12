@@ -1,5 +1,8 @@
 # NDS touch production deployment
 
+This records the initial query-only deployment and is superseded for the
+current default by `14-nds-touch-default-promotion.md`.
+
 Recorded: `2026-08-12T07:19:32+07:00`
 
 The user explicitly approved deployment of the current AN3 package, including

@@ -10,7 +10,7 @@
 - NDS touch code deployed: `15697a634360e3d9ae66bf4b5176333ce53ba5a3`
 - Last staging release candidate: `15697a634360e3d9ae66bf4b5176333ce53ba5a3`
 - Live staging and production asset: `def955887c68` (health PASS).
-- Default touch variant: `hybrid-root`; `geometry-mapped` is deployed query-only for diagnostic use.
+- Default touch variant: `geometry-mapped`; `hybrid-root` remains query-selectable for rollback diagnostics.
 
 ## Current architecture
 
