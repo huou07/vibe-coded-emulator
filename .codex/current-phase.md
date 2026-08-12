@@ -1,6 +1,6 @@
 # Current phase
 
-NDS TOUCH RECOVERY — READY FOR EXPLICIT PRODUCTION APPROVAL
+NDS TOUCH RECOVERY — COMPLETE
 
 Phase A recorded the clean `ed0a32d` baseline before source changes, corrected
 two stale integration expectations, and passed the explicit full suite. Phase B
@@ -25,17 +25,18 @@ byte save state. Controlled fullscreen frames prove the melonDS cursor moved 85
 rendered pixels for the mapped `+102` DS X delta and 40 rendered pixels for the
 mapped `+48` DS Y delta, exactly matching the measured viewport scales.
 
-The default remains `hybrid-root`; `geometry-mapped` is query-only. Production
-touch code is untouched and unapproved. Do not start P2/P3 unless physical
-evidence rejects or materially limits this second and final P1 candidate.
+The default remains `hybrid-root`; `geometry-mapped` remains query-only in the
+now-deployed production code. Physical evidence accepted the final P1 candidate,
+so P2/P3 are not started.
 
 A real-phone report now passes startup, click, cursor movement/animation, all
 drag directions, hold/release, virtual pad, fullscreen, and save-state for C02.
 Firefox Android also passes normal play. The user explicitly waived
 portrait/landscape testing for this phone. The final promotion gate passes 6/6;
-staging remains healthy on `def955887c68`, while production is healthy but still
-runs old asset `7f143995ae30`.
+staging remains healthy on `def955887c68`.
 
-Next: stop for explicit approval to deploy the current production package. The
-deployment will update `/opt/an3-arcade`, create code/database rollback backups,
-restart `an3-arcade.service`, and install/enable the production backup timer.
+The user explicitly approved production deployment. `deploy.sh` completed,
+production now serves asset `def955887c68`, the service and backup timer are
+active/enabled, and code/database rollback artifacts were created. Public AVD
+smoke passed with melonDS startup and fail-closed diagnostics. See
+`reports/production-readiness/13-nds-touch-production-deployment.md`.

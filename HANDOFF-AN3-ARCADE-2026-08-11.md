@@ -7,10 +7,10 @@
 - Legacy Git metadata: unavailable; source was copied from the legacy working tree.
 - Source baseline commit: `d389e226542436a470a051e37d82da46695fcebd`
 - NDS recovery baseline: `ed0a32d50944f32bda9052bc6e41be3173d7f2c4`
-- Current NDS touch code candidate: `15697a634360e3d9ae66bf4b5176333ce53ba5a3`
+- NDS touch code deployed: `15697a634360e3d9ae66bf4b5176333ce53ba5a3`
 - Last staging release candidate: `15697a634360e3d9ae66bf4b5176333ce53ba5a3`
-- Live staging asset: `def955887c68` (`environment=staging`, health PASS).
-- Default touch variant: `hybrid-root`; `geometry-mapped` remains query-only pending physical acceptance.
+- Live staging and production asset: `def955887c68` (health PASS).
+- Default touch variant: `hybrid-root`; `geometry-mapped` is deployed query-only for diagnostic use.
 
 ## Current architecture
 
@@ -66,9 +66,11 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Staging restore drill passed from that backup: integrity `ok`, 15 tables, 2 games, temporary restore removed.
 - Host-side systemd verification confirmed the existing arcade units; backup-unit verification is pending the production-only helper installation path.
 - Requirement-by-requirement evidence is summarized in `reports/production-readiness/11-completion-matrix.md`.
-- Production health was previously PASS at asset `7f143995ae30`. NDS touch code was not deployed.
+- Production deployment was explicitly approved and completed. Production health
+  now passes at asset `def955887c68`; service/timer, rollback artifacts, served
+  player hash, and public AVD smoke were verified.
 
-## Open gates
+## Remaining separate gates
 
 - User subsequently confirmed save-state works on a real device; browser download-event evidence remains unavailable, but requirement is treated as PASS with user/device evidence.
 - Physical Android accepted scope: PASS, with portrait/landscape explicitly
@@ -77,18 +79,16 @@ Single-host Python standard-library HTTP app with SQLite WAL and static PWA asse
 - Installed PWA offline after network loss/restart remains OPEN.
 - Full approximately 1.7 GB 3DS upload remains OPEN.
 - Cloudflare WAF/rate-limit/Bot configuration verification remains OPEN.
-- Production backup/preflight and explicit production approval remain OPEN.
+- The NDS production promotion is complete. See
+  `reports/production-readiness/13-nds-touch-production-deployment.md`.
 
 ## Safety status
 
-No NDS touch production code or database restore was performed. No secrets,
-passwords, tokens, cookies, or environment values are included here. Do not
-deploy this candidate to production until physical validation, the full gate,
-and explicit NDS touch production approval.
+Production NDS touch code was deployed only after physical validation, the full
+gate, and explicit approval. No database restore was performed. No secrets,
+passwords, tokens, cookies, or environment values are included here.
 
 ## Exact next step
 
-The promotion gate now passes and production is still unchanged. Stop for
-explicit approval of the current package: it deploys `app.py`, `static/`,
-`deploy/`, and `README.md`; creates timestamped code/database rollback backups;
-restarts the production service; and installs/enables the production backup timer.
+NDS touch recovery is complete. Use the recorded rollback artifacts only if a
+verified production regression appears.

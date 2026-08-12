@@ -26,7 +26,8 @@ unapproved.
 
 ## 2026-08-12 NDS promotion preflight
 
-Status: READY FOR EXPLICIT APPROVAL — no production mutation has been made.
+Status: HISTORICAL PRE-APPROVAL SNAPSHOT — no production mutation had been made
+at this point; the approval and deployment outcome follows below.
 
 ```text
 CODE_CANDIDATE=15697a634360e3d9ae66bf4b5176333ce53ba5a3
@@ -52,3 +53,12 @@ the verified candidate player has SHA-256
 
 Do not run `deploy.sh` until the user explicitly approves this exact package and
 these side effects.
+
+## Approval and outcome
+
+The user explicitly approved the exact package and side effects on
+`2026-08-12`. `deploy.sh` was run once. Its initial loopback probes saw four
+restart-time refusals, then passed health with production asset `def955887c68`.
+The post-deployment public and local verification, service/timer state, rollback
+artifacts, and public AVD smoke are recorded in
+`13-nds-touch-production-deployment.md`.

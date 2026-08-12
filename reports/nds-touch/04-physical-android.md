@@ -57,6 +57,6 @@ STAGING_HEALTH=PASS; environment=staging; asset=def955887c68
 ```text
 PHYSICAL_BASIC_SMOKE=PASS
 PHYSICAL_FULL_MATRIX=PASS with the explicit portrait/landscape waiver
-PRODUCTION=untouched and not approved
-NEXT_ACTION=Run the final production preflight, then stop for explicit production approval.
+PRODUCTION=deployed and verified after explicit approval; see `13-nds-touch-production-deployment.md`
+NEXT_ACTION=NDS promotion complete; monitor normally and use rollback only for a verified regression.
 ```

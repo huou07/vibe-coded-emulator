@@ -102,7 +102,7 @@ STAGING_URL=http://192.168.1.11:8092
 ASSET_VERSION=def955887c68
 HEALTH=PASS; environment=staging; service=active
 CANDIDATE_URL=http://192.168.1.11:8092/play/pmd-eos?touch=geometry-mapped&ndsdebug=1&run=physical-15697a6
-PRODUCTION=untouched; no NDS touch promotion approval
+PRE_PROMOTION_PRODUCTION=untouched at this staging-deployment checkpoint; later deployed after explicit approval
 ```
 
 The deploy script's first five loopback probes again ran before port 8092 was
@@ -243,5 +243,5 @@ P3_DIRECT_LIBRETRO=not started; no supported direct pointer API was found
 PHYSICAL_ANDROID_BASIC_SMOKE=PASS; real-phone startup, click, cursor movement
 PHYSICAL_ANDROID_FULL_MATRIX=PARTIAL; remaining checks open
 PHYSICAL_ANDROID_FIREFOX=OPEN or documented exception required
-PRODUCTION=untouched and not approved
+PRODUCTION=deployed and verified after explicit approval; see `13-nds-touch-production-deployment.md`
 ```
