@@ -120,9 +120,13 @@
     const submit = authForm.querySelector('button[type="submit"]');
     const progress = document.getElementById("authProgress");
     const progressLabel = document.getElementById("authProgressLabel");
+    const fields = [...authForm.querySelectorAll("input:not([type=hidden])")];
     const vietnamese = document.documentElement.lang !== "en";
     errorBox.textContent = "";
+    errorBox.hidden = true;
+    fields.forEach(field => field.removeAttribute("aria-invalid"));
     authForm.classList.add("is-loading");
+    authForm.setAttribute("aria-busy", "true");
     submit.disabled = true;
     progress.hidden = false;
     progressLabel.textContent = kind === "register"
@@ -134,21 +138,32 @@
       location.href = data.redirect || "/";
     } catch (error) {
       errorBox.textContent = error.message;
+      errorBox.hidden = false;
+      fields.forEach(field => field.setAttribute("aria-invalid", "true"));
       authForm.classList.remove("is-loading");
+      authForm.removeAttribute("aria-busy");
       submit.disabled = false;
       progress.hidden = true;
       progress.classList.remove("complete");
+      errorBox.focus();
     }
   });
+  authForm?.querySelectorAll("input:not([type=hidden])").forEach(field => field.addEventListener("input", () => {
+    field.removeAttribute("aria-invalid");
+    const errorBox = document.getElementById("formError");
+    if (errorBox) { errorBox.hidden = true; errorBox.textContent = ""; }
+  }));
 
   const displayNameForm = document.getElementById("displayNameForm");
   displayNameForm?.addEventListener("submit", async event => {
     event.preventDefault();
+    const status = document.getElementById("displayNameStatus");
     try {
       const data = await api("/api/account/display-name", {method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(displayNameForm).entries()))});
       document.querySelector(".site-header .account")?.replaceChildren(document.createTextNode(data.display_name));
+      if (status) status.textContent = document.documentElement.lang === "en" ? "Nickname saved." : "Đã lưu nickname.";
       notify(document.documentElement.lang === "en" ? "Nickname saved" : "Đã lưu nickname");
-    } catch (error) { notify(error.message, true); }
+    } catch (error) { if (status) status.textContent = error.message; notify(error.message, true); }
   });
 
   const search = document.getElementById("gameSearch");

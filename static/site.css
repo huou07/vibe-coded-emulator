@@ -705,3 +705,96 @@ body:not(.player-page) .core-preload-grid .button:disabled{
   body:not(.player-page) .core-preload summary{align-items:flex-start;padding:15px}
   body:not(.player-page) .core-preload-body{padding:15px}
 }
+
+/* Authentication and account surfaces. */
+body:not(.player-page) .auth-shell{
+  min-height:calc(100vh - 72px);
+  padding:44px 16px 64px;
+  place-items:start center;
+}
+body:not(.player-page) .auth-panel{
+  width:min(460px,100%);
+  padding:clamp(22px,5vw,34px);
+  border-color:#465249;
+  border-radius:var(--ui-radius-lg);
+  background:var(--ui-surface);
+  box-shadow:none;
+}
+body:not(.player-page) .auth-panel h1{
+  margin:4px 0 24px;
+  font-size:clamp(30px,7vw,42px);
+  line-height:1.08;
+}
+body:not(.player-page) .auth-panel form{gap:15px}
+body:not(.player-page) .auth-panel label{
+  gap:7px;
+  color:var(--ui-text);
+  font-weight:750;
+}
+body:not(.player-page) .auth-panel .button[type="submit"]{
+  width:100%;
+  min-height:46px;
+  margin-top:3px;
+}
+body:not(.player-page) .field-help{
+  margin:-5px 0 0;
+  color:var(--ui-muted);
+  font-size:13px;
+}
+body:not(.player-page) .form-error[hidden]{display:none!important}
+body:not(.player-page) .form-error:not([hidden]){
+  min-height:0;
+  margin:0;
+  padding:10px 12px;
+  border:1px solid var(--ui-danger);
+  border-radius:var(--ui-radius-sm);
+  background:#1a0d0e;
+  color:#ffb7b3;
+}
+body:not(.player-page) [aria-invalid="true"]{border-color:var(--ui-danger)!important}
+body:not(.player-page) .auth-switch{
+  margin:20px 0 0;
+  color:var(--ui-muted);
+  text-align:center;
+}
+body:not(.player-page) .auth-switch a{color:var(--ui-cyan)}
+body:not(.player-page) .auth-progress{color:var(--ui-cyan)}
+body:not(.player-page) .account-page .library-head .muted{
+  max-width:620px;
+  margin:10px 0 0;
+}
+body:not(.player-page) .account-role{
+  align-self:flex-end;
+  max-width:260px;
+  overflow-wrap:anywhere;
+  color:var(--ui-lime);
+}
+body:not(.player-page) .account-settings{
+  margin:0 0 38px;
+  padding:20px;
+  border:1px solid #3d4941;
+  border-radius:var(--ui-radius-md);
+  background:var(--ui-surface);
+}
+body:not(.player-page) .account-settings>.section-title{margin-bottom:16px}
+body:not(.player-page) .account-settings h2,
+body:not(.player-page) .account-favorites h2{margin:2px 0 0}
+body:not(.player-page) .account-settings .form-grid{align-items:end}
+body:not(.player-page) .account-settings .form-actions{
+  grid-column:1/-1;
+  min-height:42px;
+  margin:0;
+}
+body:not(.player-page) #displayNameStatus{margin:0}
+body:not(.player-page) .account-favorites>.section-title{margin-bottom:16px}
+
+@media(max-width:820px){
+  body:not(.player-page) .auth-shell{min-height:calc(100vh - 64px);padding-top:28px}
+  body:not(.player-page) .account-settings .form-actions{grid-column:auto}
+}
+@media(max-width:480px){
+  body:not(.player-page) .auth-shell{padding:20px 12px 44px}
+  body:not(.player-page) .auth-panel{padding:21px 18px}
+  body:not(.player-page) .account-role{display:none}
+  body:not(.player-page) .account-settings{padding:15px}
+}

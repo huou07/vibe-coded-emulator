@@ -495,12 +495,22 @@ def clean_display_name(value):
     return value
 
 
-def validate_password(password, confirm):
+def safe_next_path(value, fallback="/"):
+    raw = str(value or "").strip()
+    if not raw or not raw.startswith("/") or raw.startswith("//") or "\\" in raw or any(ord(ch) < 32 for ch in raw):
+        return fallback
+    parsed = urlparse(raw)
+    if parsed.scheme or parsed.netloc:
+        return fallback
+    return parsed.path + (f"?{parsed.query}" if parsed.query else "")
+
+
+def validate_password(password, confirm, lang="vi"):
     if len(password) < 10 or len(password) > 200 or password != confirm:
-        raise ValueError("Mật khẩu phải có ít nhất 10 ký tự và trùng khớp")
+        raise ValueError(tr(lang, "Mật khẩu phải có 10–200 ký tự và trùng khớp", "Passwords must match and contain 10–200 characters"))
     groups = sum(bool(re.search(pattern, password)) for pattern in (r"[a-z]", r"[A-Z]", r"\d", r"[^\w\s]"))
     if groups < 2:
-        raise ValueError("Mật khẩu cần dùng ít nhất hai loại ký tự")
+        raise ValueError(tr(lang, "Mật khẩu cần dùng ít nhất hai loại ký tự", "Use at least two character types in the password"))
 
 
 class RateLimited(PermissionError):
@@ -729,16 +739,21 @@ def home_page(lang, user, csrf):
     return layout(tr(lang, "Trò chơi", "Games"), body, lang, user, csrf)
 
 
-def auth_page(kind, lang, user, csrf, error=""):
+def auth_page(kind, lang, user, csrf, error="", next_path="/"):
     register = kind == "register"
+    next_path = safe_next_path(next_path)
     heading = tr(lang, "Tạo tài khoản", "Create account") if register else tr(lang, "Đăng nhập", "Log in")
     nickname = f'<label>{tr(lang,"Nickname hiển thị","Display nickname")}<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname"></label>' if register else ""
-    confirm = f'<label>{tr(lang,"Nhập lại mật khẩu","Confirm password")}<input name="confirm" type="password" minlength="10" required autocomplete="new-password"></label>' if register else ""
-    switch = f'<a href="/{"login" if register else "register"}">{tr(lang,"Đã có tài khoản? Đăng nhập","Already registered? Log in") if register else tr(lang,"Chưa có tài khoản? Tạo ngay","No account? Create one")}</a>'
+    password_rules = f'<p id="passwordRules" class="field-help">{tr(lang,"Dùng 10–200 ký tự và ít nhất hai loại: chữ thường, chữ hoa, số hoặc ký hiệu.","Use 10–200 characters and at least two types: lowercase, uppercase, numbers, or symbols.")}</p>' if register else ""
+    password_describedby = ' aria-describedby="passwordRules"' if register else ""
+    confirm = f'<label>{tr(lang,"Nhập lại mật khẩu","Confirm password")}<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="passwordRules"></label>' if register else ""
+    next_query = f'?next={quote(next_path, safe="")}' if next_path != "/" else ""
+    switch = f'<p class="auth-switch"><a href="/{"login" if register else "register"}{next_query}">{tr(lang,"Đã có tài khoản? Đăng nhập","Already registered? Log in") if register else tr(lang,"Chưa có tài khoản? Tạo ngay","No account? Create one")}</a></p>'
+    error_hidden = "" if error else " hidden"
     body = f"""<main class="auth-shell"><section class="auth-panel"><p class="eyebrow">{esc(SITE_NAME)} ID</p><h1>{heading}</h1>
-<form id="authForm" data-kind="{kind}"><label>{tr(lang,"Tên đăng nhập","Username")}<input name="name" minlength="3" maxlength="32" required autocomplete="username"></label>{nickname}
-<label>{tr(lang,"Mật khẩu","Password")}<input name="password" type="password" minlength="10" required autocomplete="{'new-password' if register else 'current-password'}"></label>{confirm}
-<button class="button primary" type="submit"><span class="auth-submit-label">{heading}</span></button><div id="authProgress" class="auth-progress" hidden aria-live="polite"><span id="authProgressLabel"></span><div><i></i></div></div><p class="form-error" id="formError">{esc(error)}</p></form>{switch}</section></main>"""
+<form id="authForm" data-kind="{kind}" aria-describedby="formError"><input name="next" type="hidden" value="{esc(next_path)}"><label>{tr(lang,"Tên đăng nhập","Username")}<input name="name" minlength="3" maxlength="32" required autocomplete="username"></label>{nickname}
+<label>{tr(lang,"Mật khẩu","Password")}<input name="password" type="password" minlength="10" maxlength="200" required autocomplete="{'new-password' if register else 'current-password'}"{password_describedby}></label>{password_rules}{confirm}
+<button class="button primary" type="submit"><span class="auth-submit-label">{heading}</span></button><div id="authProgress" class="auth-progress" hidden role="status" aria-live="polite"><span id="authProgressLabel"></span><div role="progressbar" aria-label="{tr(lang,'Tiến trình xác thực','Authentication progress')}"><i></i></div></div><p class="form-error" id="formError" role="alert" aria-live="assertive" tabindex="-1"{error_hidden}>{esc(error)}</p></form>{switch}</section></main>"""
     return layout(heading, body, lang, user, csrf)
 
 
@@ -767,8 +782,9 @@ def game_page(game, lang, user, csrf):
     draft = f'<span class="badge draft">{tr(lang,"Draft công khai","Public draft")}</span>' if not game["published"] else ""
     testing = '<span class="badge testing">Testing</span>' if game["experimental"] else ""
     title = game_title(game, lang)
+    login_next = quote(f"/game/{game['slug']}", safe="")
     media = f'<section class="description-media"><div class="section-title"><h2>{tr(lang,"Ảnh trong game","In-game images")}</h2><span>{len(screenshots)}</span></div><div class="screenshot-grid">{screenshot_rows}</div></section>' if screenshots else ''
-    contribution = f'<div class="rate-box" data-game="{game["id"]}"><span>{tr(lang,"Đánh giá của bạn","Your rating")}</span><div class="star-group" role="group" aria-label="{tr(lang,"Đánh giá trò chơi","Rate this game")}">{stars}</div></div>' if user else f'<div class="contribution-prompt"><strong>{tr(lang,"Muốn lưu hoặc chia sẻ ý kiến?","Want to save or share feedback?")}</strong><span>{tr(lang,"Đăng nhập để yêu thích, đánh giá, bình luận hoặc báo lỗi.","Log in to favorite, rate, comment, or report an issue.")}</span><a class="button" href="/login">{tr(lang,"Đăng nhập","Log in")}</a></div>'
+    contribution = f'<div class="rate-box" data-game="{game["id"]}"><span>{tr(lang,"Đánh giá của bạn","Your rating")}</span><div class="star-group" role="group" aria-label="{tr(lang,"Đánh giá trò chơi","Rate this game")}">{stars}</div></div>' if user else f'<div class="contribution-prompt"><strong>{tr(lang,"Muốn lưu hoặc chia sẻ ý kiến?","Want to save or share feedback?")}</strong><span>{tr(lang,"Đăng nhập để yêu thích, đánh giá, bình luận hoặc báo lỗi.","Log in to favorite, rate, comment, or report an issue.")}</span><a class="button" href="/login?next={login_next}">{tr(lang,"Đăng nhập","Log in")}</a></div>'
     reports = f'<section class="reports"><div class="section-title"><h2>{tr(lang,"Báo lỗi","Report an issue")}</h2></div>{report_form}</section>' if user else ""
     body = f"""<main class="page detail-page"><section class="game-detail"><div class="detail-cover"><img src="{game_cover(game)}" alt="{esc(title)}"></div>
 <div class="detail-copy"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div><h1>{esc(title)}</h1>
@@ -791,14 +807,17 @@ def account_page(lang, user, csrf):
                WHERE f.user_id=? GROUP BY g.id ORDER BY f.created_at DESC""",
             (user["id"],),
         ).fetchall()
-    cards = "".join(
-        f'''<article class="game-card"><a class="cover" href="/game/{esc(game['slug'])}"><img src="{game_cover(game)}" alt="" loading="lazy"></a>
-<div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span></div><h2><a href="/game/{esc(game['slug'])}">{esc(game_title(game, lang))}</a></h2><div class="rating">★ {float(game['rating']):.1f} <span>({game['rating_count']})</span></div><div class="card-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a></div></div></article>'''
-        for game in favorites
-    )
-    body = f'''<main class="page"><section class="library-head"><div><p class="eyebrow">{esc(SITE_NAME)} ID</p><h1>{tr(lang,"Tài khoản","Account")}</h1></div><span class="account-role">{esc(display_name(user))}</span></section>
-<section class="account-settings"><h2>{tr(lang,"Tên hiển thị","Display name")}</h2><form id="displayNameForm" class="form-grid"><label>{tr(lang,"Tên đăng nhập (không thể đổi)","Username (cannot be changed)")}<input value="{esc(user['name'])}" readonly aria-readonly="true"></label><label>{tr(lang,"Nickname trên web","Website nickname")}<input name="display_name" value="{esc(display_name(user))}" minlength="2" maxlength="40" required></label><div class="form-actions"><button class="button primary" type="submit">{tr(lang,"Lưu nickname","Save nickname")}</button></div></form></section>
-<section><div class="section-title"><h2>{tr(lang,"Yêu thích","Favorites")}</h2><span>{len(favorites)}</span></div><div class="game-grid">{cards or f'<div class="empty-state"><strong>{tr(lang,"Chưa có game yêu thích.","No favorites yet.")}</strong></div>'}</div></section></main>'''
+    card_rows = []
+    for index, game in enumerate(favorites):
+        title = game_title(game, lang)
+        image_priority = ' loading="eager" fetchpriority="high"' if index == 0 else ' loading="lazy"'
+        card_rows.append(f'''<article class="game-card"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Xem chi tiết','View details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{tr(lang,'Bìa game','Cover art for')} {esc(title)}"{image_priority}></a>
+<div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span></div><h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2><div class="rating">{tr(lang,'Điểm','Score')} {float(game['rating']):.1f}/5 · {game['rating_count']}</div><div class="card-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a></div></div></article>''')
+    cards = "".join(card_rows)
+    empty = f'<div class="empty-state"><strong>{tr(lang,"Chưa có game yêu thích.","No favorites yet.")}</strong><span>{tr(lang,"Lưu game từ trang chi tiết để tìm lại nhanh hơn.","Save a game from its detail page to find it faster.")}</span><a class="button" href="/">{tr(lang,"Duyệt thư viện","Browse library")}</a></div>'
+    body = f'''<main class="page account-page"><section class="library-head"><div><p class="eyebrow">{esc(SITE_NAME)} ID</p><h1>{tr(lang,"Tài khoản","Account")}</h1><p class="muted">{tr(lang,"Quản lý tên hiển thị và quay lại các game bạn đã lưu.","Manage your display name and return to games you saved.")}</p></div><span class="account-role">{esc(display_name(user))}</span></section>
+<section class="account-settings" aria-labelledby="displayNameTitle"><div class="section-title"><div><p class="eyebrow">{tr(lang,"Hồ sơ công khai","Public profile")}</p><h2 id="displayNameTitle">{tr(lang,"Tên hiển thị","Display name")}</h2></div></div><form id="displayNameForm" class="form-grid"><label>{tr(lang,"Tên đăng nhập (không thể đổi)","Username (cannot be changed)")}<input value="{esc(user['name'])}" readonly aria-readonly="true"></label><label>{tr(lang,"Nickname trên web","Website nickname")}<input name="display_name" value="{esc(display_name(user))}" minlength="2" maxlength="40" required autocomplete="nickname"></label><div class="form-actions"><button class="button primary" type="submit">{tr(lang,"Lưu nickname","Save nickname")}</button><p id="displayNameStatus" class="muted" role="status"></p></div></form></section>
+<section class="account-favorites"><div class="section-title"><div><p class="eyebrow">{tr(lang,"Bộ sưu tập của bạn","Your collection")}</p><h2>{tr(lang,"Yêu thích","Favorites")}</h2></div><span>{len(favorites)}</span></div><div class="game-grid">{cards or empty}</div></section></main>'''
     return layout(tr(lang, "Tài khoản", "Account"), body, lang, user, csrf)
 
 
@@ -1167,12 +1186,12 @@ class Handler(BaseHTTPRequestHandler):
                 version = library_fingerprint(conn)
             self.send_json({"version": version})
         elif path == "/login":
-            self.send_html(auth_page("login", lang, user, csrf))
+            self.send_html(auth_page("login", lang, user, csrf, next_path=parse_qs(parsed.query).get("next", ["/"])[0]))
         elif path == "/register":
-            self.send_html(auth_page("register", lang, user, csrf))
+            self.send_html(auth_page("register", lang, user, csrf, next_path=parse_qs(parsed.query).get("next", ["/"])[0]))
         elif path == "/account":
             if not user:
-                self.redirect("/login")
+                self.redirect("/login?next=%2Faccount")
             else:
                 self.send_html(account_page(lang, user, csrf))
         elif path == "/offline":
@@ -1269,6 +1288,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        lang = language(self)
         try:
             if path == "/api/register":
                 if not rate_allowed(self.client_address[0], "register", 5, 3600):
@@ -1277,13 +1297,14 @@ class Handler(BaseHTTPRequestHandler):
                 name = clean_name(data.get("name"))
                 display = clean_display_name(data.get("display_name") or name)
                 password = str(data.get("password") or "")
-                validate_password(password, str(data.get("confirm") or ""))
+                validate_password(password, str(data.get("confirm") or ""), lang)
+                redirect = safe_next_path(data.get("next"), "/")
                 with db() as conn:
                     try:
                         cur = conn.execute("INSERT INTO users(name,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?)", (name, display, password_hash(password), "user", int(time.time())))
                     except sqlite3.IntegrityError:
-                        raise ValueError("Tên này đã được sử dụng")
-                payload = json.dumps({"ok": True, "redirect": "/"}).encode()
+                        raise ValueError(tr(lang, "Tên này đã được sử dụng", "This username is already in use"))
+                payload = json.dumps({"ok": True, "redirect": redirect}).encode()
                 self.send_response(201)
                 self.set_session(cur.lastrowid)
                 self.common_headers("application/json; charset=utf-8", len(payload))
@@ -1297,9 +1318,10 @@ class Handler(BaseHTTPRequestHandler):
                 with db() as conn:
                     user = conn.execute("SELECT * FROM users WHERE name=?", (str(data.get("name") or "").strip(),)).fetchone()
                 if not user or not password_ok(password, user["password_hash"]):
-                    raise PermissionError("Sai tên hoặc mật khẩu")
+                    raise PermissionError(tr(lang, "Sai tên hoặc mật khẩu", "Incorrect username or password"))
                 upgrade = password_needs_upgrade(user["password_hash"])
-                redirect = "/admin" if user["role"] == "admin" else "/"
+                requested = safe_next_path(data.get("next"), "")
+                redirect = requested or ("/admin" if user["role"] == "admin" else "/")
                 payload = json.dumps({"ok": True, "redirect": redirect}).encode()
                 self.send_response(200)
                 self.set_session(user["id"])
@@ -1487,12 +1509,12 @@ class Handler(BaseHTTPRequestHandler):
                 name = clean_name(data.get("name"))
                 display = clean_display_name(data.get("display_name") or name)
                 password = str(data.get("password") or "")
-                validate_password(password, str(data.get("confirm") or ""))
+                validate_password(password, str(data.get("confirm") or ""), lang)
                 with db() as conn:
                     try:
                         cur = conn.execute("INSERT INTO users(name,display_name,password_hash,role,created_at) VALUES(?,?,?,?,?)", (name, display, password_hash(password), "admin", int(time.time())))
                     except sqlite3.IntegrityError:
-                        raise ValueError("Tên này đã được sử dụng")
+                        raise ValueError(tr(lang, "Tên này đã được sử dụng", "This username is already in use"))
                 self.send_json({"ok": True, "id": cur.lastrowid}, 201)
             elif re.fullmatch(r"/admin/api/users/\d+", path):
                 user = self.require_user(admin=True)
