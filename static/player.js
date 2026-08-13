@@ -613,7 +613,7 @@
     landscape:{dpad:{x:13,y:69},a:{x:92,y:57},b:{x:82,y:73},x:{x:92,y:42},y:{x:81,y:44},l:{x:13,y:33},r:{x:87,y:33},start:{x:39,y:84},select:{x:61,y:84}}
   };
   const ndsDefaults = {
-    portrait:{dpad:{x:22,y:76},a:{x:57,y:78},b:{x:83,y:78},x:{x:83,y:64},y:{x:57,y:64},l:{x:15,y:52},r:{x:85,y:52},start:{x:40,y:90},select:{x:60,y:90}},
+    portrait:{dpad:{x:23.4,y:81.6},a:{x:89,y:80},b:{x:78.2,y:89.7},x:{x:78,y:70.2},y:{x:67.3,y:79.9},l:{x:8.1,y:63.3},r:{x:91.2,y:62.5},start:{x:47.4,y:62.1},select:{x:57.9,y:62}},
     landscape:{dpad:{x:13,y:69},a:{x:90,y:65},b:{x:80,y:76},x:{x:90,y:38},y:{x:80,y:50},l:{x:13,y:18},r:{x:87,y:18},start:{x:40,y:90},select:{x:60,y:90}}
   };
   const padDefaults = ndsPad ? ndsDefaults : defaults;
@@ -622,16 +622,21 @@
   const read = (name, fallback={}) => { try { return JSON.parse(localStorage.getItem(name)) || fallback; } catch (_) { return fallback; } };
   let positions = {...padDefaults[orientation], ...read(key())};
   const settingsKey = ndsPad ? "an3-pad-settings-v2:nds" : "an3-pad-settings-v1";
-  const defaultSettings = ndsPad ? {scale:1,opacity:.48,visible:true,sizes:{}} : {scale:1,opacity:.82,visible:true,sizes:{}};
+  const defaultSettings = ndsPad ? {scale:1,opacity:.48,visible:true,sizes:{dpad:1.4,start:.7,select:.7}} : {scale:1,opacity:.82,visible:true,sizes:{}};
   const storedSettings = read(settingsKey);
-  const settings = {...defaultSettings,...storedSettings,sizes:{...(storedSettings.sizes || {})}};
+  const settings = {...defaultSettings,...storedSettings,sizes:{...defaultSettings.sizes,...(storedSettings.sizes || {})}};
   const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
+  const controlScale = id => clamp(Number(settings.sizes[id] ?? settings.scale) || 1,.7,1.4);
   const saveLayout = () => localStorage.setItem(key(),JSON.stringify(positions));
   const saveSettings = () => localStorage.setItem(settingsKey,JSON.stringify(settings));
   const input = (index,value) => {
     try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {}
   };
-  const place = element => { const point=positions[element.dataset.id]; element.style.left=`${point.x}%`; element.style.top=`${point.y}%`; };
+  const place = element => {
+    const point=positions[element.dataset.id];let x=point.x,y=point.y;
+    if(padRoot.clientWidth<=480&&element.firstElementChild){const scale=controlScale(element.dataset.id),halfWidth=(element.firstElementChild.offsetWidth*scale/2)+1,halfHeight=(element.firstElementChild.offsetHeight*scale/2)+1;x=clamp(x,halfWidth/padRoot.clientWidth*100,100-halfWidth/padRoot.clientWidth*100);y=clamp(y,halfHeight/padRoot.clientHeight*100,100-halfHeight/padRoot.clientHeight*100);}
+    element.style.left=`${x}%`;element.style.top=`${y}%`;
+  };
   const bindInput = (element,index) => element.addEventListener("pointerdown",event => {
     if (padRoot.classList.contains("edit")) return;
     event.preventDefault(); try{element.setPointerCapture(event.pointerId)}catch(_){}
@@ -652,7 +657,6 @@
   const padSize = document.getElementById("padSize");
   const padSizeValue = document.getElementById("padSizeValue");
   const touchToggle = document.getElementById("toggleTouch");
-  const controlScale = id => clamp(Number(settings.sizes[id] ?? settings.scale) || 1,.7,1.4);
   const applyControlSizes = () => padRoot.querySelectorAll(".tvCtrl").forEach(control => control.style.setProperty("--control-scale",controlScale(control.dataset.id)));
   const syncPadSize = () => {
     if (!padTarget || !padSize) return;
@@ -667,7 +671,7 @@
     padRoot.classList.toggle("show",visible);
     stage?.classList.toggle("pad-overlay",visible);
     document.body.classList.toggle("pad-overlay",visible);
-    applyControlSizes();syncPadSize();
+    applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();
     const opacity=document.getElementById("padOpacity");if(opacity)opacity.value=Math.round(settings.opacity*100);
     if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
   };
@@ -685,9 +689,9 @@
   touchToggle?.addEventListener("click",togglePad);
   document.getElementById("togglePad")?.addEventListener("click",togglePad);
   padTarget?.addEventListener("change",syncPadSize);
-  padSize?.addEventListener("input",event=>{if(!padTarget)return;settings.sizes[padTarget.value]=Number(event.target.value)/100;saveSettings();applyControlSizes();syncPadSize();});
+  padSize?.addEventListener("input",event=>{if(!padTarget)return;settings.sizes[padTarget.value]=Number(event.target.value)/100;saveSettings();applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();});
   document.getElementById("padOpacity")?.addEventListener("input",event=>{settings.opacity=Number(event.target.value)/100;saveSettings();applySettings();});
-  document.getElementById("resetPad")?.addEventListener("click",()=>{localStorage.removeItem(key());positions={...padDefaults[orientation]};settings.scale=defaultSettings.scale;settings.opacity=defaultSettings.opacity;settings.visible=true;settings.sizes={};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
+  document.getElementById("resetPad")?.addEventListener("click",()=>{localStorage.removeItem(key());positions={...padDefaults[orientation]};settings.scale=defaultSettings.scale;settings.opacity=defaultSettings.opacity;settings.visible=true;settings.sizes={...defaultSettings.sizes};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
   document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(panel?.classList.contains("open")){event.preventDefault();document.getElementById("closePad")?.click();}else if(slotPanel&&!slotPanel.hidden){event.preventDefault();document.getElementById("closeSlots")?.click();}});
   let resizeTimer;addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();},160)});
   document.addEventListener("visibilitychange",()=>{if(document.hidden)[0,2,3,4,5,6,7,8,10,11].forEach(index=>input(index,0))});

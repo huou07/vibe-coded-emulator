@@ -81,6 +81,15 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn('stage?.classList.toggle("pad-docked",visible)', PLAYER)
         self.assertIn('window.EJS_emulator?.gameManager?.simulateInput(0,index,value)', PLAYER)
 
+    def test_nds_default_pad_matches_approved_portrait_layout(self):
+        self.assertIn('portrait:{dpad:{x:23.4,y:81.6},a:{x:89,y:80},b:{x:78.2,y:89.7},x:{x:78,y:70.2},y:{x:67.3,y:79.9},l:{x:8.1,y:63.3},r:{x:91.2,y:62.5},start:{x:47.4,y:62.1},select:{x:57.9,y:62}}', PLAYER)
+        self.assertIn('{scale:1,opacity:.48,visible:true,sizes:{dpad:1.4,start:.7,select:.7}}', PLAYER)
+        self.assertIn('id="padOpacity" type="range" min="30" max="100" step="1"', APP)
+        self.assertIn('id="padOpacity" type="range" min="30" max="100" step="1"', OFFLINE)
+        self.assertIn('sizes:{...defaultSettings.sizes,...(storedSettings.sizes || {})}', PLAYER)
+        self.assertIn('settings.sizes={...defaultSettings.sizes}', PLAYER)
+        self.assertIn('if(padRoot.clientWidth<=480&&element.firstElementChild)', PLAYER)
+
     def test_nds_debug_is_bounded_exportable_and_fail_closed(self):
         self.assertIn('NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}', APP)
         self.assertIn('"ndsDebugAllowed": NDS_DEBUG_ALLOWED', APP)

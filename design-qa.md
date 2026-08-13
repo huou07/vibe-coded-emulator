@@ -6,6 +6,8 @@
 
 The selected Option 1 player shell and the user's explicit Touch-overlay follow-up have no unresolved P0, P1, or P2 design-QA finding in the locally available network-error state. The active-emulator and physical-device checks remain staging gates, not fabricated local evidence.
 
+The later approved default-layout batch also passed local visual QA. Its exact 807 × 985 reference comparison, responsive captures, measurements, and manifest are recorded in `reports/ui-ux/candidates/batch-10-default-nds-layout/README.md`.
+
 ## Source visual truth
 
 The final target combines two supplied visual sources plus the user's explicit interaction delta:
@@ -77,7 +79,7 @@ The key controls are readable at the full 700 px capture, so separate crops were
 
 ## Test and evidence gates
 
-- 10/10 Python tests passed, including the new Touch/per-control-size source invariant.
+- 11/11 Python tests passed, including the exact NDS default-layout, Touch, per-control-size, narrow-edge, and opacity-step source invariants.
 - Python, all four JavaScript files, and deployment/backup shell scripts pass syntax checks.
 - `git diff --check` passed.
 - Browser interaction and responsive evidence are recorded in `reports/ui-ux/candidates/batch-09-player-option1/README.md`.
