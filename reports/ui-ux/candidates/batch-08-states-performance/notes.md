@@ -29,8 +29,8 @@ The shipped fallback is now a 720×960 WebP at 29,930 bytes. Cards and detail ar
 | --- | ---: | ---: | ---: |
 | served fallback artwork | 1,103,173 B PNG, 1086×1448 | 29,930 B WebP, 720×960 | −1,073,243 B / −97.3% |
 | legacy PNG retained outside app shell | 1,103,173 B | 537,186 B | −565,987 B / −51.3% |
-| tracked `static/` files | 1,553,087 B | 1,055,924 B | −497,163 B / −32.0% |
-| PWA app-shell local static bodies | 1,219,607 B | 185,257 B | −1,034,350 B / −84.8% |
+| tracked `static/` files | 1,553,087 B | 1,057,681 B | −495,406 B / −31.9% |
+| PWA app-shell local static bodies | 1,219,607 B | 187,014 B | −1,032,593 B / −84.7% |
 
 The PWA shell version changes from `v17` to `v18`; the existing activation logic still migrates cached emulator assets into the separate core cache before removing old shells.
 
@@ -46,18 +46,18 @@ These are measured body/file bytes. The local fixture and current staging contai
 
 | Surface | Current staging before candidate | Local candidate |
 | --- | ---: | ---: |
-| `/` HTML body | 6,325 B | 13,982 B |
+| `/` HTML body | 6,325 B | 14,745 B |
 | `/offline` HTML body | 3,924 B | 5,741 B |
-| `site.css` raw / gzip-9 | 24,661 / 6,082 B | 54,880 / 10,847 B |
-| `site.js` raw / gzip-9 | 19,875 / 5,160 B | 24,449 / 6,012 B |
-| `player.js` raw / gzip-9 | 44,625 / 11,670 B | 44,945 / 11,750 B |
-| `offline.js` raw / gzip-9 | 26,891 / 8,703 B | 30,671 / 9,578 B |
-| service worker raw / gzip-9 | 2,755 / 1,006 B | 2,756 / 988 B |
+| `site.css` raw / gzip-9 | 24,661 / 6,082 B | 56,569 / 11,094 B |
+| `site.js` raw / gzip-9 | 19,875 / 5,160 B | 24,517 / 6,059 B |
+| `player.js` raw / gzip-9 | 44,625 / 11,670 B | 44,945 / 11,760 B |
+| `offline.js` raw / gzip-9 | 26,891 / 8,703 B | 30,671 / 9,589 B |
+| service worker raw / gzip-9 | 2,755 / 1,006 B | 2,756 / 1,006 B |
 | fallback image served by UI | 1,103,173 B | 29,930 B |
 
-The design/accessibility work increases CSS and JavaScript by 38,894 raw bytes (6,554 gzip-9 bytes across CSS/site/player/offline/service-worker files). The fallback reduction is larger by more than one megabyte, so the PWA shell still falls by 84.8% overall.
+The design/accessibility work increases CSS and JavaScript by 40,651 raw bytes (6,887 gzip-9 bytes across CSS/site/player/offline/service-worker files). The fallback reduction is larger by more than one megabyte, so the PWA shell still falls by 84.7% overall.
 
-On a fresh `127.0.0.1:18794` origin, the server recorded eight GET requests in the cold-home observation window: `/` twice, the WebP cover, CSS, site JS, service worker, `/offline`, and the library-version endpoint. Their response bodies totaled 145,751 bytes excluding headers. This is an observed local cold-install window, not a universal request-count guarantee; caches and service-worker lifecycle change subsequent loads.
+On a fresh `127.0.0.1:18795` origin, the server recorded 14 GET requests in the first-install observation window: the language redirect and home navigation, page CSS/JS/cover, a favicon 404, the service worker, and the eight local app-shell requests. Their response bodies totaled 309,491 bytes excluding headers. This is an observed local first-install window, not a universal request-count guarantee; caches, authentication, locale, and service-worker lifecycle change subsequent loads.
 
 ## Unavailable metrics
 

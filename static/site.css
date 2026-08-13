@@ -355,7 +355,19 @@ body:not(.player-page) .game-card h2{
   -webkit-line-clamp:2;
   font-size:17px;
 }
+body:not(.player-page) .library-page .game-card h2{margin-top:0}
 body:not(.player-page) .game-card h2 a:hover{color:var(--ui-lime)}
+body:not(.player-page) .card-description{
+  min-height:3em;
+  margin:0 0 8px;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  color:var(--ui-muted);
+  line-height:1.5;
+}
+body:not(.player-page) .card-description:empty{display:none;min-height:0}
 body:not(.player-page) .rating{min-height:24px;color:var(--ui-amber)}
 body:not(.player-page) .badge.recommended{
   display:inline-flex;
@@ -387,7 +399,7 @@ body:not(.player-page) #welcomeSummary{max-width:570px;margin:-8px 0 18px}
   body:not(.player-page) .site-header{
     height:64px;
     min-height:64px;
-    grid-template-columns:minmax(0,1fr) auto auto;
+    grid-template-columns:minmax(0,1fr) auto;
     align-items:center;
     gap:8px;
   }
@@ -423,6 +435,7 @@ body:not(.player-page) #welcomeSummary{max-width:570px;margin:-8px 0 18px}
   }
   body:not(.player-page) .site-nav .lang{width:max-content;border:1px solid var(--ui-border)}
   body:not(.player-page) .nav-toggle{display:inline-flex;align-items:center}
+  body:not(.player-page) .header-actions{min-width:max-content;flex-shrink:0}
   body:not(.player-page) .mode-switch{min-height:40px}
   body:not(.player-page) .library-head{display:flex;align-items:end;gap:14px}
   body:not(.player-page) .library-head h1{font-size:30px}
@@ -432,26 +445,52 @@ body:not(.player-page) #welcomeSummary{max-width:570px;margin:-8px 0 18px}
   body:not(.player-page) .system-filters{margin-right:0;padding-right:0}
 }
 @media(max-width:480px){
-  body:not(.player-page) .site-header{padding:9px 12px}
+  body:not(.player-page) .site-header{height:60px;min-height:60px;padding:8px 12px}
   body:not(.player-page) .site-header .brand{font-size:17px}
   body:not(.player-page) .stage-badge{display:none}
   body:not(.player-page) .mode-switch{padding:6px 8px!important;font-size:13px}
   body:not(.player-page) .nav-toggle{padding:6px 9px;font-size:13px}
-  body:not(.player-page) .library-head{align-items:start;margin-bottom:16px}
-  body:not(.player-page) .library-head h1{font-size:27px}
-  body:not(.player-page) .library-head .eyebrow,
-  body:not(.player-page) .library-head .muted{display:none}
-  body:not(.player-page) .library-head>.button{min-height:40px;padding:7px 9px;white-space:nowrap}
-  body:not(.player-page) .search-field{min-height:52px}
-  body:not(.player-page) .search input{min-height:48px}
-  body:not(.player-page) .game-library{gap:28px}
-  body:not(.player-page) .library-status{margin:-15px 0 -14px}
-  body:not(.player-page) .game-card h2{min-height:2.55em;margin-top:8px;font-size:14px}
-  body:not(.player-page) .game-card-body{padding:9px}
+  body:not(.player-page) .library-page{padding-top:10px}
+  body:not(.player-page) .library-page .library-head{display:none}
+  body:not(.player-page) .library-page .library-toolbar{margin-bottom:12px}
+  body:not(.player-page) .library-page .search>span:first-child{
+    position:absolute;
+    width:1px;
+    height:1px;
+    overflow:hidden;
+    clip:rect(0 0 0 0);
+    clip-path:inset(50%);
+    white-space:nowrap;
+  }
+  body:not(.player-page) .search-field{min-height:48px}
+  body:not(.player-page) .search input{min-height:44px}
+  body:not(.player-page) .library-page .system-filters{scrollbar-width:none}
+  body:not(.player-page) .library-page .system-filters::-webkit-scrollbar{display:none}
+  body:not(.player-page) .library-page .system-filter{min-height:38px;padding:5px 10px}
+  body:not(.player-page) .library-page .library-status{
+    position:absolute;
+    width:1px;
+    height:1px;
+    overflow:hidden;
+    clip:rect(0 0 0 0);
+    clip-path:inset(50%);
+    white-space:nowrap;
+  }
+  body:not(.player-page) .library-page .game-library{gap:22px}
+  body:not(.player-page) .library-page .recommended-section{margin-top:-10px}
+  body:not(.player-page) .library-page .recommended-section .eyebrow{display:none}
+  body:not(.player-page) .library-page .game-system-section>.section-title{margin-bottom:12px}
+  body:not(.player-page) .library-page .game-system-section>.section-title h2{font-size:21px}
+  body:not(.player-page) .library-page .cover{aspect-ratio:1/1}
+  body:not(.player-page) .library-page .game-card h2{min-height:0;margin:0 0 4px;font-size:14px;line-height:1.3}
+  body:not(.player-page) .library-page .game-card-body{padding:8px}
+  body:not(.player-page) .card-description{min-height:2.8em;margin-bottom:7px;font-size:12px;line-height:1.4}
+  body:not(.player-page) .library-page .game-meta{margin-top:1px}
   body:not(.player-page) .badge{font-size:9px;padding:1px 4px}
-  body:not(.player-page) .rating{font-size:11px}
+  body:not(.player-page) .library-page .rating{display:none}
   body:not(.player-page) .badge.recommended{display:none}
-  body:not(.player-page) .card-actions .primary{font-size:13px;padding:7px}
+  body:not(.player-page) .library-page .card-actions{margin-top:7px}
+  body:not(.player-page) .library-page .card-actions .primary{min-height:40px;font-size:13px;padding:6px}
   body:not(.player-page) .welcome-panel .guide-close{position:static;margin:0 0 14px auto}
 }
 

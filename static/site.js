@@ -55,7 +55,7 @@
   };
   const openGuide = () => {
     if (!guide) return;
-    guideReturnFocus = document.activeElement;
+    guideReturnFocus = navToggle && matchMedia("(max-width: 820px)").matches ? navToggle : document.activeElement;
     guide.hidden = false;
     requestAnimationFrame(() => {
       guide.classList.add("show");

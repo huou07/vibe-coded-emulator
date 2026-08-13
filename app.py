@@ -656,7 +656,7 @@ def library_fingerprint(conn):
     return f'{row["changed"]}:{row["games"]}:{row["ratings"]}:{row["score"]}'
 
 
-def layout(title, content, lang, user=None, csrf="", player=False, offline=False):
+def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False):
     with db() as conn:
         settings = site_settings(conn)
     account = ""
@@ -665,6 +665,7 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
         account = f'{admin}<a class="account" href="/account">{esc(display_name(user))}</a><button class="link-button" data-action="logout">{tr(lang,"Đăng xuất","Log out")}</button>'
     else:
         account = f'<a href="/login">{tr(lang,"Đăng nhập","Log in")}</a><a href="/register">{tr(lang,"Tạo tài khoản","Register")}</a>'
+    guide_nav = f'<button id="guideButton" class="link-button" type="button">{tr(lang,"Hướng dẫn","How it works")}</button>' if guide_trigger else ""
     mode = f'<a id="modeSwitch" class="mode-switch" href="{"/" if offline else "/offline"}">{tr(lang,"Trực tuyến","Online") if offline else tr(lang,"Ngoại tuyến","Offline")}</a>'
     contacts = []
     if settings.get("maintainer_email"):
@@ -681,7 +682,7 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
 <meta name="csrf-token" content="{esc(csrf)}"><meta name="theme-color" content="#101311"><title>{esc(title)} · {esc(SITE_NAME)}</title>
 <link rel="manifest" href="/static/manifest.webmanifest?v={ASSET_VERSION}">
 <link rel="stylesheet" href="/static/site.css?v={ASSET_VERSION}"></head><body class="{player_class.strip()}">
-<header class="site-header"><a class="brand" href="/">{esc(SITE_NAME)}</a>{stage_badge}<nav id="siteNav" class="site-nav"><a href="/">{tr(lang,"Trò chơi","Games")}</a>{account}<a class="lang" href="?lang={'vi' if lang == 'en' else 'en'}">{'VI' if lang == 'en' else 'EN'}</a></nav><div class="header-actions">{mode}<button id="navToggle" class="nav-toggle" type="button" aria-controls="siteNav" aria-expanded="false">{tr(lang,"Menu","Menu")}</button></div></header>
+<header class="site-header"><a class="brand" href="/">{esc(SITE_NAME)}</a>{stage_badge}<nav id="siteNav" class="site-nav"><a href="/">{tr(lang,"Trò chơi","Games")}</a>{guide_nav}{account}<a class="lang" href="?lang={'vi' if lang == 'en' else 'en'}">{'VI' if lang == 'en' else 'EN'}</a></nav><div class="header-actions">{mode}<button id="navToggle" class="nav-toggle" type="button" aria-controls="siteNav" aria-expanded="false">{tr(lang,"Menu","Menu")}</button></div></header>
 {content}
 <footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span><span>design by: Tạm gọi là công tử</span></div>{contact_block}
 <div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a></div></footer>
@@ -711,14 +712,16 @@ def home_page(lang, user, csrf):
 
     def card(game, recommended=False, lead=False):
         title = game_title(game, lang)
+        description = game_description(game, lang).strip()
         draft = f'<span class="badge draft">{tr(lang,"Draft","Draft")}</span>' if not game["published"] else ""
         testing = f'<span class="badge testing">Testing</span>' if game["experimental"] else ""
         recommended_badge = f'<span class="badge recommended">{tr(lang,"Đề xuất","Recommended")}</span>' if recommended else ""
         image_loading = 'loading="eager" fetchpriority="high"' if lead else 'loading="lazy"'
         return f"""<article class="game-card" data-system="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960" {image_loading}></a>
-<div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div>
-<h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2>
-<div class="rating" aria-label="{tr(lang,'Đánh giá','Rating')}: {float(game['rating']):.1f} {tr(lang,'trên 5','out of 5')}"><span class="rating-label">{tr(lang,'Điểm','Score')}</span> {float(game['rating']):.1f}<span>/5 · {game['rating_count']}</span>{recommended_badge}</div>
+<div class="game-card-body"><h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2>
+<p class="card-description">{esc(description)}</p>
+<div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}{recommended_badge}</div>
+<div class="rating" aria-label="{tr(lang,'Đánh giá','Rating')}: {float(game['rating']):.1f} {tr(lang,'trên 5','out of 5')}"><span class="rating-label">{tr(lang,'Điểm','Score')}</span> {float(game['rating']):.1f}<span>/5 · {game['rating_count']}</span></div>
 <div class="card-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a></div></div></article>"""
 
     grouped = {system: [] for system in SYSTEMS}
@@ -744,10 +747,10 @@ def home_page(lang, user, csrf):
         recommended = f'''<section class="game-system-section recommended-section" data-section-kind="recommended"><div class="section-title"><div><p class="eyebrow">AN3 PICKS</p><h2>{tr(lang,"Đề xuất cho bạn","Recommended for you")}</h2></div><span>{len(recommended_games)}</span></div><div class="game-grid">{recommended_cards}</div></section>'''
     empty = f'<div class="empty-state"><strong>{tr(lang,"Thư viện đang chờ game đầu tiên.","The library is waiting for its first game.")}</strong><span>{tr(lang,"Bạn vẫn có thể mở ROM riêng đã lưu trên thiết bị.","You can still open a private ROM saved on this device.")}</span><a class="button primary" href="/offline">{tr(lang,"Mở thư viện ngoại tuyến","Open offline library")}</a></div>'
     populated_library = f'''<nav id="systemFilters" class="system-filters" aria-label="{tr(lang,"Lọc theo hệ máy","Filter by system")}"><button class="system-filter active" type="button" data-system-filter="all" aria-pressed="true">{tr(lang,"Tất cả","All")}<span>{len(games)}</span></button>{filters}</nav><p id="libraryStatus" class="library-status" aria-live="polite"></p>{recommended}{sections}<div id="libraryNoResults" class="empty-state" hidden><strong>{tr(lang,"Không tìm thấy trò chơi phù hợp.","No matching games found.")}</strong><span>{tr(lang,"Thử từ khóa khác hoặc xóa bộ lọc hệ máy.","Try another search or clear the system filter.")}</span><button id="resetLibrary" class="button" type="button">{tr(lang,"Xóa tìm kiếm và bộ lọc","Clear search and filters")}</button></div>'''
-    body = f"""<main class="page library-page"><section class="library-head"><div><p class="eyebrow">an3tocom.space</p><h1>{tr(lang,"Thư viện trò chơi","Game library")}</h1><p class="muted">{tr(lang,"Chọn game và chơi ngay trên thiết bị của bạn.","Choose a game and play it on your own device.")}</p></div><button id="guideButton" class="button" type="button">{tr(lang,"Hướng dẫn","How it works")}</button></section>
+    body = f"""<main class="page library-page"><section class="library-head"><div><p class="eyebrow">an3tocom.space</p><h1>{tr(lang,"Thư viện trò chơi","Game library")}</h1><p class="muted">{tr(lang,"Chọn game và chơi ngay trên thiết bị của bạn.","Choose a game and play it on your own device.")}</p></div></section>
 <section class="library-toolbar" aria-label="{tr(lang,'Tìm và lọc trò chơi','Find and filter games')}"><label class="search" for="gameSearch"><span>{tr(lang,'Tìm trò chơi','Search games')}</span><span class="search-field"><input id="gameSearch" type="search" placeholder="{tr(lang,'Nhập tên trò chơi','Enter a game title')}" autocomplete="off"><button id="clearSearch" class="search-clear" type="button" hidden>{tr(lang,'Xóa','Clear')}</button></span></label></section>
 <div id="gameGrid" class="game-library" data-library-version="{version}">{populated_library if games else empty}</div></main>"""
-    return layout(tr(lang, "Trò chơi", "Games"), body, lang, user, csrf)
+    return layout(tr(lang, "Trò chơi", "Games"), body, lang, user, csrf, guide_trigger=True)
 
 
 def auth_page(kind, lang, user, csrf, error="", next_path="/"):
