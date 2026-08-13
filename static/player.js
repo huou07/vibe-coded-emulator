@@ -15,6 +15,7 @@
   const loading = document.getElementById("loading");
   const loadingText = document.getElementById("loadingText");
   const loadingBar = document.getElementById("loadingBar");
+  const loadingProgress = loadingBar?.closest('[role="progressbar"]');
   const loadingPct = document.getElementById("loadingPct");
   const notice = document.getElementById("playerNotice");
   const showNotice = (message, error = false) => {
@@ -26,8 +27,12 @@
   const setProgress = (value, text) => {
     const pct = Math.max(0, Math.min(100, Math.round(value)));
     loadingBar.style.width = `${pct}%`;
+    loadingProgress?.setAttribute("aria-valuenow", String(pct));
     loadingPct.textContent = `${pct}%`;
-    if (text) loadingText.textContent = text;
+    if (text) {
+      loadingText.textContent = text;
+      loadingProgress?.setAttribute("aria-valuetext", text);
+    }
   };
   let preloadReported = false;
   const reportPreload = (ok, error = "") => {
@@ -36,7 +41,7 @@
     window.parent?.postMessage({type:"an3-core-preload", system:config.system, ok, error}, location.origin);
   };
   const finishLoading = () => { setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng"); reportPreload(true); setTimeout(() => loading.classList.add("done"), 350); };
-  const failLoading = error => { const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";reportPreload(false,message); };
+  const failLoading = error => { const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);reportPreload(false,message); };
 
   const openCoreDatabase = () => new Promise((resolve,reject) => {
     const request=indexedDB.open("EmulatorJS-core",1);
