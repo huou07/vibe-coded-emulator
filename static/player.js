@@ -124,7 +124,7 @@
 
   document.getElementById("fullscreen")?.addEventListener("click", () => {
     if (document.fullscreenElement) document.exitFullscreen();
-    else stage.requestFullscreen?.();
+    else shell.requestFullscreen?.();
   });
 
   if (config.mode === "html5") {

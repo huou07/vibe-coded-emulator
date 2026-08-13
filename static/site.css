@@ -1031,6 +1031,11 @@ body:not(.player-page) .status-actions{display:flex;flex-wrap:wrap;gap:10px;marg
   min-width:0;
   background:#050706;
 }
+.player-page .player-shell:fullscreen{
+  width:100vw;
+  height:100dvh;
+  overflow:hidden;
+}
 .player-page .player-toolbar{
   height:var(--player-toolbar-height);
   gap:12px;
