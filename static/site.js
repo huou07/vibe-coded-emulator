@@ -27,29 +27,82 @@
     });
   }
 
+  const navToggle = document.getElementById("navToggle");
+  const siteNav = document.getElementById("siteNav");
+  const setNavOpen = open => {
+    if (!navToggle || !siteNav) return;
+    navToggle.setAttribute("aria-expanded", String(open));
+    siteNav.classList.toggle("open", open);
+  };
+  navToggle?.addEventListener("click", () => setNavOpen(navToggle.getAttribute("aria-expanded") !== "true"));
+  siteNav?.addEventListener("click", event => {
+    if (event.target.closest("a,button")) setNavOpen(false);
+  });
+
   const guide = document.getElementById("welcomeGuide");
+  const guideCloseButton = document.getElementById("closeGuide");
+  let guideReturnFocus = null;
+  const guideFocusable = () => guide ? [...guide.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')] : [];
   const closeGuide = () => {
     if (!guide) return;
-    guide.classList.remove("show");
-    setTimeout(() => { guide.hidden = true; }, 180);
-  };
-  const openGuide = (automatic = false) => {
-    if (!guide) return;
-    guide.hidden = false;
-    requestAnimationFrame(() => guide.classList.add("show"));
     clearTimeout(openGuide.timer);
-    if (automatic) openGuide.timer = setTimeout(closeGuide, 5000);
+    guide.classList.remove("show");
+    setTimeout(() => {
+      guide.hidden = true;
+      guideReturnFocus?.focus();
+      guideReturnFocus = null;
+    }, 180);
   };
-  document.getElementById("guideButton")?.addEventListener("click", () => openGuide(false));
-  document.getElementById("closeGuide")?.addEventListener("click", closeGuide);
+  const openGuide = () => {
+    if (!guide) return;
+    guideReturnFocus = document.activeElement;
+    guide.hidden = false;
+    requestAnimationFrame(() => {
+      guide.classList.add("show");
+      guideCloseButton?.focus();
+    });
+  };
+  document.getElementById("guideButton")?.addEventListener("click", openGuide);
+  guideCloseButton?.addEventListener("click", closeGuide);
   if (guide) {
+    guide.addEventListener("click", event => {
+      if (event.target === guide) closeGuide();
+    });
+    guide.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeGuide();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = guideFocusable();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
     try {
       if (!localStorage.getItem("an3-welcome-v1")) {
         localStorage.setItem("an3-welcome-v1", "1");
-        setTimeout(() => openGuide(true), 120);
+        setTimeout(openGuide, 120);
       }
     } catch (_) {}
   }
+
+  addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (guide && !guide.hidden) closeGuide();
+    else if (navToggle?.getAttribute("aria-expanded") === "true") {
+      setNavOpen(false);
+      navToggle.focus();
+    }
+  });
 
   document.querySelector('[data-action="logout"]')?.addEventListener("click", async () => {
     try { await api("/api/logout", {method: "POST", body: "{}"}); location.href = "/"; }
@@ -99,25 +152,60 @@
   });
 
   const search = document.getElementById("gameSearch");
+  const clearSearch = document.getElementById("clearSearch");
+  const resetLibrary = document.getElementById("resetLibrary");
+  const libraryStatus = document.getElementById("libraryStatus");
+  const libraryNoResults = document.getElementById("libraryNoResults");
   let activeSystem = "all";
   const filterLibrary = () => {
     const query = search?.value.trim().toLocaleLowerCase() || "";
+    const visibleGames = new Set();
     document.querySelectorAll("#gameGrid .game-card").forEach(card => {
       const matchesSystem = activeSystem === "all" || card.dataset.system === activeSystem;
       const matchesSearch = !query || card.textContent.toLocaleLowerCase().includes(query);
       card.hidden = !(matchesSystem && matchesSearch);
+      if (!card.hidden) visibleGames.add(card.dataset.gameSlug || card.textContent);
     });
     document.querySelectorAll("#gameGrid .game-system-section").forEach(section => {
       const recommended = section.dataset.sectionKind === "recommended";
       section.hidden = (recommended && activeSystem !== "all") || !section.querySelector(".game-card:not([hidden])");
     });
+    if (clearSearch) clearSearch.hidden = !query;
+    if (libraryNoResults) libraryNoResults.hidden = visibleGames.size > 0;
+    if (libraryStatus) {
+      const vietnamese = document.documentElement.lang !== "en";
+      libraryStatus.textContent = vietnamese
+        ? `${visibleGames.size} trò chơi phù hợp`
+        : `${visibleGames.size} matching ${visibleGames.size === 1 ? "game" : "games"}`;
+    }
   };
   search?.addEventListener("input", filterLibrary);
   document.querySelectorAll("[data-system-filter]").forEach(button => button.addEventListener("click", () => {
     activeSystem = button.dataset.systemFilter || "all";
-    document.querySelectorAll("[data-system-filter]").forEach(item => item.classList.toggle("active", item === button));
+    document.querySelectorAll("[data-system-filter]").forEach(item => {
+      const selected = item === button;
+      item.classList.toggle("active", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
     filterLibrary();
   }));
+  clearSearch?.addEventListener("click", () => {
+    search.value = "";
+    filterLibrary();
+    search.focus();
+  });
+  resetLibrary?.addEventListener("click", () => {
+    activeSystem = "all";
+    if (search) search.value = "";
+    document.querySelectorAll("[data-system-filter]").forEach(item => {
+      const selected = item.dataset.systemFilter === "all";
+      item.classList.toggle("active", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+    filterLibrary();
+    search?.focus();
+  });
+  if (search) filterLibrary();
 
   const gameGrid = document.getElementById("gameGrid");
   if (gameGrid) {
