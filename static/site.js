@@ -348,6 +348,10 @@
   const uploadRom = (gameId, file, onProgress) => file.size > DIRECT_UPLOAD_LIMIT
     ? uploadChunkedRom(gameId, file, onProgress)
     : uploadRaw(`/admin/api/games/${gameId}/rom`, file, onProgress);
+  const setUploadProgress = (bar, value) => {
+    if (!bar) return;
+    bar.value = Math.max(0, Math.min(100, Math.round(value)));
+  };
 
   const gameForm = document.getElementById("gameForm");
   const titleFromFilename = value => String(value || "").replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 120) || "Game";
@@ -411,17 +415,17 @@
       const gameId = data.id;
       if (rom?.size) {
         status.textContent = `Uploading ${rom.name}…`;
-        const upload = await uploadRom(gameId, rom, ratio => { bar.style.width = `${ratio * 80}%`; });
+        const upload = await uploadRom(gameId, rom, ratio => { setUploadProgress(bar, ratio * 80); });
         payload.system = upload.system || payload.system;
       }
       if (cover?.size) {
         status.textContent = `Uploading ${cover.name}…`;
-        await uploadRaw(`/admin/api/games/${gameId}/cover`, cover, ratio => { bar.style.width = `${80 + ratio * 20}%`; });
+        await uploadRaw(`/admin/api/games/${gameId}/cover`, cover, ratio => { setUploadProgress(bar, 80 + ratio * 20); });
       }
       for (let index = 0; index < screenshots.length; index += 1) {
         const image = screenshots[index];
         status.textContent = `Uploading screenshot ${index + 1}/${screenshots.length}…`;
-        await uploadRaw(`/admin/api/games/${gameId}/screenshot`, image, ratio => { bar.style.width = `${80 + ratio * 20}%`; });
+        await uploadRaw(`/admin/api/games/${gameId}/screenshot`, image, ratio => { setUploadProgress(bar, 80 + ratio * 20); });
       }
       if (!id && shouldPublish) {
         status.textContent = "Publishing…";
@@ -430,7 +434,7 @@
           body: JSON.stringify({...payload, published: true})
         });
       }
-      bar.style.width = "100%";
+      setUploadProgress(bar, 100);
       status.textContent = "Saved.";
       location.href = `/admin/game/${gameId}`;
     } catch (error) { status.textContent = error.message; notify(error.message, true); }
@@ -458,7 +462,7 @@
         gameId = created.id;
         status.textContent = `(${index + 1}/${files.length}) Đang upload ${rom.name}…`;
         await uploadRom(gameId, rom, ratio => {
-          bar.style.width = `${Math.round(((index + ratio) / files.length) * 100)}%`;
+          setUploadProgress(bar, ((index + ratio) / files.length) * 100);
         });
         successes.push({title, slug:created.slug});
       } catch (error) {
@@ -466,7 +470,7 @@
         failures.push(`${rom.name}: ${error.message}`);
       }
     }
-    bar.style.width = "100%";
+    setUploadProgress(bar, 100);
     if (failures.length) {
       status.textContent = `Đã upload ${successes.length}/${files.length}. ${failures.join(" | ")}`;
       notify(status.textContent, true);

@@ -5,11 +5,20 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PLAYER = (ROOT / "static/player.js").read_text(encoding="utf-8")
 OFFLINE = (ROOT / "static/offline.js").read_text(encoding="utf-8")
+SITE_JS = (ROOT / "static/site.js").read_text(encoding="utf-8")
 SERVICE_WORKER = (ROOT / "static/service-worker.js").read_text(encoding="utf-8")
 APP = (ROOT / "app.py").read_text(encoding="utf-8")
 
 
 class RegressionInvariantTests(unittest.TestCase):
+    def test_admin_progress_and_analytics_respect_normal_csp(self):
+        self.assertIn('id="adminProgress" class="upload-progress" max="100" value="0"', APP)
+        self.assertIn('id="bulkProgress" class="upload-progress" max="100" value="0"', APP)
+        self.assertIn('class="chart-progress chart-visits"', APP)
+        self.assertNotIn('style="height:', APP)
+        self.assertIn("bar.value = Math.max", SITE_JS)
+        self.assertNotIn("bar.style.width", SITE_JS)
+
     def test_nds_uses_melonds_auto_start_and_touch_bridge(self):
         self.assertIn('nds:"melonds"', PLAYER)
         self.assertIn("window.EJS_startOnLoaded = true", PLAYER)
