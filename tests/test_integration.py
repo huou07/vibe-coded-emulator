@@ -138,7 +138,8 @@ class ArcadeIntegrationTests(unittest.TestCase):
         status, headers, body = public.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertNotIn(b"Dashboard</a>", body)
-        self.assertIn("Ăn 3 Tô Cơm lãnh địa".encode(), body)
+        self.assertIn("Ăn 3 Tô Cơm".encode(), body)
+        self.assertNotIn("Ăn 3 Tô Cơm lãnh địa".encode(), body)
         self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
         self.assertIn("Content-Security-Policy", headers)
         asset_version = re.search(rb'/static/site\.js\?v=([a-f0-9]{12})', body)
@@ -270,7 +271,7 @@ class ArcadeIntegrationTests(unittest.TestCase):
         self.assertEqual((status, login["redirect"]), (200, "/admin"))
         self.assertEqual(second.request("GET", "/admin")[0], 200)
 
-        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v18"), ("/static/default-cover.webp", b"RIFF"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm lãnh địa".encode())):
+        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v19"), ("/static/default-cover.webp", b"RIFF"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm".encode())):
             status, response_headers, body = public.request("GET", path)
             self.assertEqual(status, 200)
             self.assertIn(marker, body)

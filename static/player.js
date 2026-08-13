@@ -18,6 +18,13 @@
   const loadingProgress = loadingBar?.closest('[role="progressbar"]');
   const loadingPct = document.getElementById("loadingPct");
   const notice = document.getElementById("playerNotice");
+  const statusText = document.getElementById("playerStatusText");
+  const saveStatus = document.getElementById("playerSaveStatus");
+  const setRuntimeStatus = (state, text) => {
+    if (statusText) statusText.textContent = text;
+    stage?.classList.toggle("is-ready", state === "ready");
+    stage?.classList.toggle("has-error", state === "error");
+  };
   const showNotice = (message, error = false) => {
     notice.textContent = message;
     notice.className = error ? "player-notice show error" : "player-notice show";
@@ -32,6 +39,7 @@
     if (text) {
       loadingText.textContent = text;
       loadingProgress?.setAttribute("aria-valuetext", text);
+      setRuntimeStatus("loading", text);
     }
   };
   let preloadReported = false;
@@ -40,8 +48,8 @@
     preloadReported = true;
     window.parent?.postMessage({type:"an3-core-preload", system:config.system, ok, error}, location.origin);
   };
-  const finishLoading = () => { setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng"); reportPreload(true); setTimeout(() => loading.classList.add("done"), 350); };
-  const failLoading = error => { const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);reportPreload(false,message); };
+  const finishLoading = () => { setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");setRuntimeStatus("ready",config.lang === "en" ? "Playing" : "Đang chơi");reportPreload(true);setTimeout(() => loading.classList.add("done"), 350); };
+  const failLoading = error => { const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);setRuntimeStatus("error",config.lang === "en" ? "Could not start" : "Không thể khởi động");reportPreload(false,message); };
 
   const openCoreDatabase = () => new Promise((resolve,reject) => {
     const request=indexedDB.open("EmulatorJS-core",1);
@@ -553,12 +561,15 @@
   const slotStamp = time => new Intl.DateTimeFormat(config.lang === "en" ? "en-GB" : "vi-VN", {dateStyle:"short", timeStyle:"short"}).format(new Date(time));
   const refreshSlots = async () => {
     if (!slotPanel) return;
-    await Promise.all([...slotPanel.querySelectorAll("[data-slot]")].map(async row => {
+    const states = await Promise.all([...slotPanel.querySelectorAll("[data-slot]")].map(async row => {
       const slot = Number(row.dataset.slot);
       const state = await slotGet(slot);
       row.querySelector("small").textContent = state ? slotStamp(state.updatedAt) : (config.lang === "en" ? "Empty" : "Trống");
       row.querySelector("[data-load-slot]").disabled = !state;
-    })).catch(error => showNotice(error.message || String(error), true));
+      return state;
+    })).catch(error => { showNotice(error.message || String(error), true); return []; });
+    const latest = states.filter(Boolean).sort((a,b) => b.updatedAt-a.updatedAt)[0];
+    if (saveStatus) saveStatus.textContent = latest ? (config.lang === "en" ? "Saved on this device" : "Đã lưu trên thiết bị") : (config.lang === "en" ? "No save on this device" : "Chưa có save trên thiết bị");
   };
   const saveSlot = async slot => {
     const state = window.EJS_emulator?.gameManager?.getState();
@@ -577,10 +588,13 @@
   };
   document.getElementById("slotMenu")?.addEventListener("click", () => {
     if (!slotPanel) return;
+    panel?.classList.remove("open");
+    document.getElementById("playerControls")?.setAttribute("aria-expanded","false");
     slotPanel.hidden = !slotPanel.hidden;
-    if (!slotPanel.hidden) refreshSlots();
+    document.getElementById("slotMenu")?.setAttribute("aria-expanded", String(!slotPanel.hidden));
+    if (!slotPanel.hidden) { refreshSlots();document.getElementById("closeSlots")?.focus(); }
   });
-  document.getElementById("closeSlots")?.addEventListener("click", () => { if (slotPanel) slotPanel.hidden = true; });
+  document.getElementById("closeSlots")?.addEventListener("click", () => { if (slotPanel) slotPanel.hidden = true;const trigger=document.getElementById("slotMenu");trigger?.setAttribute("aria-expanded","false");trigger?.focus(); });
   slotPanel?.querySelectorAll("[data-save-slot]").forEach(button => button.addEventListener("click", () => saveSlot(Number(button.dataset.saveSlot)).catch(error => showNotice(error.message || String(error), true))));
   slotPanel?.querySelectorAll("[data-load-slot]").forEach(button => button.addEventListener("click", () => loadSlot(Number(button.dataset.loadSlot)).catch(error => showNotice(error.message || String(error), true))));
   refreshSlots();
@@ -594,14 +608,13 @@
     clearTimeout(showHints.timer);
     showHints.timer = setTimeout(() => hints.classList.remove("show"), 3000);
   };
-  const isTouch = matchMedia("(pointer:coarse)").matches || navigator.maxTouchPoints > 0;
   const defaults = {
     portrait:{dpad:{x:19,y:79},a:{x:86,y:73},b:{x:73,y:82},x:{x:89,y:60},y:{x:74,y:63},l:{x:15,y:52},r:{x:85,y:52},start:{x:39,y:61},select:{x:62,y:61}},
     landscape:{dpad:{x:13,y:69},a:{x:92,y:57},b:{x:82,y:73},x:{x:92,y:42},y:{x:81,y:44},l:{x:13,y:33},r:{x:87,y:33},start:{x:39,y:84},select:{x:61,y:84}}
   };
   const ndsDefaults = {
-    portrait:{dpad:{x:19,y:76},a:{x:57,y:78},b:{x:83,y:78},x:{x:83,y:64},y:{x:57,y:64},l:{x:15,y:52},r:{x:85,y:52},start:{x:39,y:61},select:{x:62,y:61}},
-    landscape:{dpad:{x:13,y:69},a:{x:90,y:62},b:{x:80,y:76},x:{x:90,y:46},y:{x:80,y:46},l:{x:13,y:31},r:{x:87,y:31},start:{x:40,y:84},select:{x:60,y:84}}
+    portrait:{dpad:{x:22,y:76},a:{x:57,y:78},b:{x:83,y:78},x:{x:83,y:64},y:{x:57,y:64},l:{x:15,y:52},r:{x:85,y:52},start:{x:40,y:90},select:{x:60,y:90}},
+    landscape:{dpad:{x:13,y:69},a:{x:90,y:65},b:{x:80,y:76},x:{x:90,y:38},y:{x:80,y:50},l:{x:13,y:18},r:{x:87,y:18},start:{x:40,y:90},select:{x:60,y:90}}
   };
   const padDefaults = ndsPad ? ndsDefaults : defaults;
   let orientation = innerWidth > innerHeight ? "landscape" : "portrait";
@@ -609,8 +622,9 @@
   const read = (name, fallback={}) => { try { return JSON.parse(localStorage.getItem(name)) || fallback; } catch (_) { return fallback; } };
   let positions = {...padDefaults[orientation], ...read(key())};
   const settingsKey = ndsPad ? "an3-pad-settings-v2:nds" : "an3-pad-settings-v1";
-  const defaultSettings = ndsPad ? {scale:1,opacity:.48,visible:true} : {scale:1,opacity:.82,visible:true};
-  const settings = {...defaultSettings,...read(settingsKey)};
+  const defaultSettings = ndsPad ? {scale:1,opacity:.48,visible:true,sizes:{}} : {scale:1,opacity:.82,visible:true,sizes:{}};
+  const storedSettings = read(settingsKey);
+  const settings = {...defaultSettings,...storedSettings,sizes:{...(storedSettings.sizes || {})}};
   const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
   const saveLayout = () => localStorage.setItem(key(),JSON.stringify(positions));
   const saveSettings = () => localStorage.setItem(settingsKey,JSON.stringify(settings));
@@ -633,23 +647,49 @@
     element.addEventListener("pointermove",move);element.addEventListener("pointerup",up);element.addEventListener("pointercancel",up);
   });
   const makeButton=(id,label,index)=>{const wrap=document.createElement("div");wrap.className="tvCtrl";wrap.dataset.id=id;wrap.innerHTML=`<div class="tvBtn ${label.length>1?"small":""}">${label}</div>`;bindDrag(wrap);bindInput(wrap,index);return wrap;};
-  const makeDpad=()=>{const wrap=document.createElement("div");wrap.className="tvCtrl";wrap.dataset.id="dpad";wrap.innerHTML='<div class="tvDpad"><button class="up">▲</button><button class="down">▼</button><button class="left">◀</button><button class="right">▶</button></div>';bindDrag(wrap);[[".up",4],[".down",5],[".left",6],[".right",7]].forEach(([selector,index])=>bindInput(wrap.querySelector(selector),index));return wrap;};
-  const applySettings=()=>{padRoot.style.setProperty("--pad-scale",clamp(Number(settings.scale)||defaultSettings.scale,.7,1.35));padRoot.style.setProperty("--pad-opacity",clamp(Number(settings.opacity)||defaultSettings.opacity,.3,1));padRoot.classList.toggle("show",customPad&&(isTouch||innerWidth<=900)&&settings.visible!==false);document.getElementById("padSize").value=Math.round(settings.scale*100);document.getElementById("padOpacity").value=Math.round(settings.opacity*100);};
+  const makeDpad=()=>{const wrap=document.createElement("div"),labels=config.lang==="en"?{up:"Up",down:"Down",left:"Left",right:"Right"}:{up:"Lên",down:"Xuống",left:"Trái",right:"Phải"};wrap.className="tvCtrl";wrap.dataset.id="dpad";wrap.innerHTML=`<div class="tvDpad"><button class="up" aria-label="${labels.up}"><img src="/static/ui-chevron-up.svg" alt=""></button><button class="down" aria-label="${labels.down}"><img src="/static/ui-chevron-down.svg" alt=""></button><button class="left" aria-label="${labels.left}"><img src="/static/ui-chevron-left.svg" alt=""></button><button class="right" aria-label="${labels.right}"><img src="/static/ui-chevron-right.svg" alt=""></button></div>`;bindDrag(wrap);[[".up",4],[".down",5],[".left",6],[".right",7]].forEach(([selector,index])=>bindInput(wrap.querySelector(selector),index));return wrap;};
+  const padTarget = document.getElementById("padTarget");
+  const padSize = document.getElementById("padSize");
+  const padSizeValue = document.getElementById("padSizeValue");
+  const touchToggle = document.getElementById("toggleTouch");
+  const controlScale = id => clamp(Number(settings.sizes[id] ?? settings.scale) || 1,.7,1.4);
+  const applyControlSizes = () => padRoot.querySelectorAll(".tvCtrl").forEach(control => control.style.setProperty("--control-scale",controlScale(control.dataset.id)));
+  const syncPadSize = () => {
+    if (!padTarget || !padSize) return;
+    const value=Math.round(controlScale(padTarget.value)*100);
+    padSize.value=value;
+    if(padSizeValue){padSizeValue.value=`${value}%`;padSizeValue.textContent=`${value}%`;}
+  };
+  const applySettings=()=>{
+    padRoot.style.setProperty("--pad-scale",clamp(Number(settings.scale)||defaultSettings.scale,.7,1.4));
+    padRoot.style.setProperty("--pad-opacity",clamp(Number(settings.opacity)||defaultSettings.opacity,.3,1));
+    const visible=customPad&&settings.visible!==false;
+    padRoot.classList.toggle("show",visible);
+    stage?.classList.toggle("pad-overlay",visible);
+    document.body.classList.toggle("pad-overlay",visible);
+    applyControlSizes();syncPadSize();
+    const opacity=document.getElementById("padOpacity");if(opacity)opacity.value=Math.round(settings.opacity*100);
+    if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
+  };
   if (customPad) {
     const controls=[makeDpad(),makeButton("a","A",8),makeButton("b","B",0),makeButton("start","Start",3),makeButton("select","Select",2)];
     if(config.system==="gba")controls.push(makeButton("l","L",10),makeButton("r","R",11));
     if(ndsPad)controls.push(makeButton("x","X",9),makeButton("y","Y",1),makeButton("l","L",10),makeButton("r","R",11));
     controls.forEach(control=>{padRoot.appendChild(control);place(control);});applySettings();
   }
-  document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
-  document.getElementById("playerControls")?.addEventListener("click",()=>{showHints();if(customPad)panel.classList.toggle("open");else try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
-  document.getElementById("closePad")?.addEventListener("click",()=>{padRoot.classList.remove("edit");saveLayout();panel.classList.remove("open")});
+  document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();panel?.classList.remove("open");document.getElementById("playerControls")?.setAttribute("aria-expanded","false");try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
+  document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(customPad){if(slotPanel){slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false");}const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();}else try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
+  document.getElementById("closePad")?.addEventListener("click",()=>{padRoot.classList.remove("edit");saveLayout();panel.classList.remove("open");const trigger=document.getElementById("playerControls");trigger?.setAttribute("aria-expanded","false");trigger?.focus()});
   document.getElementById("editPad")?.addEventListener("click",event=>{const editing=padRoot.classList.toggle("edit");event.currentTarget.textContent=editing?(config.lang==="en"?"Done":"Xong"):(config.lang==="en"?"Move":"Kéo thả");if(!editing)saveLayout();});
-  document.getElementById("togglePad")?.addEventListener("click",()=>{settings.visible=settings.visible===false;saveSettings();applySettings();});
-  document.getElementById("padSize")?.addEventListener("input",event=>{settings.scale=Number(event.target.value)/100;saveSettings();applySettings();});
+  const togglePad=()=>{settings.visible=settings.visible===false;saveSettings();applySettings();};
+  touchToggle?.addEventListener("click",togglePad);
+  document.getElementById("togglePad")?.addEventListener("click",togglePad);
+  padTarget?.addEventListener("change",syncPadSize);
+  padSize?.addEventListener("input",event=>{if(!padTarget)return;settings.sizes[padTarget.value]=Number(event.target.value)/100;saveSettings();applyControlSizes();syncPadSize();});
   document.getElementById("padOpacity")?.addEventListener("input",event=>{settings.opacity=Number(event.target.value)/100;saveSettings();applySettings();});
-  document.getElementById("resetPad")?.addEventListener("click",()=>{localStorage.removeItem(key());positions={...padDefaults[orientation]};Object.assign(settings,defaultSettings);saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
-  let resizeTimer;addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);},160)});
+  document.getElementById("resetPad")?.addEventListener("click",()=>{localStorage.removeItem(key());positions={...padDefaults[orientation]};settings.scale=defaultSettings.scale;settings.opacity=defaultSettings.opacity;settings.visible=true;settings.sizes={};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
+  document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(panel?.classList.contains("open")){event.preventDefault();document.getElementById("closePad")?.click();}else if(slotPanel&&!slotPanel.hidden){event.preventDefault();document.getElementById("closeSlots")?.click();}});
+  let resizeTimer;addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();},160)});
   document.addEventListener("visibilitychange",()=>{if(document.hidden)[0,2,3,4,5,6,7,8,10,11].forEach(index=>input(index,0))});
   boot();
 })();

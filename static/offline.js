@@ -89,20 +89,22 @@
   };
 
   const slotRows = () => Array.from({length:5},(_,index) => { const slot=index+1; return `<div class="save-slot" data-slot="${slot}"><strong>${text("Slot","Slot")} ${slot}</strong><small>${text("Trống","Empty")}</small><button data-save-slot="${slot}">${text("Lưu","Save")}</button><button data-load-slot="${slot}" disabled>${text("Nạp","Load")}</button></div>`; }).join("");
-  const playerMarkup = () => `<div class="player-toolbar" role="toolbar" aria-label="${text("Điều khiển trình phát","Player controls")}">
-    <a href="/offline" title="${text("Quay lại","Back")}" aria-label="${text("Quay lại thư viện ngoại tuyến","Back to offline library")}">←</a><span class="player-title"></span>
-    <button id="fullscreen" type="button" title="${text("Toàn màn hình","Fullscreen")}" aria-label="${text("Toàn màn hình","Fullscreen")}">⛶</button>
-    <button id="emulatorMenu" type="button" title="${text("Menu giả lập","Emulator menu")}" aria-label="${text("Menu giả lập","Emulator menu")}">☰</button>
-    <button id="saveState" type="button" title="${text("Tải save state","Download save state")}" aria-label="${text("Tải save state","Download save state")}">↓S</button>
-    <button id="loadState" type="button" title="${text("Nạp save state","Load save state")}" aria-label="${text("Nạp save state","Load save state")}">↑S</button>
-    <input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden>
-    <button id="slotMenu" type="button" title="${text("Save slot","Save slots")}" aria-label="${text("Save slot","Save slots")}">▣</button>
-    <button id="playerControls" type="button" title="${text("Điều khiển","Controls")}" aria-label="${text("Điều khiển ảo","Virtual controls")}">⌘</button>
-  </div><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="${text("Bộ điều khiển ảo","Virtual controller")}"></div>
-    <div id="playerHints" class="player-hints" aria-live="polite"><span>⛶ ${text("Toàn màn hình","Fullscreen")}</span><span>☰ ${text("Menu giả lập","Emulator menu")}</span><span>↓S ${text("Tải save","Download save")}</span><span>↑S ${text("Nạp save","Load save")}</span><span>⌘ ${text("Chỉnh phím ảo","Virtual controls")}</span></div>
-    <div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">${text("Đang chuẩn bị","Preparing")}</strong><div class="progress" role="progressbar" aria-label="${text("Tiến trình khởi động","Startup progress")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div>
-  </section><section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="${text("Save slot trên thiết bị này","Save slots on this device")}"><header><strong>${text("Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button" aria-label="${text("Đóng save slot","Close save slots")}">×</button></header>${slotRows()}</section>
-  <section id="padPanel" class="pad-panel" role="dialog" aria-label="${text("Phím ảo","Virtual controls")}"><header><strong>${text("Phím ảo","Virtual controls")}</strong><button id="closePad" type="button" aria-label="${text("Đóng bảng điều khiển ảo","Close virtual controls panel")}">×</button></header><label>${text("Kích thước","Size")}<input id="padSize" type="range" min="70" max="135" step="5"></label><label>${text("Độ mờ","Opacity")}<input id="padOpacity" type="range" min="30" max="100" step="5"></label><div><button id="editPad" type="button">${text("Kéo thả","Move")}</button><button id="togglePad" type="button">${text("Ẩn phím","Hide")}</button><button id="resetPad" type="button">${text("Mặc định","Reset")}</button></div></section>`;
+  const padTargetOptions = system => {
+    const controls=[["dpad","D-pad"],["a","A"],["b","B"],["start","Start"],["select","Select"]];
+    if(["gba","nds"].includes(system))controls.push(["l","L"],["r","R"]);
+    if(system==="nds")controls.push(["x","X"],["y","Y"]);
+    return controls.map(([value,label])=>`<option value="${value}">${label}</option>`).join("");
+  };
+  const playerMarkup = system => `<div class="player-toolbar" role="toolbar" aria-label="${text("Điều khiển trình phát","Player controls")}">
+    <a class="player-back" href="/offline" title="${text("Quay lại","Back")}" aria-label="${text("Quay lại thư viện ngoại tuyến","Back to offline library")}"><img src="/static/ui-arrow-left.svg" alt="" width="24" height="24"></a><span class="player-title"></span>
+    <div class="player-toolbar-actions"><button id="fullscreen" type="button" title="${text("Toàn màn hình","Fullscreen")}" aria-label="${text("Toàn màn hình","Fullscreen")}"><img src="/static/ui-maximize.svg" alt="" width="24" height="24"></button>
+    <button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="${text("Ẩn phím ảo","Hide virtual controls")}" aria-label="${text("Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>
+    <button id="slotMenu" type="button" aria-expanded="false" title="${text("Save slot","Save slots")}" aria-label="${text("Mở save slot trên thiết bị","Open save slots on this device")}"><img src="/static/ui-save.svg" alt="" width="24" height="24"></button>
+    <button id="playerControls" type="button" aria-expanded="false" title="${text("Tùy chọn khác","More options")}" aria-label="${text("Mở tùy chọn trình phát","Open player options")}"><img src="/static/ui-more.svg" alt="" width="24" height="24"></button></div>
+  </div><section class="player-stage player-stage-ui"><div id="game"></div><div id="tvPad" aria-label="${text("Bộ điều khiển ảo","Virtual controller")}"></div>
+    <div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">${text("Đang chuẩn bị","Preparing")}</span></span><span id="playerSaveStatus" class="player-save-state">${text("Chưa có save trên thiết bị","No save on this device")}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">${text("Đang chuẩn bị","Preparing")}</strong><div class="progress" role="progressbar" aria-label="${text("Tiến trình khởi động","Startup progress")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div>
+  </section><section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="${text("Save slot trên thiết bị này","Save slots on this device")}"><header><strong>${text("Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">${text("Đóng","Close")}</button></header>${slotRows()}</section>
+  <section id="padPanel" class="pad-panel" role="dialog" aria-label="${text("Tùy chọn trình phát","Player options")}"><header><strong>${text("Tùy chọn trình phát","Player options")}</strong><button id="closePad" type="button">${text("Đóng","Close")}</button></header><div class="player-panel-actions"><button id="emulatorMenu" type="button">${text("Mở menu giả lập","Open emulator menu")}</button><button id="saveState" type="button">${text("Tải save state","Download save state")}</button><button id="loadState" type="button">${text("Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div><div class="player-pad-settings"><strong>${text("Phím ảo","Virtual controls")}</strong><label><span>${text("Phím cần chỉnh","Control to resize")}</span><select id="padTarget">${padTargetOptions(system)}</select></label><label><span>${text("Kích thước phím","Control size")} <output id="padSizeValue">100%</output></span><input id="padSize" type="range" min="70" max="140" step="5" value="100"></label><label><span>${text("Độ mờ","Opacity")}</span><input id="padOpacity" type="range" min="30" max="100" step="5"></label><div><button id="editPad" type="button">${text("Kéo thả","Move")}</button><button id="resetPad" type="button">${text("Mặc định","Reset")}</button></div></div></section>`;
 
   const playOffline = () => {
     const params = new URLSearchParams(location.search), id=params.get("play"), system=params.get("system");
@@ -110,8 +112,8 @@
     const main=document.createElement("main"), title=params.get("title") || text("Game ngoại tuyến","Offline game");
     main.className="player-shell";
     main.dataset.player=JSON.stringify({mode:"emulator",title,slug:`offline-${id}`,system,channel:systems[system].channel,downloadName:title,lang,offlineId:id});
-    main.innerHTML=playerMarkup(); main.querySelector(".player-title").textContent=title;
-    document.body.className="player-page offline-player-page";document.body.replaceChildren(main);document.title=`${title} · Ăn 3 Tô Cơm lãnh địa`;
+    main.innerHTML=playerMarkup(system); main.querySelector(".player-title").textContent=title;
+    document.body.className="player-page offline-player-page";document.body.replaceChildren(main);document.title=`${title} · Ăn 3 Tô Cơm`;
     return true;
   };
 

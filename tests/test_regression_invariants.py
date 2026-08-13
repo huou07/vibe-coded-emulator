@@ -65,9 +65,21 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v18', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v19', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', APP)
+
+    def test_virtual_controls_overlay_has_persistent_touch_toggle_and_per_control_size(self):
+        for source in (APP, OFFLINE):
+            self.assertIn('id="toggleTouch"', source)
+            self.assertIn('id="padTarget"', source)
+            self.assertIn('id="padSizeValue"', source)
+        self.assertIn('touchToggle?.addEventListener("click",togglePad)', PLAYER)
+        self.assertIn('settings.sizes[padTarget.value]', PLAYER)
+        self.assertIn('--control-scale', PLAYER)
+        self.assertIn('stage?.classList.toggle("pad-overlay",visible)', PLAYER)
+        self.assertNotIn('stage?.classList.toggle("pad-docked",visible)', PLAYER)
+        self.assertIn('window.EJS_emulator?.gameManager?.simulateInput(0,index,value)', PLAYER)
 
     def test_nds_debug_is_bounded_exportable_and_fail_closed(self):
         self.assertIn('NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}', APP)

@@ -1018,3 +1018,240 @@ body:not(.player-page) .status-actions{display:flex;flex-wrap:wrap;gap:10px;marg
   body:not(.player-page) .status-actions{display:grid}
   body:not(.player-page) .status-actions .button{width:100%}
 }
+
+/* Selected gameplay direction: compact toolbar, status rail, overlay controls. */
+.player-page{
+  --player-toolbar-height:64px;
+  --player-status-height:50px;
+  background:#050706;
+}
+.player-page .player-shell{
+  grid-template-rows:var(--player-toolbar-height) minmax(0,1fr);
+  width:100%;
+  min-width:0;
+  background:#050706;
+}
+.player-page .player-toolbar{
+  height:var(--player-toolbar-height);
+  gap:12px;
+  padding:8px 14px;
+  border-color:#334238;
+  background:#080c0a;
+  z-index:40;
+}
+.player-page .player-back,
+.player-page .player-toolbar-actions button{
+  width:46px;
+  height:46px;
+  min-height:46px;
+  flex:0 0 46px;
+  border:1px solid #355143;
+  border-radius:4px;
+  background:#0b100d;
+  display:grid;
+  place-items:center;
+  padding:0;
+}
+.player-page .player-back{border-color:transparent;background:transparent}
+.player-page .player-toolbar img{display:block;width:23px;height:23px}
+.player-page .player-back:hover,
+.player-page .player-toolbar-actions button:hover{border-color:var(--green);background:#101713}
+.player-page .player-back:focus-visible,
+.player-page .player-toolbar-actions button:focus-visible,
+.player-page .pad-panel button:focus-visible,
+.player-page .slot-panel button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.player-page .player-title{
+  min-width:0;
+  padding:0 6px;
+  color:#dbe8de;
+  font-size:18px;
+  font-weight:850;
+  letter-spacing:.015em;
+}
+.player-page .player-toolbar-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.player-page .player-toolbar-actions .touch-toggle{
+  width:64px;
+  flex-basis:64px;
+  color:#b6c3b9;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.player-page .player-toolbar-actions .touch-toggle.is-on{
+  border-color:#4ca16c;
+  background:#173323;
+  color:#8fe3ad;
+}
+.player-page .player-stage-ui #game,
+.player-page .player-stage-ui .custom-frame{
+  position:absolute;
+  z-index:20;
+  inset:0 0 var(--player-status-height);
+  width:100%;
+  height:auto;
+  min-height:0;
+}
+.player-page .player-status{
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  z-index:30;
+  height:var(--player-status-height);
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:0 18px;
+  border-top:1px solid #334238;
+  border-bottom:1px solid #26352c;
+  background:#080c0a;
+  color:#aeb9b1;
+  font-size:13px;
+}
+.player-page .player-runtime-state,
+.player-page .player-save-state{display:flex;align-items:center;gap:8px;min-width:0}
+.player-page .player-runtime-state{font-weight:800;color:#dbe8de}
+.player-page .player-runtime-state i{
+  width:10px;
+  height:10px;
+  flex:0 0 10px;
+  border-radius:50%;
+  background:var(--cyan);
+  box-shadow:0 0 0 3px rgba(86,207,225,.1);
+}
+.player-page .player-stage.is-ready .player-runtime-state i{background:var(--green);box-shadow:0 0 0 3px rgba(81,216,138,.1)}
+.player-page .player-stage.has-error .player-runtime-state i{background:var(--red);box-shadow:0 0 0 3px rgba(239,106,103,.1)}
+.player-page .player-save-state{margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player-page .player-stage-ui .player-notice{
+  position:static;
+  max-width:min(420px,62vw);
+  margin-left:auto;
+  transform:none;
+  border:0;
+  background:transparent;
+  padding:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:right;
+}
+.player-page .player-stage-ui .player-notice.show{display:block;color:var(--green)}
+.player-page .player-stage-ui .player-notice.error{color:#ff9b98}
+.player-page .player-stage-ui:has(.player-notice.show) .player-save-state{display:none}
+.player-page .player-stage-ui .loading{bottom:var(--player-status-height);background:#070a08}
+.player-page .loading strong{color:#dbe8de}
+.player-page .loading .progress{height:8px;border-color:#355143;background:#050706}
+.player-page .loading .progress i{background:#65dc96}
+.player-page .player-stage-ui #tvPad.show{
+  position:absolute;
+  z-index:26;
+  inset:0 0 var(--player-status-height);
+  height:auto;
+  border:0;
+  background:transparent;
+}
+.player-page .player-stage-ui #tvPad.edit{background:rgba(5,12,8,.34)}
+.player-page .tvCtrl{transform:translate(-50%,-50%) scale(var(--control-scale,var(--pad-scale)))}
+.player-page .tvBtn{
+  border-color:#3f9464;
+  background:rgba(18,25,21,.92);
+  color:#d1d8d3;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);
+}
+.player-page .tvBtn.small{border-radius:4px;background:#0b100d}
+.player-page .tvDpad button,
+.player-page .tvDpad:after{background:#454a47}
+.player-page .tvDpad button{display:grid;place-items:center}
+.player-page .tvDpad button img{display:block;width:22px;height:22px;pointer-events:none}
+.player-page .pad-panel,
+.player-page .slot-panel{
+  top:calc(var(--player-toolbar-height) + 10px);
+  right:10px;
+  width:min(370px,calc(100vw - 20px));
+  max-height:calc(100dvh - var(--player-toolbar-height) - 20px);
+  overflow:auto;
+  border-color:#355143;
+  border-radius:4px;
+  background:#0b100d;
+  box-shadow:0 12px 30px rgba(0,0,0,.42);
+}
+.player-page .pad-panel header,
+.player-page .slot-panel header{min-height:38px}
+.player-page .pad-panel header button,
+.player-page .slot-panel header button{
+  width:auto;
+  min-width:58px;
+  height:34px;
+  border:1px solid var(--line);
+  color:var(--cyan);
+}
+.player-page .player-panel-actions{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:7px;
+  padding:8px 0 12px;
+  border-bottom:1px solid #26352c;
+}
+.player-page .player-panel-actions button{min-height:42px;text-align:left}
+.player-page .player-pad-settings{display:grid;gap:9px;padding-top:12px}
+.player-page .player-pad-settings label,
+.player-page .player-pad-settings>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.player-page .player-pad-settings label>span{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.player-page .player-pad-settings select{
+  min-width:126px;
+  border:1px solid #355143;
+  border-radius:3px;
+  background:#080c0a;
+  color:#dbe8de;
+  padding:7px 9px;
+}
+.player-page .player-pad-settings output{color:var(--yellow);font-variant-numeric:tabular-nums}
+
+@media(max-width:480px){
+  .player-page{
+    --player-toolbar-height:60px;
+    --player-status-height:46px;
+  }
+  .player-page .player-toolbar{gap:6px;padding:7px 8px}
+  .player-page .player-back,
+  .player-page .player-toolbar-actions button{width:44px;height:44px;min-height:44px;flex-basis:44px}
+  .player-page .player-title{display:block;flex:1 1 0;width:0;padding:0 4px;font-size:14px}
+  .player-page .player-toolbar-actions{gap:5px}
+  .player-page .player-toolbar-actions .touch-toggle{width:56px;flex-basis:56px;font-size:10px}
+  .player-page .player-status{gap:8px;padding:0 10px;font-size:11px}
+  .player-page .player-save-state{max-width:48%;text-align:right}
+  .player-page .loading{
+    align-content:center;
+    justify-content:stretch;
+    grid-template-columns:minmax(0,1fr) 42px;
+    padding:0 min(90px,24vw);
+  }
+  .player-page .tvBtn{width:64px;height:64px;font-size:19px}
+  .player-page .tvBtn.small{width:70px;height:42px;font-size:12px}
+  .player-page .tvDpad{width:112px;height:112px}
+  .player-page .tvDpad button{width:36px;height:36px}
+  .player-page .tvDpad .up{left:38px}
+  .player-page .tvDpad .down{left:38px}
+  .player-page .tvDpad .left{top:38px}
+  .player-page .tvDpad .right{top:38px}
+  .player-page .tvDpad:after{left:38px;top:38px;width:36px;height:36px}
+}
+
+@media(orientation:landscape) and (max-height:620px){
+  .player-page{
+    --player-toolbar-height:54px;
+    --player-status-height:42px;
+  }
+  .player-page .player-toolbar{padding:4px 10px}
+  .player-page .player-back,
+  .player-page .player-toolbar-actions button{width:42px;height:42px;min-height:42px;flex-basis:42px}
+  .player-page .tvBtn{width:58px;height:58px;font-size:18px}
+  .player-page .tvBtn.small{width:68px;height:38px;font-size:11px}
+  .player-page .tvDpad{transform:scale(.78)}
+  .player-page .player-panel-actions button{font-size:11px}
+  .player-page .player-pad-settings label,
+  .player-page .player-pad-settings>div{align-items:stretch;flex-direction:column}
+  .player-page .save-slot{grid-template-columns:1fr auto auto}
+  .player-page .save-slot small{grid-column:1/-1;grid-row:2}
+}

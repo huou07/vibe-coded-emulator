@@ -1,73 +1,92 @@
-# Design QA — Selected mobile library direction
+# Design QA — Gameplay Option 1 with Touch overlay
 
 ## Result
 
 **final result: passed**
 
-The selected Option 1 direction is implemented as the visual truth for the public mobile library. The final comparison has no unresolved P0, P1, or P2 fidelity issue. Expected product/content deviations are documented below rather than hidden.
+The selected Option 1 player shell and the user's explicit Touch-overlay follow-up have no unresolved P0, P1, or P2 design-QA finding in the locally available network-error state. The active-emulator and physical-device checks remain staging gates, not fabricated local evidence.
 
-## Normalized comparison input
+## Source visual truth
 
-| Input | Reference | Implementation |
-| --- | --- | --- |
-| viewport | 390 × 843 px | 390 CSS px document viewport; 390 × 843 px lossless capture |
-| locale | Vietnamese | Vietnamese |
-| state | populated recommended library | populated recommended library, signed-in normal user |
-| cards visible | two-column artwork-led grid | two-column artwork-led grid |
-| image format | PNG | PNG |
+The final target combines two supplied visual sources plus the user's explicit interaction delta:
 
-Reference: `reports/ui-ux/final/reference-option1-390x843.png`  
-Final implementation: `reports/ui-ux/final/home-vi-css390x843-pass3.png`
+- Option 1 shell direction: `reports/ui-ux/candidates/batch-09-player-option1/reference-option1-700x1010.png`.
+- Original overlay behavior: `reports/ui-ux/candidates/batch-09-player-option1/reference-original-overlay-700x1010.png`.
+- Normalized overlay content reference: `reports/ui-ux/candidates/batch-09-player-option1/reference-original-overlay-content-700x971.png`.
+- Explicit delta: add a persistent `Touch` toolbar button; virtual controls overlay the game; each control can be resized independently.
 
-![Reference beside final implementation](reports/ui-ux/final/reference-vs-implementation-pass3.png)
+The original screenshot's 39 px browser chrome was removed before comparison. The normalized source is 700 × 971 px. The implementation was rendered at a 700 × 971 CSS viewport, captured at 700 × 971 px with density 1, Vietnamese locale, dark theme, and the same 92% network-error state.
 
-### Focus region — header, search, filters, and section opening
+Implementation: `reports/ui-ux/candidates/batch-09-player-option1/candidate-touch-final-700x971.png`.
 
-![Header and discovery controls compared at the same viewport](reports/ui-ux/final/reference-vs-implementation-pass3-header.png)
+## Full-view comparison evidence
 
-### Focus region — first two rows of cards
+![Normalized source beside final implementation](reports/ui-ux/candidates/batch-09-player-option1/reference-overlay-content-vs-candidate-touch-final.png)
 
-![Artwork and card density compared at the same viewport](reports/ui-ux/final/reference-vs-implementation-pass3-cards.png)
+The final implementation keeps the overlay behavior while adopting the selected compact icon toolbar, clearer title hierarchy, explicit Touch state, cleaner controller spacing, and honest runtime/save status rail.
+
+## Focused-state evidence
+
+The key controls are readable at the full 700 px capture, so separate crops were not needed. Two full-height focused states provide stronger context:
+
+![Touch off while the Touch button remains visible](reports/ui-ux/candidates/batch-09-player-option1/candidate-touch-off-700x1010.png)
+
+![A selected at 130 percent while other controls retain their own size](reports/ui-ux/candidates/batch-09-player-option1/candidate-touch-settings-final-700x1010.png)
+
+## Findings
+
+- No actionable P0/P1/P2 finding remains.
+- P3: at 390 and 360 px, the game title truncates to preserve four 44 px toolbar actions, including the always-visible Touch button. The full title remains in the document title and game-detail route; this is an accepted compact-player trade-off.
 
 ## Comparison history
 
-| Iteration | Evidence | Finding | Resolution |
+| Iteration | Evidence/finding | Fix | Post-fix evidence |
 | --- | --- | --- | --- |
-| 1 | `reference-vs-implementation-pass1.png` | P2: implementation opened with excess explanatory content, cards were too tall, and language/state did not match. | Moved the guide trigger into navigation, hid the mobile intro visually while preserving its heading in the DOM, tightened discovery controls, used square mobile artwork, and normalized to Vietnamese. |
-| 2 | `reference-vs-implementation-pass2.png` | P1: the long canonical Vietnamese brand squeezed the Offline and Menu controls at 390 px. P2: section opening was still slightly loose. | Changed the mobile header to a two-column brand/actions grid, protected action width, reduced header and section spacing, and hid the redundant mobile eyebrow. |
-| 3 | `reference-vs-implementation-pass3.png` | No unresolved P0/P1/P2. The 360 px follow-up also has zero page-level overflow and fully visible 40 px header controls. | Accepted. |
+| 1 | `candidate-pass1-700x1010.png`: P1 control clusters collided in the first docked implementation. | Repositioned controller defaults and separated game, status, and control regions. | `candidate-pass2-700x1010.png`. |
+| 2 | The user changed the target from docked controls to overlay controls and requested Touch plus per-control sizing. This superseded the docked composition. | Restored overlay geometry, added Touch, retained pointer-transparent controller root, and added independent scale persistence. | `candidate-touch-overlay-715x1042.png` and `candidate-touch-settings-715x1042.png`. |
+| 3 | Browser measurements found P1 horizontal overflow at 390/360 px, P1 A/X and X/R intersections in short landscape, and P2 loading progress obscured by L/R on mobile. | Forced the player grid to shrink, made the title flex track zero-based, revised portrait/landscape defaults, bounded per-control scale to 70–140%, and narrowed the mobile loading content track. | `candidate-touch-final-390x844.png`, `candidate-touch-final-360x800.png`, and `candidate-touch-final-landscape-844x390.png`. |
+| 4 | Final normalized comparison found no remaining P0/P1/P2 issue. | Accepted. | `reference-overlay-content-vs-candidate-touch-final.png`. |
 
-## Fidelity review
+## Required fidelity surfaces
 
-| Surface | Final assessment |
+| Surface | Assessment |
 | --- | --- |
-| typography | Strong condensed hierarchy is preserved with the existing system-font/CSP-safe stack: heavy lime brand, high-contrast white section titles, compact metadata, and clear CTA labels. |
-| spacing | Search, filter rail, section opening, two-column gutters, card internals, and CTA spacing follow the compact reference rhythm. |
-| color | Near-black surfaces, lime primary actions, restrained green borders, white hierarchy, and muted secondary copy match the selected direction without adding gradients or glass effects. |
-| composition | Artwork is dominant; search and horizontal filters remain above the first two-column library; four complete cards are visible in the first 843 px at 360 px width. |
-| hierarchy | Find/filter → recommended collection → artwork → title/description/system → Play is clear. Play remains the primary action as required by the production brief. |
+| Fonts and typography | Existing CSP/offline-safe system stacks are preserved. Title weight, compact mono controller labels, error copy, status text, and panel hierarchy are clear. No external font was introduced. |
+| Spacing and layout | Toolbar, game region, overlay, and status rail use explicit non-scrolling tracks. Required 700, 390, 360, and 844 × 390 viewports have no page overflow and no default control-to-control collision. |
+| Colors and tokens | Near-black background, restrained green borders, cyan focus, yellow progress, and red failure status follow the selected direction. Touch has an explicit green active state without gradients or glass effects. |
+| Image quality and assets | Toolbar and D-pad use local Lucide SVG assets with the bundled license. No emoji, text glyph, handcrafted SVG, CSS art, placeholder game image, or fake emulator framebuffer was substituted. |
+| Copy and content | Product brand is `Ăn 3 Tô Cơm`. Touch is deliberately language-neutral. Runtime says `Không thể khởi động`; local save state honestly says `Chưa có save trên thiết bị`. |
 
-## Functional and responsive checks
+## Functional, responsive, and accessibility checks
 
-- 390 px document width: `scrollWidth === clientWidth === 390`.
-- 360 px document width: `scrollWidth === clientWidth === 360`.
-- At 360 px, Offline and Menu are both fully visible and each is 40 px high.
-- Mobile Menu opens with `aria-expanded="true"`; Games, guide, account, logout, and language remain reachable.
-- The guide moves focus to Close, traps focus, closes with Escape, and restores focus to the mobile Menu trigger.
-- Search, clear-search, filters, cards, detail links, and Play remain functional; no visual-only replacement was introduced.
-
-360 px evidence: `reports/ui-ux/final/home-vi-css360x840-pass3.png`
-
-![Accepted 360 px implementation](reports/ui-ux/final/home-vi-css360x840-pass3.png)
+- 700 × 1010, 390 × 844, 360 × 800, and 844 × 390: `scrollWidth === viewport width`.
+- Controller root and game rectangles match; the status rail is excluded from the overlay.
+- Controller root is `pointer-events:none`; individual controls remain `pointer-events:auto`, allowing NDS touchscreen input between controls.
+- Touch off sets `aria-pressed=false` and hides only the controller; the Touch button remains visible. Touch on restores the overlay. The state persists after reload.
+- Selecting A at 130% updates only A (`--control-scale:1.3`); B remains `1`. The value persists after reload and Reset restores all control sizes.
+- More and Save-slot panels move focus to their Close button. Escape closes each panel, synchronizes `aria-expanded`, and restores focus to its trigger.
+- Toolbar actions are 42–46 px high across tested orientations; mobile actions are 44 px.
+- Static input indices and the NDS touchscreen bridge remain unchanged and are protected by regression tests.
 
 ## Intentional and expected deviations
 
-- The production brand remains the canonical `Ăn 3 Tô Cơm lãnh địa`, rather than shortening it to the mock's `Ăn 3 Tô Cơm`.
-- The existing system font stack is retained. Adding an external pixel font would conflict with the CSP, offline, and performance goals.
-- The local fixture intentionally uses the real optimized fallback cover repeatedly. Artwork variety is a staging-data gate; production-looking cover art was not fabricated.
-- Cards keep a clear Play action, per the master brief, instead of copying the reference's download-only secondary action.
-- Decorative star/controller/download glyphs from the concept are not approximated with emoji, CSS drawings, or handwritten SVG. Existing semantic text and real product controls are used.
+- L/R remain visible even though the generated Option 1 mock omitted them; NDS requires those controls.
+- The generated mock's forest gameplay is illustrative emulator output, not an app asset. The honest local same-state comparison uses the supplied 92% network-error screenshot because the fixture has no ROM.
+- The status rail reports the real save condition rather than copying the mock's `Đã lưu trên thiết bị` claim when no slot exists.
+- Hiding controls is a user action through Touch; controls do not auto-hide and Touch does not hide itself.
 
-## Evidence integrity
+## Test and evidence gates
 
-The reference and all accepted implementation files are lossless PNGs. The final files are exact-width captures rather than width inferred from a filename. SHA-256 values are recorded in the final evidence directory and can be regenerated with `shasum -a 256 reports/ui-ux/final/*.png`.
+- 10/10 Python tests passed, including the new Touch/per-control-size source invariant.
+- Python, all four JavaScript files, and deployment/backup shell scripts pass syntax checks.
+- `git diff --check` passed.
+- Browser interaction and responsive evidence are recorded in `reports/ui-ux/candidates/batch-09-player-option1/README.md`.
+- Runtime LCP, CLS, and INP were not available and are not claimed.
+
+## Remaining non-design gates
+
+- Verify ready NDS/GBA gameplay, fullscreen, rotation, controller presses, and physical multi-touch on staging with representative ROM/core data.
+- Verify installed-PWA restart offline on a secure staging origin.
+- No production deployment or production approval is implied by this local design-QA pass.
+
+The earlier mobile-library Option 1 QA remains accepted; this report replaces its root summary because the player is the latest build gate. The library evidence remains under `reports/ui-ux/final/`.

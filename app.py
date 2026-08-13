@@ -65,7 +65,7 @@ SCRYPT_P = 1
 SCRYPT_MAXMEM = 32 * 1024 * 1024
 SCRYPT_AVAILABLE = hasattr(hashlib, "scrypt")
 VISITOR_TTL = 365 * 86400
-SITE_NAME = "Ăn 3 Tô Cơm lãnh địa"
+SITE_NAME = "Ăn 3 Tô Cơm"
 MAX_JSON_BYTES = 1024 * 1024
 ENVIRONMENT = os.environ.get("AN3_ENVIRONMENT", "production").strip().lower()
 NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}
@@ -854,16 +854,26 @@ def core_preload_page(system, lang):
 
 def player_page(game, lang, user, csrf):
     title = game_title(game, lang)
+    icon = lambda name: f'<img src="/static/ui-{name}.svg?v={ASSET_VERSION}" alt="" width="24" height="24">'
     if game["system"] == "html5":
         game_area = f'<iframe class="custom-frame" src="/custom/{game["id"]}/" title="{esc(title)}" sandbox="allow-scripts allow-pointer-lock allow-forms" allow="fullscreen; gamepad"></iframe>'
-        state_buttons = ""
+        toolbar_extra = ""
         slot_panel = ""
+        pad_panel = ""
         mode = "html5"
     else:
         game_area = '<div id="game"></div><div id="tvPad" aria-label="virtual controller"></div>'
-        state_buttons = f'<button id="saveState" type="button" title="{tr(lang,"Tải save state","Download save state")}" aria-label="{tr(lang,"Tải save state","Download save state")}">↓S</button><button id="loadState" type="button" title="{tr(lang,"Nạp save state","Load save state")}" aria-label="{tr(lang,"Nạp save state","Load save state")}">↑S</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden><button id="slotMenu" type="button" title="{tr(lang,"Save slot","Save slots")}" aria-label="{tr(lang,"Save slot","Save slots")}">▣</button>'
+        toolbar_extra = f'<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="{tr(lang,"Ẩn phím ảo","Hide virtual controls")}" aria-label="{tr(lang,"Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button><button id="slotMenu" type="button" aria-expanded="false" title="{tr(lang,"Save slot","Save slots")}" aria-label="{tr(lang,"Mở save slot trên thiết bị","Open save slots on this device")}">{icon("save")}</button><button id="playerControls" type="button" aria-expanded="false" title="{tr(lang,"Tùy chọn khác","More options")}" aria-label="{tr(lang,"Mở tùy chọn trình phát","Open player options")}">{icon("more")}</button>'
+        state_buttons = f'<div class="player-panel-actions"><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div>'
         slot_rows = "".join(f'<div class="save-slot" data-slot="{slot}"><strong>{tr(lang,"Slot","Slot")} {slot}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-slot="{slot}">{tr(lang,"Lưu","Save")}</button><button data-load-slot="{slot}" disabled>{tr(lang,"Nạp","Load")}</button></div>' for slot in range(1, 6))
-        slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button" aria-label="{tr(lang,"Đóng save slot","Close save slots")}">×</button></header>{slot_rows}</section>'
+        slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{slot_rows}</section>'
+        pad_controls = [("dpad", "D-pad"), ("a", "A"), ("b", "B"), ("start", "Start"), ("select", "Select")]
+        if game["system"] in {"gba", "nds"}:
+            pad_controls.extend([("l", "L"), ("r", "R")])
+        if game["system"] == "nds":
+            pad_controls.extend([("x", "X"), ("y", "Y")])
+        pad_options = "".join(f'<option value="{control}">{label}</option>' for control, label in pad_controls)
+        pad_panel = f'<section id="padPanel" class="pad-panel" role="dialog" aria-label="{tr(lang,"Tùy chọn trình phát","Player options")}"><header><strong>{tr(lang,"Tùy chọn trình phát","Player options")}</strong><button id="closePad" type="button">{tr(lang,"Đóng","Close")}</button></header>{state_buttons}<div class="player-pad-settings"><strong>{tr(lang,"Phím ảo","Virtual controls")}</strong><label><span>{tr(lang,"Phím cần chỉnh","Control to resize")}</span><select id="padTarget">{pad_options}</select></label><label><span>{tr(lang,"Kích thước phím","Control size")} <output id="padSizeValue">100%</output></span><input id="padSize" type="range" min="70" max="140" step="5" value="100"></label><label><span>{tr(lang,"Độ mờ","Opacity")}</span><input id="padOpacity" type="range" min="30" max="100" step="5"></label><div><button id="editPad" type="button">{tr(lang,"Kéo thả","Move")}</button><button id="resetPad" type="button">{tr(lang,"Mặc định","Reset")}</button></div></div></section>'
         mode = "emulator"
     config = {
         "mode": mode, "title": title, "slug": game["slug"], "system": game["system"],
@@ -872,10 +882,9 @@ def player_page(game, lang, user, csrf):
     }
     back_path = f"/game/{game['slug']}"
     body = f"""<main class="player-shell" data-player='{esc(json.dumps(config,ensure_ascii=False))}'>
-<div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">←</a><span class="player-title">{esc(title)}</span>
-<button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">⛶</button><button id="emulatorMenu" type="button" title="{tr(lang,'Menu giả lập','Emulator menu')}" aria-label="{tr(lang,'Menu giả lập','Emulator menu')}">☰</button>{state_buttons}<button id="playerControls" type="button" title="{tr(lang,'Điều khiển','Controls')}" aria-label="{tr(lang,'Điều khiển ảo','Virtual controls')}">⌘</button></div>
-<section class="player-stage">{game_area}<div id="playerHints" class="player-hints" aria-live="polite"><span>⛶ {tr(lang,'Toàn màn hình','Fullscreen')}</span><span>☰ {tr(lang,'Menu giả lập','Emulator menu')}</span><span>↓S {tr(lang,'Tải save','Download save')}</span><span>↑S {tr(lang,'Nạp save','Load save')}</span><span>⌘ {tr(lang,'Chỉnh phím ảo','Virtual controls')}</span></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
-{slot_panel}<section id="padPanel" class="pad-panel" role="dialog" aria-label="{tr(lang,'Phím ảo','Virtual controls')}"><header><strong>{tr(lang,'Phím ảo','Virtual controls')}</strong><button id="closePad" type="button" aria-label="{tr(lang,'Đóng bảng điều khiển ảo','Close virtual controls panel')}">×</button></header><label>{tr(lang,'Kích thước','Size')}<input id="padSize" type="range" min="70" max="135" step="5"></label><label>{tr(lang,'Độ mờ','Opacity')}<input id="padOpacity" type="range" min="30" max="100" step="5"></label><div><button id="editPad" type="button">{tr(lang,'Kéo thả','Move')}</button><button id="togglePad" type="button">{tr(lang,'Ẩn phím','Hide')}</button><button id="resetPad" type="button">{tr(lang,'Mặc định','Reset')}</button></div></section></main>
+<div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
+<section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
+{slot_panel}{pad_panel}</main>
 <script src="/static/player.js?v={ASSET_VERSION}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
