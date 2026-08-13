@@ -1,8 +1,8 @@
-const CACHE = "an3-arcade-pwa-v17";
+const CACHE = "an3-arcade-pwa-v18";
 const CORE_CACHE = "an3-arcade-cores-v1";
 const APP_SHELL = [
   "/", "/offline", "/static/site.css", "/static/site.js", "/static/player.js",
-  "/static/offline.js", "/static/default-cover.png", "/static/manifest.webmanifest"
+  "/static/offline.js", "/static/default-cover.webp", "/static/manifest.webmanifest"
 ];
 
 self.addEventListener("install", event => {

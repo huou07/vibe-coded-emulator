@@ -639,7 +639,7 @@ def filename_title(value):
 
 
 def game_cover(game):
-    return f"/cover/{game['id']}" if game["cover_path"] else "/static/default-cover.png"
+    return f"/cover/{game['id']}" if game["cover_path"] else "/static/default-cover.webp"
 
 
 def rating_summary(conn, game_id):
@@ -688,6 +688,17 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
 {welcome}<div id="toast" role="status"></div><script src="/static/site.js?v={ASSET_VERSION}" defer></script></body></html>"""
 
 
+def status_page(code, lang, user=None, csrf=""):
+    if code == 403:
+        title = tr(lang, "Không có quyền truy cập", "Access restricted")
+        message = tr(lang, "Dashboard này chỉ dành cho quản trị viên. Tài khoản hiện tại của bạn vẫn có thể duyệt và chơi game.", "This dashboard is available to administrators only. Your current account can still browse and play games.")
+    else:
+        title = tr(lang, "Không tìm thấy trang", "Page not found")
+        message = tr(lang, "Liên kết này có thể đã thay đổi hoặc game không còn ở địa chỉ này.", "This link may have changed, or the game is no longer available at this address.")
+    body = f'''<main class="page status-page"><section class="status-card" aria-labelledby="statusTitle"><p class="eyebrow">{tr(lang,'Mã trạng thái','Status code')} {code}</p><h1 id="statusTitle">{title}</h1><p>{message}</p><div class="status-actions"><a class="button primary" href="/">{tr(lang,'Duyệt thư viện','Browse library')}</a><a class="button" href="/offline">{tr(lang,'Mở game trên thiết bị','Open device games')}</a></div></section></main>'''
+    return layout(f"{code} · {title}", body, lang, user, csrf)
+
+
 def home_page(lang, user, csrf):
     with db() as conn:
         games = conn.execute(
@@ -704,7 +715,7 @@ def home_page(lang, user, csrf):
         testing = f'<span class="badge testing">Testing</span>' if game["experimental"] else ""
         recommended_badge = f'<span class="badge recommended">{tr(lang,"Đề xuất","Recommended")}</span>' if recommended else ""
         image_loading = 'loading="eager" fetchpriority="high"' if lead else 'loading="lazy"'
-        return f"""<article class="game-card" data-system="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" {image_loading}></a>
+        return f"""<article class="game-card" data-system="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960" {image_loading}></a>
 <div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div>
 <h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2>
 <div class="rating" aria-label="{tr(lang,'Đánh giá','Rating')}: {float(game['rating']):.1f} {tr(lang,'trên 5','out of 5')}"><span class="rating-label">{tr(lang,'Điểm','Score')}</span> {float(game['rating']):.1f}<span>/5 · {game['rating_count']}</span>{recommended_badge}</div>
@@ -786,7 +797,7 @@ def game_page(game, lang, user, csrf):
     media = f'<section class="description-media"><div class="section-title"><h2>{tr(lang,"Ảnh trong game","In-game images")}</h2><span>{len(screenshots)}</span></div><div class="screenshot-grid">{screenshot_rows}</div></section>' if screenshots else ''
     contribution = f'<div class="rate-box" data-game="{game["id"]}"><span>{tr(lang,"Đánh giá của bạn","Your rating")}</span><div class="star-group" role="group" aria-label="{tr(lang,"Đánh giá trò chơi","Rate this game")}">{stars}</div></div>' if user else f'<div class="contribution-prompt"><strong>{tr(lang,"Muốn lưu hoặc chia sẻ ý kiến?","Want to save or share feedback?")}</strong><span>{tr(lang,"Đăng nhập để yêu thích, đánh giá, bình luận hoặc báo lỗi.","Log in to favorite, rate, comment, or report an issue.")}</span><a class="button" href="/login?next={login_next}">{tr(lang,"Đăng nhập","Log in")}</a></div>'
     reports = f'<section class="reports"><div class="section-title"><h2>{tr(lang,"Báo lỗi","Report an issue")}</h2></div>{report_form}</section>' if user else ""
-    body = f"""<main class="page detail-page"><section class="game-detail"><div class="detail-cover"><img src="{game_cover(game)}" alt="{esc(title)}"></div>
+    body = f"""<main class="page detail-page"><section class="game-detail"><div class="detail-cover"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960"></div>
 <div class="detail-copy"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div><h1>{esc(title)}</h1>
 <div class="rating-large"><span>{avg:.1f}/5</span><small>{count} {tr(lang,"lượt đánh giá","ratings")}</small></div>
 <div class="detail-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a><a class="button" href="/download/{esc(game['slug'])}">{tr(lang,"Tải game","Download game")} · {format_size(game['file_size'])}</a>{favorite_button}</div>
@@ -811,7 +822,7 @@ def account_page(lang, user, csrf):
     for index, game in enumerate(favorites):
         title = game_title(game, lang)
         image_priority = ' loading="eager" fetchpriority="high"' if index == 0 else ' loading="lazy"'
-        card_rows.append(f'''<article class="game-card"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Xem chi tiết','View details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{tr(lang,'Bìa game','Cover art for')} {esc(title)}"{image_priority}></a>
+        card_rows.append(f'''<article class="game-card"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Xem chi tiết','View details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{tr(lang,'Bìa game','Cover art for')} {esc(title)}" width="720" height="960"{image_priority}></a>
 <div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span></div><h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2><div class="rating">{tr(lang,'Điểm','Score')} {float(game['rating']):.1f}/5 · {game['rating_count']}</div><div class="card-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a></div></div></article>''')
     cards = "".join(card_rows)
     empty = f'<div class="empty-state"><strong>{tr(lang,"Chưa có game yêu thích.","No favorites yet.")}</strong><span>{tr(lang,"Lưu game từ trang chi tiết để tìm lại nhanh hơn.","Save a game from its detail page to find it faster.")}</span><a class="button" href="/">{tr(lang,"Duyệt thư viện","Browse library")}</a></div>'
@@ -832,7 +843,7 @@ def offline_page(lang, user, csrf):
 
 def core_preload_page(system, lang):
     if system not in SYSTEMS or system == "html5":
-        return layout("404", '<main class="page"><h1>Core not found</h1></main>', lang)
+        return status_page(404, lang)
     config = {"mode": "preload", "title": "Core preload", "slug": f"core-preload-{system}", "system": system, "channel": SYSTEMS[system][1], "lang": lang}
     body = f'<main class="player-shell" data-player=\'{esc(json.dumps(config,ensure_ascii=False))}\'><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="Virtual controller"></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">Preparing</strong><div class="progress" role="progressbar" aria-label="Core download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section></main><script src="/static/player.js?v={ASSET_VERSION}" defer></script>'
     return layout("Core preload", body, lang, None, "", player=True)
@@ -1205,17 +1216,17 @@ class Handler(BaseHTTPRequestHandler):
             game = self.find_game(path.split("/", 2)[2])
             if game:
                 self.track_visit("/game", user)
-            self.send_html(game_page(game, lang, user, csrf) if game else layout("404", '<main class="page"><h1>Game not found</h1></main>', lang, user, csrf), 200 if game else 404)
+            self.send_html(game_page(game, lang, user, csrf) if game else status_page(404, lang, user, csrf), 200 if game else 404)
         elif path.startswith("/play/"):
             game = self.find_game(path.split("/", 2)[2])
             if game:
                 self.track_visit("/play", user, game["id"])
-            self.send_html(player_page(game, lang, user, csrf) if game else layout("404", '<main class="page"><h1>Game not found</h1></main>', lang, user, csrf), 200 if game else 404, player=bool(game))
+            self.send_html(player_page(game, lang, user, csrf) if game else status_page(404, lang, user, csrf), 200 if game else 404, player=bool(game))
         elif path == "/admin" or path.startswith("/admin/game/"):
             if not user:
                 self.redirect("/login")
             elif user["role"] != "admin":
-                self.send_html(layout("403", '<main class="page"><h1>Forbidden</h1></main>', lang, user, csrf), 403)
+                self.send_html(status_page(403, lang, user, csrf), 403)
             else:
                 edit_id = int(path.rsplit("/", 1)[1]) if path.startswith("/admin/game/") and path.rsplit("/", 1)[1].isdigit() else None
                 self.send_html(admin_page(lang, user, csrf, edit_id))
@@ -1242,7 +1253,7 @@ class Handler(BaseHTTPRequestHandler):
             if game and game["cover_path"]:
                 self.serve_static(COVER_DIR, game["cover_path"], "public,max-age=3600")
             else:
-                self.serve_static(STATIC_DIR, "default-cover.png")
+                self.serve_static(STATIC_DIR, "default-cover.webp")
         elif path.startswith("/screenshot/"):
             screenshot_id = path.rsplit("/", 1)[1]
             with db() as conn:
@@ -1283,7 +1294,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/health":
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "time": int(time.time())})
         else:
-            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            if path.startswith("/api/") or path.startswith("/admin/api/"):
+                self.send_json({"error": "not found"}, 404)
+            else:
+                self.send_html(status_page(404, lang, user, csrf), 404)
 
     do_HEAD = do_GET
 

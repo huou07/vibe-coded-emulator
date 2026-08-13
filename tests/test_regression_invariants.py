@@ -65,7 +65,9 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v17', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v18', SERVICE_WORKER)
+        self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
+        self.assertIn('/static/default-cover.webp', APP)
 
     def test_nds_debug_is_bounded_exportable_and_fail_closed(self):
         self.assertIn('NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}', APP)

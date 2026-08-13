@@ -947,3 +947,35 @@ body:not(.player-page) .admin-report footer select{min-height:36px}
   body:not(.player-page) .stats-table th,
   body:not(.player-page) .stats-table td{padding-left:4px;padding-right:4px}
 }
+
+/* Shared recovery states. */
+body:not(.player-page) .status-page{
+  min-height:calc(100vh - 180px);
+  display:grid;
+  place-items:center;
+}
+body:not(.player-page) .status-card{
+  width:min(640px,100%);
+  padding:clamp(24px,6vw,44px);
+  border:1px solid #465249;
+  border-radius:var(--ui-radius-lg);
+  background:var(--ui-surface);
+}
+body:not(.player-page) .status-card h1{
+  max-width:560px;
+  margin:6px 0 16px;
+  font-size:clamp(34px,7vw,54px);
+  line-height:1.05;
+}
+body:not(.player-page) .status-card>p:not(.eyebrow){
+  max-width:560px;
+  margin:0;
+  color:var(--ui-muted);
+  font-size:17px;
+}
+body:not(.player-page) .status-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+@media(max-width:480px){
+  body:not(.player-page) .status-card{padding:23px 19px}
+  body:not(.player-page) .status-actions{display:grid}
+  body:not(.player-page) .status-actions .button{width:100%}
+}
