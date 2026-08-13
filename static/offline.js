@@ -201,6 +201,20 @@
       navigator.serviceWorker.addEventListener("controllerchange",changed,{once:true});
     });
   };
+  let localGameCount = 0;
+  const updateReadiness = async (count=localGameCount) => {
+    localGameCount=count;
+    const network=document.getElementById("offlineNetworkState"),secure=document.getElementById("offlineSecureState"),shell=document.getElementById("offlineShellState"),gameCount=document.getElementById("offlineGameCount");
+    if(network)network.textContent=navigator.onLine?text("Trình duyệt báo đang kết nối","Browser reports online"):text("Trình duyệt báo mất kết nối","Browser reports offline");
+    if(secure)secure.textContent=isSecureContext?text("Có","Yes"):text("Không","No");
+    if(gameCount)gameCount.textContent=String(count);
+    if(!shell)return;
+    if(!("caches" in globalThis)){shell.textContent=text("Không được hỗ trợ","Not supported");return;}
+    try {
+      const required=["/offline","/static/site.css","/static/offline.js"],matches=await Promise.all(required.map(path=>caches.match(path)));
+      shell.textContent=matches.every(Boolean)?text("Đã lưu cho origin này","Cached for this origin"):text("Chưa xác minh đủ","Not fully confirmed");
+    } catch (_) { shell.textContent=text("Không kiểm tra được","Could not check"); }
+  };
   const preloadCore = async system => {
     if (navigator.onLine === false) {
       const state=await inspectCore(system);
@@ -234,17 +248,30 @@
     }));
   };
 
+  const setupCoreManager = () => {
+    const manager=document.getElementById("coreManager"),state=document.getElementById("offlineCoreState"),toggle=manager?.querySelector("summary>span:last-child");
+    if(!manager)return;
+    let rendered=false;
+    manager.addEventListener("toggle",async()=>{
+      if(toggle)toggle.textContent=manager.open?text("Đóng","Close"):text("Mở","Open");
+      if(!manager.open||rendered)return;
+      rendered=true;if(state)state.textContent=text("Đang kiểm tra từng hệ máy","Checking individual systems");
+      try{await renderCoreButtons();if(state)state.textContent=text("Xem trạng thái theo từng hệ máy","See per-system status below");}
+      catch(error){rendered=false;if(state)state.textContent=text("Không kiểm tra được","Could not check");showToast(error.message||String(error),true);}
+    });
+  };
+
   const renderLibrary = async () => {
     const grid=document.getElementById("offlineGameGrid");if(!grid)return;
     try {
-      const games=await all();grid.replaceChildren();
-      if(!games.length){const empty=document.createElement("div");empty.className="empty-state";empty.innerHTML=`<strong>${text("Chưa có game trên máy này.","No games on this device.")}</strong>`;grid.appendChild(empty);return;}
+      const games=await all();grid.replaceChildren();updateReadiness(games.length);
+      if(!games.length){const empty=document.createElement("div");empty.className="empty-state";empty.innerHTML=`<strong>${text("Chưa có game trên máy này.","No games on this device.")}</strong><span>${text("Dùng biểu mẫu bên dưới để lưu ROM riêng trong trình duyệt này.","Use the form below to store a private ROM in this browser.")}</span>`;grid.appendChild(empty);return;}
       const groups=new Map();
       games.forEach(game=>{if(!groups.has(game.system))groups.set(game.system,[]);groups.get(game.system).push(game);});
       [...groups.entries()].sort(([left],[right])=>(systems[left]?.label||left).localeCompare(systems[right]?.label||right)).forEach(([system,items])=>{
         const section=document.createElement("section"),header=document.createElement("div"),heading=document.createElement("h3"),count=document.createElement("span"),cards=document.createElement("div");
         section.className="offline-system-section";section.dataset.system=system;header.className="section-title";heading.textContent=systems[system]?.label||system;count.textContent=String(items.length);cards.className="game-grid";header.append(heading,count);section.append(header,cards);
-        items.forEach(game=>{const card=document.createElement("article"),body=document.createElement("div"),meta=document.createElement("div"),badge=document.createElement("span"),title=document.createElement("h2"),size=document.createElement("div"),actions=document.createElement("div"),play=document.createElement("button"),download=document.createElement("button"),drop=document.createElement("button");card.className="game-card";card.dataset.system=game.system;body.className="game-card-body";meta.className="game-meta";badge.className="badge";badge.textContent=systems[game.system]?.label||game.system;meta.appendChild(badge);title.textContent=game.title;size.className="muted";size.textContent=formatSize(game.file.size);actions.className="card-actions";play.className="button primary";play.textContent=text("Chơi ngay","Play now");play.disabled=game.system==="html5";play.addEventListener("click",()=>{location.href=`/offline?play=${encodeURIComponent(game.id)}&system=${encodeURIComponent(game.system)}&title=${encodeURIComponent(game.title)}`;});download.className="icon-button";download.title=text("Tải game","Download game");download.textContent="↓";download.addEventListener("click",()=>{const url=URL.createObjectURL(game.file),anchor=document.createElement("a");anchor.href=url;anchor.download=game.name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});drop.className="icon-button danger";drop.title=text("Xóa game","Remove game");drop.textContent="×";drop.addEventListener("click",async()=>{if(!confirm(text("Xóa game khỏi thiết bị này?","Remove this game from this device?")))return;await remove(game.id);renderLibrary();});actions.append(play,download,drop);body.append(meta,title,size,actions);card.appendChild(body);cards.appendChild(card);});
+        items.forEach(game=>{const card=document.createElement("article"),body=document.createElement("div"),meta=document.createElement("div"),badge=document.createElement("span"),title=document.createElement("h4"),size=document.createElement("div"),actions=document.createElement("div"),play=document.createElement("button"),download=document.createElement("button"),drop=document.createElement("button");card.className="game-card offline-game-card";card.dataset.system=game.system;body.className="game-card-body";meta.className="game-meta";badge.className="badge";badge.textContent=systems[game.system]?.label||game.system;meta.appendChild(badge);title.textContent=game.title;size.className="muted";size.textContent=formatSize(game.file.size);actions.className="card-actions";play.type="button";play.className="button primary";play.textContent=text("Chơi ngay","Play now");play.disabled=game.system==="html5";play.addEventListener("click",()=>{location.href=`/offline?play=${encodeURIComponent(game.id)}&system=${encodeURIComponent(game.system)}&title=${encodeURIComponent(game.title)}`;});download.type="button";download.className="button";download.textContent=text("Tải tệp","Download file");download.addEventListener("click",()=>{const url=URL.createObjectURL(game.file),anchor=document.createElement("a");anchor.href=url;anchor.download=game.name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});drop.type="button";drop.className="button danger";drop.textContent=text("Xóa","Remove");drop.addEventListener("click",async()=>{if(!confirm(text("Xóa game khỏi thiết bị này?","Remove this game from this device?")))return;await remove(game.id);renderLibrary();});actions.append(play,download,drop);body.append(meta,title,size,actions);card.appendChild(body);cards.appendChild(card);});
         grid.appendChild(section);
       });
     } catch(error){showToast(error.message || String(error),true);}
@@ -255,7 +282,9 @@
     Object.entries(systems).forEach(([key,system])=>{const option=document.createElement("option");option.value=key;option.textContent=system.label;systemInput.appendChild(option);});
     fileInput.addEventListener("change",async()=>{const file=fileInput.files?.[0];if(!file)return;titleInput.value=cleanTitle(file.name);status.textContent=text("Đang nhận diện hệ máy…","Detecting system…");const detected=await inferFile(file);if(detected){systemInput.value=detected;status.textContent=`${text("Đã nhận diện","Detected")}: ${systems[detected].label}`;}else{status.textContent=text("Không chắc chắn, hãy kiểm tra lựa chọn hệ máy.","Could not determine the system; please review the selection.");}});
     form.addEventListener("submit",async event=>{event.preventDefault();const file=fileInput.files?.[0];if(!file)return;const title=titleInput.value.trim();if(!title)return showToast(text("Nhập tên game.","Enter a game title."),true);if(systemInput.value==="html5")return showToast(text("Game HTML5 ngoại tuyến chưa được hỗ trợ.","Offline HTML5 games are not supported yet."),true);try{await put({id:createOfflineId(),title,name:file.name,system:systemInput.value,file,addedAt:Date.now()});form.reset();status.textContent="";renderLibrary();navigator.storage?.persist?.().catch(()=>{});showToast(text("Đã lưu trên máy này.","Saved on this device."));}catch(error){showToast(error.message || String(error),true);}});
-    renderCoreButtons();renderLibrary();
+    setupCoreManager();renderLibrary();updateReadiness();
+    addEventListener("online",()=>updateReadiness());addEventListener("offline",()=>updateReadiness());
+    addEventListener("load",()=>setTimeout(()=>updateReadiness(),600),{once:true});
   };
   if(!playOffline())setupLibrary();
 })();
