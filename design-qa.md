@@ -8,6 +8,8 @@ The selected Option 1 player shell and the user's explicit Touch-overlay follow-
 
 The later approved default-layout batch also passed local visual QA. Its exact 807 × 985 reference comparison, responsive captures, measurements, and manifest are recorded in `reports/ui-ux/candidates/batch-10-default-nds-layout/README.md`.
 
+The fullscreen-toolbar follow-up passed staging visual and functional QA. Its supplied Android references, normalized comparison, actual-fullscreen captures, and manifest are recorded in `reports/ui-ux/candidates/batch-11-fullscreen-toolbar/README.md`.
+
 ## Source visual truth
 
 The final target combines two supplied visual sources plus the user's explicit interaction delta:
@@ -16,6 +18,7 @@ The final target combines two supplied visual sources plus the user's explicit i
 - Original overlay behavior: `reports/ui-ux/candidates/batch-09-player-option1/reference-original-overlay-700x1010.png`.
 - Normalized overlay content reference: `reports/ui-ux/candidates/batch-09-player-option1/reference-original-overlay-content-700x971.png`.
 - Explicit delta: add a persistent `Touch` toolbar button; virtual controls overlay the game; each control can be resized independently.
+- Fullscreen delta: browser chrome may disappear, but the AN3 gameplay toolbar and status rail must stay visible; More must remain usable.
 
 The original screenshot's 39 px browser chrome was removed before comparison. The normalized source is 700 × 971 px. The implementation was rendered at a 700 × 971 CSS viewport, captured at 700 × 971 px with density 1, Vietnamese locale, dark theme, and the same 92% network-error state.
 
@@ -48,6 +51,7 @@ The key controls are readable at the full 700 px capture, so separate crops were
 | 2 | The user changed the target from docked controls to overlay controls and requested Touch plus per-control sizing. This superseded the docked composition. | Restored overlay geometry, added Touch, retained pointer-transparent controller root, and added independent scale persistence. | `candidate-touch-overlay-715x1042.png` and `candidate-touch-settings-715x1042.png`. |
 | 3 | Browser measurements found P1 horizontal overflow at 390/360 px, P1 A/X and X/R intersections in short landscape, and P2 loading progress obscured by L/R on mobile. | Forced the player grid to shrink, made the title flex track zero-based, revised portrait/landscape defaults, bounded per-control scale to 70–140%, and narrowed the mobile loading content track. | `candidate-touch-final-390x844.png`, `candidate-touch-final-360x800.png`, and `candidate-touch-final-landscape-844x390.png`. |
 | 4 | Final normalized comparison found no remaining P0/P1/P2 issue. | Accepted. | `reference-overlay-content-vs-candidate-touch-final.png`. |
+| 5 | The supplied physical Android fullscreen reference showed a P1 access regression: the AN3 toolbar was outside the fullscreen root and disappeared. | Changed the fullscreen target from the emulator stage to the complete player shell and added an explicit fullscreen shell size rule. | `batch-11-fullscreen-toolbar/reference-vs-candidate-1738x1884.png`, `candidate-staging-fullscreen-toolbar-2560x1440.png`, and `candidate-staging-fullscreen-menu-open-2560x1440.png`. |
 
 ## Required fidelity surfaces
 
@@ -67,6 +71,7 @@ The key controls are readable at the full 700 px capture, so separate crops were
 - Touch off sets `aria-pressed=false` and hides only the controller; the Touch button remains visible. Touch on restores the overlay. The state persists after reload.
 - Selecting A at 130% updates only A (`--control-scale:1.3`); B remains `1`. The value persists after reload and Reset restores all control sizes.
 - More and Save-slot panels move focus to their Close button. Escape closes each panel, synchronizes `aria-expanded`, and restores focus to its trigger.
+- In actual staging fullscreen, the toolbar, Touch, Save, More, status rail, and opened More panel remain visible; the canvas retains `pointer-events:auto` and `touch-action:none`.
 - Toolbar actions are 42–46 px high across tested orientations; mobile actions are 44 px.
 - Static input indices and the NDS touchscreen bridge remain unchanged and are protected by regression tests.
 
@@ -79,7 +84,7 @@ The key controls are readable at the full 700 px capture, so separate crops were
 
 ## Test and evidence gates
 
-- 11/11 Python tests passed, including the exact NDS default-layout, Touch, per-control-size, narrow-edge, and opacity-step source invariants.
+- 12/12 Python tests passed, including the exact NDS default-layout, Touch, per-control-size, narrow-edge, opacity-step, and fullscreen-shell source invariants.
 - Python, all four JavaScript files, and deployment/backup shell scripts pass syntax checks.
 - `git diff --check` passed.
 - Browser interaction and responsive evidence are recorded in `reports/ui-ux/candidates/batch-09-player-option1/README.md`.
@@ -87,7 +92,7 @@ The key controls are readable at the full 700 px capture, so separate crops were
 
 ## Remaining non-design gates
 
-- Verify ready NDS/GBA gameplay, fullscreen, rotation, controller presses, and physical multi-touch on staging with representative ROM/core data.
+- Recapture the fixed staging build in physical Android fullscreen and verify rotation, controller presses, and multi-touch. Representative PMD EoS reached `Đang chơi` during desktop staging QA, but a desktop fullscreen capture does not replace the phone gate.
 - Verify installed-PWA restart offline on a secure staging origin.
 - No production deployment or production approval is implied by this local design-QA pass.
 
