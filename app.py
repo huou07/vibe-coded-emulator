@@ -697,7 +697,7 @@ def home_page(lang, user, csrf):
         return f"""<article class="game-card" data-system="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" {image_loading}></a>
 <div class="game-card-body"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div>
 <h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2>
-<div class="rating" aria-label="{tr(lang,'Đánh giá','Rating')}: {float(game['rating']):.1f} {tr(lang,'trên 5','out of 5')}"><span aria-hidden="true">★</span> {float(game['rating']):.1f} <span>({game['rating_count']})</span>{recommended_badge}</div>
+<div class="rating" aria-label="{tr(lang,'Đánh giá','Rating')}: {float(game['rating']):.1f} {tr(lang,'trên 5','out of 5')}"><span class="rating-label">{tr(lang,'Điểm','Score')}</span> {float(game['rating']):.1f}<span>/5 · {game['rating_count']}</span>{recommended_badge}</div>
 <div class="card-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a></div></div></article>"""
 
     grouped = {system: [] for system in SYSTEMS}
@@ -753,31 +753,32 @@ def game_page(game, lang, user, csrf):
         favorite = conn.execute("SELECT 1 FROM favorites WHERE game_id=? AND user_id=?", (game["id"], user["id"] if user else 0)).fetchone()
         screenshots = conn.execute("SELECT id FROM game_screenshots WHERE game_id=? ORDER BY created_at DESC", (game["id"],)).fetchall()
         updates = conn.execute("SELECT * FROM game_updates WHERE game_id=? ORDER BY created_at DESC LIMIT 60", (game["id"],)).fetchall()
-    stars = "".join(f'<button class="star{" active" if own and own["value"]>=value else ""}" data-rate="{value}" title="{value} sao">★</button>' for value in range(1, 6))
+    stars = "".join(f'<button type="button" class="star{" active" if own and own["value"]>=value else ""}" data-rate="{value}" aria-label="{tr(lang,"Chấm","Rate")} {value} {tr(lang,"trên 5","out of 5")}" aria-pressed="{str(bool(own and own["value"] >= value)).lower()}">{value}</button>' for value in range(1, 6))
     comment_rows = []
     for item in comments:
         remove = f'<button class="comment-delete" data-comment-delete="{item["id"]}">×</button>' if user and user["role"] == "admin" else ""
         stamp = datetime.fromtimestamp(item["created_at"]).strftime("%Y-%m-%d %H:%M")
         comment_rows.append(f'<article class="comment"><header><strong>{esc(item["display_name"])}</strong><time>{stamp}</time>{remove}</header><p>{esc(item["body"])}</p></article>')
-    comment_form = f'<form id="commentForm" data-game="{game["id"]}"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><textarea name="body" maxlength="1200" required placeholder="{tr(lang,"Viết bình luận…","Write a comment…")}"></textarea><button class="button" type="submit">{tr(lang,"Gửi bình luận","Post comment")}</button></form>' if user else f'<p class="login-note"><a href="/login">{tr(lang,"Đăng nhập","Log in")}</a> {tr(lang,"để đánh giá, bình luận hoặc báo lỗi.","to rate, comment, or report a problem.")}</p>'
-    favorite_button = f'<button id="favoriteButton" class="button" data-game="{game["id"]}" aria-pressed="{str(bool(favorite)).lower()}">{"♥" if favorite else "♡"} {tr(lang,"Yêu thích","Favorite")}</button>' if user else ""
-    report_form = f'''<form id="reportForm" data-game="{game["id"]}" class="report-form"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><select name="category" aria-label="{tr(lang,"Loại lỗi","Issue type")}"><option value="controls">{tr(lang,"Điều khiển","Controls")}</option><option value="playback">{tr(lang,"Chạy game","Game playback")}</option><option value="other">{tr(lang,"Khác","Other")}</option></select><textarea name="body" maxlength="1600" required placeholder="{tr(lang,"Mô tả lỗi…","Describe the issue…")}"></textarea><button class="button" type="submit">{tr(lang,"Báo lỗi","Report issue")}</button></form>''' if user else ""
+    comment_form = f'<form id="commentForm" data-game="{game["id"]}"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><label>{tr(lang,"Bình luận của bạn","Your comment")}<textarea name="body" maxlength="1200" required placeholder="{tr(lang,"Chia sẻ trải nghiệm của bạn","Share your experience")}"></textarea></label><button class="button" type="submit">{tr(lang,"Gửi bình luận","Post comment")}</button></form>' if user else ""
+    favorite_button = f'<button id="favoriteButton" class="button" data-game="{game["id"]}" aria-pressed="{str(bool(favorite)).lower()}">{tr(lang,"Bỏ yêu thích","Remove favorite") if favorite else tr(lang,"Thêm yêu thích","Add favorite")}</button>' if user else ""
+    report_form = f'''<form id="reportForm" data-game="{game["id"]}" class="report-form"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><label>{tr(lang,"Loại lỗi","Issue type")}<select name="category"><option value="controls">{tr(lang,"Điều khiển","Controls")}</option><option value="playback">{tr(lang,"Chạy game","Game playback")}</option><option value="other">{tr(lang,"Khác","Other")}</option></select></label><label>{tr(lang,"Mô tả lỗi","Issue details")}<textarea name="body" maxlength="1600" required placeholder="{tr(lang,"Điều gì đã xảy ra?","What happened?")}"></textarea></label><button class="button" type="submit">{tr(lang,"Báo lỗi","Report issue")}</button></form>''' if user else ""
     screenshot_rows = "".join(f'<a href="/screenshot/{item["id"]}" target="_blank" rel="noopener"><img src="/screenshot/{item["id"]}" alt="{tr(lang,"Ảnh màn hình game","Game screenshot")}" loading="lazy"></a>' for item in screenshots)
     update_rows = "".join(f'<article class="game-update"><time>{datetime.fromtimestamp(item["created_at"]).strftime("%Y-%m-%d %H:%M")}</time><h3>{esc(item["title_en"] if lang == "en" else item["title_vi"])} </h3><p>{esc(item["body_en"] if lang == "en" else item["body_vi"]).replace(chr(10),"<br>")}</p></article>' for item in updates)
     draft = f'<span class="badge draft">{tr(lang,"Draft công khai","Public draft")}</span>' if not game["published"] else ""
     testing = '<span class="badge testing">Testing</span>' if game["experimental"] else ""
     title = game_title(game, lang)
     media = f'<section class="description-media"><div class="section-title"><h2>{tr(lang,"Ảnh trong game","In-game images")}</h2><span>{len(screenshots)}</span></div><div class="screenshot-grid">{screenshot_rows}</div></section>' if screenshots else ''
+    contribution = f'<div class="rate-box" data-game="{game["id"]}"><span>{tr(lang,"Đánh giá của bạn","Your rating")}</span><div class="star-group" role="group" aria-label="{tr(lang,"Đánh giá trò chơi","Rate this game")}">{stars}</div></div>' if user else f'<div class="contribution-prompt"><strong>{tr(lang,"Muốn lưu hoặc chia sẻ ý kiến?","Want to save or share feedback?")}</strong><span>{tr(lang,"Đăng nhập để yêu thích, đánh giá, bình luận hoặc báo lỗi.","Log in to favorite, rate, comment, or report an issue.")}</span><a class="button" href="/login">{tr(lang,"Đăng nhập","Log in")}</a></div>'
+    reports = f'<section class="reports"><div class="section-title"><h2>{tr(lang,"Báo lỗi","Report an issue")}</h2></div>{report_form}</section>' if user else ""
     body = f"""<main class="page detail-page"><section class="game-detail"><div class="detail-cover"><img src="{game_cover(game)}" alt="{esc(title)}"></div>
 <div class="detail-copy"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div><h1>{esc(title)}</h1>
-<div class="rating-large"><span>★ {avg:.1f}</span><small>{count} {tr(lang,"lượt đánh giá","ratings")}</small></div>
+<div class="rating-large"><span>{avg:.1f}/5</span><small>{count} {tr(lang,"lượt đánh giá","ratings")}</small></div>
+<div class="detail-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a><a class="button" href="/download/{esc(game['slug'])}">{tr(lang,"Tải game","Download game")} · {format_size(game['file_size'])}</a>{favorite_button}</div>
 <p class="description">{esc(game_description(game,lang)).replace(chr(10),'<br>')}</p>
-{media}
-<div class="detail-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a><a class="button" href="/download/{esc(game['slug'])}">↓ {tr(lang,"Tải game","Download game")} · {format_size(game['file_size'])}</a>{favorite_button}</div>
-<div class="rate-box" data-game="{game['id']}"><span>{tr(lang,"Đánh giá của bạn","Your rating")}</span><div>{stars}</div></div></div></section>
+{media}{contribution}</div></section>
 <section class="game-updates"><div class="section-title"><h2>{tr(lang,"Lịch sử cập nhật","Update history")}</h2><span>{len(updates)}</span></div>{update_rows or f'<p class="muted">{tr(lang,"Chưa có cập nhật.","No updates yet.")}</p>'}</section>
 <section class="comments"><div class="section-title"><h2>{tr(lang,"Bình luận","Comments")}</h2><span>{len(comments)}</span></div>{comment_form}<div id="commentList">{''.join(comment_rows) if comment_rows else f'<p class="muted">{tr(lang,"Chưa có bình luận.","No comments yet.")}</p>'}</div></section>
-<section class="reports"><div class="section-title"><h2>{tr(lang,"Báo lỗi","Report an issue")}</h2></div>{report_form}</section></main>"""
+{reports}</main>"""
     return layout(title, body, lang, user, csrf)
 
 

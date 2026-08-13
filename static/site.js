@@ -226,7 +226,11 @@
     try {
       const value = Number(button.dataset.rate);
       await api(`/api/games/${box.dataset.game}/rating`, {method: "POST", body: JSON.stringify({value})});
-      box.querySelectorAll("[data-rate]").forEach(star => star.classList.toggle("active", Number(star.dataset.rate) <= value));
+      box.querySelectorAll("[data-rate]").forEach(star => {
+        const selected = Number(star.dataset.rate) <= value;
+        star.classList.toggle("active", selected);
+        star.setAttribute("aria-pressed", String(selected));
+      });
       notify("Đã lưu đánh giá");
     } catch (error) { notify(error.message, true); }
   }));
@@ -236,7 +240,9 @@
     try {
       const data = await api(`/api/games/${button.dataset.game}/favorite`, {method: "POST", body: "{}"});
       button.setAttribute("aria-pressed", String(data.favorited));
-      button.textContent = `${data.favorited ? "♥" : "♡"} ${document.documentElement.lang === "en" ? "Favorite" : "Yêu thích"}`;
+      button.textContent = data.favorited
+        ? (document.documentElement.lang === "en" ? "Remove favorite" : "Bỏ yêu thích")
+        : (document.documentElement.lang === "en" ? "Add favorite" : "Thêm yêu thích");
       notify(data.favorited ? (document.documentElement.lang === "en" ? "Added to favorites" : "Đã thêm yêu thích") : (document.documentElement.lang === "en" ? "Removed from favorites" : "Đã bỏ yêu thích"));
     } catch (error) { notify(error.message, true); }
   });
