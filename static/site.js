@@ -182,8 +182,7 @@
       if (!card.hidden) visibleGames.add(card.dataset.gameSlug || card.textContent);
     });
     document.querySelectorAll("#gameGrid .game-system-section").forEach(section => {
-      const recommended = section.dataset.sectionKind === "recommended";
-      section.hidden = (recommended && activeSystem !== "all") || !section.querySelector(".game-card:not([hidden])");
+      section.hidden = !section.querySelector(".game-card:not([hidden])");
     });
     if (clearSearch) clearSearch.hidden = !query;
     if (libraryNoResults) libraryNoResults.hidden = visibleGames.size > 0;
@@ -209,7 +208,7 @@
     filterLibrary();
     search.focus();
   });
-  resetLibrary?.addEventListener("click", () => {
+  const resetLibraryState = () => {
     activeSystem = "all";
     if (search) search.value = "";
     document.querySelectorAll("[data-system-filter]").forEach(item => {
@@ -219,7 +218,9 @@
     });
     filterLibrary();
     search?.focus();
-  });
+  };
+  resetLibrary?.addEventListener("click", resetLibraryState);
+  document.querySelectorAll("[data-library-reset]").forEach(button => button.addEventListener("click", resetLibraryState));
   if (search) filterLibrary();
 
   const gameGrid = document.getElementById("gameGrid");
