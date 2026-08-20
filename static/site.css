@@ -1579,7 +1579,6 @@ body.library-shell .collection-card .badge{font-size:10px}
   pointer-events:none;
 }
 .player-page .player-stage-ui.emulator-menu-open #tvPad.show .tvCtrl{pointer-events:none}
-.player-page .player-stage-ui #tvPad.show.safety-blocked{visibility:hidden;pointer-events:none}
 .player-page .tvCtrl{transform:translate(-50%,-50%) scale(var(--control-scale,var(--pad-scale)))}
 .player-page .tvBtn{
   border-color:#3f9464;

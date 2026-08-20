@@ -538,10 +538,16 @@
       setProgress(86, config.lang === "en" ? "Loading emulator" : "Đang tải giả lập");
       window.EJS_player = "#game";
       window.EJS_core = emulatorSystem;
-      window.EJS_defaultOptions = ndsPad ? {
-        retroarch_core:"melonds",
-        ...(touchVariant === "core-touch" ? {melonds_touch_mode:"Touch"} : {})
-      } : undefined;
+      // EmulatorJS exposes the FPS HUD as the native `fps` setting.  This is
+      // deliberately a default: an existing non-NDS player preference still
+      // wins, while NDS remains isolated from EmulatorJS local storage.
+      window.EJS_defaultOptions = {
+        fps:"show",
+        ...(ndsPad ? {
+          retroarch_core:"melonds",
+          ...(touchVariant === "core-touch" ? {melonds_touch_mode:"Touch"} : {})
+        } : {})
+      };
       window.EJS_disableLocalStorage = ndsPad;
       window.EJS_gameName = config.slug;
       window.EJS_gameUrl = file;
@@ -998,9 +1004,13 @@
     padRoot.classList.toggle("show",visible);
     applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);
     const safety=checkCurrentPadSafety();
-    padRoot.classList.toggle("safety-blocked",visible && !safety.safe);
-    stage?.classList.toggle("pad-overlay",visible && safety.safe);
-    document.body.classList.toggle("pad-overlay",visible && safety.safe);
+    // Geometry checks remain the guard for enlarging or moving controls, but
+    // must never remove the existing playable pad on a short mobile stage.
+    // Fullscreen changes its measured bounds, so hiding it here made the pad
+    // appear only after entering fullscreen on both GBA and NDS.
+    padRoot.classList.remove("safety-blocked");
+    stage?.classList.toggle("pad-overlay",visible);
+    document.body.classList.toggle("pad-overlay",visible);
     syncGlobalScale();syncPadSize();
     const opacity=document.getElementById("padOpacity");if(opacity)opacity.value=Math.round(settings.opacity*100);
     if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
