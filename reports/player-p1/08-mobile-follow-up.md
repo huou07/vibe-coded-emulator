@@ -54,6 +54,14 @@ Use Chrome, keep speed at 1×, and select **Low-end / Battery** in the player Pe
 
 Leave shaders disabled, audio bitrate on Automatic, and interpolation on None. Record the FPS range and sound through one normal scene transition. If Chrome remains below a stable game rate or still crackles, the next work is a separately scoped core/runtime upgrade or alternative-core feasibility assessment—not an unverified global audio tweak.
 
+## Accepted known defect
+
+`P1-KD-001 — NDS mobile audio crackle on Redmi 15 5G`
+
+Reproduction is reported with Firefox, Chrome, and Mi Browser; Firefox is frequent, while Chrome/Mi Browser are most apparent during scene changes. The built-in speaker and Bluetooth headphones both reproduce it. The owner then tested Chrome at 1× with the Low-end/Battery compatibility renderer and native EmulatorJS VSync disabled; audio still crackled.
+
+Disposition: the owner explicitly instructed that this defect be recorded but not fixed, approved production deployment, and accepted it for P1 closure on 2026-08-20. No speculative bitrate, interpolation, buffer, core, or global configuration change was shipped.
+
 ## Remaining physical gates
 
 1. On the same phone/browser, start GBA and NDS in portrait before fullscreen: pad must be visible and usable.
