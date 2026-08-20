@@ -65,7 +65,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v20', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v21', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', APP)
 
@@ -80,6 +80,29 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('stage?.classList.toggle("pad-overlay",visible)', PLAYER)
         self.assertNotIn('stage?.classList.toggle("pad-docked",visible)', PLAYER)
         self.assertIn('window.EJS_emulator?.gameManager?.simulateInput(0,index,value)', PLAYER)
+
+    def test_performance_profiles_are_conservative_and_persisted(self):
+        self.assertIn('const performanceStorageKey = "an3-player-performance-v1"', PLAYER)
+        self.assertIn('version:1,', PLAYER)
+        self.assertIn('selectedProfile:normalizeProfileId(storedPerformance.selectedProfile)', PLAYER)
+        self.assertIn('customOverrides:{', PLAYER)
+        self.assertIn('const recommendedProfile = recommendPerformanceProfile(capabilityProbe);', PLAYER)
+        self.assertIn('return "balanced";', PLAYER)
+        self.assertIn('probe.deviceMemory && probe.deviceMemory<=2 && probe.hardwareConcurrency && probe.hardwareConcurrency<=4', PLAYER)
+        self.assertIn('(ndsPad && !probe.webgl2)', PLAYER)
+        self.assertIn('window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;', PLAYER)
+        self.assertIn('const coreUsesWebgl2=!performancePlan.forceLegacyNds', PLAYER)
+        self.assertIn('window.EJS_disableLocalStorage = ndsPad;', PLAYER)
+        self.assertNotIn('frameskip', PLAYER.lower())
+        self.assertNotIn('render_scale', PLAYER.lower())
+        for source in (APP, OFFLINE):
+            self.assertIn('name="performanceProfile" value="auto"', source)
+            self.assertIn('name="performanceProfile" value="low"', source)
+            self.assertIn('name="performanceProfile" value="balanced"', source)
+            self.assertIn('name="performanceProfile" value="quality"', source)
+            self.assertIn('name="performanceProfile" value="custom"', source)
+            self.assertIn('id="useRecommended"', source)
+            self.assertIn('id="applyPerformanceProfile"', source)
 
     def test_fullscreen_keeps_the_app_toolbar_and_status_in_scope(self):
         self.assertIn('else shell.requestFullscreen?.();', PLAYER)

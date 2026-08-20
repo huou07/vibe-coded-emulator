@@ -9,6 +9,43 @@
     arcade:"fbneo","3do":"opera",atari2600:"stella2014",atari7800:"prosystem",jaguar:"virtualjaguar",lynx:"handy",pce:"mednafen_pce",
     amiga:"puae",c64:"vice_x64sc",doom:"prboom"
   };
+  const ndsPad = config.system === "nds";
+  const performanceStorageKey = "an3-player-performance-v1";
+  const profileIds = ["auto","low","balanced","quality","custom"];
+  const readPlayerStorage = (name, fallback={}) => {
+    try { return JSON.parse(localStorage.getItem(name)) || fallback; } catch (_) { return fallback; }
+  };
+  const numericCapability = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+  const capabilityProbe = Object.freeze({
+    hardwareConcurrency:numericCapability(navigator.hardwareConcurrency),
+    deviceMemory:numericCapability(navigator.deviceMemory),
+    devicePixelRatio:numericCapability(window.devicePixelRatio),
+    viewport:{width:window.innerWidth||0,height:window.innerHeight||0},
+    screen:{width:window.screen?.width||0,height:window.screen?.height||0},
+    webgl:Boolean(document.createElement("canvas").getContext("webgl")),
+    webgl2:Boolean(document.createElement("canvas").getContext("webgl2")),
+    wasm:typeof WebAssembly === "object",
+    threads:Boolean(window.crossOriginIsolated && typeof SharedArrayBuffer === "function")
+  });
+  const recommendPerformanceProfile = probe => {
+    const clearlyLowEnd=Boolean(probe.deviceMemory && probe.deviceMemory<=2 && probe.hardwareConcurrency && probe.hardwareConcurrency<=4);
+    if (clearlyLowEnd || (ndsPad && !probe.webgl2)) return "low";
+    return "balanced";
+  };
+  const normalizeProfileId = value => profileIds.includes(value) ? value : "auto";
+  const storedPerformance = readPlayerStorage(performanceStorageKey);
+  const performanceSettings = {
+    version:1,
+    selectedProfile:normalizeProfileId(storedPerformance.selectedProfile),
+    customOverrides:{
+      ndsRenderer:storedPerformance.customOverrides?.ndsRenderer === "legacy" ? "legacy" : "native"
+    }
+  };
+  const recommendedProfile = recommendPerformanceProfile(capabilityProbe);
+  const activeProfile = performanceSettings.selectedProfile === "auto" ? recommendedProfile : performanceSettings.selectedProfile;
+  const forceLegacyNds = ndsPad && (activeProfile === "low" || (activeProfile === "custom" && performanceSettings.customOverrides.ndsRenderer === "legacy"));
+  const performancePlan = Object.freeze({recommendedProfile,activeProfile,forceLegacyNds});
+  const savePerformanceSettings = () => { try { localStorage.setItem(performanceStorageKey,JSON.stringify(performanceSettings)); } catch (_) {} };
   const threadedCore = ["psp","3ds"].includes(config.system);
   const webgl2Required = ["psp","3ds"].includes(config.system);
   const stage = document.querySelector(".player-stage");
@@ -91,7 +128,7 @@
       if (!reportResponse.ok) throw new Error(`cores/reports/${core}.json (${reportResponse.status})`);
       if (runtimeCache) await runtimeCache.put(reportUrl,reportResponse.clone());
       const report=await reportResponse.json();
-      const coreUsesWebgl2=webgl2 && Boolean(report?.options?.defaultWebGL2 || webgl2Required);
+      const coreUsesWebgl2=!performancePlan.forceLegacyNds && webgl2 && Boolean(report?.options?.defaultWebGL2 || webgl2Required);
       const coreFile = `${core}${threadedCore?"-thread":""}${coreUsesWebgl2?"":"-legacy"}-wasm.data`;
       const assets = [
         "loader.js","emulator.min.js","emulator.min.css","localization/en-US.json","compression/extract7z.js","compression/extractzip.js",
@@ -135,7 +172,7 @@
   }
 
   const customPad = ["gba", "gb", "nds"].includes(config.system);
-  const ndsPad = config.system === "nds";
+  const touchFirst = Boolean(window.matchMedia?.("(pointer:coarse)")?.matches || (navigator.maxTouchPoints > 0 && !window.matchMedia?.("(hover:hover)")?.matches));
   const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "geometry-mapped" : "baseline";
   const isolatedNdsMovement = ["geometry-only","geometry-mapped"].includes(touchVariant);
   const ndsDebugEnabled = ndsPad && config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1";
@@ -488,6 +525,7 @@
       window.EJS_noAutoFocus = ndsPad;
       window.EJS_mouseLock = false;
       window.EJS_threads = threadedCore;
+      window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;
       window.EJS_onGameStart = () => { gameStarted=true;protectNdsCanvas();finishLoading(); };
       const script = document.createElement("script");
       script.src = `${window.EJS_pathtodata}loader.js`;
@@ -598,6 +636,61 @@
   slotPanel?.querySelectorAll("[data-save-slot]").forEach(button => button.addEventListener("click", () => saveSlot(Number(button.dataset.saveSlot)).catch(error => showNotice(error.message || String(error), true))));
   slotPanel?.querySelectorAll("[data-load-slot]").forEach(button => button.addEventListener("click", () => loadSlot(Number(button.dataset.loadSlot)).catch(error => showNotice(error.message || String(error), true))));
   refreshSlots();
+
+  const profileLabel = profile => {
+    const labels=config.lang === "en" ? {auto:"Use recommended settings",low:"Low-end / Battery",balanced:"Balanced",quality:"Quality",custom:"Custom"} : {auto:"Dùng cài đặt khuyến nghị",low:"Máy yếu / Tiết kiệm pin",balanced:"Cân bằng",quality:"Chất lượng",custom:"Tùy chỉnh"};
+    return labels[profile] || labels.balanced;
+  };
+  const profileHint = profile => {
+    const isLow=profile === "low";
+    const isCustom=profile === "custom";
+    if (config.lang === "en") {
+      if (isLow && ndsPad) return "Uses melonDS compatibility rendering on the next launch. No image scaling or frame skipping is applied.";
+      if (isCustom && ndsPad) return "Choose the NDS renderer override below. It applies on the next launch.";
+      if (profile === "quality") return "No unverified shader is enabled. This profile keeps the core’s native renderer default.";
+      return "The selected renderer applies when the player restarts. Your choice is stored only on this device.";
+    }
+    if (isLow && ndsPad) return "Dùng trình dựng tương thích của melonDS ở lần mở tiếp theo. Không giảm độ phân giải hoặc bỏ khung hình.";
+    if (isCustom && ndsPad) return "Chọn trình dựng NDS bên dưới. Thay đổi có hiệu lực khi mở lại.";
+    if (profile === "quality") return "Không bật shader chưa được xác minh. Hồ sơ này giữ trình dựng mặc định của core.";
+    return "Trình dựng được chọn có hiệu lực khi mở lại player. Lựa chọn chỉ lưu trên thiết bị này.";
+  };
+  const syncPerformanceControls = () => {
+    const selected=performanceSettings.selectedProfile;
+    const effective=selected === "auto" ? recommendedProfile : selected;
+    document.querySelectorAll('input[name="performanceProfile"]').forEach(input=>{input.checked=input.value===selected;});
+    const recommendation=document.getElementById("recommendedPerformanceProfile");
+    if (recommendation) recommendation.textContent=profileLabel(recommendedProfile);
+    const current=document.getElementById("performanceRecommendation");
+    if (current) current.textContent=config.lang === "en" ? `Current: ${profileLabel(performancePlan.activeProfile)}` : `Đang dùng: ${profileLabel(performancePlan.activeProfile)}`;
+    const custom=document.getElementById("performanceCustomOptions");
+    const renderer=document.getElementById("performanceRenderer");
+    if (renderer) renderer.value=performanceSettings.customOverrides.ndsRenderer;
+    if (custom) custom.hidden=selected !== "custom" || !renderer;
+    const hint=document.getElementById("performanceProfileHint");
+    if (hint) hint.textContent=profileHint(effective);
+  };
+  document.querySelectorAll('input[name="performanceProfile"]').forEach(input=>input.addEventListener("change",event=>{
+    performanceSettings.selectedProfile=normalizeProfileId(event.currentTarget.value);
+    savePerformanceSettings();
+    syncPerformanceControls();
+  }));
+  document.getElementById("performanceRenderer")?.addEventListener("change",event=>{
+    performanceSettings.customOverrides.ndsRenderer=event.currentTarget.value === "legacy" ? "legacy" : "native";
+    savePerformanceSettings();
+    syncPerformanceControls();
+  });
+  document.getElementById("useRecommended")?.addEventListener("click",()=>{
+    performanceSettings.selectedProfile="auto";
+    performanceSettings.customOverrides.ndsRenderer="native";
+    savePerformanceSettings();
+    syncPerformanceControls();
+  });
+  document.getElementById("applyPerformanceProfile")?.addEventListener("click",()=>{
+    savePerformanceSettings();
+    location.reload();
+  });
+  syncPerformanceControls();
 
   const padRoot = document.getElementById("tvPad");
   const panel = document.getElementById("padPanel");
