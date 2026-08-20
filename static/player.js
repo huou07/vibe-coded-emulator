@@ -813,17 +813,20 @@
   const hasCurrentSettings = Number(storedSettings.version) === settingsVersion;
   const settings = hasCurrentSettings ? normalizeSettings(storedSettings) : migrateSettings(legacySettings);
   const globalScale = () => clamp(Number(settings.globalScale) || 1,.7,1);
-  const controlScale = id => globalScale()*baseControlScale(id)*normalizeButtonScale(settings.buttonScales[id]);
+  const buttonScale = id => normalizeButtonScale(settings.buttonScales[id]);
+  const controlScale = id => globalScale()*baseControlScale(id)*buttonScale(id);
   const saveLayout = () => { try { localStorage.setItem(key(),JSON.stringify(positions)); } catch (_) {} };
   const saveSettings = () => { try { localStorage.setItem(settingsKey,JSON.stringify(settings)); } catch (_) {} };
   if (!hasCurrentSettings && hasLegacySettings) saveSettings();
   const input = (index,value) => {
     try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {}
   };
+  const PAD_EDGE_GAP=4;
+  const PAD_CONTROL_GAP=4;
   const controlBounds = element => {
-    const root=padRoot?.getBoundingClientRect(),control=element.firstElementChild?.getBoundingClientRect();
+    const root=padRoot?.getBoundingClientRect(),control=element.getBoundingClientRect();
     if (!root?.width || !root?.height || !control?.width || !control?.height) return null;
-    const halfWidth=Math.min(root.width/2,(control.width/2)+4),halfHeight=Math.min(root.height/2,(control.height/2)+4);
+    const halfWidth=Math.min(root.width/2,(control.width/2)+PAD_EDGE_GAP),halfHeight=Math.min(root.height/2,(control.height/2)+PAD_EDGE_GAP);
     return {minX:halfWidth/root.width*100,maxX:100-halfWidth/root.width*100,minY:halfHeight/root.height*100,maxY:100-halfHeight/root.height*100};
   };
   const constrainedPosition = (element,point) => {
@@ -834,6 +837,38 @@
     const point=constrainedPosition(element,positions[element.dataset.id]);
     element.style.left=`${point.x}%`;element.style.top=`${point.y}%`;
   };
+  const predictedControlRect = (element, multiplier=buttonScale(element.dataset.id)) => {
+    const root=padRoot?.getBoundingClientRect(),current=controlScale(element.dataset.id),measured=element.getBoundingClientRect();
+    if (!root?.width || !root?.height || !current || !measured.width || !measured.height) return null;
+    const effective=globalScale()*baseControlScale(element.dataset.id)*normalizeButtonScale(multiplier);
+    const width=measured.width/current*effective,height=measured.height/current*effective;
+    const halfWidth=width/2+PAD_EDGE_GAP,halfHeight=height/2+PAD_EDGE_GAP;
+    if (root.width<halfWidth*2 || root.height<halfHeight*2) return null;
+    const point=positions[element.dataset.id];
+    if (!point) return null;
+    const x=clamp(point.x,halfWidth/root.width*100,100-halfWidth/root.width*100);
+    const y=clamp(point.y,halfHeight/root.height*100,100-halfHeight/root.height*100);
+    const centerX=root.left+root.width*x/100,centerY=root.top+root.height*y/100;
+    return {left:centerX-width/2,top:centerY-height/2,right:centerX+width/2,bottom:centerY+height/2};
+  };
+  const rectsConflict = (first,second) => first.left<second.right+PAD_CONTROL_GAP && first.right+PAD_CONTROL_GAP>second.left && first.top<second.bottom+PAD_CONTROL_GAP && first.bottom+PAD_CONTROL_GAP>second.top;
+  const inspectButtonScales = overrides => {
+    if (!padVisible()) return {safe:false,reason:"hidden"};
+    const controls=Array.from(padRoot.querySelectorAll(".tvCtrl"));
+    const rects=[];
+    for (const control of controls) {
+      const id=control.dataset.id;
+      const multiplier=Object.prototype.hasOwnProperty.call(overrides,id) ? overrides[id] : buttonScale(id);
+      const rect=predictedControlRect(control,multiplier);
+      if (!rect) return {safe:false,reason:"fit"};
+      rects.push({id,rect});
+    }
+    for (let index=0;index<rects.length;index+=1) for (let other=index+1;other<rects.length;other+=1) {
+      if (rectsConflict(rects[index].rect,rects[other].rect)) return {safe:false,reason:"overlap"};
+    }
+    return {safe:true};
+  };
+  const inspectButtonScale = (id, multiplier) => inspectButtonScales({[id]:multiplier});
   const bindInput = (element,index) => element.addEventListener("pointerdown",event => {
     if (padRoot.classList.contains("edit")) return;
     event.preventDefault(); try{element.setPointerCapture(event.pointerId)}catch(_){}
@@ -853,20 +888,53 @@
   const padTarget = document.getElementById("padTarget");
   const padSize = document.getElementById("padSize");
   const padSizeValue = document.getElementById("padSizeValue");
+  const padSizeHint = document.getElementById("padSizeHint");
+  const padAdvanced = document.querySelector(".player-pad-advanced");
   const padGlobalScale = document.getElementById("padGlobalScale");
   const padGlobalScaleValue = document.getElementById("padGlobalScaleValue");
   const touchToggle = document.getElementById("toggleTouch");
-  const applyControlSizes = () => padRoot.querySelectorAll(".tvCtrl").forEach(control => control.style.setProperty("--control-scale",controlScale(control.dataset.id)));
+  const applyControlSizes = overrides => padRoot.querySelectorAll(".tvCtrl").forEach(control => {
+    const id=control.dataset.id;
+    const multiplier=overrides && Object.prototype.hasOwnProperty.call(overrides,id) ? normalizeButtonScale(overrides[id]) : buttonScale(id);
+    control.style.setProperty("--control-scale",globalScale()*baseControlScale(id)*multiplier);
+  });
   const syncGlobalScale = () => {
     const value=Math.round(globalScale()*100);
     if (padGlobalScale) padGlobalScale.value=value;
     if (padGlobalScaleValue) { padGlobalScaleValue.value=`${value}%`;padGlobalScaleValue.textContent=`${value}%`; }
   };
-  const syncPadSize = () => {
+  const padSizeMessage = reason => {
+    if (config.lang === "en") {
+      if (reason === "hidden") return "Show virtual controls before increasing an individual size safely.";
+      if (reason === "fit") return "This control would not fit inside the play area.";
+      if (reason === "overlap") return "This size would overlap another control.";
+      return "100% is this control’s approved default. Overall size applies too.";
+    }
+    if (reason === "hidden") return "Bật phím ảo trước khi tăng kích thước từng phím một cách an toàn.";
+    if (reason === "fit") return "Phím này sẽ không vừa trong vùng chơi.";
+    if (reason === "overlap") return "Kích thước này sẽ chồng lên phím khác.";
+    return "100% là kích thước mặc định đã duyệt của phím này. Kích thước chung cũng được áp dụng.";
+  };
+  const setPadSizeHint = (reason="") => {
+    if (!padSizeHint) return;
+    padSizeHint.textContent=padSizeMessage(reason);
+    padSizeHint.classList.toggle("is-error",Boolean(reason && reason !== "hidden"));
+  };
+  const maxSafeButtonScale = id => {
+    const current=Math.round(buttonScale(id)*100);
+    if (!padVisible()) return current;
+    let maximum=50;
+    for (let percent=50;percent<=200;percent+=1) if (inspectButtonScale(id,percent/100).safe) maximum=percent;
+    return Math.max(current,maximum);
+  };
+  const syncPadSize = (refreshLimit=false) => {
     if (!padTarget || !padSize) return;
-    const value=Math.round(controlScale(padTarget.value)*100);
+    const value=Math.round(buttonScale(padTarget.value)*100);
+    if (refreshLimit) padSize.max=maxSafeButtonScale(padTarget.value);
+    else if (Number(padSize.max)<value) padSize.max=value;
     padSize.value=value;
     if(padSizeValue){padSizeValue.value=`${value}%`;padSizeValue.textContent=`${value}%`;}
+    setPadSizeHint(padVisible() ? "" : "hidden");
   };
   const padVisible = () => {
     if (!customPad) return false;
@@ -890,21 +958,75 @@
     if(ndsPad)controls.push(makeButton("x","X",9),makeButton("y","Y",1),makeButton("l","L",10),makeButton("r","R",11));
     controls.forEach(control=>{padRoot.appendChild(control);place(control);});applySettings();
   }
+  const setPadEditing = editing => {
+    if (editing && !padVisible()) {
+      setPadSizeHint("hidden");
+      showNotice(config.lang === "en" ? "Show virtual controls before moving them." : "Bật phím ảo trước khi di chuyển.",true);
+      return false;
+    }
+    padRoot.classList.toggle("edit",editing);
+    const button=document.getElementById("editPad");
+    if (button) button.textContent=editing ? (config.lang==="en"?"Done":"Xong") : (config.lang==="en"?"Move":"Kéo thả");
+    if (!editing) saveLayout();
+    return true;
+  };
+  const resetCurrentLayout = () => {
+    try { localStorage.removeItem(key()); } catch (_) {}
+    positions={...padDefaults[orientation]};
+    padRoot.querySelectorAll(".tvCtrl").forEach(place);
+    if (padAdvanced?.open) syncPadSize(true);
+  };
+  const commitButtonScale = (id, next) => {
+    const requested=normalizeButtonScale(next),current=buttonScale(id);
+    if (requested>current+.0001) {
+      const check=inspectButtonScale(id,requested);
+      if (!check.safe) {
+        syncPadSize();
+        setPadSizeHint(check.reason);
+        return false;
+      }
+    }
+    if (requested===1) delete settings.buttonScales[id];
+    else settings.buttonScales[id]=requested;
+    saveSettings();
+    applySettings();
+    return true;
+  };
+  const resetAllButtonScales = () => {
+    const controls=Array.from(padRoot.querySelectorAll(".tvCtrl"));
+    const increases=controls.some(control=>buttonScale(control.dataset.id)<1);
+    if (increases) {
+      const check=inspectButtonScales(Object.fromEntries(controls.map(control=>[control.dataset.id,1])));
+      if (!check.safe) {
+        syncPadSize();
+        setPadSizeHint(check.reason);
+        return false;
+      }
+    }
+    settings.buttonScales={};
+    saveSettings();
+    applySettings();
+    return true;
+  };
   document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();panel?.classList.remove("open");document.getElementById("playerControls")?.setAttribute("aria-expanded","false");try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(customPad){if(slotPanel){slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false");}const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();}else try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
-  document.getElementById("closePad")?.addEventListener("click",()=>{padRoot.classList.remove("edit");saveLayout();panel.classList.remove("open");const trigger=document.getElementById("playerControls");trigger?.setAttribute("aria-expanded","false");trigger?.focus()});
-  document.getElementById("editPad")?.addEventListener("click",event=>{const editing=padRoot.classList.toggle("edit");event.currentTarget.textContent=editing?(config.lang==="en"?"Done":"Xong"):(config.lang==="en"?"Move":"Kéo thả");if(!editing)saveLayout();});
-  const togglePad=()=>{if(ndsPad)settings.visibilityMode=padVisible()?"hidden":"shown";else settings.visible=settings.visible===false;saveSettings();applySettings();};
+  document.getElementById("closePad")?.addEventListener("click",()=>{setPadEditing(false);panel.classList.remove("open");const trigger=document.getElementById("playerControls");trigger?.setAttribute("aria-expanded","false");trigger?.focus()});
+  document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
+  const togglePad=()=>{const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false);saveSettings();applySettings();if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);
   document.getElementById("togglePad")?.addEventListener("click",togglePad);
-  padTarget?.addEventListener("change",syncPadSize);
-  padGlobalScale?.addEventListener("input",event=>{settings.globalScale=clamp(Number(event.target.value)/100,.7,1);saveSettings();applySettings();});
-  document.getElementById("resetPadGlobalScale")?.addEventListener("click",()=>{settings.globalScale=1;saveSettings();applySettings();});
-  padSize?.addEventListener("input",event=>{if(!padTarget)return;const id=padTarget.value,requested=clamp(Number(event.target.value)/100,.35,1.4),scale=normalizeButtonScale(requested/(globalScale()*baseControlScale(id)));if(scale===1)delete settings.buttonScales[id];else settings.buttonScales[id]=scale;saveSettings();applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();});
+  padAdvanced?.addEventListener("toggle",()=>syncPadSize(true));
+  padTarget?.addEventListener("change",()=>syncPadSize(true));
+  padGlobalScale?.addEventListener("input",event=>{settings.globalScale=clamp(Number(event.target.value)/100,.7,1);saveSettings();applySettings();if(padAdvanced?.open)syncPadSize(true);});
+  document.getElementById("resetPadGlobalScale")?.addEventListener("click",()=>{settings.globalScale=1;saveSettings();applySettings();if(padAdvanced?.open)syncPadSize(true);});
+  padSize?.addEventListener("input",event=>{if(!padTarget)return;commitButtonScale(padTarget.value,clamp(Number(event.target.value)/100,.5,2));});
+  document.getElementById("resetPadTarget")?.addEventListener("click",()=>{if(padTarget)commitButtonScale(padTarget.value,1);});
+  document.getElementById("resetPadSizes")?.addEventListener("click",resetAllButtonScales);
   document.getElementById("padOpacity")?.addEventListener("input",event=>{settings.opacity=Number(event.target.value)/100;saveSettings();applySettings();});
-  document.getElementById("resetPad")?.addEventListener("click",()=>{try{localStorage.removeItem(key());}catch(_){}positions={...padDefaults[orientation]};settings.globalScale=1;settings.opacity=defaultSettings.opacity;if(ndsPad)settings.visibilityMode="auto";else settings.visible=true;settings.buttonScales={};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
+  document.getElementById("resetPadLayout")?.addEventListener("click",resetCurrentLayout);
+  document.getElementById("resetPad")?.addEventListener("click",()=>{["portrait","landscape"].forEach(nextOrientation=>{try{localStorage.removeItem(`an3-pad-v${ndsPad ? 4 : 3}:${config.system}:${nextOrientation}`);}catch(_){}});positions={...padDefaults[orientation]};settings.globalScale=1;settings.opacity=defaultSettings.opacity;if(ndsPad)settings.visibilityMode="auto";else settings.visible=true;settings.buttonScales={};setPadEditing(false);saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();if(padAdvanced?.open)syncPadSize(true);});
   document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(panel?.classList.contains("open")){event.preventDefault();document.getElementById("closePad")?.click();}else if(slotPanel&&!slotPanel.hidden){event.preventDefault();document.getElementById("closeSlots")?.click();}});
-  let resizeTimer;const queuePadLayout=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();},160)};addEventListener("resize",queuePadLayout);document.addEventListener("fullscreenchange",queuePadLayout);
+  let resizeTimer;const queuePadLayout=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();if(padAdvanced?.open)syncPadSize(true);},160)};addEventListener("resize",queuePadLayout);document.addEventListener("fullscreenchange",queuePadLayout);
   document.addEventListener("visibilitychange",()=>{if(document.hidden)[0,2,3,4,5,6,7,8,10,11].forEach(index=>input(index,0))});
   boot();
 })();
