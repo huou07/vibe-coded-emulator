@@ -1574,6 +1574,11 @@ body.library-shell .collection-card .badge{font-size:10px}
   background:transparent;
 }
 .player-page .player-stage-ui #tvPad.edit{background:rgba(5,12,8,.34)}
+.player-page .player-stage-ui.emulator-menu-open #tvPad.show{
+  z-index:19;
+  pointer-events:none;
+}
+.player-page .player-stage-ui.emulator-menu-open #tvPad.show .tvCtrl{pointer-events:none}
 .player-page .player-stage-ui #tvPad.show.safety-blocked{visibility:hidden;pointer-events:none}
 .player-page .tvCtrl{transform:translate(-50%,-50%) scale(var(--control-scale,var(--pad-scale)))}
 .player-page .tvBtn{
@@ -1618,6 +1623,8 @@ body.library-shell .collection-card .badge{font-size:10px}
 }
 .player-page .player-panel-actions button{min-height:42px;text-align:left}
 .player-page .player-settings-group{display:grid;gap:9px;padding:8px 0 12px;border-bottom:1px solid #26352c}
+.player-page .player-settings-group .player-panel-actions{padding:0;border-bottom:0}
+.player-page .player-advanced-settings{border-bottom:0}
 .player-page .player-settings-group>header{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
 .player-page .player-settings-group>header small{color:var(--yellow);text-align:right}
 .player-page .player-setting-copy{margin:0;color:#b6c3b9;font-size:12px}
@@ -1635,6 +1642,7 @@ body.library-shell .collection-card .badge{font-size:10px}
 .player-page .player-pad-settings>header{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .player-page .player-pad-settings label,
 .player-page .player-pad-settings>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.player-page .player-controls-visibility button{min-height:42px}
 .player-page .player-pad-settings label>span{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .player-page .player-pad-settings select{
   min-width:126px;

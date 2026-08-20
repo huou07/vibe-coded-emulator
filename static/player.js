@@ -479,12 +479,42 @@
       bindNdsTouch(canvas);
     });
   };
+  let emulatorMenuFrame=0;
+  let emulatorMenuTimer=0;
+  const emulatorMenuSelector=".ejs_menu_bar,.ejs_popup_body,.ejs_context_menu";
+  const visibleEmulatorMenu = element => {
+    const style=getComputedStyle(element),rect=element.getBoundingClientRect();
+    return !element.classList.contains("ejs_menu_bar_hidden") && style.display!=="none" && style.visibility!=="hidden" && Number(style.opacity)>0 && rect.width>0 && rect.height>0;
+  };
+  const syncEmulatorMenuLayer = () => {
+    emulatorMenuFrame=0;
+    if (!ndsPad) return;
+    const gameRoot=document.getElementById("game");
+    const menuOpen=Boolean(gameRoot && [...gameRoot.querySelectorAll(emulatorMenuSelector)].some(visibleEmulatorMenu));
+    stage?.classList.toggle("emulator-menu-open",menuOpen);
+  };
+  const scheduleEmulatorMenuLayer = () => {
+    if (!ndsPad || emulatorMenuFrame) return;
+    emulatorMenuFrame=requestAnimationFrame(syncEmulatorMenuLayer);
+  };
+  const queueEmulatorMenuLayer = () => {
+    scheduleEmulatorMenuLayer();
+    clearTimeout(emulatorMenuTimer);
+    emulatorMenuTimer=setTimeout(syncEmulatorMenuLayer,250);
+  };
+  const mutationTouchesEmulatorMenu = mutation => {
+    if (mutation.target?.closest?.(emulatorMenuSelector)) return true;
+    return [...mutation.addedNodes,...mutation.removedNodes].some(node=>node.nodeType===1 && (node.matches?.(emulatorMenuSelector) || node.querySelector?.(emulatorMenuSelector)));
+  };
   if (ndsPad) {
     const gameRoot=document.getElementById("game");
     bindNdsDebug(gameRoot);
     new MutationObserver(protectNdsCanvas).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
+    new MutationObserver(mutations=>{if(mutations.some(mutationTouchesEmulatorMenu))queueEmulatorMenuLayer();}).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class","style"]});
     protectNdsCanvas();
     bindRootNdsTouch(gameRoot);
+    syncEmulatorMenuLayer();
+    document.addEventListener("click",event=>{if(event.target?.closest?.("#game .ejs_menu_bar,#game .ejs_popup_body,#game .ejs_context_menu"))queueEmulatorMenuLayer();},true);
   }
 
   async function fetchGame() {
@@ -898,6 +928,7 @@
   const padGlobalScale = document.getElementById("padGlobalScale");
   const padGlobalScaleValue = document.getElementById("padGlobalScaleValue");
   const touchToggle = document.getElementById("toggleTouch");
+  const panelTouchToggle = document.getElementById("togglePad");
   const applyControlSizes = overrides => padRoot.querySelectorAll(".tvCtrl").forEach(control => {
     const id=control.dataset.id;
     const multiplier=overrides && Object.prototype.hasOwnProperty.call(overrides,id) ? normalizeButtonScale(overrides[id]) : buttonScale(id);
@@ -973,6 +1004,7 @@
     syncGlobalScale();syncPadSize();
     const opacity=document.getElementById("padOpacity");if(opacity)opacity.value=Math.round(settings.opacity*100);
     if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
+    if(panelTouchToggle){panelTouchToggle.setAttribute("aria-pressed",String(visible));panelTouchToggle.textContent=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
     return safety;
   };
   if (customPad) {
@@ -1038,9 +1070,12 @@
     const safety=applySettings();if(!safety.safe)reportPadSafety(safety);
     return true;
   };
-  document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();panel?.classList.remove("open");document.getElementById("playerControls")?.setAttribute("aria-expanded","false");try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
-  document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(customPad){if(slotPanel){slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false");}const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();}else try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
-  document.getElementById("closePad")?.addEventListener("click",()=>{setPadEditing(false);panel.classList.remove("open");const trigger=document.getElementById("playerControls");trigger?.setAttribute("aria-expanded","false");trigger?.focus()});
+  const closePlayerOptions = () => { panel?.classList.remove("open");document.getElementById("playerControls")?.setAttribute("aria-expanded","false"); };
+  const closeSlotOptions = () => { if(slotPanel)slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false"); };
+  if (ndsPad && stage) new MutationObserver(()=>{if(stage.classList.contains("emulator-menu-open"))closePlayerOptions();}).observe(stage,{attributes:true,attributeFilter:["class"]});
+  document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();closePlayerOptions();try{window.EJS_emulator?.menu?.toggle()}catch(_){}queueEmulatorMenuLayer();});
+  document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(!panel)return;if(stage?.classList.contains("emulator-menu-open")){showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true);return;}closeSlotOptions();const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();});
+  document.getElementById("closePad")?.addEventListener("click",()=>{setPadEditing(false);closePlayerOptions();document.getElementById("playerControls")?.focus()});
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
   const togglePad=()=>{const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false);saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);
