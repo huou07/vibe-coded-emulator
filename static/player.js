@@ -522,7 +522,7 @@
       window.EJS_disableDatabases = false;
       window.EJS_fixedSaveInterval = 60000;
       window.EJS_browserMode = customPad ? 2 : undefined;
-      window.EJS_noAutoFocus = ndsPad;
+      window.EJS_noAutoFocus = ndsPad && touchFirst;
       window.EJS_mouseLock = false;
       window.EJS_threads = threadedCore;
       window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;
@@ -763,23 +763,76 @@
   const padDefaults = ndsPad ? ndsDefaults : defaults;
   let orientation = innerWidth > innerHeight ? "landscape" : "portrait";
   const key = () => `an3-pad-v${ndsPad ? 4 : 3}:${config.system}:${orientation}`;
-  const read = (name, fallback={}) => { try { return JSON.parse(localStorage.getItem(name)) || fallback; } catch (_) { return fallback; } };
-  let positions = {...padDefaults[orientation], ...read(key())};
-  const settingsKey = ndsPad ? "an3-pad-settings-v2:nds" : "an3-pad-settings-v1";
-  const defaultSettings = ndsPad ? {scale:1,opacity:.48,visible:true,sizes:{dpad:1.4,start:.7,select:.7}} : {scale:1,opacity:.82,visible:true,sizes:{}};
-  const storedSettings = read(settingsKey);
-  const settings = {...defaultSettings,...storedSettings,sizes:{...defaultSettings.sizes,...(storedSettings.sizes || {})}};
   const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
-  const controlScale = id => clamp(Number(settings.sizes[id] ?? settings.scale) || 1,.7,1.4);
-  const saveLayout = () => localStorage.setItem(key(),JSON.stringify(positions));
-  const saveSettings = () => localStorage.setItem(settingsKey,JSON.stringify(settings));
+  const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const read = (name, fallback={}) => { try { const value=JSON.parse(localStorage.getItem(name));return isRecord(value) ? value : fallback; } catch (_) { return fallback; } };
+  let positions = {...padDefaults[orientation], ...read(key())};
+  const settingsVersion = ndsPad ? 4 : 2;
+  const settingsKey = ndsPad ? "an3-pad-settings-v4:nds" : "an3-pad-settings-v2";
+  const defaultSettings = ndsPad ? {version:4,globalScale:1,opacity:.48,visibilityMode:"auto",buttonScales:{}} : {version:2,globalScale:1,opacity:.82,visible:true,buttonScales:{}};
+  const legacyDefaults = ndsPad ? {scale:1,opacity:.48,visibilityMode:"auto",sizes:{dpad:1.4,start:.7,select:.7}} : {scale:1,opacity:.82,visible:true,sizes:{}};
+  const controlIds=["dpad","a","b","x","y","l","r","start","select"];
+  const baseControlScale = id => ndsPad ? ({dpad:1.4,start:.7,select:.7}[id] || 1) : 1;
+  const normalizeLegacyVisibility = source => {
+    const result={...source};
+    if (ndsPad && result.visible===false && !["auto","shown","hidden"].includes(result.visibilityMode)) result.visibilityMode="hidden";
+    if (ndsPad) delete result.visible;
+    return result;
+  };
+  const mergeLegacySettings = (...sources) => sources.reduce((result,source)=>{
+    if (!isRecord(source)) return result;
+    return {...result,...normalizeLegacyVisibility(source),sizes:{...(result.sizes || {}),...(isRecord(source.sizes) ? source.sizes : {})}};
+  },{});
+  const legacySettings = ndsPad ? mergeLegacySettings(read("an3-pad-settings-v2:nds"),read("an3-pad-settings-v3:nds")) : mergeLegacySettings(read("an3-pad-settings-v1"));
+  const hasLegacySettings = Object.keys(legacySettings).some(name=>name!=="sizes" || Object.keys(legacySettings.sizes || {}).length);
+  const normalizeButtonScale = value => clamp(Number(value) || 1,.5,2);
+  const normalizeSettings = source => {
+    const buttons=isRecord(source.buttonScales) ? source.buttonScales : {};
+    const result={...defaultSettings,globalScale:clamp(Number(source.globalScale) || 1,.7,1),opacity:clamp(Number(source.opacity) || defaultSettings.opacity,.3,1),buttonScales:{}};
+    if (ndsPad) result.visibilityMode=["auto","shown","hidden"].includes(source.visibilityMode) ? source.visibilityMode : "auto";
+    else result.visible=source.visible!==false;
+    controlIds.forEach(id=>{
+      const scale=normalizeButtonScale(buttons[id]);
+      if (scale!==1) result.buttonScales[id]=scale;
+    });
+    return result;
+  };
+  const migrateSettings = source => {
+    const old={...legacyDefaults,...source,sizes:{...legacyDefaults.sizes,...(isRecord(source.sizes) ? source.sizes : {})}};
+    const result={...defaultSettings,opacity:clamp(Number(old.opacity) || defaultSettings.opacity,.3,1),buttonScales:{}};
+    if (ndsPad) result.visibilityMode=["auto","shown","hidden"].includes(old.visibilityMode) ? old.visibilityMode : "auto";
+    else result.visible=old.visible!==false;
+    controlIds.forEach(id=>{
+      const oldScale=clamp(Number(old.sizes[id] ?? old.scale) || 1,.7,1.4);
+      const scale=normalizeButtonScale(oldScale/baseControlScale(id));
+      if (scale!==1) result.buttonScales[id]=scale;
+    });
+    return result;
+  };
+  const storedSettings = read(settingsKey);
+  const hasCurrentSettings = Number(storedSettings.version) === settingsVersion;
+  const settings = hasCurrentSettings ? normalizeSettings(storedSettings) : migrateSettings(legacySettings);
+  const globalScale = () => clamp(Number(settings.globalScale) || 1,.7,1);
+  const controlScale = id => globalScale()*baseControlScale(id)*normalizeButtonScale(settings.buttonScales[id]);
+  const saveLayout = () => { try { localStorage.setItem(key(),JSON.stringify(positions)); } catch (_) {} };
+  const saveSettings = () => { try { localStorage.setItem(settingsKey,JSON.stringify(settings)); } catch (_) {} };
+  if (!hasCurrentSettings && hasLegacySettings) saveSettings();
   const input = (index,value) => {
     try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {}
   };
+  const controlBounds = element => {
+    const root=padRoot?.getBoundingClientRect(),control=element.firstElementChild?.getBoundingClientRect();
+    if (!root?.width || !root?.height || !control?.width || !control?.height) return null;
+    const halfWidth=Math.min(root.width/2,(control.width/2)+4),halfHeight=Math.min(root.height/2,(control.height/2)+4);
+    return {minX:halfWidth/root.width*100,maxX:100-halfWidth/root.width*100,minY:halfHeight/root.height*100,maxY:100-halfHeight/root.height*100};
+  };
+  const constrainedPosition = (element,point) => {
+    const bounds=controlBounds(element);
+    return bounds ? {x:clamp(point.x,bounds.minX,bounds.maxX),y:clamp(point.y,bounds.minY,bounds.maxY)} : point;
+  };
   const place = element => {
-    const point=positions[element.dataset.id];let x=point.x,y=point.y;
-    if(padRoot.clientWidth<=480&&element.firstElementChild){const scale=controlScale(element.dataset.id),halfWidth=(element.firstElementChild.offsetWidth*scale/2)+1,halfHeight=(element.firstElementChild.offsetHeight*scale/2)+1;x=clamp(x,halfWidth/padRoot.clientWidth*100,100-halfWidth/padRoot.clientWidth*100);y=clamp(y,halfHeight/padRoot.clientHeight*100,100-halfHeight/padRoot.clientHeight*100);}
-    element.style.left=`${x}%`;element.style.top=`${y}%`;
+    const point=constrainedPosition(element,positions[element.dataset.id]);
+    element.style.left=`${point.x}%`;element.style.top=`${point.y}%`;
   };
   const bindInput = (element,index) => element.addEventListener("pointerdown",event => {
     if (padRoot.classList.contains("edit")) return;
@@ -791,7 +844,7 @@
   const bindDrag = element => element.addEventListener("pointerdown",event => {
     if (!padRoot.classList.contains("edit")) return;
     event.preventDefault(); try{element.setPointerCapture(event.pointerId)}catch(_){}
-    const move=e=>{const rect=padRoot.getBoundingClientRect();const mx=Math.min(16,700/rect.width),my=Math.min(16,700/rect.height);positions[element.dataset.id]={x:Math.round(clamp((e.clientX-rect.left)/rect.width*100,mx,100-mx)*10)/10,y:Math.round(clamp((e.clientY-rect.top)/rect.height*100,my,100-my)*10)/10};place(element);};
+    const move=e=>{const rect=padRoot.getBoundingClientRect(),bounds=controlBounds(element);if(!rect.width||!rect.height)return;positions[element.dataset.id]={x:Math.round(clamp((e.clientX-rect.left)/rect.width*100,bounds?.minX ?? 0,bounds?.maxX ?? 100)*10)/10,y:Math.round(clamp((e.clientY-rect.top)/rect.height*100,bounds?.minY ?? 0,bounds?.maxY ?? 100)*10)/10};place(element);};
     const up=()=>{saveLayout();element.removeEventListener("pointermove",move);element.removeEventListener("pointerup",up);element.removeEventListener("pointercancel",up);};
     element.addEventListener("pointermove",move);element.addEventListener("pointerup",up);element.addEventListener("pointercancel",up);
   });
@@ -800,22 +853,34 @@
   const padTarget = document.getElementById("padTarget");
   const padSize = document.getElementById("padSize");
   const padSizeValue = document.getElementById("padSizeValue");
+  const padGlobalScale = document.getElementById("padGlobalScale");
+  const padGlobalScaleValue = document.getElementById("padGlobalScaleValue");
   const touchToggle = document.getElementById("toggleTouch");
   const applyControlSizes = () => padRoot.querySelectorAll(".tvCtrl").forEach(control => control.style.setProperty("--control-scale",controlScale(control.dataset.id)));
+  const syncGlobalScale = () => {
+    const value=Math.round(globalScale()*100);
+    if (padGlobalScale) padGlobalScale.value=value;
+    if (padGlobalScaleValue) { padGlobalScaleValue.value=`${value}%`;padGlobalScaleValue.textContent=`${value}%`; }
+  };
   const syncPadSize = () => {
     if (!padTarget || !padSize) return;
     const value=Math.round(controlScale(padTarget.value)*100);
     padSize.value=value;
     if(padSizeValue){padSizeValue.value=`${value}%`;padSizeValue.textContent=`${value}%`;}
   };
+  const padVisible = () => {
+    if (!customPad) return false;
+    if (!ndsPad) return settings.visible!==false;
+    return settings.visibilityMode==="shown" || (settings.visibilityMode!=="hidden" && touchFirst);
+  };
   const applySettings=()=>{
-    padRoot.style.setProperty("--pad-scale",clamp(Number(settings.scale)||defaultSettings.scale,.7,1.4));
-    padRoot.style.setProperty("--pad-opacity",clamp(Number(settings.opacity)||defaultSettings.opacity,.3,1));
-    const visible=customPad&&settings.visible!==false;
+    padRoot.style.setProperty("--pad-scale",globalScale());
+    padRoot.style.setProperty("--pad-opacity",settings.opacity);
+    const visible=padVisible();
     padRoot.classList.toggle("show",visible);
     stage?.classList.toggle("pad-overlay",visible);
     document.body.classList.toggle("pad-overlay",visible);
-    applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();
+    applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncGlobalScale();syncPadSize();
     const opacity=document.getElementById("padOpacity");if(opacity)opacity.value=Math.round(settings.opacity*100);
     if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
   };
@@ -829,15 +894,17 @@
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(customPad){if(slotPanel){slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false");}const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();}else try{window.EJS_emulator?.menu?.toggle()}catch(_){}});
   document.getElementById("closePad")?.addEventListener("click",()=>{padRoot.classList.remove("edit");saveLayout();panel.classList.remove("open");const trigger=document.getElementById("playerControls");trigger?.setAttribute("aria-expanded","false");trigger?.focus()});
   document.getElementById("editPad")?.addEventListener("click",event=>{const editing=padRoot.classList.toggle("edit");event.currentTarget.textContent=editing?(config.lang==="en"?"Done":"Xong"):(config.lang==="en"?"Move":"Kéo thả");if(!editing)saveLayout();});
-  const togglePad=()=>{settings.visible=settings.visible===false;saveSettings();applySettings();};
+  const togglePad=()=>{if(ndsPad)settings.visibilityMode=padVisible()?"hidden":"shown";else settings.visible=settings.visible===false;saveSettings();applySettings();};
   touchToggle?.addEventListener("click",togglePad);
   document.getElementById("togglePad")?.addEventListener("click",togglePad);
   padTarget?.addEventListener("change",syncPadSize);
-  padSize?.addEventListener("input",event=>{if(!padTarget)return;settings.sizes[padTarget.value]=Number(event.target.value)/100;saveSettings();applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();});
+  padGlobalScale?.addEventListener("input",event=>{settings.globalScale=clamp(Number(event.target.value)/100,.7,1);saveSettings();applySettings();});
+  document.getElementById("resetPadGlobalScale")?.addEventListener("click",()=>{settings.globalScale=1;saveSettings();applySettings();});
+  padSize?.addEventListener("input",event=>{if(!padTarget)return;const id=padTarget.value,requested=clamp(Number(event.target.value)/100,.35,1.4),scale=normalizeButtonScale(requested/(globalScale()*baseControlScale(id)));if(scale===1)delete settings.buttonScales[id];else settings.buttonScales[id]=scale;saveSettings();applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);syncPadSize();});
   document.getElementById("padOpacity")?.addEventListener("input",event=>{settings.opacity=Number(event.target.value)/100;saveSettings();applySettings();});
-  document.getElementById("resetPad")?.addEventListener("click",()=>{localStorage.removeItem(key());positions={...padDefaults[orientation]};settings.scale=defaultSettings.scale;settings.opacity=defaultSettings.opacity;settings.visible=true;settings.sizes={...defaultSettings.sizes};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
+  document.getElementById("resetPad")?.addEventListener("click",()=>{try{localStorage.removeItem(key());}catch(_){}positions={...padDefaults[orientation]};settings.globalScale=1;settings.opacity=defaultSettings.opacity;if(ndsPad)settings.visibilityMode="auto";else settings.visible=true;settings.buttonScales={};saveSettings();padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();});
   document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(panel?.classList.contains("open")){event.preventDefault();document.getElementById("closePad")?.click();}else if(slotPanel&&!slotPanel.hidden){event.preventDefault();document.getElementById("closeSlots")?.click();}});
-  let resizeTimer;addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();},160)});
+  let resizeTimer;const queuePadLayout=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}padRoot.querySelectorAll(".tvCtrl").forEach(place);applySettings();},160)};addEventListener("resize",queuePadLayout);document.addEventListener("fullscreenchange",queuePadLayout);
   document.addEventListener("visibilitychange",()=>{if(document.hidden)[0,2,3,4,5,6,7,8,10,11].forEach(index=>input(index,0))});
   boot();
 })();

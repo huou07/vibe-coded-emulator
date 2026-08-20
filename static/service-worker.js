@@ -1,4 +1,4 @@
-const CACHE = "an3-arcade-pwa-v22";
+const CACHE = "an3-arcade-pwa-v23";
 const CORE_CACHE = "an3-arcade-cores-v1";
 const APP_SHELL = [
   "/", "/offline", "/static/site.css", "/static/site.js", "/static/player.js",

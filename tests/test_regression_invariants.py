@@ -65,21 +65,35 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v22', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v23', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', APP)
 
-    def test_virtual_controls_overlay_has_persistent_touch_toggle_and_per_control_size(self):
+    def test_virtual_controls_overlay_has_persistent_touch_toggle_and_safe_global_scale(self):
         for source in (APP, OFFLINE):
             self.assertIn('id="toggleTouch"', source)
+            self.assertIn('id="padGlobalScale"', source)
+            self.assertIn('id="padGlobalScaleValue"', source)
+            self.assertIn('id="resetPadGlobalScale"', source)
             self.assertIn('id="padTarget"', source)
             self.assertIn('id="padSizeValue"', source)
         self.assertIn('touchToggle?.addEventListener("click",togglePad)', PLAYER)
-        self.assertIn('settings.sizes[padTarget.value]', PLAYER)
+        self.assertIn('settings.globalScale=clamp(Number(event.target.value)/100,.7,1)', PLAYER)
+        self.assertIn('const controlScale = id => globalScale()*baseControlScale(id)*normalizeButtonScale(settings.buttonScales[id]);', PLAYER)
+        self.assertIn('const oldScale=clamp(Number(old.sizes[id] ?? old.scale) || 1,.7,1.4);', PLAYER)
+        self.assertIn('const scale=normalizeButtonScale(oldScale/baseControlScale(id));', PLAYER)
         self.assertIn('--control-scale', PLAYER)
+        self.assertIn('const controlBounds = element => {', PLAYER)
+        self.assertIn('const constrainedPosition = (element,point) => {', PLAYER)
+        self.assertIn('document.addEventListener("fullscreenchange",queuePadLayout)', PLAYER)
         self.assertIn('stage?.classList.toggle("pad-overlay",visible)', PLAYER)
         self.assertNotIn('stage?.classList.toggle("pad-docked",visible)', PLAYER)
         self.assertIn('window.EJS_emulator?.gameManager?.simulateInput(0,index,value)', PLAYER)
+        self.assertIn('visibilityMode:"auto"', PLAYER)
+        self.assertIn('const touchFirst = Boolean(window.matchMedia?.("(pointer:coarse)")?.matches || (navigator.maxTouchPoints > 0 && !window.matchMedia?.("(hover:hover)")?.matches));', PLAYER)
+        self.assertIn('window.EJS_noAutoFocus = ndsPad && touchFirst', PLAYER)
+        self.assertIn('if (ndsPad && result.visible===false && !["auto","shown","hidden"].includes(result.visibilityMode)) result.visibilityMode="hidden";', PLAYER)
+        self.assertIn('settings.visibilityMode=padVisible()?"hidden":"shown"', PLAYER)
 
     def test_performance_profiles_are_conservative_and_persisted(self):
         self.assertIn('const performanceStorageKey = "an3-player-performance-v1"', PLAYER)
@@ -129,12 +143,15 @@ class RegressionInvariantTests(unittest.TestCase):
 
     def test_nds_default_pad_matches_approved_portrait_layout(self):
         self.assertIn('portrait:{dpad:{x:23.4,y:81.6},a:{x:89,y:80},b:{x:78.2,y:89.7},x:{x:78,y:70.2},y:{x:67.3,y:79.9},l:{x:8.1,y:63.3},r:{x:91.2,y:62.5},start:{x:47.4,y:62.1},select:{x:57.9,y:62}}', PLAYER)
-        self.assertIn('{scale:1,opacity:.48,visible:true,sizes:{dpad:1.4,start:.7,select:.7}}', PLAYER)
+        self.assertIn('{version:4,globalScale:1,opacity:.48,visibilityMode:"auto",buttonScales:{}}', PLAYER)
+        self.assertIn('{scale:1,opacity:.48,visibilityMode:"auto",sizes:{dpad:1.4,start:.7,select:.7}}', PLAYER)
+        self.assertIn('const baseControlScale = id => ndsPad ? ({dpad:1.4,start:.7,select:.7}[id] || 1) : 1;', PLAYER)
+        self.assertIn('const settingsKey = ndsPad ? "an3-pad-settings-v4:nds" : "an3-pad-settings-v2";', PLAYER)
         self.assertIn('id="padOpacity" type="range" min="30" max="100" step="1"', APP)
         self.assertIn('id="padOpacity" type="range" min="30" max="100" step="1"', OFFLINE)
-        self.assertIn('sizes:{...defaultSettings.sizes,...(storedSettings.sizes || {})}', PLAYER)
-        self.assertIn('settings.sizes={...defaultSettings.sizes}', PLAYER)
-        self.assertIn('if(padRoot.clientWidth<=480&&element.firstElementChild)', PLAYER)
+        self.assertIn('const old={...legacyDefaults,...source,sizes:{...legacyDefaults.sizes,...(isRecord(source.sizes) ? source.sizes : {})}};', PLAYER)
+        self.assertIn('const hasCurrentSettings = Number(storedSettings.version) === settingsVersion;', PLAYER)
+        self.assertIn('const settings = hasCurrentSettings ? normalizeSettings(storedSettings) : migrateSettings(legacySettings);', PLAYER)
 
     def test_nds_debug_is_bounded_exportable_and_fail_closed(self):
         self.assertIn('NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}', APP)
