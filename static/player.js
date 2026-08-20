@@ -499,13 +499,13 @@
     return config.romUrl;
   }
 
+  let gameStarted = false;
   async function boot() {
     try {
       if (webgl2Required && !document.createElement("canvas").getContext("webgl2")) throw new Error(config.lang === "en" ? "This core requires WebGL 2." : "Core này cần WebGL 2.");
       if (threadedCore && (!crossOriginIsolated || typeof SharedArrayBuffer !== "function")) throw new Error(config.lang === "en" ? "This core requires SharedArrayBuffer support." : "Core này cần trình duyệt hỗ trợ SharedArrayBuffer an toàn.");
       const file = await fetchGame();
       setProgress(86, config.lang === "en" ? "Loading emulator" : "Đang tải giả lập");
-      let gameStarted = false;
       window.EJS_player = "#game";
       window.EJS_core = emulatorSystem;
       window.EJS_defaultOptions = ndsPad ? {
@@ -526,7 +526,8 @@
       window.EJS_mouseLock = false;
       window.EJS_threads = threadedCore;
       window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;
-      window.EJS_onGameStart = () => { gameStarted=true;protectNdsCanvas();finishLoading(); };
+      window.EJS_hideSettings = ["fastForward","ff-ratio","slowMotion","sm-ratio"];
+      window.EJS_onGameStart = () => { gameStarted=true;protectNdsCanvas();applySpeed(1);syncSpeedControls();finishLoading(); };
       const script = document.createElement("script");
       script.src = `${window.EJS_pathtodata}loader.js`;
       script.onload = () => setProgress(92, config.lang === "en" ? "Starting core" : "Đang khởi động core");
@@ -540,7 +541,7 @@
           clearInterval(ready);
           failLoading(new Error(window.EJS_emulator?.textElem?.innerText || (config.lang === "en" ? "The NDS core failed to start." : "Core NDS khởi động thất bại.")));
         }
-        else if (!ndsPad && window.EJS_emulator?.gameManager) { clearInterval(ready);finishLoading(); }
+        else if (!ndsPad && window.EJS_emulator?.gameManager) { clearInterval(ready);gameStarted=true;applySpeed(1);syncSpeedControls();finishLoading(); }
         else if (++checks > 720) { clearInterval(ready); failLoading(new Error(ndsPad ? (config.lang === "en" ? "The NDS game did not start after 3 minutes." : "Game NDS chưa khởi động sau 3 phút.") : (config.lang === "en" ? "The emulator did not start." : "Giả lập chưa khởi động."))); }
       }, 250);
       if (customPad) {
@@ -691,6 +692,56 @@
     location.reload();
   });
   syncPerformanceControls();
+
+  const speedSteps=Object.freeze([.5,1,1.5,2]);
+  let selectedSpeed=1;
+  const speedLabel = value => `${value}×`;
+  const speedManager = () => {
+    const manager=window.EJS_emulator?.gameManager;
+    const required=["setFastForwardRatio","toggleFastForward","setSlowMotionRatio","toggleSlowMotion"];
+    return gameStarted && manager && required.every(method=>typeof manager[method] === "function") ? manager : null;
+  };
+  const syncSpeedControls = () => {
+    const manager=speedManager();
+    const index=speedSteps.indexOf(selectedSpeed);
+    const down=document.getElementById("speedDown"),up=document.getElementById("speedUp"),value=document.getElementById("speedValue"),hint=document.getElementById("speedHint");
+    if (value) value.textContent=speedLabel(selectedSpeed);
+    if (down) down.disabled=!manager || index<=0;
+    if (up) up.disabled=!manager || index>=speedSteps.length-1;
+    if (hint) hint.textContent=manager ? (config.lang === "en" ? "Session only. Returning to 1× turns off fast-forward and slow motion." : "Chỉ trong phiên chơi này. Trở về 1× sẽ tắt tua nhanh và quay chậm.") : (config.lang === "en" ? "Speed controls become available after the game starts." : "Điều chỉnh tốc độ hoạt động sau khi game khởi động.");
+  };
+  const applySpeed = nextSpeed => {
+    const manager=speedManager();
+    if (!manager) return syncSpeedControls();
+    const value=speedSteps.includes(nextSpeed) ? nextSpeed : 1;
+    try {
+      if (value===1) {
+        manager.toggleFastForward(0);
+        manager.toggleSlowMotion(0);
+      } else if (value>1) {
+        manager.toggleSlowMotion(0);
+        manager.setFastForwardRatio(value);
+        manager.toggleFastForward(1);
+      } else {
+        manager.toggleFastForward(0);
+        manager.setSlowMotionRatio(1/value);
+        manager.toggleSlowMotion(1);
+      }
+      selectedSpeed=value;
+    } catch (error) {
+      try { manager.toggleFastForward(0);manager.toggleSlowMotion(0); } catch (_) {}
+      selectedSpeed=1;
+      showNotice(error.message || String(error),true);
+    }
+    syncSpeedControls();
+  };
+  const shiftSpeed = direction => {
+    const index=speedSteps.indexOf(selectedSpeed);
+    applySpeed(speedSteps[Math.max(0,Math.min(speedSteps.length-1,index+direction))]);
+  };
+  document.getElementById("speedDown")?.addEventListener("click",()=>shiftSpeed(-1));
+  document.getElementById("speedUp")?.addEventListener("click",()=>shiftSpeed(1));
+  syncSpeedControls();
 
   const padRoot = document.getElementById("tvPad");
   const panel = document.getElementById("padPanel");

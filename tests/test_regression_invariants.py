@@ -104,6 +104,24 @@ class RegressionInvariantTests(unittest.TestCase):
             self.assertIn('id="useRecommended"', source)
             self.assertIn('id="applyPerformanceProfile"', source)
 
+    def test_speed_controls_are_session_only_and_runtime_gated(self):
+        self.assertIn('window.EJS_hideSettings = ["fastForward","ff-ratio","slowMotion","sm-ratio"];', PLAYER)
+        self.assertIn('const speedSteps=Object.freeze([.5,1,1.5,2]);', PLAYER)
+        self.assertIn('const speedManager = () => {', PLAYER)
+        self.assertIn('return gameStarted && manager && required.every', PLAYER)
+        self.assertIn('manager.setFastForwardRatio(value);', PLAYER)
+        self.assertIn('manager.toggleFastForward(1);', PLAYER)
+        self.assertIn('manager.setSlowMotionRatio(1/value);', PLAYER)
+        self.assertIn('manager.toggleSlowMotion(1);', PLAYER)
+        self.assertIn('manager.toggleFastForward(0);', PLAYER)
+        self.assertIn('manager.toggleSlowMotion(0);', PLAYER)
+        self.assertNotIn('an3-player-speed', PLAYER)
+        self.assertIn('id="speedDown"', APP)
+        self.assertIn('id="speedUp"', APP)
+        self.assertIn('id="speedValue"', APP)
+        self.assertIn('const speedSettingsMarkup = system => {', OFFLINE)
+        self.assertIn('speedSettingsMarkup(system)', OFFLINE)
+
     def test_fullscreen_keeps_the_app_toolbar_and_status_in_scope(self):
         self.assertIn('else shell.requestFullscreen?.();', PLAYER)
         self.assertNotIn('stage.requestFullscreen?.()', PLAYER)
