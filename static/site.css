@@ -1574,6 +1574,7 @@ body.library-shell .collection-card .badge{font-size:10px}
   background:transparent;
 }
 .player-page .player-stage-ui #tvPad.edit{background:rgba(5,12,8,.34)}
+.player-page .player-stage-ui #tvPad.show.safety-blocked{visibility:hidden;pointer-events:none}
 .player-page .tvCtrl{transform:translate(-50%,-50%) scale(var(--control-scale,var(--pad-scale)))}
 .player-page .tvBtn{
   border-color:#3f9464;
