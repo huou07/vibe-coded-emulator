@@ -24,7 +24,10 @@ Commit: `f3d6546` (`feat(player): add safe global pad scaling`)
 | Source migration and P0 regression invariants | PASS in the local combined suite |
 | JavaScript/Python syntax and whitespace check | PASS |
 | Local full suite | PASS — 15 tests on the combined P1/P0 working state |
-| Staging activation and browser/device validation | BLOCKED — the current session has no working non-interactive staging authentication; no remote release was activated |
+| Staging release | PASS — `20260820-211604-p1`, health asset `587464eca777` |
+| Staging GBA/NDS startup and P0 source markers | PASS — both reached play state; canvas-only root touch and native-menu layer markers retained |
+| Staging global-scale interaction | PASS — NDS 70% shrink and reset to 100% work in the live player |
+| Physical-device validation | Pending Android and weak-owner-device checks |
 | Production | Not touched |
 
-P1.5 supplies the per-button geometry validation that backs the global-scale guard. Staging and owner-device checks remain required before any P1 production approval.
+P1.5 supplies the per-button geometry validation that backs the global-scale guard. Owner-device checks remain required before any P1 production approval.

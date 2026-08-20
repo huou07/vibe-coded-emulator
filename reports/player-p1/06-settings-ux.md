@@ -26,10 +26,13 @@ The full stacking contract is documented in [`docs/player-layering.md`](../../do
 
 | Gate | Result |
 | --- | --- |
-| Online GBA panel grouping, focus, and in-panel pad visibility toggle | PASS — local browser smoke |
-| Non-custom-core More behavior and absence of an inert Touch toolbar button | PASS — local browser smoke |
+| Online GBA/NDS panel grouping, focus, and in-panel pad visibility toggle | PASS — staging browser validation |
+| GBA and NDS compact speed sequence | PASS — 1x → 1.5x → 2x → 1x with both games remaining in play state |
+| NDS native-menu handoff | PASS — Open EmulatorJS menu closed the app panel; a shown pad was z-index 19 and pointer-inert |
+| Non-custom-core More behavior and absence of an inert Touch toolbar button | PASS — local browser smoke; no non-custom staging game is currently available |
 | Online/offline source parity and native-menu priority invariants | PASS — local combined suite |
 | JavaScript/Python syntax and whitespace check | PASS |
 | Full local suite | PASS — 15 tests |
-| Staging NDS menu/pad interaction and real-device accessibility | Pending; staging activation blocked by unavailable non-interactive authentication |
+| Staging release | PASS — `20260820-211604-p1`, health asset `587464eca777` |
+| Real-device accessibility | Pending Android/owner validation |
 | Production | Not touched |

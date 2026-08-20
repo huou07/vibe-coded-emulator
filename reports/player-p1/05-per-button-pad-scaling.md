@@ -24,6 +24,8 @@ Commits: `bd96836` (`feat(player): add safe individual pad sizing`), `803a6ec` (
 | Geometry/source regression invariants | PASS in the local combined suite |
 | JavaScript/Python syntax and whitespace check | PASS |
 | Local full suite | PASS — 15 tests on the combined P1/P0 working state |
-| 360×800, 390×844, 807×985, and landscape physical-device geometry checks | Pending staging/owner validation |
-| Staging activation | BLOCKED by unavailable non-interactive staging authentication; no remote release was activated |
+| Staging release | PASS — `20260820-211604-p1`, health asset `587464eca777` |
+| Staging individual-size interaction | PASS — NDS selected A control shrank to 50% and reset to 100%; its live safe maximum was constrained to 158% rather than the nominal 200% |
+| Staging native-menu safety | PASS — a shown NDS pad dropped to z-index 19 with control pointer input disabled when the EmulatorJS menu opened |
+| 360×800, 390×844, 807×985, and landscape physical-device geometry checks | Pending Android/owner validation |
 | Production | Not touched |
