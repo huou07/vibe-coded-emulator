@@ -16,7 +16,7 @@ The original P1 staging release `20260820-211604-p1` was followed by staging-onl
 | --- | --- | --- |
 | Staging browser | Health, asset version, GBA/NDS startup, Low-end/recommended profile restarts, 1/1.5/2/1 speed, global/selected-button reset, and native NDS menu hit testing | PASS |
 | Owner validation reported | Save/load, physical keyboard/remapping, PWA refresh, weak-device performance, and speed changes | PASS (reported) |
-| Android phone, pre-follow-up | GBA/NDS virtual pad appears only after fullscreen; NDS audio crackles | FAIL; follow-up deployed, physical retest pending |
+| Android phone, Redmi 15 5G | GBA/NDS pad issue resolved separately; NDS audio crackles at reported 30–50 FPS. Firefox is frequent; Chrome/Mi Browser occur during scene changes; phone speaker and Bluetooth both reproduce it. | Audio follow-up experiment pending |
 | Staging browser follow-up | Non-fullscreen 390×844 viewport with GBA/NDS pad shown; native EmulatorJS FPS value is `show` on both systems | PASS; responsive evidence only |
 | Android Chrome (Firefox if practical) | Touch defaults, pad before fullscreen, portrait/landscape/fullscreen, NDS touchscreen coverage, native-menu priority, and NDS audio | Pending physical retest |
 

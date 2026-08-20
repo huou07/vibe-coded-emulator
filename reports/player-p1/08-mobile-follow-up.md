@@ -37,6 +37,23 @@ No audio latency setting was added. The verified EmulatorJS 4.2.3 runtime hard-c
 
 The native melonDS menu offers core options such as audio bitrate and interpolation, but neither has been validated as a safe AN3 default. Do not alter them globally without a reproducible Android test.
 
+### Device evidence received after the release
+
+The owner tested Redmi 15 5G on Firefox, Mi Browser, and Chrome using both the built-in speaker and Bluetooth headphones:
+
+- the FPS HUD varies around 30–50;
+- Firefox crackles frequently;
+- Chrome and Mi Browser crackle chiefly while scenes change;
+- both audio outputs show the same failure.
+
+This is consistent with an emulation/WebAudio underrun rather than a Bluetooth or phone-speaker fault. The verified deployed melonDS core is the unthreaded 2025-06 build. Its current core values are `melonds_audio_bitrate = Automatic` and `melonds_audio_interpolation = None`; `None` already avoids interpolation work. The core offers `10-bit` and `16-bit` bitrate choices, but those are fidelity choices, not a proven buffer/throughput remedy, so they remain unchanged.
+
+### Controlled physical experiment (no deployment)
+
+Use Chrome, keep speed at 1×, and select **Low-end / Battery** in the player Performance panel, then apply/restart. This chooses the already-audited melonDS compatibility renderer for the next launch. During the same test, open EmulatorJS **Settings → Graphics Settings → VSync → Disabled**. VSync is a runtime-supported, reversible setting; it is a device experiment only, not a new default.
+
+Leave shaders disabled, audio bitrate on Automatic, and interpolation on None. Record the FPS range and sound through one normal scene transition. If Chrome remains below a stable game rate or still crackles, the next work is a separately scoped core/runtime upgrade or alternative-core feasibility assessment—not an unverified global audio tweak.
+
 ## Remaining physical gates
 
 1. On the same phone/browser, start GBA and NDS in portrait before fullscreen: pad must be visible and usable.
