@@ -65,7 +65,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v21', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v22', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', APP)
 

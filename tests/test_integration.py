@@ -271,7 +271,7 @@ class ArcadeIntegrationTests(unittest.TestCase):
         self.assertEqual((status, login["redirect"]), (200, "/admin"))
         self.assertEqual(second.request("GET", "/admin")[0], 200)
 
-        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v21"), ("/static/default-cover.webp", b"RIFF"), ("/static/fonts/pixelify-sans-latin.woff2", b"wOF2"), ("/static/ui-library-search.svg", b"<svg"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm".encode())):
+        for path, marker in (("/offline", b"offlineGameForm"), ("/service-worker.js", b"an3-arcade-pwa-v22"), ("/static/default-cover.webp", b"RIFF"), ("/static/fonts/pixelify-sans-latin.woff2", b"wOF2"), ("/static/ui-library-search.svg", b"<svg"), ("/static/manifest.webmanifest", "Ăn 3 Tô Cơm".encode())):
             status, response_headers, body = public.request("GET", path)
             self.assertEqual(status, 200)
             self.assertIn(marker, body)
