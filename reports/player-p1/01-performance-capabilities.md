@@ -16,7 +16,7 @@ Scope: the deployed EmulatorJS runtime used by both staging and production. This
 | Core | Reported options | Current renderer behavior | P1 conclusion |
 | --- | --- | --- | --- |
 | mGBA | `{}` | Uses the `mgba-legacy-wasm.data` flavor by default. | No WebGL2 or threading profile override is warranted. |
-| melonDS | `defaultWebGL2: true`, `supportsMouse: true` | Uses the WebGL2 core flavor when the browser supports WebGL2; otherwise EmulatorJS chooses its legacy flavor. | Low-end/Battery may deliberately select the legacy compatibility flavor on the next launch; Balanced and Quality retain the verified native default. |
+| melonDS | `defaultWebGL2: true`, `supportsMouse: true` | Uses the WebGL2 core flavor when the browser supports WebGL2; otherwise EmulatorJS chooses its legacy flavor. | Low-end/Battery deliberately selects the legacy compatibility flavor on the next launch; Balanced and Quality retain the verified native default. Both flavors now have a successful staging startup record. |
 
 ## Verified candidates
 
@@ -62,3 +62,7 @@ The P1 probe is browser-local and intentionally conservative:
 | Custom | Let the player deliberately choose only the verified NDS renderer compatibility override. | Explicit and resettable; no obscure core options. |
 
 P1 must document that renderer selection applies on the next player launch. Native EmulatorJS settings remain available through its own menu; AN3 will not duplicate unknown core options.
+
+## P1.2 staging confirmation
+
+The first profile candidate was staged on 2026-08-20 without modifying production. The staging server returned `200` for `melonds-legacy-wasm.data` (1,193,773 bytes), and the NDS game `pmd-eos` reached the in-game state with the Low-end / Battery profile selected. Its EmulatorJS Graphics Settings omitted the `WebGL2 (Requires restart)` control, while the same game restarted with Use recommended settings reached the in-game state and showed that control enabled. This verifies that the profile selects a real alternative core flavor rather than a no-op setting.
