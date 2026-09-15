@@ -1,0 +1,1 @@
+37e24bf1d1d6c44ff3267c5649b16010f8bce076cc0bac632cddf17d431b975c  native-offline/releases/vibecodedemulator-0.4.4-macos-aarch64.dmg

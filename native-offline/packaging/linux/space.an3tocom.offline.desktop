@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=VibeCodedEmulator
+Comment=Native local-ROM GBA and NDS player with graphical controls
+Exec=an3-offline-native --pick
+Icon=space.an3tocom.offline
+Terminal=false
+Categories=Game;Emulator;
+MimeType=application/octet-stream;

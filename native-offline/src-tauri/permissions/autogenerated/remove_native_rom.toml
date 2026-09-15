@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remove-native-rom"
+description = "Enables the remove_native_rom command without any pre-configured scope."
+commands.allow = ["remove_native_rom"]
+
+[[permission]]
+identifier = "deny-remove-native-rom"
+description = "Denies the remove_native_rom command without any pre-configured scope."
+commands.deny = ["remove_native_rom"]

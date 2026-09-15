@@ -1,0 +1,31 @@
+# Staging-shadow build only. The gateway contains no AN3 game, ROM, SQLite,
+# account, session, or production data.
+FROM rust:1.88-bookworm AS builder
+
+WORKDIR /build/rust-gateway
+COPY rust-gateway/ ./
+
+# Run the focused Rust tests in the image build so a staging candidate cannot
+# be built without the proxy/cache safety checks passing. The reviewed lockfile
+# is mandatory: deployments must never silently resolve a newer dependency set.
+RUN cargo test --locked && cargo build --release --locked
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system an3gateway \
+    && useradd --system --gid an3gateway --home-dir /nonexistent --shell /usr/sbin/nologin an3gateway
+
+COPY --from=builder /build/rust-gateway/target/release/an3-rust-gateway /usr/local/bin/an3-rust-gateway
+COPY rust-gateway/docker-healthcheck.sh /usr/local/bin/an3-rust-gateway-healthcheck
+RUN chmod 0755 /usr/local/bin/an3-rust-gateway-healthcheck
+
+USER an3gateway:an3gateway
+EXPOSE 8093
+ENV RUST_LOG=info
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/usr/local/bin/an3-rust-gateway-healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/an3-rust-gateway"]

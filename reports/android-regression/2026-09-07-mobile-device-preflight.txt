@@ -1,0 +1,12 @@
+DATE=2026-09-07 23:25:12 +07
+DEVICE=physical Android
+ANDROID_VERSION=
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=
+LOGICAL_SCREEN_SIZE=
+STAGING_URL=http://192.168.1.8:8092
+TEST=device-discovery
+RESULT=BLOCKED
+EVIDENCE=No authorized ADB device was available; no serial was read or recorded.
+RUNTIME_ASSERTION=adb get-state did not return device.
+KNOWN_LIMITATION=Authorize USB debugging, then rerun.

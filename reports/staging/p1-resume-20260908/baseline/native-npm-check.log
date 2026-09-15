@@ -1,0 +1,4 @@
+^D
+> an3-offline-native@0.4.4 check
+> node --check scripts/fetch-azahar-libretro.mjs && node --check scripts/fetch-gba-nds-libretro.mjs && node --check scripts/fetch-moltenvk.mjs && node --check scripts/prepare-web.mjs && node --check web/native-bootstrap.js
+

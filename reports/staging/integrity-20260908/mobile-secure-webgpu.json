@@ -1,0 +1,92 @@
+{
+  "frameMethod": "getFrameNum(){return this.functions.getFrameNum()}",
+  "managerKeys": [
+    "EJS",
+    "Module",
+    "FS",
+    "functions"
+  ],
+  "paused": false,
+  "visible": "visible",
+  "url": "http://localhost:18092/play/pokemon-mystery-dungeon-explorers-of-sky?renderer=webgpu&ndsdebug=1",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+  "renderer": {
+    "requested": "webgpu",
+    "selected": "external-core-canvas",
+    "effective": "external-core-canvas",
+    "webgpuAvailable": true,
+    "webgl2Available": true,
+    "webglAvailable": true,
+    "fallback": true,
+    "reason": "Render worker failed.",
+    "ownsCoreCanvas": false,
+    "offscreen": false,
+    "frameRingSize": 2,
+    "state": "fallback",
+    "renderedFrames": 0,
+    "droppedFrames": 0,
+    "renderP95Ms": null,
+    "renderP99Ms": null,
+    "transport": "bounded-latest-frame-wins"
+  },
+  "telemetry": {
+    "video": {
+      "requested": "webgpu",
+      "selected": "external-core-canvas",
+      "effective": "external-core-canvas",
+      "webgpuAvailable": true,
+      "webgl2Available": true,
+      "webglAvailable": true,
+      "fallback": true,
+      "reason": "Render worker failed.",
+      "ownsCoreCanvas": false
+    },
+    "audio": {
+      "owner": "EmulatorJS core",
+      "underruns": null,
+      "overruns": null,
+      "queueDepth": null,
+      "clock": "core-owned"
+    },
+    "framePacing": {
+      "uiFrameP95Ms": 20.909999999999854,
+      "uiFrameP99Ms": 20.910000000003492,
+      "coreFrames": 4,
+      "droppedFrames": null,
+      "longTasks": 10,
+      "renderer": {
+        "requested": "webgpu",
+        "selected": "external-core-canvas",
+        "effective": "external-core-canvas",
+        "webgpuAvailable": true,
+        "webgl2Available": true,
+        "webglAvailable": true,
+        "fallback": true,
+        "reason": "Render worker failed.",
+        "ownsCoreCanvas": false
+      },
+      "jsHeapUsedBytes": 342000000
+    }
+  },
+  "frame": 5,
+  "time": 33739.810000002384,
+  "scripts": [
+    "http://localhost:18092/emulatorjs/stable/data/emulator.min.js",
+    "http://localhost:18092/static/v/50d711002677/player-runtime.js",
+    "http://localhost:18092/static/v/50d711002677/renderer-worker.js",
+    "http://localhost:18092/static/v/50d711002677/nds-touch.js",
+    "http://localhost:18092/static/v/50d711002677/player.js",
+    "http://localhost:18092/static/site.js?v=50d711002677",
+    "http://localhost:18092/emulatorjs/stable/data/loader.js",
+    "blob:http://localhost:18092/6b8eb5d2-f183-4c84-9fb1-35bcfb15eff9"
+  ],
+  "stage": {
+    "rendererRequested": "webgpu",
+    "rendererEffective": "external-core-canvas",
+    "rendererOffscreen": "false",
+    "rendererRenderedFrames": "0",
+    "rendererDroppedFrames": "0",
+    "rendererP95Ms": "",
+    "rendererP99Ms": ""
+  }
+}

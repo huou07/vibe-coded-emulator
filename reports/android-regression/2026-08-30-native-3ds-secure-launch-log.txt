@@ -1,0 +1,180 @@
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/ProcessManager( 2846): error write exception log
+W/InputDispatcher( 2846): channel '276067a space.an3tocom.offline/space.an3tocom.offline.MainActivity' ~ Consumer closed input channel or an error occurred.  events=0x9
+W/ActivityManager( 2846): pid 2846 system sent binder code 41 with flags 1 to frozen apps and got error -32
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/AutoDensity( 7432): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/AwesomeClockCompat( 7432): compatClock errorjava.lang.NumberFormatException: For input string: ""
+E/NetworkErrorMessage(20152): (REDACTED) Invalid connectivity state: %s
+W/PlatformAconfigPackage(22454): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+E/FeatureFlagsImplExport(22454): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D/ThemeCompatibility(22454): getVersion(): /data/system/theme_config/theme_compatibility.xml  java.io.FileNotFoundException: /data/system/theme_config/theme_compatibility.xml: open failed: ENOENT (No such file or directory)
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/HomeLayerElement( 7432): java.lang.Exception
+D/HomeLayerElement( 7432): java.lang.Exception
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle Radius
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle SurfaceExtAlpha
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle appLeashBlurRadius
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle SurfaceExtAlpha
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle SurfaceExtAlpha
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle appLeashBlurRadius
+E/MultiSpringDynamicAnimation2457753( 7432): ERROR Not Found Bundle scaleY
+E/ANDR-PERF-TARGET( 1972): ANDR-PERF-TARGET: getPhysicalCluster() 60: Error: Invalid logical cluster id 3
+E/ANDR-PERF-TARGET( 1972): ANDR-PERF-TARGET: getPhysicalCluster() 60: Error: Invalid logical cluster id 3
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/MiuiPreloadClassImpl(22460): invoke error.
+E/MiuiPreloadClassImpl(22458): invoke error.
+D/ActivityThread(22458): useGrowthLimitOutExpendMethod invoke error.
+D/ActivityThread(22460): useGrowthLimitOutExpendMethod invoke error.
+D/AutoDensity( 7432): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/AwesomeClockCompat( 7432): compatClock errorjava.lang.NumberFormatException: For input string: ""
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/AwesomeClockCompat( 7432): compatClock errorjava.lang.NumberFormatException: For input string: ""
+D/OnGlobalListenerError( 7432): RecentsView before requestLayout isParentLayoutRequested = true
+D/OnGlobalListenerError( 7432): RecentsView after requestLayout
+D/OnGlobalListenerError( 7432): RecentsContainer before requestLayout isParentLayoutRequested = true
+D/OnGlobalListenerError( 7432): RecentsContainer after requestLayout
+D/AutoDensity( 2846): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/OnGlobalListenerError( 7432): RecentsContainer before requestLayout isParentLayoutRequested = true
+D/OnGlobalListenerError( 7432): RecentsContainer after requestLayout
+D/AutoDensity(15955): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(30033): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(30036): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 5982): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 9116): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 9116): getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/MultiSpringDynamicAnimationb77f2b2( 7432): ERROR Not Found Bundle Radius
+D/TransitionCallback( 7432): java.lang.Exception
+I/TransitionCallback( 7432): com.android.systemui.shared.recents.utilities.WindowTransitionCallbackHelper@8a0b498 call finishMainCallback, wct = WindowContainerTransaction { changes= {} hops= [] errorCallbackToken=null taskFragmentOrganizer=null willFinishToHome=true mFinishToHome=false }, sct = android.view.SurfaceControl$Transaction@141ccd4, callback = android.window.IRemoteTransitionFinishedCallback$Stub$Proxy@43ca9ac, mCounterRotatorList.size = 0, mInfoExposeList.size = 1
+D/HomeLayerElement( 7432): java.lang.Exception
+D/AutoDensity( 7432): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(19446): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 7822): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 7417): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/IPCThreadState( 2846): Binder transaction failure. id: 255760490, BR_*: 29189, error: -22 (Invalid argument)
+W/ActivityManager( 2846): pid 2846 system sent binder code 7 with flags 1 to frozen apps and got error -32
+W/WindowManager( 2846): Exception thrown during dispatchAppVisibility Window{276067a u0 space.an3tocom.offline/space.an3tocom.offline.MainActivity EXITING}
+W/WindowManager( 2846): android.os.DeadObjectException
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/MiuiPreloadClassImpl(22542): invoke error.
+E/MiuiPreloadClassImpl(22555): invoke error.
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/HyperOSCustFeatureResolve(22555): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22555): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/HyperOSCustFeatureResolve(22555): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22555): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/ProcessManager( 2846): error write exception log
+D/AutoDensity( 7417): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/IPCThreadState( 2495): Binder transaction failure. id: 255762970, BR_*: 29201, error: -1 (Operation not permitted)
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/AutoDensity(30036): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(15955): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 9116): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 9116): getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 7822): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 2846): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(19446): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity( 5982): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/AutoDensity(30033): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/AutoDensity( 7432): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/AwesomeClockCompat( 7432): compatClock errorjava.lang.NumberFormatException: For input string: ""
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/HyperOSCustFeatureResolve(22652): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22652): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/HyperOSCustFeatureResolve(22652): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22652): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+D/AutoDensity( 7417): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+E/DynamicIslandEventCoordinator ERROR( 7417): checkError null null null null null
+D/AutoDensity( 7417): 	getAccessibilityDpi Exception: android.provider.Settings$SettingNotFoundException: display_density_forced
+E/chromium(22652): [ERROR:cc/tiles/tile_manager.cc:1014] WARNING: tile memory limits exceeded, some content may not draw
+E/chromium(22652): [ERROR:cc/tiles/tile_manager.cc:1014] WARNING: tile memory limits exceeded, some content may not draw
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/ServiceDeliveryCompat( 7432): java.lang.IllegalArgumentException: Unknown authority com.miui.personalassistant.servicedeliver.system.provider
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/ServiceDeliveryCompat( 7432): android.content.pm.PackageManager$NameNotFoundException: com.miui.personalassistant
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+I/WM-WorkerWrapper(22460): androidx.work.impl.WorkerStoppedException
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+I/adbd    ( 1339): adbd service requested 'shell,v2,TERM=dumb,raw:uiautomator dump /sdcard/an3-3ds-launch.xml'
+W/PlatformAconfigPackage(22923): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+E/FeatureFlagsImplExport(22923): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+E/MiuiPreloadClassImpl(22948): invoke error.
+D/ActivityThread(22948): useGrowthLimitOutExpendMethod invoke error.
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AndroidRuntime(22923): callMain: return with no error.
+W/IPCThreadState(22923): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22923): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22923): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+I/Process (22948): java.lang.Exception
+E/ProcessManager( 2846): error write exception log
+E/MiuiPreloadClassImpl(23054): invoke error.
+D/ActivityThread(23054): useGrowthLimitOutExpendMethod invoke error.
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!

@@ -1,0 +1,8 @@
+/opt/an3-arcade-staging/releases/20260908-093537-50d711002677
+301592285ec3c9c0e2c6d060eb154a6475c59d69c2c16d0475590fb814791531  /opt/an3-arcade-staging/current/static/player.js
+5546b3013e7026aceb32a09f95879e24d00d1880b6e21b73fa54ce01c9f3b0f1  /opt/an3-arcade-staging/current/static/player-runtime.js
+854c373f246ccb9e18590b5c5be9127741470f0fe4538a10adc59d4fc12bd2aa  /opt/an3-arcade-staging/current/static/renderer-worker.js
+3d879130a8df25a9393accaa835d4bcf755c93e72c0fd87810617f34324274f0  /opt/an3-arcade-staging/current/static/nds-touch.js
+3c7cd43af1af2bb7a5d374e0354c1029d703a7b9496bb9a61c602353143d9ac1  /opt/an3-arcade-staging/current/static/site.css
+92d4d12666f0f0ae8bc1795d33b88e526a78abf5a72b12a26edc413fdd6a6143  /opt/an3-arcade-staging/current/static/service-worker.js
+{"ok": true, "environment": "staging", "asset_version": "50d711002677", "time": 1788835386}

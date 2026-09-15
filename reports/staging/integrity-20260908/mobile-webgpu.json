@@ -1,0 +1,96 @@
+{
+  "frameMethod": "getFrameNum(){return this.functions.getFrameNum()}",
+  "managerKeys": [
+    "EJS",
+    "Module",
+    "FS",
+    "functions"
+  ],
+  "paused": false,
+  "visible": "visible",
+  "url": "http://192.168.1.8:8092/play/pokemon-mystery-dungeon-explorers-of-sky?renderer=webgpu&ndsdebug=1",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+  "renderer": {
+    "requested": "webgpu",
+    "selected": "webgl2",
+    "effective": "webgl2",
+    "webgpuAvailable": false,
+    "webgl2Available": true,
+    "webglAvailable": true,
+    "fallback": true,
+    "reason": "WebGPU was requested, but the effective backend is webgl2.",
+    "ownsCoreCanvas": false,
+    "offscreen": true,
+    "frameRingSize": 2,
+    "state": "ready",
+    "renderedFrames": 1235,
+    "droppedFrames": 1,
+    "renderP95Ms": 0.7000000476837158,
+    "renderP99Ms": 1.300000011920929,
+    "transport": "bounded-latest-frame-wins",
+    "type": "frame-result",
+    "frameId": 1235,
+    "rendered": true,
+    "renderTimeMs": 0.19999998807907104
+  },
+  "telemetry": {
+    "video": {
+      "requested": "webgpu",
+      "selected": "webgl2",
+      "effective": "webgl2",
+      "webgpuAvailable": false,
+      "webgl2Available": true,
+      "webglAvailable": true,
+      "fallback": true,
+      "reason": "WebGPU was requested, but the effective backend is webgl2.",
+      "ownsCoreCanvas": false
+    },
+    "audio": {
+      "owner": "EmulatorJS core",
+      "underruns": null,
+      "overruns": null,
+      "queueDepth": null,
+      "clock": "core-owned"
+    },
+    "framePacing": {
+      "uiFrameP95Ms": 16.80000000000291,
+      "uiFrameP99Ms": 16.89999999999418,
+      "coreFrames": 4,
+      "droppedFrames": null,
+      "longTasks": 9,
+      "renderer": {
+        "requested": "webgpu",
+        "selected": "webgl2",
+        "effective": "webgl2",
+        "webgpuAvailable": false,
+        "webgl2Available": true,
+        "webglAvailable": true,
+        "fallback": true,
+        "reason": "WebGPU was requested, but the effective backend is webgl2.",
+        "ownsCoreCanvas": false
+      },
+      "jsHeapUsedBytes": 192395858
+    }
+  },
+  "frame": 5,
+  "time": 33273.5,
+  "scripts": [
+    "http://192.168.1.8:8092/emulatorjs/stable/data/emulator.min.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/player-runtime.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/renderer-worker.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/nds-touch.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/player.js",
+    "http://192.168.1.8:8092/static/site.js?v=50d711002677",
+    "http://192.168.1.8:8092/emulatorjs/stable/data/loader.js",
+    "blob:http://192.168.1.8:8092/50cf8796-36aa-4c5c-b6de-c1a9a617b0ae"
+  ],
+  "stage": {
+    "rendererRequested": "webgpu",
+    "rendererEffective": "webgl2",
+    "rendererOffscreen": "true",
+    "rendererRenderedFrames": "1235",
+    "rendererDroppedFrames": "1",
+    "rendererP95Ms": "0.7000000476837158",
+    "rendererP99Ms": "1.300000011920929"
+  }
+}

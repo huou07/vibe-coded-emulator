@@ -1,0 +1,12 @@
+DATE=2026-08-23 16:09:09 +07
+DEVICE=physical Android
+ANDROID_VERSION=16
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=151.0.7922.171
+LOGICAL_SCREEN_SIZE=1080x2340
+STAGING_URL=http://192.168.1.8:8092
+TEST=nds-pokemon-mystery-dungeon
+RESULT=PASS
+EVIDENCE=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/android-regression/20260823-160907-nds-touch.png; player HTTP=200; canvas box=0,397,1080,800; centre/horizontal/vertical/diagonal ADB gestures injected; virtual-pad tap=840,1530
+RUNTIME_ASSERTION=Current-layout geometry is required and used for all gestures. Staging-only ndsdebug=1 is present for explicit post-run touch-debug export. A rendered canvas/FPS and native-menu priority remain visible verification steps; screenshots alone are not treated as WebGL proof.
+KNOWN_LIMITATION=No serial or private browser-tab/device data was accessed.

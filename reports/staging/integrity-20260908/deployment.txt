@@ -1,0 +1,7 @@
+tar: Ignoring unknown extended header keyword 'SCHILY.fflags'
+tar: Ignoring unknown extended header keyword 'SCHILY.fflags'
+tar: Ignoring unknown extended header keyword 'SCHILY.fflags'
+STAGING_RELEASE=PASS
+STAGING_ASSET=50d711002677
+STAGING_RELEASE_PATH=/opt/an3-arcade-staging/releases/20260908-093537-50d711002677
+STAGING_ROLLBACK_TARGET=/opt/an3-arcade-staging/releases/20260908-001932-50d711002677

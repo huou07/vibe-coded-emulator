@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TVBOX_HOST="${TVBOX_HOST:-192.168.1.11}"
+TVBOX_HOST="${TVBOX_HOST:-192.168.1.8}"
 TVBOX_USER="${TVBOX_USER:-root}"
 AN3_ADMIN_NAME="${AN3_ADMIN_NAME:-an3admin}"
 AN3_ADMIN_PASSWORD="${AN3_ADMIN_PASSWORD:-}"
+PRODUCTION_HEALTH_URL="${PRODUCTION_HEALTH_URL:-http://${TVBOX_HOST}:8091/health}"
 
 PACKAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIVE="$(mktemp -t an3-arcade.XXXXXX.tgz)"
@@ -16,18 +17,20 @@ scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   "$ARCHIVE" "$TVBOX_USER@$TVBOX_HOST:$REMOTE_ARCHIVE"
 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  "$TVBOX_USER@$TVBOX_HOST" bash -s -- "$REMOTE_ARCHIVE" "$AN3_ADMIN_NAME" "$AN3_ADMIN_PASSWORD" <<'REMOTE'
+  "$TVBOX_USER@$TVBOX_HOST" bash -s -- "$REMOTE_ARCHIVE" "$AN3_ADMIN_NAME" "$AN3_ADMIN_PASSWORD" "$PRODUCTION_HEALTH_URL" <<'REMOTE'
 set -euo pipefail
 archive="$1"
 admin_name="$2"
 admin_password="${3:-}"
+health_url="$4"
 tmp="$(mktemp -d /tmp/an3-install.XXXXXX)"
 trap 'rm -rf "$tmp" "$archive"' EXIT
 tar -xzf "$archive" -C "$tmp"
 
 stamp="$(date +%Y%m%d-%H%M%S)"
 if [ -d /opt/an3-arcade ]; then
-  cp -a /opt/an3-arcade "/opt/an3-arcade.backup-$stamp"
+  install -d -m 0700 /opt/an3-arcade-backups
+  cp -a /opt/an3-arcade "/opt/an3-arcade-backups/$stamp"
 fi
 
 install -d -m 0755 /opt/an3-arcade /opt/an3-arcade/static
@@ -68,7 +71,7 @@ systemctl enable --now an3-arcade-backup.timer
 systemctl restart an3-arcade.service
 
 for _ in $(seq 1 30); do
-  if curl -fsS http://127.0.0.1:8091/health; then
+  if curl -fsS "$health_url"; then
     echo
     systemctl is-active an3-arcade.service
     exit 0

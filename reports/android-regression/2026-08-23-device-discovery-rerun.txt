@@ -1,0 +1,23 @@
+DATE=2026-08-23 12:35:28 +07
+DEVICE=physical Android
+ANDROID_VERSION=
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=
+LOGICAL_SCREEN_SIZE=
+STAGING_URL=http://192.168.1.8:8092
+TEST=device-discovery
+RESULT=BLOCKED
+EVIDENCE=No authorized ADB device was available; no serial was read or recorded.
+RUNTIME_ASSERTION=adb get-state did not return device.
+KNOWN_LIMITATION=Authorize USB debugging, then rerun.
+
+DATE=2026-08-23
+TEST=macOS-and-ADB-device-discovery-retry
+RESULT=BLOCKED
+EVIDENCE=After an ADB server restart, no authorized ADB device was available. A sanitized macOS USB inventory check also found no Android/MTP USB peripheral. No device serial or private Android data was read, recorded, or displayed.
+RUNTIME_ASSERTION=ADB_DEVICE_STATE=NONE; MACOS_ANDROID_USB_VISIBILITY=NOT_DETECTED.
+NEXT_ACTION=Use a known data-capable cable or USB adapter/port and confirm macOS detects the Android USB peripheral before rerunning the P3 harness.
+REPORT_FILE=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/android-regression/2026-08-23-device-discovery-rerun.txt
+
+EVIDENCE_CORRECTION=The user subsequently confirmed that the Xiaomi phone appears in macOS System Report > USB. Treat the earlier sanitized inventory matcher as non-authoritative for physical USB enumeration; the directly observed ADB state remains NONE.
+NEXT_ACTION_CORRECTION=Set the Xiaomi Android USB configuration to File transfer (MTP), toggle USB debugging, reconnect unlocked, and accept the Android RSA debugging prompt before rerunning the P3 harness.

@@ -1,0 +1,136 @@
+[
+  {
+    "file": "player.js",
+    "url": "http://192.168.1.8:8092/static/v/50d711002677/player.js",
+    "status": 200,
+    "sha256": "301592285ec3c9c0e2c6d060eb154a6475c59d69c2c16d0475590fb814791531",
+    "matches": true,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Mon, 07 Sep 2026 18:00:19 GMT",
+      "Content-Type": "text/javascript",
+      "Content-Length": "106878",
+      "Cache-Control": "public,max-age=31536000,immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    }
+  },
+  {
+    "file": "player-runtime.js",
+    "url": "http://192.168.1.8:8092/static/v/50d711002677/player-runtime.js",
+    "status": 200,
+    "sha256": "5546b3013e7026aceb32a09f95879e24d00d1880b6e21b73fa54ce01c9f3b0f1",
+    "matches": true,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Mon, 07 Sep 2026 18:00:19 GMT",
+      "Content-Type": "text/javascript",
+      "Content-Length": "14545",
+      "Cache-Control": "public,max-age=31536000,immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    }
+  },
+  {
+    "file": "renderer-worker.js",
+    "url": "http://192.168.1.8:8092/static/v/50d711002677/renderer-worker.js",
+    "status": 200,
+    "sha256": "854c373f246ccb9e18590b5c5be9127741470f0fe4538a10adc59d4fc12bd2aa",
+    "matches": true,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Mon, 07 Sep 2026 18:00:19 GMT",
+      "Content-Type": "text/javascript",
+      "Content-Length": "22628",
+      "Cache-Control": "public,max-age=31536000,immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    }
+  },
+  {
+    "file": "nds-touch.js",
+    "url": "http://192.168.1.8:8092/static/v/50d711002677/nds-touch.js",
+    "status": 200,
+    "sha256": "3d879130a8df25a9393accaa835d4bcf755c93e72c0fd87810617f34324274f0",
+    "matches": true,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Mon, 07 Sep 2026 18:00:19 GMT",
+      "Content-Type": "text/javascript",
+      "Content-Length": "7282",
+      "Cache-Control": "public,max-age=31536000,immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    }
+  },
+  {
+    "file": "site.css",
+    "url": "/static/site.css?v=50d711002677",
+    "status": 200,
+    "sha256": "3c7cd43af1af2bb7a5d374e0354c1029d703a7b9496bb9a61c602353143d9ac1",
+    "matches": true,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Tue, 08 Sep 2026 02:34:30 GMT",
+      "Content-Type": "text/css",
+      "Content-Length": "162636",
+      "Cache-Control": "public,max-age=31536000,immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    }
+  },
+  {
+    "file": "service-worker.js",
+    "url": "/service-worker.js?v=50d711002677",
+    "status": 200,
+    "sha256": "24593e3a5baecedf6d9469425e4ff5d8ab173a2b44742274a378a88bd6ef62f1",
+    "matches": false,
+    "headers": {
+      "Server": "AN3Arcade/1.0 Python/3.13.5",
+      "Date": "Tue, 08 Sep 2026 02:34:30 GMT",
+      "Content-Type": "application/javascript; charset=utf-8",
+      "Content-Length": "4925",
+      "Cache-Control": "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Permitted-Cross-Domain-Policies": "none",
+      "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    },
+    "matchesServedTemplate": true,
+    "note": "app.py replaces __ASSET_VERSION__ at request time; deployed raw file matches working tree"
+  }
+]

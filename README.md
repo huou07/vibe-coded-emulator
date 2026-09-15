@@ -19,9 +19,9 @@ Web game riêng cho `an3tocom.space`, chạy backend nhẹ trên TV Box và rend
 - NDS dùng nút riêng A/B/X/Y/L/R/Start/Select, không che màn hình cảm ứng và cho phép kéo thả như các hệ máy cầm tay khác. Canvas NDS được giám sát liên tục để gỡ lớp chặn pointer và có cầu nối touch-to-mouse cho trình duyệt điện thoại.
 - NDS dùng core `melonds` với `EJS_startOnLoaded=true`; không dùng DeSmuME, nút **Vào game** hoặc flow start thủ công. Touch bridge theo dõi canvas, gỡ lớp chặn pointer và chuyển touch thành mouse events cho màn hình DS. Với ZIP NDS, luồng Chơi giữ ZIP gốc để melonDS xử lý phía trình duyệt; nút Tải xuống vẫn giữ nguyên archive gốc.
 - Core offline được ghi và xác minh trong IndexedDB `EmulatorJS-core`/store `core` theo contract của EmulatorJS, đồng thời dùng cache bền vững `an3-arcade-cores-v1`, không bị xóa khi nâng phiên bản app shell. Trang Kho ngoại tuyến đọc/xóa cả IndexedDB và Cache Storage; marker hiện tại là `an3-offline-core-v7`.
-- Thư viện tự kiểm tra game/đánh giá mới mỗi 15 giây và tài nguyên CSS/JS tự đổi phiên bản khi cập nhật, không cần xóa cache trình duyệt.
+- Thư viện tìm kiếm từ chỉ mục đã chuẩn bị sẵn và chỉ kiểm tra game/đánh giá mới khi tab đang hiển thị, mỗi 60 giây; tài nguyên CSS/JS tự đổi phiên bản khi cập nhật, không cần xóa cache trình duyệt.
 - PWA cho phép cài Ăn 3 Tô Cơm, chuyển nhanh giữa Online/Offline, đưa ROM vào kho offline riêng trên trình duyệt và chơi không cần kết nối; kho này không đồng bộ tài khoản, thư viện chung, đánh giá hay bình luận.
-- PWA shell v17 cache giao diện ngay khi cài đặt. Nút tải trước core đọc report trước, chọn đúng binary theo report/capability, rồi lưu và xác minh runtime, extractor và core binary qua proxy cùng nguồn; chỉ báo sẵn sàng sau khi IndexedDB EmulatorJS và cache đã được kiểm tra.
+- PWA shell hiện dùng marker `an3-arcade-pwa-v29`. Nút tải trước core đọc report trước, chọn đúng binary theo report/capability, rồi lưu và xác minh runtime, extractor và core binary qua proxy cùng nguồn; chỉ báo sẵn sàng sau khi IndexedDB EmulatorJS và cache đã được kiểm tra.
 - Trang Offline có nút tải và verify core theo từng hệ máy, nhận diện ROM/ZIP cục bộ, tự chia kho ROM theo hệ máy và giữ nguyên menu player, save slot, fullscreen, save/import state và phím ảo.
 - Tài nguyên EmulatorJS đi qua proxy/cache cùng origin `/emulatorjs/<channel>/data/...`; TVBox chỉ tải một lần từ CDN, còn trình duyệt không phụ thuộc trực tiếp vào CDN có thể bị ad-blocker hoặc chính sách cross-origin chặn.
 - Lần truy cập đầu tiên có hướng dẫn tự đóng sau 5 giây; nút hướng dẫn trên trang chủ luôn có thể mở lại. Khi mở menu của player, chú giải nút điều khiển hiển thị mờ trong 3 giây.
@@ -31,14 +31,24 @@ Web game riêng cho `an3tocom.space`, chạy backend nhẹ trên TV Box và rend
 
 Trên HTTP LAN, trình duyệt vẫn lưu core vào IndexedDB nhưng không có Service Worker/Cache Storage bền vững; trải nghiệm đóng/mở hoàn toàn offline yêu cầu HTTPS/PWA.
 
-## Thư mục trên TV Box
+## Vận hành hiện tại
+
+| Bề mặt | Địa chỉ hiện hành |
+| --- | --- |
+| Production LAN | `http://192.168.1.8:8091` |
+| Staging LAN tách biệt | `http://192.168.1.8:8092` |
+| Public | `https://an3tocom.space` |
+
+Production và staging có code root, SQLite, ROM, session, cookie và protected environment file riêng. Không sao chép `/srv` dữ liệu, user, session, ROM hoặc fixture từ staging sang production. Production chỉ là đích phê duyệt rõ ràng của owner; mọi thay đổi phải qua staging, test, rollback preflight và phê duyệt đó.
+
+## Thư mục production
 
 - Ứng dụng: `/opt/an3-arcade`
 - Dữ liệu/SQLite/ROM/cover: `/srv/an3-arcade`
 - Cấu hình bí mật: `/etc/an3-arcade.env`
 - Dịch vụ: `an3-arcade.service`
 - Cổng LAN: `8091`
-- URL LAN: `http://192.168.1.11:8091`
+- URL LAN: `http://192.168.1.8:8091`
 
 ## Biến môi trường
 
@@ -46,13 +56,11 @@ Trên HTTP LAN, trình duyệt vẫn lưu core vào IndexedDB nhưng không có 
 AN3_APP_DIR=/opt/an3-arcade
 AN3_DATA_DIR=/srv/an3-arcade
 AN3_PORT=8091
-AN3_BASE_URL=http://192.168.1.11:8091
-AN3_ADMIN_NAME=admin
-AN3_ADMIN_PASSWORD=<mật khẩu mạnh>
+AN3_BASE_URL=http://192.168.1.8:8091
 AN3_COOKIE_SECURE=0
 ```
 
-Khi chạy qua HTTPS trên tên miền, đổi `AN3_BASE_URL=https://an3tocom.space` và `AN3_COOKIE_SECURE=1`.
+Không ghi giá trị secret (pepper, password, token, session hoặc SSH credential) vào repository, report hay command history. Production HTTPS dùng `AN3_BASE_URL=https://an3tocom.space` và `AN3_COOKIE_SECURE=1`.
 
 ## Bảo mật
 
@@ -61,19 +69,30 @@ Khi chạy qua HTTPS trên tên miền, đổi `AN3_BASE_URL=https://an3tocom.sp
 - Bình luận/báo lỗi có honeypot, chống lặp, khoảng nghỉ bắt buộc, quota theo tài khoản/IP và lọc mẫu spam cơ bản.
 - HTTP header gồm CSP, HSTS khi HTTPS, `nosniff`, Referrer Policy, Permissions Policy, COOP/CORP và chặn nhúng trang từ origin khác.
 - Chỉ admin mới có endpoint upload, quản lý tài khoản và cấu hình liên hệ. Không chia sẻ mật khẩu router, SSH hoặc admin trong bình luận hay ticket.
-- Trên Cloudflare, bật WAF Managed Rules, Bot Fight Mode và giới hạn tốc độ cho `/api/login`, `/api/register`, `/admin/api/*`; sao lưu định kỳ `/srv/an3-arcade` trước khi nâng cấp.
+- Cloudflare WAF/rate-limit/Bot controls là hạng mục security review riêng; không khẳng định chúng đã được cấu hình nếu chưa có bằng chứng owner-authorized. Dùng SQLite Online Backup thay vì raw-copy database WAL đang chạy.
 
-## Quy trình staging
+## Quy trình staging-first
 
-Mỗi lần cập nhật, triển khai và thử trước tại `http://192.168.1.11:8092`. Staging dùng ứng dụng, SQLite, ROM và cookie riêng, không đụng vào production. Unit là `an3-arcade-staging.service`; script `deploy-stage.sh` phát hành source sang release tách thư mục, health-check rồi tự quay về release staging trước nếu khởi động thất bại.
+Mỗi lần cập nhật phải package/test/triển khai và thử trước tại `http://192.168.1.8:8092`. Staging dùng ứng dụng, SQLite, ROM và cookie riêng, không đụng vào production. Staging scripts là `deploy/package-staging.sh`, `deploy/update-staging.sh` và `deploy/rollback-staging.sh`; release switch dùng tên trung tính `YYYYMMDD-HHMMSS-<asset>`, giữ release cũ và phục hồi symlink nếu health check thất bại. Quy trình đầy đủ nằm trong `docs/staging.md`.
 
-Tệp `/etc/an3-arcade-staging.env` cần dùng `AN3_APP_DIR=/opt/an3-arcade-staging/current`, `AN3_DATA_DIR=/srv/an3-arcade-staging`, `AN3_PORT=8092`, `AN3_ENVIRONMENT=staging`, `AN3_COOKIE_SECURE=0` và một `AN3_AUTH_PEPPER` ngẫu nhiên. Chỉ deploy production sau khi staging test đạt.
+Tệp `/etc/an3-arcade-staging.env` là protected configuration; chỉ ghi public path/role, không ghi secret value. Staging service là `an3-arcade-staging.service`, code root `/opt/an3-arcade-staging/current`, writable root `/srv/an3-arcade-staging`, port `8092`, và không có write access tới `/srv/an3-arcade`.
 
 ## Kích hoạt tên miền
 
 `an3tocom.space` đang hoạt động qua Cloudflare Tunnel tới `http://127.0.0.1:8091`; không phụ thuộc IP WAN và không cần DMZ/port forward. Production phải giữ cookie secure.
 
-Mẫu ingress nằm tại `deploy/cloudflared-config.yml.example`. Sau khi tunnel hoạt động, đổi `AN3_BASE_URL` thành `https://an3tocom.space`, đặt `AN3_COOKIE_SECURE=1` và restart `an3-arcade.service`. ROM lớn nên được upload từ Dashboard qua URL LAN để tránh giới hạn kích thước request của proxy công cộng.
+Mẫu ingress nằm tại `deploy/cloudflared-config.yml.example`. Không thay đổi Cloudflare/tunnel, deploy production, hoặc chạy migration dữ liệu chỉ để thực hiện staging/P3 acceptance. ROM lớn nên được upload từ Dashboard qua URL LAN để tránh giới hạn kích thước request của proxy công cộng.
+
+## P3 operations
+
+- Android staging-first harness and private localhost PWA procedure: `docs/android-regression.md`.
+- Shared public/admin visual rules: `docs/design-system.md` and `docs/ui-page-contract.md`.
+- Production/staging boundaries, checks and rollback discipline: `docs/operations.md` and `docs/staging.md`.
+- Admin Quick Edit reuses `/admin/game/<id>` and retains server-side authorization/CSRF. Enrichment stays pending until explicit admin approval; ROM files are never altered. Batch status changes are limited to 50 selected games and require preview plus typed confirmation.
+
+## P4 operations
+
+- `deploy/an3-arcade-health.sh` is a read-only host helper for production/staging health, Cloudflare Tunnel and backup-timer state, disk use, and SQLite integrity. It deliberately has no credentials, no polling loop, and no observability-stack dependency.
 
 ## Nguồn công cụ
 

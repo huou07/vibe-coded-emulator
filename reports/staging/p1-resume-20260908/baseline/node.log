@@ -1,0 +1,17 @@
+web NDS touch behavior: ok
+✔ tests/web_nds_touch_behavior.test.js (27.888875ms)
+✔ WebGPU validates required copy texture usage and reports first frame stages (3.001ms)
+✔ adapter rejection retains WebGL2 fallback and reason (0.544166ms)
+✔ pipeline error retains exact stage after context binding (0.351ms)
+✔ frame error is reported, never counted as rendered, and closes bitmap (1.087792ms)
+✔ transferred worker failure retries reusable WebGL2 on fresh canvas (0.665917ms)
+✔ external fallback occurs only after fresh WebGL2 fails and restores source (0.3335ms)
+✔ boot return and repeated frozen-canvas submissions never imply gameplay acceptance (0.423625ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 38.778

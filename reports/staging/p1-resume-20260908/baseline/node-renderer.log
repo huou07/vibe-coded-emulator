@@ -1,0 +1,15 @@
+^D✔ WebGPU validates required copy texture usage and reports first frame stages (5.557625ms)
+✔ adapter rejection retains WebGL2 fallback and reason (0.975416ms)
+✔ pipeline error retains exact stage after context binding (0.649417ms)
+✔ frame error is reported, never counted as rendered, and closes bitmap (2.194375ms)
+✔ transferred worker failure retries reusable WebGL2 on fresh canvas (1.424416ms)
+✔ external fallback occurs only after fresh WebGL2 fails and restores source (0.659541ms)
+✔ boot return and repeated frozen-canvas submissions never imply gameplay acceptance (0.784833ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 72.918375

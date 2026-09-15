@@ -1,0 +1,88 @@
+# This is an isolated staging-shadow stack. It must only proxy the existing
+# isolated staging Python service; it never mounts or modifies legacy data.
+name: an3-rust-shadow-staging
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust-gateway
+    # Release helpers override this with a source-asset-specific staging tag.
+    # The default exists only for local, non-release Compose validation.
+    image: "an3-arcade/rust-gateway-shadow:${AN3_SHADOW_IMAGE_TAG:-staging}"
+    restart: unless-stopped
+    # The staging host drops bridge FORWARD traffic to the legacy LAN listener.
+    # Host networking lets this process reach 192.168.1.8:8092, while the Rust
+    # listener itself remains pinned to host loopback below.
+    network_mode: host
+    environment:
+      AN3_GATEWAY_BIND: "127.0.0.1:${AN3_SHADOW_STAGE_PORT:-18093}"
+      # Python staging binds this LAN address. Host networking avoids the
+      # staging host's bridge FORWARD policy without exposing the gateway.
+      AN3_GATEWAY_UPSTREAM: "${AN3_GATEWAY_UPSTREAM:-http://192.168.1.8:8092}"
+      AN3_GATEWAY_REDIS_URL: "redis://127.0.0.1:16379/0"
+      AN3_GATEWAY_HEALTHCHECK_PORT: "${AN3_SHADOW_STAGE_PORT:-18093}"
+      AN3_GATEWAY_CACHE_TTL_SECONDS: "60"
+      AN3_GATEWAY_CACHE_MAX_BODY_BYTES: "5242880"
+      AN3_GATEWAY_CONNECT_TIMEOUT_SECONDS: "5"
+      AN3_GATEWAY_HEALTH_TIMEOUT_SECONDS: "5"
+      RUST_LOG: "info"
+    depends_on:
+      redis:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Redis shares the host namespace only because the gateway must do so.
+    # Its TCP listener is nevertheless restricted to IPv4 loopback.
+    network_mode: host
+    command:
+      - redis-server
+      - --bind
+      - "127.0.0.1"
+      - --port
+      - "16379"
+      - --protected-mode
+      - "yes"
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      # Isolated cache-only volume. No DB/ROM/session path is mounted here.
+      - rust-shadow-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-h", "127.0.0.1", "-p", "16379", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    # The official Redis entrypoint starts as root only long enough to drop to
+    # its unprivileged account. Retain a minimal capability set for that one
+    # transition; dropping every capability prevents setresuid and leaves the
+    # cache container unhealthy before Redis can start.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  rust-shadow-redis-data:
+    # Explicitly named so it is isolated from every existing AN3 data volume.
+    name: an3-rust-shadow-staging-redis-data

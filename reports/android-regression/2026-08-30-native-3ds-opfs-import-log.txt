@@ -1,0 +1,240 @@
+I/app_process(22273): Using generational CollectorTypeCMC GC.
+D/vendor.xiaomi.hardware.mimd@2.0-service( 1781): psi 8  is reloaded.
+D/nativeloader(22273): InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+D/nativeloader(22273): Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+D/app_process(22273): u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/9/icu") succeeded. 
+D/app_process(22273): I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt76l.dat
+--
+D/nativeloader(22273): Load libmiui_runtime.so using system ns (caller=/system_ext/framework/miui-framework.jar): ok
+E/app_process(22273): register_android_view_SurfaceRuntimeShader  
+E/app_process(22273): register_android_view_SurfaceRuntimeShader  0
+W/PlatformAconfigPackage(22273): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+I/AconfigPackage(22273): com.android.art.flags is mapped to com.android.art
+I/AconfigPackage(22273): com.android.art.rw.flags is mapped to com.android.art
+I/AconfigPackage(22273): com.android.libcore is mapped to com.android.art
+--
+I/AconfigPackage(22273): com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+I/AconfigPackage(22273): android.media.swcodec.flags is mapped to com.android.media.swcodec
+I/AconfigPackage(22273): com.android.appsearch.flags is mapped to com.android.appsearch
+E/FeatureFlagsImplExport(22273): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D/UiAutomationConnection(22273): Created on user UserHandle{0}
+I/UiAutomation(22273): Initialized for user 0 on display 0
+W/UiAutomation(22273): Created with deprecatead constructor, assumes DEFAULT_DISPLAY
+--
+W/AccessibilityNodeInfoDumper(22273): Fetch time: 76ms
+W/MagnificationConnectionManager( 2846): requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+D/AccessibilityManagerService( 2846): restoreCurrentUserForTestAutomationIfNeededLocked(): ignoring because device doesn't support visible background users
+D/AndroidRuntime(22273): callMain: return with no error.
+W/IPCThreadState(22273): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22273): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22273): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+D/AndroidRuntime(22273): Shutting down VM
+E/AccessibilityStateListenerImpl( 2846): MiuiEnhanceTBService is not installed
+D/BatterySaverPolicy( 2846): accessibility changed to false, updating policy.
+--
+D/InetDiagMessage( 2846): Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+D/InetDiagMessage( 2846): Destroyed live tcp sockets for uids={20226} in 3ms
+E/HwcComposer( 2071): getLuts failed Status(-129, EX_TRANSACTION_FAILED): 'UNKNOWN_TRANSACTION: '
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+I/app_process(22273): hook_module_exit libgui_unisoc_utils.so over, handle:0x0
+--
+D/vold    (22300): maxCpuFreq2016000
+D/vold    (22300): maxCpuFreq2304000
+D/vold    (22300): set cpu affinity policy success
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/JavaheapMonitor( 6110): Java heap used=12M max=256M, proc: com.google.android.apps.messaging
+--
+D/MFZ     ( 2846): Flush finished! After Flush idle_stats: 93200 5615 18301 441 0 0 0 0 0 0
+D/MFZ     ( 2846): Flush finished! After Flush bd_stats:   245726 10462143 15235548        0        0        0
+D/MFZ     ( 2846): Flush finished! After Flush zramFreeKb: 5400736KB
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+W/Binder  ( 2846): 	at jdk.internal.math.FloatingDecimal.readJavaFormatString(FloatingDecimal.java:2054)
+W/Binder  ( 2846): 	at jdk.internal.math.FloatingDecimal.parseDouble(FloatingDecimal.java:110)
+W/Binder  ( 2846): 	at java.lang.Double.parseDouble(Double.java:660)
+--
+E/AlarmManager( 2846): not align this alarm: Alarm{ed3c150 type 3 origWhen 316054991516 whenElapsed 316054991516 com.google.android.gms}, reason=0
+I/GmscoreIpa(16425): Starting mediastore instant index [CONTEXT service_id=255 ]
+W/EventThreadInspector( 2071): slow VSync-app on display(4630947136429309825) count=1, avg=37 ms, max=37 ms.
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+E/HwcComposer( 2071): getLuts failed Status(-129, EX_TRANSACTION_FAILED): 'UNKNOWN_TRANSACTION: '
+--
+D/MFZ     ( 2846): Flush finished! After Flush idle_stats: 91520 5611 10340 392 0 0 0 0 0 0
+D/MFZ     ( 2846): Flush finished! After Flush bd_stats:   253734 10462143 15243557        0        0        0
+D/MFZ     ( 2846): Flush finished! After Flush zramFreeKb: 5356992KB
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+W/Binder  ( 2846): 	at jdk.internal.math.FloatingDecimal.readJavaFormatString(FloatingDecimal.java:2054)
+W/Binder  ( 2846): 	at jdk.internal.math.FloatingDecimal.parseDouble(FloatingDecimal.java:110)
+W/Binder  ( 2846): 	at java.lang.Double.parseDouble(Double.java:660)
+--
+V/JavaheapMonitor(16877): Check java heap usage finished! Next check delay: 300000
+D/AurogonBandwidthController( 2846): skinTemperature:32.418
+D/AurogonBandwidthController( 2846): skinTemperature:32.418
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/MI-SF   ( 2071): isTpIdleScene ,mAverageFrameRate is 0, 0 
+--
+E/HwcComposer( 2071): getLuts failed Status(-129, EX_TRANSACTION_FAILED): 'UNKNOWN_TRANSACTION: '
+D/SLM-SRV-SLAService( 2846): checktemp temperature = 32418 temperature_average = 32163 isPerformanceMode = false thermal_enable_slm = true
+I/NetworkBoostStatusManager( 2846): handle: 107
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+I/NetworkBoostStatusManager( 2846): isModemSingnalStrengthStatus cellLteSignalRsrp = -105
+D/SLM-SRV-SLAService( 2846): isModemSingnalStrengthStatus = 1
+D/JavaheapMonitor( 7432): Java heap used=21M max=512M, proc: com.miui.home
+--
+I/ForegroundAppManager( 2846): remove foregroundApp,uid:10102,procState:4
+I/vendor.qti.bluetooth@1.0-ibs_handler( 1923): ProcessIbsCmd: Received IBS_SLEEP_IND: 0xFE
+I/MediaCodec(12442): [mId: 2] [audio-debug-dec] state 6 mFlags 2048 Stats 5008ms:Client:com.facebook.katana,Component:c2.android.aac.decoder,Qin:0,DQin:0/5,Render:0,Drop:0,DQout:0/0
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+I/ActivityManager( 2846): unbindService com.android.server.am.ActiveServices@78b5b73 conn=android.os.BinderProxy@46392b7 callingPid=19954
+--
+V/JavaheapMonitor(13116): Check java heap usage finished! Next check delay: 300000
+D/JavaheapMonitor( 7280): Java heap used=7M max=256M, proc: .dataservices
+V/JavaheapMonitor( 7280): Check java heap usage finished! Next check delay: 300000
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/JavaheapMonitor(20195): Java heap used=6M max=512M, proc: com.google.android.googlequicksearchbox:interactor
+--
+I/NetworkAccelerateSwitchService( 2846): getAverageWifiRssi:60
+D/NetworkAccelerateSwitchService( 2846): checkIntervalModeChange mMovementState:false mIntervalMode:0 mIsBadLinkLayerQoE:false mBadLinkLayerQoETimes = 0
+W/MIUIInput( 2846): Input motion event injection from package: null action ACTION_DOWN
+I/MIUIInput( 2846): [MotionEvent] publisher action=0x0, deviceId=-1, 525809733, channel '276067a space.an3tocom.offline/space.an3tocom.offline.MainActivity'
+I/MIUIInput( 2846): [MotionEvent] publisher action=0x0, deviceId=-1, 525809733, channel '[Gesture Monitor] WMShell'
+I/MIUIInput( 2846): [MotionEvent] publisher action=0x0, deviceId=-1, 525809733, channel '[Gesture Monitor] miui-gesture'
+I/MIUIInput(21316): [MotionEvent] ViewRootImpl windowName 'space.an3tocom.offline/space.an3tocom.offline.MainActivity', { action=ACTION_DOWN, id[0]=0, pointerCount=1, eventTime=525809733, downTime=525809733, phoneEventTime=1788034125544 } moveCount:0
+D/VRI[MainActivity](21316): getMiuiFreeformStackInfo mTmpFrames.miuiFreeFormStackInfo: null
+D/SchedBoost( 2846): handleSceneBoost type: 17, active :true
+I/ProcessManager( 2846): getRenderThreadTidByPid, caller=2846
+--
+I/MiuiSplitInputMethodImpl( 2846): Skip onPointerDownOutsideFocusLocked
+D/MI-SF   ( 2071): setIdleFps choose FPS:48, mode:0
+W/MIUIInput( 2846): Input motion event injection from package: null action ACTION_UP
+I/MIUIInput( 2846): [MotionEvent] publisher action=0x1, deviceId=-1, 525809733, channel '276067a space.an3tocom.offline/space.an3tocom.offline.MainActivity'
+I/MIUIInput(21316): [MotionEvent] ViewRootImpl windowName 'space.an3tocom.offline/space.an3tocom.offline.MainActivity', { action=ACTION_UP, id[0]=0, pointerCount=1, eventTime=525809733, downTime=525809733, phoneEventTime=1788034125544 } moveCount:0
+D/RefreshRateSelector( 2071): Touch Boost
+D/MI-SF   ( 2071): modeGroup0 mIsSupportAutomodeForMaxFpsSetting is 0(0), getCurrentBrightness() = 0(880), mIsKeepAutoMode 0 isAutoModeAllowed() 1
+D/RefreshRateSelector( 2071): fixedMode_group: 0, isFindModeGroup 0
+--
+E/HwcComposer( 2071): getLuts failed Status(-129, EX_TRANSACTION_FAILED): 'UNKNOWN_TRANSACTION: '
+D/JavaheapMonitor(19954): Java heap used=31M max=256M, proc: com.google.android.gms.persistent
+V/JavaheapMonitor(19954): Check java heap usage finished! Next check delay: 300000
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/JavaheapMonitor(19127): Java heap used=7M max=256M, proc: com.google.android.gms.ui
+--
+D/JavaheapMonitor(32509): Java heap used=15M max=512M, proc: com.google.android.googlequicksearchbox:search
+V/JavaheapMonitor(32509): Check java heap usage finished! Next check delay: 300000
+D/SLM-SRV-SLAService( 2846): checktemp temperature = 32632 temperature_average = 32260 isPerformanceMode = false thermal_enable_slm = true
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+I/system_server( 2846): Background young concurrent mark compact GC freed 10MB AllocSpace bytes, 9(336KB) LOS objects, 14% free, 127MB/148MB, paused 1.228ms,7.046ms total 130.211ms
+--
+V/JavaheapMonitor( 7432): Check java heap usage finished! Next check delay: 300000
+D/JavaheapMonitor(16958): Java heap used=4M max=256M, proc: com.miui.daemon
+V/JavaheapMonitor(16958): Check java heap usage finished! Next check delay: 300000
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/MiuiCarrierTextLayout( 7417): normal_control_center handleTwoCarriers: widthLeft:103 widthRight:85 availableWidth:874
+--
+W/BpBinder(22337): Linking to death on android.gui.ISurfaceComposer but there are no threads (yet?) listening to incoming transactions. See ProcessState::startThreadPool and ProcessState::setThreadPoolMaxThreadCount. Generally you should setup the binder threadpool before other initialization steps.
+W/ProcessState(22337): Extra binder thread started, but 0 threads requested. Do not use *startThreadPool when zero threads are requested.
+I/SurfaceFlinger( 2071): SF-MICapture: mode:0, layerNames:(no_layer_names), blurRadius:0, scale:(1.000000,1.000000), blends:(no_color_mode)
+I/SurfaceFlinger( 2071): SF-MICapture: mode:0, layerName:space.an3tocom.offline/space.an3tocom.offline.MainActivity#99225
+I/SurfaceFlinger( 2071): SF-MICapture: mode:0, layerName:StatusBar#114
+I/SurfaceFlinger( 2071): SF-MICapture: mode:0, layerName:NavigationBar0#113
+E/HwcComposer( 2071): getLuts failed Status(-129, EX_TRANSACTION_FAILED): 'UNKNOWN_TRANSACTION: '
+I/screencap(22337): hook_module_exit libgui_unisoc_utils.so over, handle:0x0
+I/adbd    ( 1339): adbd service requested 'shell,v2,TERM=dumb,raw:uiautomator dump /sdcard/an3-opfs-import-attempt2.xml'
+I/MediaCodec(12442): [mId: 2] [audio-debug-dec] state 6 mFlags 2048 Stats 5010ms:Client:com.facebook.katana,Component:c2.android.aac.decoder,Qin:0,DQin:0/5,Render:0,Drop:0,DQout:0/0
+W/app_process(22339): type=1400 audit(0.0:359164): avc:  denied  { read } for  name="u:object_r:vendor_audio_prop:s0" dev="tmpfs" ino=547 scontext=u:r:shell:s0 tcontext=u:object_r:vendor_audio_prop:s0 tclass=file permissive=0
+W/libc    (22339): Access denied finding property "persist.vendor.audio.cpupror.schedDy"
+--
+I/AndroidRuntime(22339): Using default boot image
+I/AndroidRuntime(22339): Leaving lock profiling enabled
+I/app_process(22339): Using generational CollectorTypeCMC GC.
+D/nativeloader(22339): InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+D/nativeloader(22339): Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+D/app_process(22339): u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/9/icu") succeeded. 
+D/app_process(22339): I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt76l.dat
+--
+D/nativeloader(22339): Load libmiui_runtime.so using system ns (caller=/system_ext/framework/miui-framework.jar): ok
+E/app_process(22339): register_android_view_SurfaceRuntimeShader  
+E/app_process(22339): register_android_view_SurfaceRuntimeShader  0
+W/PlatformAconfigPackage(22339): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+I/AconfigPackage(22339): com.android.art.flags is mapped to com.android.art
+I/AconfigPackage(22339): com.android.art.rw.flags is mapped to com.android.art
+I/AconfigPackage(22339): com.android.libcore is mapped to com.android.art
+--
+I/AconfigPackage(22339): com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+I/AconfigPackage(22339): android.media.swcodec.flags is mapped to com.android.media.swcodec
+I/AconfigPackage(22339): com.android.appsearch.flags is mapped to com.android.appsearch
+E/FeatureFlagsImplExport(22339): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D/UiAutomationConnection(22339): Created on user UserHandle{0}
+I/UiAutomation(22339): Initialized for user 0 on display 0
+W/UiAutomation(22339): Created with deprecatead constructor, assumes DEFAULT_DISPLAY
+--
+I/SafetyCenterAccessibilityListener(16690): accessibility event occurred, safety center feature not enabled.
+D/BatterySaverPolicy( 2846): accessibility changed to true, updating policy.
+D/AS.AudioService( 2846): Accessibility volume enabled = false
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/JavaheapMonitor( 7822): Java heap used=7M max=256M, proc: com.xiaomi.bluetooth
+V/JavaheapMonitor( 7822): Check java heap usage finished! Next check delay: 300000
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+--
+I/vendor.qti.hardware.servicetrackeraidl-service( 1975): bindService is called for service : com.google.android.gms/.ipa.base.IpaGcmTaskService and for client com.google.android.gms.persistent
+I/vendor.qti.hardware.servicetrackeraidl-service( 1975): total connections for service : com.google.android.gms/.ipa.base.IpaGcmTaskServiceare :1
+I/vendor.qti.hardware.servicetrackeraidl-service( 1975): total connections for client : com.google.android.gms.persistentare :6
+D/AndroidRuntime(22339): callMain: return with no error.
+D/AndroidRuntime(22339): Shutting down VM
+W/IPCThreadState(22339): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22339): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22339): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+I/NetworkScheduler.Stats(19954): (REDACTED) Task %s/%s started execution. cause:%s exec_start_elapsed_seconds: %s
+E/AccessibilityStateListenerImpl( 2846): MiuiEnhanceTBService is not installed
+D/BatterySaverPolicy( 2846): accessibility changed to false, updating policy.
+--
+E/Dpps    ( 1968): DppsServer::RunPollIteration():480 Poll iteration failed with ret -95
+E/Dpps    ( 1968): DppsServer::Run():293 Poll iteration failed, ret -95
+I/SDM     ( 1968): HWDeviceDRM::SetDisplaySwitchMode: Mode 0 already set
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/MiuiCarrierTextLayout( 7417): normal_control_center handleTwoCarriers: widthLeft:103 widthRight:85 availableWidth:874
+--
+W/NotificationInjector( 7417):  workProfile or sbn is null
+D/AlertCoordinator( 7417): onViewBound, buzzBeep for 0|com.mobidia.android.mdm|1|null|10350
+D/AudioTrackImpl(12442): [audioTrackData][fine] 45s(f:45067 m:0 s:0 k:0 z:0) : pid 12442 uid 10320 sessionId 72425 sr 44100 ch 2 fmt 1 maxAmplitude 2975
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/MiuiCarrierTextLayout( 7417): normal_control_center handleTwoCarriers: widthLeft:103 widthRight:85 availableWidth:874
+--
+V/JavaheapMonitor(16958): Check java heap usage finished! Next check delay: 300000
+D/JavaheapMonitor(19446): Java heap used=5M max=256M, proc: com.lbe.security.miui
+V/JavaheapMonitor(19446): Check java heap usage finished! Next check delay: 300000
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+I/MediaCodec(12442): [mId: 2] [audio-debug-dec] state 6 mFlags 2048 Stats 5007ms:Client:com.facebook.katana,Component:c2.android.aac.decoder,Qin:0,DQin:0/5,Render:0,Drop:0,DQout:0/0
+--
+I/gle.android.gms(16425): Explicit concurrent mark compact GC freed 1585KB AllocSpace bytes, 0(0B) LOS objects, 40% free, 35MB/59MB, paused 479us,2.049ms total 302.660ms
+I/SmartPower: com.miui.analytics/10175(30031)( 2846): idle->background(33852ms) R(content provider start ContentProviderRecord{591326e u0 com.miui.analytics/.onetrack.db.OneTrackProvider}) adj=0.
+I/adbd    ( 1339): adbd service requested 'shell,v2,TERM=dumb:export ANDROID_LOG_TAGS=''; exec logcat '-d' '-v' 'brief''
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+D/AmlWifiScoreReportInjector( 2846): isMobileDataSignalPoor cellLteSignalRsrp = -108
+D/AmlWifiScoreReportInjector( 2846): getMaxRssiInWaeknet weaknetRssi = -72
+D/JavaheapMonitor( 7334): Java heap used=2M max=256M, proc: com.xiaomi.hypercomm

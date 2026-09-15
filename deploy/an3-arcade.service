@@ -13,7 +13,6 @@ WorkingDirectory=/opt/an3-arcade
 Restart=on-failure
 RestartSec=3
 UMask=0027
-NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict

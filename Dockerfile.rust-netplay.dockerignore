@@ -1,0 +1,6 @@
+# The relay has no local build inputs.  Keeping this context minimal prevents
+# source trees, reports, environments, and any accidental local data from
+# crossing into Docker during a staging image build.
+*
+!Dockerfile.rust-netplay
+!Dockerfile.rust-netplay.dockerignore

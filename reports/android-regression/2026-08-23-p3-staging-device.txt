@@ -1,0 +1,12 @@
+DATE=2026-08-23 13:52:28 +07
+DEVICE=physical Android
+ANDROID_VERSION=16
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=151.0.7922.171
+LOGICAL_SCREEN_SIZE=1080x2340
+STAGING_URL=http://192.168.1.8:8092
+TEST=device-discovery
+RESULT=PASS
+EVIDENCE=Authorized ADB connection and approved browser package detected.
+RUNTIME_ASSERTION=adb get-state returned device.
+KNOWN_LIMITATION=No serial, IMEI, Android ID, MAC, account, or personal-file data was read.

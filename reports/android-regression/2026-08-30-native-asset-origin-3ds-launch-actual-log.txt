@@ -1,0 +1,180 @@
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+I/AccessPointsCustomizationHintHandlerModule( 8137): AccessPointsCustomizationHintHandlerModule$2.onFailure():187 Check to show banner task is failed: null (java.util.concurrent.CancellationException)
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/PlatformAconfigPackage(22025): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+E/FeatureFlagsImplExport(22025): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+I/AccessibilityNodeInfoDumper(22025): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@b94a3; boundsInParent: Rect(0, 0 - 278, 135); boundsInScreen: Rect(1311, 262 - 1080, 397); boundsInWindow: Rect(1311, 262 - 1080, 397); packageName: com.google.android.documentsui; className: android.widget.Button; text: Tệp lớn; error: null; maxTextLength: -1; stateDescription: chưa chọn; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: true; checked: false; focusable: true; focused: false; selected: false; clickable: true; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: true; visible: false; actions: [AccessibilityAction: ACTION_FOCUS - null, AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_CLICK - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_NEXT_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_SET_SELECTION - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22025): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@b9864; boundsInParent: Rect(0, 0 - 310, 135); boundsInScreen: Rect(1611, 262 - 1080, 397); boundsInWindow: Rect(1611, 262 - 1080, 397); packageName: com.google.android.documentsui; className: android.widget.Button; text: Tuần này; error: null; maxTextLength: -1; stateDescription: chưa chọn; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: true; checked: false; focusable: true; focused: false; selected: false; clickable: true; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: true; visible: false; actions: [AccessibilityAction: ACTION_FOCUS - null, AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_CLICK - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_NEXT_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_SET_SELECTION - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22025): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@c0180; boundsInParent: Rect(0, 0 - 0, 135); boundsInScreen: Rect(1080, 127 - 1080, 262); boundsInWindow: Rect(1080, 127 - 1080, 262); packageName: com.google.android.documentsui; className: androidx.appcompat.widget.LinearLayoutCompat; text: null; error: null; maxTextLength: -1; stateDescription: null; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: false; checked: false; focusable: false; focused: false; selected: false; clickable: false; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: false; visible: false; actions: [AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+D/AndroidRuntime(22025): callMain: return with no error.
+W/IPCThreadState(22025): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22025): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22025): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/PlatformAconfigPackage(22312): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+E/FeatureFlagsImplExport(22312): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@b94af; boundsInParent: Rect(0, 0 - 278, 135); boundsInScreen: Rect(1311, 262 - 1080, 397); boundsInWindow: Rect(1311, 262 - 1080, 397); packageName: com.google.android.documentsui; className: android.widget.Button; text: Tệp lớn; error: null; maxTextLength: -1; stateDescription: chưa chọn; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: true; checked: false; focusable: true; focused: false; selected: false; clickable: true; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: true; visible: false; actions: [AccessibilityAction: ACTION_FOCUS - null, AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_CLICK - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_NEXT_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_SET_SELECTION - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@b9870; boundsInParent: Rect(0, 0 - 310, 135); boundsInScreen: Rect(1611, 262 - 1080, 397); boundsInWindow: Rect(1611, 262 - 1080, 397); packageName: com.google.android.documentsui; className: android.widget.Button; text: Tuần này; error: null; maxTextLength: -1; stateDescription: chưa chọn; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: true; checked: false; focusable: true; focused: false; selected: false; clickable: true; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: true; visible: false; actions: [AccessibilityAction: ACTION_FOCUS - null, AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_CLICK - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_NEXT_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_PREVIOUS_AT_MOVEMENT_GRANULARITY - null, AccessibilityAction: ACTION_SET_SELECTION - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@c018c; boundsInParent: Rect(0, 0 - 0, 135); boundsInScreen: Rect(1080, 127 - 1080, 262); boundsInWindow: Rect(1080, 127 - 1080, 262); packageName: com.google.android.documentsui; className: androidx.appcompat.widget.LinearLayoutCompat; text: null; error: null; maxTextLength: -1; stateDescription: null; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: null; uniqueId: null; checkable: false; checked: false; focusable: false; focused: false; selected: false; clickable: false; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: false; visible: false; actions: [AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@191608; boundsInParent: Rect(0, 0 - 84, 84); boundsInScreen: Rect(101, 1069 - 185, 1153); boundsInWindow: Rect(101, 1069 - 185, 1153); packageName: com.google.android.documentsui; className: android.widget.ImageView; text: null; error: null; maxTextLength: -1; stateDescription: null; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: com.google.android.documentsui:id/icon_check; uniqueId: null; checkable: false; checked: false; focusable: false; focused: false; selected: false; clickable: false; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: false; visible: false; actions: [AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@19599a; boundsInParent: Rect(0, 0 - 84, 84); boundsInScreen: Rect(585, 1069 - 669, 1153); boundsInWindow: Rect(585, 1069 - 669, 1153); packageName: com.google.android.documentsui; className: android.widget.ImageView; text: null; error: null; maxTextLength: -1; stateDescription: null; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: com.google.android.documentsui:id/icon_check; uniqueId: null; checkable: false; checked: false; focusable: false; focused: false; selected: false; clickable: false; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: false; visible: false; actions: [AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+I/AccessibilityNodeInfoDumper(22312): Skipping invisible child: android.view.accessibility.AccessibilityNodeInfo@1a5c9f; boundsInParent: Rect(0, 0 - 84, 84); boundsInScreen: Rect(101, 1697 - 185, 1781); boundsInWindow: Rect(101, 1697 - 185, 1781); packageName: com.google.android.documentsui; className: android.widget.ImageView; text: null; error: null; maxTextLength: -1; stateDescription: null; contentDescription: null; tooltipText: null; containerTitle: null; viewIdResName: com.google.android.documentsui:id/icon_check; uniqueId: null; checkable: false; checked: false; focusable: false; focused: false; selected: false; clickable: false; longClickable: false; contextClickable: false; enabled: true; password: false; scrollable: false; granularScrollingSupported: false; importantForAccessibility: false; visible: false; actions: [AccessibilityAction: ACTION_SELECT - null, AccessibilityAction: ACTION_CLEAR_SELECTION - null, AccessibilityAction: ACTION_ACCESSIBILITY_FOCUS - null, AccessibilityAction: ACTION_SHOW_ON_SCREEN - null]; isTextSelectable: false
+D/AndroidRuntime(22312): callMain: return with no error.
+W/IPCThreadState(22312): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22312): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/IPCThreadState(22312): call to talkWithDriver in joinThreadPool returned error: -9 (Bad file descriptor), FD: -1
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/ProcessManager( 2846): error write exception log
+W/PlatformAconfigPackage(22439): android.os.flagging.AconfigStorageReadException: ERROR_CANNOT_READ_STORAGE_FILE: Fail to mmap storage
+E/FeatureFlagsImplExport(22439): android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+D/ThemeCompatibility(22439): getVersion(): /data/system/theme_config/theme_compatibility.xml  java.io.FileNotFoundException: /data/system/theme_config/theme_compatibility.xml: open failed: ENOENT (No such file or directory)
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/MiuiPreloadClassImpl(22460): invoke error.
+E/MiuiPreloadClassImpl(22482): invoke error.
+E/HyperOSCustFeatureResolve(22482): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22482): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/HyperOSCustFeatureResolve(22482): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22482): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/ProcessManager( 2846): error write exception log
+E/IPCThreadState( 2495): Binder transaction failure. id: 257583452, BR_*: 29201, error: -1 (Operation not permitted)
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+D/DeskTopModeUtils( 7417): Failed to read MIUI_DESKTOP_MODE settings android.provider.Settings$SettingNotFoundException: miui_dkt_mode
+E/chromium(22460): [0830/084734.056665:ERROR:android_webview/browser/variations/variations_seed_loader.cc:39] Seed missing signature.
+I/RustStdoutStderr(22460): [0830/084734.056665:ERROR:android_webview/browser/variations/variations_seed_loader.cc:39] Seed missing signature.
+E/HyperOSCustFeatureResolve(22560): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22560): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+E/HyperOSCustFeatureResolve(22560): Occur Exception when getBoolean
+E/HyperOSCustFeatureResolve(22560): java.lang.NullPointerException: Attempt to invoke interface method 'boolean miui.os.IHyperOSCustFeatureResolve.getCustResolveBooleanFeature(java.lang.String, boolean)' on a null object reference
+I/AccessPointsCustomizationHintHandlerModule( 8137): AccessPointsCustomizationHintHandlerModule$2.onFailure():187 Check to show banner task is failed: null (java.util.concurrent.CancellationException)
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu4/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/FileUtil(24558): java.io.FileNotFoundException: sys/devices/system/cpu/cpu5/cpufreq/scaling_max_freq: open failed: EACCES (Permission denied)
+E/FileUtil(24558): Caused by: android.system.ErrnoException: open failed: EACCES (Permission denied)
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/chromium(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+I/RustStdoutStderr(22460): [ERROR:components/page_load_metrics/browser/page_load_metrics_update_dispatcher.cc:179] Invalid first_paint 0.401 s for first_image_paint 0.389 s
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/chromium(18510): [WARNING:components/sync/engine/syncer_proto_util.cc:430] Error posting from syncer: Response Code (bogus on error): -1 Content-Length (bogus on error): -1 Server Status: CONNECTION_UNAVAILABLE
+E/chromium(18510): [ERROR:components/sync/engine/get_updates_processor.cc:270] PostClientToServerMessage() failed during GetUpdates with error Network error (ERR_NAME_NOT_RESOLVED)
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/MiuiPreloadClassImpl(22863): invoke error.
+D/ActivityThread(22863): useGrowthLimitOutExpendMethod invoke error.
+E/QCOM-OEMCrypto( 2010): Error at load_license : 217
+E/QCOM-OEMCrypto( 2010): Error at _oecc125 : 1174
+I/Process (22863): java.lang.Exception
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/ProcessManager( 2846): error write exception log
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+W/Binder  ( 2846): Caught a RuntimeException from the binder stub implementation.
+W/Binder  ( 2846): java.lang.NumberFormatException: For input string: "69,00"
+E/PhoneAdapter( 9116): get ntnphones failed, exception: java.lang.IllegalStateException: not support satellite!
+E/msgr.msys( 5981): E[N mns:DGWClient]_LogError(356)=>Failed to resolve using system DNS resolver, getaddrinfo(): No address associated with hostname

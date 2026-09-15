@@ -1,0 +1,23 @@
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /play/pokemon-mystery-dungeon-explorers-of-sky?renderer=webgpu HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/loader.js HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/emulator.min.js HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/emulator.min.css HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/localization/vi-VN.json HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/cores/reports/melonds.json HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/cores/melonds-wasm.data HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:49] "GET /emulatorjs/stable/data/compression/extract7z.js HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:50] "GET /service-worker.js?v=11290264c01d HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:22:52] "GET /game-file/pokemon-mystery-dungeon-explorers-of-sky/Pokemon%20Mystery%20Dungeon%20-%20Explorers%20of%20Sky%20%28US%29%28XenoPhobia%29.zip HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:23:32] "GET /play/pokemon-mystery-dungeon-explorers-of-sky?renderer=webgpu HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:23:33] "GET /service-worker.js?v=11290264c01d HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:23:35] "GET /game-file/pokemon-mystery-dungeon-explorers-of-sky/Pokemon%20Mystery%20Dungeon%20-%20Explorers%20of%20Sky%20%28US%29%28XenoPhobia%29.zip HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 09:23:43] "GET /static/v/11290264c01d/renderer-worker.js HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/work/p1-resume/probe-proxy.py", line 30, in <module>
+    ThreadingHTTPServer(('127.0.0.1',port),Handler).serve_forever()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 232, in serve_forever
+    ready = selector.select(poll_interval)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/selectors.py", line 416, in select
+    fd_event_list = self._selector.poll(timeout)
+KeyboardInterrupt

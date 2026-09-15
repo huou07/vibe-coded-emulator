@@ -1,0 +1,12 @@
+DATE=2026-08-23 14:51:50 +07
+DEVICE=physical Android
+ANDROID_VERSION=16
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=151.0.7922.171
+LOGICAL_SCREEN_SIZE=1080x2340
+STAGING_URL=http://192.168.1.8:8092
+TEST=pwa-localhost-preflight
+RESULT=PASS
+EVIDENCE=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/android-regression/20260823-145149-pwa-localhost.png; private adb reverse tcp:18092 -> tcp:18092 installed and removed on exit
+RUNTIME_ASSERTION=Android opened the private localhost staging path. Verify isSecureContext, Service Worker, manifest, install and network-loss behavior through the visible PWA diagnostic/runbook before declaring offline E2E PASS.
+KNOWN_LIMITATION=This preflight never disables browser security, exposes a WAN port, or leaves adb reverse configured.

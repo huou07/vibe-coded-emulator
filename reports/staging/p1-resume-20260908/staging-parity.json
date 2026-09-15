@@ -1,0 +1,30 @@
+{
+  "health": {
+    "ok": true,
+    "environment": "staging",
+    "asset_version": "11290264c01d",
+    "time": 1788878791
+  },
+  "files": {
+    "player.js": {
+      "sha256": "bbc8a8eb36263d9cdca5b2830a9d8093a09012830f3d32fd2b24bca1f3090f4e",
+      "sourceParity": true,
+      "coep": null
+    },
+    "player-runtime.js": {
+      "sha256": "837ec7cc927edfd7fa4ab235bdaeb62a925dab75e2f4cdee9d6feba7432392f8",
+      "sourceParity": true,
+      "coep": null
+    },
+    "renderer-worker.js": {
+      "sha256": "91bee436b40231e4aa6a91318afb7f2fa222314ddf25d1eab78ae6852af33856",
+      "sourceParity": true,
+      "coep": "require-corp"
+    },
+    "nds-touch.js": {
+      "sha256": "3d879130a8df25a9393accaa835d4bcf755c93e72c0fd87810617f34324274f0",
+      "sourceParity": true,
+      "coep": null
+    }
+  }
+}

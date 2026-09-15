@@ -1,0 +1,8 @@
+# Keep the Rust build context intentionally narrow. In particular, local AN3
+# data, ROMs, SQLite files, environments, reports, and legacy source are never
+# sent to the Docker builder for this shadow image.
+*
+!rust-gateway/
+!rust-gateway/**
+!Dockerfile.rust-gateway
+!Dockerfile.rust-gateway.dockerignore

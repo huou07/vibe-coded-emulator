@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import html
+import io
 import json
 import mimetypes
 import os
@@ -10,12 +11,13 @@ import re
 import secrets
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
 import unicodedata
 import zipfile
-from datetime import datetime
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
@@ -25,22 +27,45 @@ from urllib.request import Request, urlopen
 APP_DIR = os.path.abspath(os.environ.get("AN3_APP_DIR", os.path.dirname(__file__)))
 DATA_DIR = os.path.abspath(os.environ.get("AN3_DATA_DIR", os.path.join(APP_DIR, "data")))
 STATIC_DIR = os.path.join(APP_DIR, "static")
+NATIVE_OFFLINE_DIR = os.path.join(APP_DIR, "native-offline")
+NATIVE_OFFLINE_RELEASE_DIR = os.path.join(NATIVE_OFFLINE_DIR, "releases")
+# Release metadata is finalized after builds; it is not a native build input.
+# Missing metadata fails closed and never republishes a historical installer.
+try:
+    with open(os.path.join(NATIVE_OFFLINE_RELEASE_DIR, "catalog.json"), encoding="utf-8") as handle:
+        NATIVE_RELEASE_METADATA = json.load(handle)
+except FileNotFoundError:
+    NATIVE_RELEASE_METADATA = {"artifacts": []}
+NATIVE_RELEASE_CATALOG = tuple(NATIVE_RELEASE_METADATA["artifacts"])
 
 
 def static_asset_version():
     digest = hashlib.sha256()
-    for name in sorted(os.listdir(STATIC_DIR)):
-        path = os.path.join(STATIC_DIR, name)
-        if not os.path.isfile(path):
-            continue
-        digest.update(name.encode("utf-8"))
-        with open(path, "rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
+    for directory, directories, filenames in os.walk(STATIC_DIR):
+        directories.sort()
+        for name in sorted(filenames):
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                continue
+            relative = os.path.relpath(path, STATIC_DIR).replace(os.sep, "/")
+            digest.update(relative.encode("utf-8"))
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
     return digest.hexdigest()[:12]
 
 
 ASSET_VERSION = static_asset_version()
+PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "player.js", "site.css"})
+
+
+def versioned_player_asset(name):
+    """Return a pathname-versioned player asset that old workers cannot alias."""
+    if name not in PLAYER_BOOT_ASSETS:
+        raise ValueError("unsupported player boot asset")
+    return f"/static/v/{ASSET_VERSION}/{name}"
+
+
 ROM_DIR = os.path.join(DATA_DIR, "roms")
 COVER_DIR = os.path.join(DATA_DIR, "covers")
 SCREENSHOT_DIR = os.path.join(DATA_DIR, "screenshots")
@@ -65,16 +90,207 @@ SCRYPT_P = 1
 SCRYPT_MAXMEM = 32 * 1024 * 1024
 SCRYPT_AVAILABLE = hasattr(hashlib, "scrypt")
 VISITOR_TTL = 365 * 86400
-SITE_NAME = "Ăn 3 Tô Cơm"
+ANALYTICS_SESSION_SECONDS = 30 * 60
+SITE_NAME = "Vibe Coded Emulator"
 MAX_JSON_BYTES = 1024 * 1024
 ENVIRONMENT = os.environ.get("AN3_ENVIRONMENT", "production").strip().lower()
 NDS_DEBUG_ALLOWED = ENVIRONMENT in {"staging", "development"}
+PUBLIC_NATIVE_RELEASE_ENVIRONMENTS = frozenset({"staging", "development", "production"})
+PRODUCTION_ROM_LIBRARY_PREFIXES = ("/game/", "/play/", "/download/", "/game-file/", "/cover/", "/screenshot/", "/custom/")
+# Netplay is opt-in and is deliberately unavailable in production.  The
+# browser is given an absolute, LAN-scoped origin only after the standalone
+# Rust relay has been explicitly installed for staging.  Leaving this empty
+# keeps EmulatorJS's native netplay UI disabled.
+_netplay_origin = os.environ.get("AN3_NETPLAY_ORIGIN", "").strip().rstrip("/")
+_netplay_parts = urlparse(_netplay_origin) if _netplay_origin else None
+NETPLAY_ORIGIN = (
+    _netplay_origin
+    if ENVIRONMENT in {"staging", "development"}
+    and _netplay_parts
+    and _netplay_parts.scheme in {"http", "https"}
+    and _netplay_parts.netloc
+    and _netplay_parts.path in {"", "/"}
+    and not _netplay_parts.params
+    and not _netplay_parts.query
+    and not _netplay_parts.fragment
+    else ""
+)
 AUTH_PEPPER = os.environ.get("AN3_AUTH_PEPPER", "")
 EMULATOR_CDN = "https://cdn.emulatorjs.org"
 EMULATOR_CACHE_LOCK = threading.Lock()
 EMULATOR_ASSET_LOCKS = {}
 PREPARED_ROM_LOCK = threading.Lock()
 PREPARED_ROM_LOCKS = {}
+_CPU_SAMPLE_LOCK = threading.Lock()
+_CPU_SAMPLE = None
+THERMAL_ROOT = "/sys/class/thermal"
+HWMON_ROOT = "/sys/class/hwmon"
+TURBOSTAT_HELPER = os.environ.get("AN3_TURBOSTAT_HELPER", "/usr/local/libexec/an3-arcade-turbostat")
+
+
+def _read_cpu_totals():
+    try:
+        with open("/proc/stat", "r", encoding="ascii") as handle:
+            fields = handle.readline().split()
+        if fields[0] != "cpu" or len(fields) < 5:
+            return None
+        values = [int(value) for value in fields[1:]]
+        return sum(values), values[3] + (values[4] if len(values) > 4 else 0)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _cpu_percent():
+    global _CPU_SAMPLE
+    current = _read_cpu_totals()
+    if current is None:
+        return None
+    with _CPU_SAMPLE_LOCK:
+        previous = _CPU_SAMPLE
+        _CPU_SAMPLE = current
+    if not previous:
+        return None
+    total_delta = current[0] - previous[0]
+    idle_delta = current[1] - previous[1]
+    if total_delta <= 0:
+        return None
+    return round(max(0.0, min(100.0, (total_delta - idle_delta) * 100 / total_delta)), 1)
+
+
+def _proc_meminfo():
+    values = {}
+    try:
+        with open("/proc/meminfo", "r", encoding="ascii") as handle:
+            for line in handle:
+                key, _, raw = line.partition(":")
+                if key in {"MemTotal", "MemAvailable"}:
+                    values[key] = int(raw.strip().split()[0]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    total, available = values.get("MemTotal"), values.get("MemAvailable")
+    if not total or available is None:
+        return None
+    used = max(0, total - available)
+    return {"used_bytes": used, "total_bytes": total, "used_percent": round(used * 100 / total, 1)}
+
+
+def _read_uptime():
+    try:
+        with open("/proc/uptime", "r", encoding="ascii") as handle:
+            return round(float(handle.read().split()[0]), 1)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _read_text(path):
+    try:
+        with open(path, "r", encoding="ascii") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def _read_temperature(path):
+    raw = _read_text(path)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if -100000 <= value <= 200000:
+        return round(value / 1000, 1)
+    return None
+
+
+def _temperature():
+    """Select a CPU-package temperature, never the first arbitrary thermal zone."""
+    candidates = []
+    try:
+        thermal_names = sorted(os.listdir(THERMAL_ROOT))
+    except OSError:
+        thermal_names = []
+    for name in thermal_names:
+        if not name.startswith("thermal_zone"):
+            continue
+        root = os.path.join(THERMAL_ROOT, name)
+        sensor_type = (_read_text(os.path.join(root, "type")) or "").lower()
+        value = _read_temperature(os.path.join(root, "temp"))
+        if value is None:
+            continue
+        if sensor_type == "x86_pkg_temp":
+            candidates.append((0, name, value))
+        elif sensor_type in {"cpu package", "cpu_package"}:
+            candidates.append((1, name, value))
+
+    try:
+        hwmon_names = sorted(os.listdir(HWMON_ROOT))
+    except OSError:
+        hwmon_names = []
+    for name in hwmon_names:
+        root = os.path.join(HWMON_ROOT, name)
+        if (_read_text(os.path.join(root, "name")) or "").lower() != "coretemp":
+            continue
+        try:
+            filenames = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for label_name in filenames:
+            if not re.fullmatch(r"temp\d+_label", label_name):
+                continue
+            label = (_read_text(os.path.join(root, label_name)) or "").lower()
+            value = _read_temperature(os.path.join(root, label_name.replace("_label", "_input")))
+            if value is None:
+                continue
+            if label == "package id 0":
+                candidates.append((2, name, value))
+            elif label.startswith("core "):
+                candidates.append((3, name, value))
+
+    return min(candidates, default=(None, None, None))[2]
+
+
+def _power_watts():
+    """Read CPU package power from the fixed root-owned turbostat helper."""
+    try:
+        result = subprocess.run(
+            ["/usr/bin/sudo", "-n", TURBOSTAT_HELPER],
+            capture_output=True,
+            text=True,
+            timeout=4,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        value = float(result.stdout.strip())
+        return round(value, 2) if 0 <= value <= 10000 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def system_metrics():
+    cpu = _cpu_percent()
+    memory = _proc_meminfo()
+    try:
+        usage = shutil.disk_usage(DATA_DIR if os.path.isdir(DATA_DIR) else APP_DIR)
+        disk = {"used_bytes": usage.used, "total_bytes": usage.total, "used_percent": round(usage.used * 100 / usage.total, 1)}
+    except OSError:
+        disk = None
+    temperature, power = _temperature(), _power_watts()
+    try:
+        with db() as conn:
+            conn.execute("SELECT 1").fetchone()
+        app_ok = True
+    except Exception:
+        app_ok = False
+    return {
+        "cpu": {"used_percent": cpu, "status": "normal" if cpu is not None and cpu < 80 else "warning" if cpu is not None else "unavailable"},
+        "ram": {**(memory or {}), "status": "normal" if memory and memory["used_percent"] < 85 else "warning" if memory else "unavailable"},
+        "disk": {**(disk or {}), "status": "normal" if disk and disk["used_percent"] < 85 else "warning" if disk else "unavailable"},
+        "temperature": {"celsius": temperature, "status": "normal" if temperature is not None else "unavailable"},
+        "power": {"watts": power, "status": "normal" if power is not None else "unavailable"},
+        "uptime_seconds": _read_uptime(),
+        "app": {"ok": app_ok, "status": "normal" if app_ok else "error"},
+        "updated_at": int(time.time()),
+    }
 
 SYSTEMS = {
     "gb": ("Game Boy / Color", "stable"),
@@ -104,6 +320,12 @@ SYSTEMS = {
     "doom": ("DOOM / PrBoom", "stable"),
     "html5": ("HTML5", "native"),
 }
+
+# The game-only offline app deliberately has no server-side library, account,
+# or upload surface.  It may start only systems backed by the existing
+# EmulatorJS player contract.  In particular, Nintendo Switch is intentionally
+# absent from this allowlist; the browser client reports it as deferred rather
+# than trying to preload or launch it.
 
 EXTENSIONS = {
     "gb": {".gb", ".gbc", ".zip", ".7z"},
@@ -234,10 +456,15 @@ def prepared_browser_rom(game):
 
 
 def browser_rom_name(game):
-    """Return the filename EmulatorJS should infer from the playable URL."""
+    """Return the filename EmulatorJS should infer from the playable URL.
+
+    NDS ZIPs deliberately keep their archive suffix: EmulatorJS uses the URL
+    suffix to select its decompressor before handing the extracted ROM to
+    melonDS.  The GB/GBA paths use prepared raw ROMs instead.
+    """
     try:
         source = safe_data_path(ROM_DIR, game["rom_path"])
-        if game["system"] not in {"gb", "gba", "nds"} or os.path.splitext(source)[1].lower() != ".zip" or not zipfile.is_zipfile(source):
+        if game["system"] not in {"gb", "gba"} or os.path.splitext(source)[1].lower() != ".zip" or not zipfile.is_zipfile(source):
             return game["rom_name"]
         raw_extensions = EXTENSIONS[game["system"]] - {".zip", ".7z"}
         with zipfile.ZipFile(source) as archive:
@@ -270,7 +497,7 @@ def cached_emulator_asset(channel, relative):
         temp = f"{target}.part-{secrets.token_hex(6)}"
         url = f"{EMULATOR_CDN}/{channel}/data/{relative}"
         try:
-            request = Request(url, headers={"User-Agent": "AN3Arcade/1.0", "Accept-Encoding": "identity"})
+            request = Request(url, headers={"User-Agent": "VibeCodedEmulator/1.0", "Accept-Encoding": "identity"})
             with urlopen(request, timeout=60) as response:
                 final = urlparse(response.geturl())
                 if final.scheme != "https" or final.hostname != "cdn.emulatorjs.org" or getattr(response, "status", 200) != 200:
@@ -297,7 +524,7 @@ def db():
     conn = sqlite3.connect(DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=15000")
     return conn
 
 
@@ -310,6 +537,10 @@ def init_db():
     os.makedirs(EMULATOR_CACHE_DIR, exist_ok=True)
     os.makedirs(PREPARED_ROM_DIR, exist_ok=True)
     with db() as conn:
+        # WAL is a persistent database mode.  Setting it once during startup
+        # avoids a write-capable PRAGMA round trip on every page and asset
+        # request while retaining the existing concurrent reader behavior.
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -369,6 +600,10 @@ def init_db():
               game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
               created_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS download_events (
+              id INTEGER PRIMARY KEY, visitor_hash TEXT NOT NULL, user_id INTEGER,
+              path TEXT NOT NULL, created_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS game_screenshots (
               id INTEGER PRIMARY KEY, game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
               file_path TEXT NOT NULL, created_at INTEGER NOT NULL
@@ -391,6 +626,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS page_views_created_idx ON page_views(created_at DESC);
             CREATE INDEX IF NOT EXISTS play_events_created_idx ON play_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS play_events_game_idx ON play_events(game_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS download_events_created_idx ON download_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS game_screenshots_game_idx ON game_screenshots(game_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS game_updates_game_idx ON game_updates(game_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS upload_sessions_updated_idx ON upload_sessions(updated_at);
@@ -481,17 +717,24 @@ def esc(value):
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
+def ref_icon(name, extra=""):
+    """Render a local, non-interactive icon from the bundled Lucide asset set."""
+    safe_name = re.sub(r"[^a-z0-9-]", "", str(name))
+    safe_extra = re.sub(r"[^a-z0-9 -]", "", str(extra))
+    return f'<span class="ui-mask ui-ref-{safe_name} {safe_extra}" aria-hidden="true"></span>'
+
+
 def clean_name(value):
     value = unicodedata.normalize("NFKC", str(value or "")).strip()
     if len(value) < 3 or len(value) > 32 or any(ord(ch) < 32 for ch in value):
-        raise ValueError("Tên phải dài từ 3 đến 32 ký tự")
+        raise ValueError("Name must be 3-32 characters")
     return value
 
 
 def clean_display_name(value):
     value = unicodedata.normalize("NFKC", str(value or "")).strip()
     if len(value) < 2 or len(value) > 40 or any(ord(ch) < 32 for ch in value):
-        raise ValueError("Nickname phải dài từ 2 đến 40 ký tự")
+        raise ValueError("Nickname must be 2-40 characters")
     return value
 
 
@@ -505,7 +748,7 @@ def safe_next_path(value, fallback="/"):
     return parsed.path + (f"?{parsed.query}" if parsed.query else "")
 
 
-def validate_password(password, confirm, lang="vi"):
+def validate_password(password, confirm, lang="en"):
     if len(password) < 10 or len(password) > 200 or password != confirm:
         raise ValueError(tr(lang, "Mật khẩu phải có 10–200 ký tự và trùng khớp", "Passwords must match and contain 10–200 characters"))
     groups = sum(bool(re.search(pattern, password)) for pattern in (r"[a-z]", r"[A-Z]", r"\d", r"[^\w\s]"))
@@ -527,10 +770,10 @@ def clean_contribution(body, maximum, kind):
         raise ValueError(f"{kind} must be 1-{maximum} characters")
     lowered = body.lower()
     if len(re.findall(r"(?:https?://|www\.)", lowered)) > 1 or re.search(r"(.)\1{11,}", lowered):
-        raise ValueError("Nội dung bị hệ thống chống spam từ chối")
+        raise ValueError("Content rejected by the anti-spam system")
     compact = re.sub(r"\W+", "", lowered)
     if len(compact) >= 36 and len(set(compact)) <= 3:
-        raise ValueError("Nội dung bị hệ thống chống spam từ chối")
+        raise ValueError("Content rejected by the anti-spam system")
     return body
 
 
@@ -548,13 +791,13 @@ def clean_contact_links(value):
         if not raw:
             continue
         if "|" not in raw:
-            raise ValueError("Mỗi mạng xã hội cần có dạng Tên|https://url")
+            raise ValueError("Each social link must use Name|https://url")
         label, url = (part.strip() for part in raw.split("|", 1))
         if not label or len(label) > 40 or not re.fullmatch(r"https?://[^\s]{1,500}", url):
-            raise ValueError("Liên kết mạng xã hội không hợp lệ")
+            raise ValueError("Invalid social link")
         lines.append(f"{label}|{url}")
     if len(lines) > 8:
-        raise ValueError("Tối đa 8 liên kết mạng xã hội")
+        raise ValueError("At most 8 social links")
     return "\n".join(lines)
 
 
@@ -603,16 +846,12 @@ def format_size(value):
 
 
 def language(handler):
-    query = parse_qs(urlparse(handler.path).query)
-    requested = query.get("lang", [""])[0]
-    if requested in ("vi", "en"):
-        return requested
-    jar = cookies.SimpleCookie(handler.headers.get("Cookie", ""))
-    return jar.get("lang").value if jar.get("lang") and jar.get("lang").value in ("vi", "en") else "vi"
+    # The product ships English-only; the language switch has been removed.
+    return "en"
 
 
 def tr(lang, vi, en):
-    return en if lang == "en" else vi
+    return en
 
 
 def safe_data_path(root, relative):
@@ -656,20 +895,30 @@ def library_fingerprint(conn):
     return f'{row["changed"]}:{row["games"]}:{row["ratings"]}:{row["score"]}'
 
 
-def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False):
+def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False, auth=False, admin=False):
     with db() as conn:
         settings = site_settings(conn)
     account = ""
     if user:
-        admin = '<a href="/admin">Dashboard</a>' if user["role"] == "admin" else ""
-        account = f'{admin}<a class="account" href="/account">{esc(display_name(user))}</a><button class="link-button" data-action="logout">{tr(lang,"Đăng xuất","Log out")}</button>'
+        admin_link = f'<a class="nav-dashboard" href="/admin">{ref_icon("chart-no-axes-column")}{tr(lang,"Dashboard","Dashboard")}</a>' if user["role"] == "admin" else ""
+        account = (
+            f'{admin_link}<a class="account" href="/account">{ref_icon("users-round", "account-menu-icon")}{esc(display_name(user))}</a>'
+            f'<button class="link-button nav-logout" data-action="logout">{ref_icon("log-out")}{tr(lang,"Đăng xuất","Log out")}</button>'
+        )
     else:
         account = f'<a href="/login">{tr(lang,"Đăng nhập","Log in")}</a><a href="/register">{tr(lang,"Tạo tài khoản","Register")}</a>'
-    guide_nav = f'<button id="guideButton" class="link-button" type="button">{tr(lang,"Hướng dẫn","How it works")}</button>' if guide_trigger else ""
-    mode_label = tr(lang,"Trực tuyến","Online") if offline else "Offline"
-    mode_aria = tr(lang,"Mở thư viện trực tuyến","Open online library") if offline else tr(lang,"Mở thư viện ngoại tuyến","Open offline library")
-    mode_icon = "" if offline else '<span class="ui-mask ui-wifi-off" aria-hidden="true"></span>'
-    mode = f'<a id="modeSwitch" class="mode-switch" href="{"/" if offline else "/offline"}" aria-label="{mode_aria}">{mode_icon}<span>{mode_label}</span></a>'
+    # The onboarding guide explained the retired online library + player flow.
+    guide_nav = ""
+    # The reference header keeps the same offline-state affordance across its
+    # public, account and dashboard surfaces. The existing link remains intact.
+    mode_label = "Offline"
+    online_target = "/games" if ENVIRONMENT != "production" else "/"
+    mode_aria = tr(lang,"Mở thư viện trực tuyến","Open online library") if offline and ENVIRONMENT != "production" else (tr(lang,"Mở trang tải ứng dụng","Open app downloads") if offline else tr(lang,"Mở thư viện ngoại tuyến","Open offline library"))
+    mode_icon = '<span class="ui-mask ui-wifi-off" aria-hidden="true"></span>'
+    mode = f'<a id="modeSwitch" class="mode-switch" href="{online_target if offline else "/offline"}" aria-label="{mode_aria}">{mode_icon}<span>{mode_label}</span></a>'
+    # The web offline page is a minimal connection notice; the PWA shortcut
+    # control belonged to the retired browser-local library and is gone.
+    shortcut = ""
     contacts = []
     if settings.get("maintainer_email"):
         contacts.append(f'<a href="mailto:{esc(settings["maintainer_email"])}">{esc(settings["maintainer_email"])}</a>')
@@ -678,22 +927,34 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
     contacts.extend(f'<a href="{esc(url)}" rel="me noopener noreferrer" target="_blank">{esc(label)}</a>' for label, url in parse_contact_links(settings.get("maintainer_links")))
     contact_block = f'<div class="contact-links"><span>{tr(lang,"Liên hệ maintain:","Maintainer contact:")}</span>{"".join(contacts)}</div>' if contacts else ""
     stage_badge = '<span class="stage-badge">STAGING</span>' if ENVIRONMENT == "staging" else ""
-    welcome = "" if player else f'''<section id="welcomeGuide" class="welcome-guide" hidden role="dialog" aria-modal="true" aria-labelledby="welcomeTitle" aria-describedby="welcomeSummary"><div class="welcome-panel"><button id="closeGuide" class="button guide-close" type="button">{tr(lang,"Đóng","Close")}</button><p class="eyebrow">{esc(SITE_NAME)}</p><h2 id="welcomeTitle">{tr(lang,"Bắt đầu chơi theo cách của bạn","Start playing your way")}</h2><p id="welcomeSummary" class="muted">{tr(lang,"Kho game chung, ROM riêng trên thiết bị và các công cụ thiết yếu nằm trong một nơi.","The shared library, device-only ROMs, and essential player tools live in one place.")}</p><div class="guide-grid"><p><strong>1.</strong> {tr(lang,"Chọn Trực tuyến để xem kho chung, hoặc Ngoại tuyến để mở ROM đã lưu trên thiết bị này.","Choose Online for the shared library, or Offline for ROMs saved on this device.")}</p><p><strong>2.</strong> {tr(lang,"Mở trang game để xem thông tin, sau đó chọn Chơi ngay.","Open a game for details, then choose Play now.")}</p><p><strong>3.</strong> {tr(lang,"Trong player, dùng thanh công cụ cho fullscreen, save state và bàn phím ảo.","In the player, use the toolbar for fullscreen, save states, and virtual controls.")}</p><p><strong>4.</strong> {tr(lang,"Đăng nhập để đánh giá, bình luận, báo lỗi hoặc lưu yêu thích.","Log in to rate, comment, report issues, or save favorites.")}</p></div><small>{tr(lang,"Bạn có thể đọc theo nhịp của mình và đóng khi sẵn sàng.","Take your time and close this guide when you are ready.")}</small></div></section>'''
+    # Removed with the obsolete online-library onboarding flow.
+    welcome = ""
     body_classes = []
     if player:
         body_classes.append("player-page")
     if library:
         body_classes.append("library-shell")
+    if offline:
+        body_classes.append("offline-shell")
+    if auth:
+        body_classes.append("auth-page")
+    if admin:
+        body_classes.append("admin-shell")
+    if not player:
+        body_classes.append("reference-shell")
+    page_scripts = f'<script src="/static/site.js?v={ASSET_VERSION}" defer></script>' + (f'<script src="/static/reference-charts.js?v={ASSET_VERSION}" defer></script>' if admin else "")
     return f"""<!doctype html>
 <html lang="{lang}" class="{'library-root' if library else ''}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="csrf-token" content="{esc(csrf)}"><meta name="theme-color" content="#101311"><title>{esc(title)} · {esc(SITE_NAME)}</title>
+<meta name="csrf-token" content="{esc(csrf)}"><meta name="theme-color" content="#07060c"><title>{esc(title)} · {esc(SITE_NAME)}</title>
 <link rel="manifest" href="/static/manifest.webmanifest?v={ASSET_VERSION}">
-<link rel="stylesheet" href="/static/site.css?v={ASSET_VERSION}"></head><body class="{' '.join(body_classes)}">
-<header class="site-header"><a class="brand" href="/">{esc(SITE_NAME)}</a>{stage_badge}<nav id="siteNav" class="site-nav"><a href="/">{tr(lang,"Trò chơi","Games")}</a>{guide_nav}{account}<a class="lang" href="?lang={'vi' if lang == 'en' else 'en'}">{'VI' if lang == 'en' else 'EN'}</a></nav><div class="header-actions">{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v={ASSET_VERSION}">
+<link rel="apple-touch-icon" href="/static/icon-192.png?v={ASSET_VERSION}">
+<link rel="stylesheet" href="{versioned_player_asset("site.css") if player else f"/static/site.css?v={ASSET_VERSION}"}">{"" if player else f'<link rel="stylesheet" href="/static/theme-violet.css?v={ASSET_VERSION}">'}</head><body class="{' '.join(body_classes)}">
+<header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-download-app" href="/">{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
 {content}
-<footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span><span>design by: Tạm gọi là công tử</span></div>{contact_block}
+<footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span></div>{contact_block}
 <div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a></div></footer>
-{welcome}<div id="toast" role="status"></div><script src="/static/site.js?v={ASSET_VERSION}" defer></script></body></html>"""
+{welcome}<div id="toast" role="status"></div>{page_scripts}</body></html>"""
 
 
 def status_page(code, lang, user=None, csrf=""):
@@ -703,16 +964,215 @@ def status_page(code, lang, user=None, csrf=""):
     else:
         title = tr(lang, "Không tìm thấy trang", "Page not found")
         message = tr(lang, "Liên kết này có thể đã thay đổi hoặc game không còn ở địa chỉ này.", "This link may have changed, or the game is no longer available at this address.")
-    body = f'''<main class="page status-page"><section class="status-card" aria-labelledby="statusTitle"><p class="eyebrow">{tr(lang,'Mã trạng thái','Status code')} {code}</p><h1 id="statusTitle">{title}</h1><p>{message}</p><div class="status-actions"><a class="button primary" href="/">{tr(lang,'Duyệt thư viện','Browse library')}</a><a class="button" href="/offline">{tr(lang,'Mở game trên thiết bị','Open device games')}</a></div></section></main>'''
+    primary_href = "/games" if ENVIRONMENT != "production" else "/"
+    primary_label = tr(lang, 'Duyệt thư viện', 'Browse library') if ENVIRONMENT != "production" else tr(lang, 'Tải ứng dụng', 'Download app')
+    body = f'''<main class="page status-page"><section class="status-card" aria-labelledby="statusTitle"><p class="eyebrow">{tr(lang,'Mã trạng thái','Status code')} {code}</p><h1 id="statusTitle">{title}</h1><p>{message}</p><div class="status-actions"><a class="button primary" href="{primary_href}">{primary_label}</a><a class="button" href="/offline">{tr(lang,'Mở game trên thiết bị','Open device games')}</a></div></section></main>'''
     return layout(f"{code} · {title}", body, lang, user, csrf)
+
+
+OS_ICONS = {
+    "macOS": '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.7 12.9c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.6-1.3-.1-2.5.8-3.1.8-.6 0-1.6-.8-2.7-.8-1.4 0-2.7.8-3.4 2.1-1.5 2.5-.4 6.3 1 8.4.7 1 1.5 2.1 2.6 2.1 1 0 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.7 1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.4-.1 0-2.2-.9-2.2-3.4zM14.8 6.7c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6 1 .1 2-.5 2.5-1.2z"/></svg>',
+    "Windows": '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.6 10.2 4.6v7.1H3zM11.2 4.5 21 3v8.7H11.2zM3 12.7h7.2v7.1L3 18.7zM11.2 12.7H21V21l-9.8-1.4z"/></svg>',
+    "Linux": '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-2 0-3.4 1.6-3.4 3.6 0 .9.1 1.7-.2 2.5-.7 1.6-2.4 2.9-3 4.8-.6 1.9-.1 3.7 1.2 4.7.6.5 1.4.7 2.2.7.9 0 1.7-.3 2.4-.3h1.6c.7 0 1.5.3 2.4.3.8 0 1.6-.2 2.2-.7 1.3-1 1.8-2.8 1.2-4.7-.6-1.9-2.3-3.2-3-4.8-.3-.8-.2-1.6-.2-2.5C15.4 3.6 14 2 12 2zm-1.6 3.1c.3 0 .5.3.5.6s-.2.6-.5.6-.5-.3-.5-.6.2-.6.5-.6zm3.2 0c.3 0 .5.3.5.6s-.2.6-.5.6-.5-.3-.5-.6.2-.6.5-.6z"/></svg>',
+    "Android": '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 9h10a1 1 0 0 1 1 1v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6a1 1 0 0 1 1-1zM4.5 9.5a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1zm15 0a1 1 0 0 0-1 1v4a1 1 0 0 0 2 0v-4a1 1 0 0 0-1-1zM7.2 7.6l-1-1.8a.4.4 0 0 1 .7-.4l1 1.8a5.9 5.9 0 0 1 4.2 0l1-1.8a.4.4 0 0 1 .7.4l-1 1.8A5 5 0 0 1 15.6 8H8.4a5 5 0 0 1 1.1-.4zM9.2 5.4a.6.6 0 1 0 0-1.2.6.6 0 0 0 0 1.2zm5.6 0a.6.6 0 1 0 0-1.2.6.6 0 0 0 0 1.2z"/></svg>',
+}
+DOWNLOAD_PLATFORM_ORDER = ("macOS", "Windows", "Linux", "Android")
+DOWNLOAD_PLATFORM_PREFERRED = {
+    "macOS": ("DMG", "ZIP"),
+    "Windows": ("EXE", "MSI"),
+    "Linux": ("DEB", "Flatpak", "AppImage"),
+    "Android": ("APK",),
+}
+
+
+def download_platform_card(platform, items, lang):
+    """One release card per OS with exactly one primary download action."""
+    t = lambda vi, en: tr(lang, vi, en)
+    available = [item for item in items if item["status"] == "available" and item["download_url"]]
+    ordered = []
+    for fmt in DOWNLOAD_PLATFORM_PREFERRED.get(platform, ()):
+        ordered.extend(item for item in available if item["format"] == fmt and item not in ordered)
+    ordered.extend(item for item in available if item not in ordered)
+    icon = OS_ICONS.get(platform, OS_ICONS["Linux"])
+    if ordered:
+        primary = ordered[0]
+        status = f'<span class="platform-status ok">{t("Sẵn sàng tải","Ready")} · {esc(primary["version"])}</span>'
+        action = (
+            f'<a class="button primary" href="{esc(primary["download_url"])}" download>'
+            f'{ref_icon("download")}{t("Tải cho","Download for")} {esc(platform)}</a>'
+        )
+        if len(ordered) > 1:
+            extras = " · ".join(
+                f'<a href="{esc(item["download_url"])}" download>{esc(item["format"])}</a>' for item in ordered[1:]
+            )
+            action += f'<span class="platform-status">{extras}</span>'
+        meta = f'{esc(primary["architecture"])} · {esc(primary["format"])}'
+    else:
+        newest = items[0] if items else None
+        status = f'<span class="platform-status">{t("Chưa có bản dựng đã xác minh","No verified build yet")}</span>'
+        action = f'<button class="button" type="button" disabled>{t("Sắp có","Coming soon")}</button>'
+        meta = f'{esc(newest["architecture"])} · {esc(newest["format"])}' if newest else t("Đang chuẩn bị","Preparing")
+    return (
+        f'<article class="platform-card {"ready" if ordered else "pending"}" data-platform="{esc(platform)}">'
+        f'<span class="platform-icon">{icon}</span>'
+        f'<div><h3>{esc(platform)}</h3><p class="platform-meta">{meta}</p>{status}</div>'
+        f'<div class="platform-action">{action}</div>'
+        f'</article>'
+    )
+
+
+def download_app_page(lang, user, csrf):
+    """Download-first homepage: platform cards are the primary content."""
+    t = lambda vi, en: tr(lang, vi, en)
+    source_available = ENVIRONMENT in {"staging", "development"}
+    source_action = ""
+    if source_available:
+        source_action = (
+            f'<a class="button" href="/download-app/source">{ref_icon("download")}{t("Tải source build staging (.zip)","Download staging build source (.zip)")}</a>'
+            f'<a class="button" href="/download-app/artifacts.json">{t("Manifest artifact","Artifact manifest")}</a>'
+            f'<small data-release-id="{native_release_identity()}">{t("Bản dựng","Build")} {native_release_identity()}</small>'
+        )
+    elif ENVIRONMENT == "production":
+        source_action = f'<small data-release-id="{native_release_identity()}">{t("Bản phát hành","Release")} {native_release_identity()}</small>'
+
+    artifacts = native_artifact_manifest()["artifacts"]
+    by_platform = {}
+    for item in artifacts:
+        by_platform.setdefault(item["platform"], []).append(item)
+    platform_cards = "".join(
+        download_platform_card(platform, by_platform.get(platform, []), lang)
+        for platform in DOWNLOAD_PLATFORM_ORDER
+    )
+
+    body = f'''<main class="page download-app-page">
+<section class="download-app-hero">
+<p class="eyebrow">VIBE CODED EMULATOR · OFFLINE</p>
+<h1>{t("TẢI ỨNG DỤNG CHƠI OFFLINE","DOWNLOAD THE OFFLINE APP")}</h1>
+<p>{t("Chạy GBA, NDS và 3DS từ ROM của chính bạn. Không tài khoản. Không cần internet.","Play GBA, NDS and 3DS from your own ROM files. No account. No internet required.")}</p>
+<div class="download-app-actions">{source_action}<a class="button" href="/offline">{t("Mở bản web offline","Open the web offline player")}</a></div>
+</section>
+<section class="download-app-platforms" aria-labelledby="platformTitle">
+<header><p class="eyebrow">{t("NỀN TẢNG","PLATFORMS")}</p><h2 id="platformTitle">{t("Chọn hệ điều hành của bạn","Choose your operating system")}</h2></header>
+<div class="platform-grid">{platform_cards}</div>
+</section>
+<section class="download-features" aria-label="{t("Điểm chính","Highlights")}">
+<article>{ref_icon("hard-drive")}<div><strong>{t("ROM cục bộ","Local ROMs")}</strong><span>{t("Chọn tệp trên máy. ROM không rời khỏi thiết bị.","Pick files on your device. ROMs never leave it.")}</span></div></article>
+<article>{ref_icon("eye-off")}<div><strong>{t("Không tài khoản","No account")}</strong><span>{t("Không đăng nhập, không theo dõi, không kho game trên web.","No sign-in, no tracking, no web game catalog.")}</span></div></article>
+<article>{ref_icon("gamepad-2")}<div><strong>{t("Chơi offline","Plays offline")}</strong><span>{t("Menu, phím ảo, cảm ứng và bàn phím vật lý ngay trong app.","Menu, virtual pad, touch and physical keyboard inside the app.")}</span></div></article>
+</section>
+</main>'''
+    return layout(tr(lang, "Tải ứng dụng", "Download app"), body, lang, user, csrf)
+
+
+def native_offline_source_bundle():
+    """Return the small, auditable Tauri source archive for staging downloads."""
+    root = os.path.realpath(NATIVE_OFFLINE_DIR)
+    if not os.path.isdir(root):
+        raise FileNotFoundError("native offline source is unavailable")
+    payload = io.BytesIO()
+    excluded_directories = {".gradle", ".signing", "build", "dist", "node_modules", "releases", "target"}
+    blocked_names = {".DS_Store", "local.properties", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
+    blocked_suffixes = (".env", ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore")
+    secret_markers = (
+        re.compile(br"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+        re.compile(br"\bAKIA[0-9A-Z]{16}\b"),
+        re.compile(br"\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b"),
+        re.compile(br"\bxox[baprs]-[A-Za-z0-9-]{15,}\b"),
+        re.compile(br"\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b"),
+    )
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        for directory, directories, filenames in os.walk(root):
+            directories[:] = sorted(name for name in directories if name not in excluded_directories and not os.path.islink(os.path.join(directory, name)))
+            for filename in sorted(filenames):
+                source = os.path.join(directory, filename)
+                if filename in blocked_names or filename.endswith(blocked_suffixes) or os.path.islink(source) or not os.path.isfile(source):
+                    continue
+                with open(source, "rb") as handle:
+                    contents = handle.read()
+                if any(marker.search(contents) for marker in secret_markers):
+                    continue
+                relative = os.path.relpath(source, root).replace(os.sep, "/")
+                archive.writestr(f"an3-offline-native/{relative}", contents)
+    return payload.getvalue()
+
+
+def native_release_path(name):
+    """Resolve one immutable native installer without exposing arbitrary files."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,180}", str(name or "")):
+        return None
+    root = os.path.realpath(NATIVE_OFFLINE_RELEASE_DIR)
+    candidate = os.path.realpath(os.path.join(root, name))
+    if os.path.commonpath((root, candidate)) != root or not os.path.isfile(candidate):
+        return None
+    return candidate
+
+
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def native_release_identity():
+    """Installer byte identity is independent of the web asset cache version."""
+    payload = {"asset_version": ASSET_VERSION,
+               "source_fingerprint": NATIVE_RELEASE_METADATA.get("source_fingerprint"),
+               "artifacts": NATIVE_RELEASE_CATALOG}
+    fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+    identity_environment = ENVIRONMENT if ENVIRONMENT in {"staging", "production"} else "development"
+    return f"{identity_environment}-{fingerprint}"
+
+
+def native_artifact_manifest():
+    """Describe evidenced artifacts and fail closed if their bytes drift."""
+    artifacts = []
+    for expected in NATIVE_RELEASE_CATALOG:
+        item = dict(expected)
+        path = native_release_path(item["filename"]) if item["filename"] else None
+        intact = bool(path and os.path.getsize(path) == item["size"] and _file_sha256(path) == item["sha256"])
+        item["asset_version"] = ASSET_VERSION
+        item["release_id"] = native_release_identity()
+        item["build_timestamp"] = datetime.fromtimestamp(os.path.getmtime(path), timezone.utc).isoformat().replace("+00:00", "Z") if intact else None
+        item["status"] = "available" if intact else "blocked"
+        item["download_url"] = f'/download-app/release/{quote(item["filename"])}?sha256={item["sha256"]}' if intact else None
+        if item["filename"] and not intact:
+            item["runtime_status"] = "blocked: evidenced artifact is missing or failed integrity verification"
+        artifacts.append(item)
+    return {"manifest_version": 2, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "source_fingerprint": NATIVE_RELEASE_METADATA.get("source_fingerprint"), "artifacts": artifacts}
+
+
+def published_native_release(name, expected_sha256=None):
+    for item in native_artifact_manifest()["artifacts"]:
+        if item["filename"] == name and item["status"] == "available" and (expected_sha256 is None or expected_sha256 == item["sha256"]):
+            return native_release_path(name)
+    return None
+
+
+def release_pending_action(label):
+    return f'<em>{esc(label)}</em>'
+
+
+def native_release_action(filename, lang, unavailable_label=None):
+    if ENVIRONMENT not in PUBLIC_NATIVE_RELEASE_ENVIRONMENTS or not published_native_release(filename):
+        return release_pending_action(unavailable_label or tr(lang, "Chưa có binary staging", "No staging binary yet"))
+    extension = os.path.splitext(filename)[1].lstrip(".").upper() or tr(lang, "file", "file")
+    label = tr(lang, f"Tải {extension} staging", f"Download staging {extension}") if ENVIRONMENT != "production" else tr(lang, f"Tải {extension}", f"Download {extension}")
+    item = next(item for item in native_artifact_manifest()["artifacts"] if item["filename"] == filename)
+    return f'<a class="button" href="{esc(item["download_url"])}" download>{ref_icon("download")}{esc(label)}</a>'
 
 
 def home_page(lang, user, csrf):
     with db() as conn:
         games = conn.execute(
             """SELECT g.*, COALESCE(AVG(r.value),0) rating, COUNT(r.value) rating_count,
-                      (SELECT COUNT(*) FROM play_events p WHERE p.game_id=g.id) play_count
-               FROM games g LEFT JOIN ratings r ON r.game_id=g.id
+                      COALESCE(p.play_count,0) play_count
+               FROM games g
+               LEFT JOIN ratings r ON r.game_id=g.id
+               LEFT JOIN (
+                 SELECT game_id, COUNT(*) AS play_count FROM play_events GROUP BY game_id
+               ) p ON p.game_id=g.id
                GROUP BY g.id ORDER BY g.updated_at DESC"""
         ).fetchall()
         version = library_fingerprint(conn)
@@ -784,19 +1244,26 @@ def home_page(lang, user, csrf):
 def auth_page(kind, lang, user, csrf, error="", next_path="/"):
     register = kind == "register"
     next_path = safe_next_path(next_path)
-    heading = tr(lang, "Tạo tài khoản", "Create account") if register else tr(lang, "Đăng nhập", "Log in")
-    nickname = f'<label>{tr(lang,"Nickname hiển thị","Display nickname")}<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname"></label>' if register else ""
+    heading = tr(lang, "Tạo tài khoản", "Create account") if register else tr(lang, "Chào mừng trở lại!", "Welcome back!")
+    submit_label = tr(lang, "Tạo tài khoản", "Create account") if register else tr(lang, "Đăng nhập", "Log in")
+    intro = tr(lang, "Tạo tài khoản để lưu tiến độ và lưu các game yêu thích của bạn.", "Create an account to continue and save your favorite games.") if register else tr(lang, "Đăng nhập để lưu tiến độ, đồng bộ yêu thích và trải nghiệm Vibe Coded Emulator trọn vẹn.", "Log in to save your progress, sync favorites, and enjoy the full Vibe Coded Emulator experience.")
+    nickname = f'<label class="auth-field"><span>{tr(lang,"Nickname hiển thị","Display nickname")}</span><span class="auth-control">{ref_icon("users-round")}<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname" placeholder="{tr(lang,"Nhập nickname","Enter display nickname")}"></span></label>' if register else ""
     password_rules = f'<p id="passwordRules" class="field-help">{tr(lang,"Dùng 10–200 ký tự và ít nhất hai loại: chữ thường, chữ hoa, số hoặc ký hiệu.","Use 10–200 characters and at least two types: lowercase, uppercase, numbers, or symbols.")}</p>' if register else ""
     password_describedby = ' aria-describedby="passwordRules"' if register else ""
     confirm = f'<label>{tr(lang,"Nhập lại mật khẩu","Confirm password")}<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="passwordRules"></label>' if register else ""
     next_query = f'?next={quote(next_path, safe="")}' if next_path != "/" else ""
-    switch = f'<p class="auth-switch"><a href="/{"login" if register else "register"}{next_query}">{tr(lang,"Đã có tài khoản? Đăng nhập","Already registered? Log in") if register else tr(lang,"Chưa có tài khoản? Tạo ngay","No account? Create one")}</a></p>'
+    switch = f'<section class="auth-switch"><span>{tr(lang,"Đã có tài khoản?","Already registered?") if register else tr(lang,"Chưa có tài khoản?","No account yet?")}</span><a href="/{"login" if register else "register"}{next_query}">{tr(lang,"Đăng nhập ngay","Log in now") if register else tr(lang,"Đăng ký ngay","Register now")} {ref_icon("arrow-right")}</a></section>'
     error_hidden = "" if error else " hidden"
-    body = f"""<main class="auth-shell"><section class="auth-panel"><p class="eyebrow">{esc(SITE_NAME)} ID</p><h1>{heading}</h1>
-<form id="authForm" data-kind="{kind}" aria-describedby="formError"><input name="next" type="hidden" value="{esc(next_path)}"><label>{tr(lang,"Tên đăng nhập","Username")}<input name="name" minlength="3" maxlength="32" required autocomplete="username"></label>{nickname}
-<label>{tr(lang,"Mật khẩu","Password")}<input name="password" type="password" minlength="10" maxlength="200" required autocomplete="{'new-password' if register else 'current-password'}"{password_describedby}></label>{password_rules}{confirm}
-<button class="button primary" type="submit"><span class="auth-submit-label">{heading}</span></button><div id="authProgress" class="auth-progress" hidden role="status" aria-live="polite"><span id="authProgressLabel"></span><div role="progressbar" aria-label="{tr(lang,'Tiến trình xác thực','Authentication progress')}"><i></i></div></div><p class="form-error" id="formError" role="alert" aria-live="assertive" tabindex="-1"{error_hidden}>{esc(error)}</p></form>{switch}</section></main>"""
-    return layout(heading, body, lang, user, csrf)
+    password_confirm = f'<label class="auth-field"><span>{tr(lang,"Nhập lại mật khẩu","Confirm password")}</span><span class="auth-control">{ref_icon("lock-keyhole")}<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="passwordRules" placeholder="{tr(lang,"Nhập lại mật khẩu","Confirm password")}"></span></label>' if register else ""
+    nonfunctional_social = "" if register else f'''<div class="auth-divider" aria-hidden="true"><span></span><em>{tr(lang,"hoặc tiếp tục với","or continue with")}</em><span></span></div><div class="auth-socials" aria-label="{tr(lang,'Đăng nhập mạng xã hội chưa được hỗ trợ','Social sign-in is not supported')}"><button type="button" disabled aria-disabled="true" title="{tr(lang,'Đăng nhập Google chưa khả dụng','Google sign-in is unavailable')}"><img src="/static/ui-ref-google.svg" alt="Google" width="42" height="42"></button><button type="button" disabled aria-disabled="true" title="{tr(lang,'Đăng nhập Discord chưa khả dụng','Discord sign-in is unavailable')}"><img src="/static/ui-ref-discord.svg" alt="Discord" width="42" height="42"></button></div>'''
+    benefits = "" if register else f'''<section class="auth-benefits"><article>{ref_icon("star", "benefit-icon benefit-star")}<div><strong>{tr(lang,"Đồng bộ yêu thích","Đồng bộ yêu thích")}</strong><span>{tr(lang,"Lưu game yêu thích của bạn an toàn trên đám mây.","Save your favorite games safely in the cloud.")}</span></div></article><article>{ref_icon("cloud-upload", "benefit-icon benefit-cloud")}<div><strong>{tr(lang,"Đồng bộ tiến độ","Đồng bộ tiến độ")}</strong><span>{tr(lang,"Tiếp tục chơi từ mọi thiết bị, mọi lúc.","Continue from any device, any time.")}</span></div></article></section>'''
+    security = "" if register else f'''<p class="auth-security">{ref_icon("shield-check")}<span>{tr(lang,"Vibe Coded Emulator cam kết bảo mật thông tin của bạn. Chỉ dùng để đăng nhập và đồng bộ dữ liệu.","Vibe Coded Emulator protects your information. It is used only for sign-in and data sync.")}</span></p>'''
+    body = f"""<main class="auth-shell"><div class="auth-background-motif" aria-hidden="true"></div><div class="auth-intro"><span class="ui-mask ui-gamepad auth-intro-marker" aria-hidden="true"></span><h1>{heading}</h1><p class="auth-copy">{intro}</p></div><section class="auth-panel">
+<form id="authForm" data-kind="{kind}" aria-describedby="formError"><input name="next" type="hidden" value="{esc(next_path)}"><label class="auth-field"><span>{tr(lang,"Email hoặc tên đăng nhập","Email or username")}</span><span class="auth-control">{ref_icon("mail")}<input name="name" minlength="3" maxlength="32" required autocomplete="username" placeholder="{tr(lang,"Nhập email hoặc tên đăng nhập","Enter email or username")}"></span></label>{nickname}
+<label class="auth-field"><span>{tr(lang,"Mật khẩu","Password")}</span><span class="auth-control">{ref_icon("lock-keyhole")}<input name="password" type="password" minlength="10" maxlength="200" required autocomplete="{'new-password' if register else 'current-password'}"{password_describedby} placeholder="{tr(lang,"Nhập mật khẩu","Enter password")}"><span class="auth-field-end">{ref_icon("eye-off")}</span></span></label>{password_rules}{password_confirm}
+<div class="auth-options"><span class="auth-remember">{ref_icon("check")} {tr(lang,"Ghi nhớ đăng nhập","Remember sign-in")}</span><span class="auth-forgot" aria-disabled="true">{tr(lang,"Quên mật khẩu?","Forgot password?")}</span></div>
+<button class="button primary" type="submit">{ref_icon("bot")}<span class="auth-submit-label">{submit_label}</span></button><div id="authProgress" class="auth-progress" hidden role="status" aria-live="polite"><span id="authProgressLabel"></span><div role="progressbar" aria-label="{tr(lang,'Tiến trình xác thực','Authentication progress')}"><i></i></div></div><p class="form-error" id="formError" role="alert" aria-live="assertive" tabindex="-1"{error_hidden}>{esc(error)}</p>{nonfunctional_social}</form></section>{benefits}{switch}{security}</main>"""
+    return layout(heading, body, lang, user, csrf, auth=True)
 
 
 def game_page(game, lang, user, csrf):
@@ -818,6 +1285,8 @@ def game_page(game, lang, user, csrf):
         comment_rows.append(f'<article class="comment"><header><strong>{esc(item["display_name"])}</strong><time>{stamp}</time>{remove}</header><p>{esc(item["body"])}</p></article>')
     comment_form = f'<form id="commentForm" data-game="{game["id"]}"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><label>{tr(lang,"Bình luận của bạn","Your comment")}<textarea name="body" maxlength="1200" required placeholder="{tr(lang,"Chia sẻ trải nghiệm của bạn","Share your experience")}"></textarea></label><button class="button" type="submit">{tr(lang,"Gửi bình luận","Post comment")}</button></form>' if user else ""
     favorite_button = f'<button id="favoriteButton" class="button" data-game="{game["id"]}" aria-pressed="{str(bool(favorite)).lower()}">{tr(lang,"Bỏ yêu thích","Remove favorite") if favorite else tr(lang,"Thêm yêu thích","Add favorite")}</button>' if user else ""
+    return_to = quote(f"/game/{game['slug']}", safe="")
+    quick_edit = f'<a class="button quick-edit" href="/admin/game/{game["id"]}?next={return_to}">{tr(lang,"Sửa nhanh","Quick Edit")}</a>' if user and user["role"] == "admin" else ""
     report_form = f'''<form id="reportForm" data-game="{game["id"]}" class="report-form"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><label>{tr(lang,"Loại lỗi","Issue type")}<select name="category"><option value="controls">{tr(lang,"Điều khiển","Controls")}</option><option value="playback">{tr(lang,"Chạy game","Game playback")}</option><option value="other">{tr(lang,"Khác","Other")}</option></select></label><label>{tr(lang,"Mô tả lỗi","Issue details")}<textarea name="body" maxlength="1600" required placeholder="{tr(lang,"Điều gì đã xảy ra?","What happened?")}"></textarea></label><button class="button" type="submit">{tr(lang,"Báo lỗi","Report issue")}</button></form>''' if user else ""
     screenshot_rows = "".join(f'<a href="/screenshot/{item["id"]}" target="_blank" rel="noopener"><img src="/screenshot/{item["id"]}" alt="{tr(lang,"Ảnh màn hình game","Game screenshot")}" loading="lazy"></a>' for item in screenshots)
     update_rows = "".join(f'<article class="game-update"><time>{datetime.fromtimestamp(item["created_at"]).strftime("%Y-%m-%d %H:%M")}</time><h3>{esc(item["title_en"] if lang == "en" else item["title_vi"])} </h3><p>{esc(item["body_en"] if lang == "en" else item["body_vi"]).replace(chr(10),"<br>")}</p></article>' for item in updates)
@@ -831,7 +1300,7 @@ def game_page(game, lang, user, csrf):
     body = f"""<main class="page detail-page"><section class="game-detail"><div class="detail-cover"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960"></div>
 <div class="detail-copy"><div class="game-meta"><span class="badge">{esc(SYSTEMS[game['system']][0])}</span>{draft}{testing}</div><h1>{esc(title)}</h1>
 <div class="rating-large"><span>{avg:.1f}/5</span><small>{count} {tr(lang,"lượt đánh giá","ratings")}</small></div>
-<div class="detail-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a><a class="button" href="/download/{esc(game['slug'])}">{tr(lang,"Tải game","Download game")} · {format_size(game['file_size'])}</a>{favorite_button}</div>
+<div class="detail-actions"><a class="button primary" href="/play/{esc(game['slug'])}">{tr(lang,"Chơi ngay","Play now")}</a><a class="button" href="/download/{esc(game['slug'])}">{tr(lang,"Tải game","Download game")} · {format_size(game['file_size'])}</a>{favorite_button}{quick_edit}</div>
 <p class="description">{esc(game_description(game,lang)).replace(chr(10),'<br>')}</p>
 {media}{contribution}</div></section>
 <section class="game-updates"><div class="section-title"><h2>{tr(lang,"Lịch sử cập nhật","Update history")}</h2><span>{len(updates)}</span></div>{update_rows or f'<p class="muted">{tr(lang,"Chưa có cập nhật.","No updates yet.")}</p>'}</section>
@@ -864,19 +1333,41 @@ def account_page(lang, user, csrf):
 
 
 def offline_page(lang, user, csrf):
-    body = f'''<main id="offlineApp" class="page offline-page"><section class="library-head"><div><p class="eyebrow">AN3 ARCADE</p><h1>{tr(lang,"Kho ngoại tuyến","Offline library")}</h1><p class="muted">{tr(lang,"Liên kết Trực tuyến phía trên chỉ quay lại kho chung; trạng thái bên dưới mô tả thiết bị này.","The Online link above only returns to the shared library; the facts below describe this device.")}</p></div></section>
-<section class="offline-readiness" aria-labelledby="offlineReadinessTitle"><div class="section-title"><div><p class="eyebrow">{tr(lang,"Trạng thái thiết bị","Device facts")}</p><h2 id="offlineReadinessTitle">{tr(lang,"Sẵn sàng ngoại tuyến","Offline readiness")}</h2></div></div><div class="offline-facts"><div><span>{tr(lang,"Kết nối","Connection")}</span><strong id="offlineNetworkState">{tr(lang,"Đang kiểm tra","Checking")}</strong><small>{tr(lang,"Chỉ là trạng thái mạng do trình duyệt báo.","Browser-reported network state only.")}</small></div><div><span>{tr(lang,"Ngữ cảnh an toàn","Secure context")}</span><strong id="offlineSecureState">{tr(lang,"Đang kiểm tra","Checking")}</strong><small>HTTPS / localhost</small></div><div><span>{tr(lang,"Vỏ ứng dụng","App shell")}</span><strong id="offlineShellState">{tr(lang,"Đang kiểm tra","Checking")}</strong><small>{tr(lang,"Tách biệt với game và core.","Separate from games and cores.")}</small></div><div><span>{tr(lang,"Game cục bộ","Local games")}</span><strong id="offlineGameCount">0</strong><small>{tr(lang,"ROM chỉ lưu trong trình duyệt này.","ROMs stored only in this browser.")}</small></div><div><span>{tr(lang,"Core giả lập","Emulator cores")}</span><strong id="offlineCoreState">{tr(lang,"Chưa kiểm tra","Not checked")}</strong><small>{tr(lang,"Mở trình quản lý core để xác minh.","Open Core manager to verify.")}</small></div></div></section>
-<section class="offline-library"><div class="section-title"><div><p class="eyebrow">{tr(lang,"Sẵn sàng chơi","Ready to play")}</p><h2>{tr(lang,"Game trên máy này","Games on this device")}</h2></div></div><div id="offlineGameGrid" class="offline-system-list" aria-live="polite"></div></section>
-<section class="offline-upload" aria-labelledby="offlineAddTitle"><div class="section-title"><div><p class="eyebrow">{tr(lang,"ROM riêng tư","Private ROM")}</p><h2 id="offlineAddTitle">{tr(lang,"Thêm game vào thiết bị","Add a game to this device")}</h2></div></div><form id="offlineGameForm"><label>{tr(lang,"Tệp game","Game file")}<input id="offlineFile" name="file" type="file" required></label><label>{tr(lang,"Tên game","Game title")}<input id="offlineTitle" name="title" maxlength="120" required></label><label>{tr(lang,"Hệ máy","System")}<select id="offlineSystem" name="system"></select></label><button class="button primary" type="submit">{tr(lang,"Thêm vào máy này","Add to this device")}</button></form><p id="offlineDetection" class="muted" role="status"></p></section>
-<details id="coreManager" class="core-preload"><summary><span><strong>{tr(lang,"Trình quản lý core","Core manager")}</strong><small>{tr(lang,"Kiểm tra, tải hoặc xóa core theo từng hệ máy.","Verify, download, or remove cores for individual systems.")}</small></span><span aria-hidden="true">{tr(lang,"Mở","Open")}</span></summary><div class="core-preload-body"><p class="muted">{tr(lang,"Core đã tải không có nghĩa ROM đã được lưu; hãy kiểm tra cả danh sách game phía trên.","A downloaded core does not mean a ROM is stored; verify the game list above as well.")}</p><div id="corePreloadGrid" class="core-preload-grid"></div><p id="corePreloadStatus" class="muted" role="status"></p></div></details></main><script src="/static/offline.js?v={ASSET_VERSION}" defer></script><script src="/static/player.js?v={ASSET_VERSION}" defer></script>'''
-    return layout(tr(lang, "Ngoại tuyến", "Offline"), body, lang, user, csrf, offline=True)
+    """Minimal offline notice.
+
+    Local ROM import, library management, core preloading and browser gameplay
+    now live only in the installed Vibe Coded Emulator app, so this page communicates the
+    connection state and points at the app instead of duplicating that UI.
+    """
+    facts = "".join(
+        f'<li>{ref_icon(icon)}{label}</li>'
+        for icon, label in (
+            ("hard-drive", "Play local games"),
+            ("folder-open", "Use your own ROMs"),
+            ("wifi", "No internet required"),
+        )
+    )
+    body = f'''<main class="page offline-state-page">
+<section class="offline-notice" aria-labelledby="offlineTitle">
+<span class="offline-notice-icon">{ref_icon("gamepad-2")}</span>
+<h1 id="offlineTitle">You're offline</h1>
+<p>No internet connection. Games already stored on this device can still be played in the Vibe Coded Emulator app.</p>
+<div class="offline-notice-actions"><a class="button primary" href="/offline">{ref_icon("arrow-right")}Try Again</a></div>
+<ul class="offline-notice-facts">{facts}</ul>
+</section></main>'''
+    return layout("Offline", body, lang, user, csrf, offline=True)
 
 
 def core_preload_page(system, lang):
     if system not in SYSTEMS or system == "html5":
         return status_page(404, lang)
     config = {"mode": "preload", "title": "Core preload", "slug": f"core-preload-{system}", "system": system, "channel": SYSTEMS[system][1], "lang": lang}
-    body = f'<main class="player-shell" data-player=\'{esc(json.dumps(config,ensure_ascii=False))}\'><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="Virtual controller"></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">Preparing</strong><div class="progress" role="progressbar" aria-label="Core download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section></main><script src="/static/player.js?v={ASSET_VERSION}" defer></script>'
+    ui_asset = versioned_player_asset("player-ui.js")
+    runtime_asset = versioned_player_asset("player-runtime.js")
+    player_asset = versioned_player_asset("player.js")
+    renderer_asset = versioned_player_asset("renderer-worker.js")
+    nds_touch_asset = versioned_player_asset("nds-touch.js")
+    body = f'<main class="player-shell" data-player=\'{esc(json.dumps(config,ensure_ascii=False))}\'><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="Virtual controller"></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">Preparing</strong><div class="progress" role="progressbar" aria-label="Core download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section></main><script src="{ui_asset}" defer></script><script src="{runtime_asset}" defer></script><script src="{renderer_asset}" defer></script><script src="{nds_touch_asset}" defer></script><script src="{player_asset}" defer></script>'
     return layout("Core preload", body, lang, None, "", player=True)
 
 
@@ -891,66 +1382,203 @@ def player_page(game, lang, user, csrf):
         mode = "html5"
     else:
         game_area = '<div id="game"></div><div id="tvPad" aria-label="virtual controller"></div>'
-        touch_toggle = f'<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="{tr(lang,"Ẩn phím ảo","Hide virtual controls")}" aria-label="{tr(lang,"Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>' if game["system"] in {"gb", "gba", "nds"} else ""
+        touch_toggle = f'<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="{tr(lang,"Ẩn phím ảo","Hide virtual controls")}" aria-label="{tr(lang,"Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>' if game["system"] in {"gb", "gba", "nds", "3ds"} else ""
         toolbar_extra = f'{touch_toggle}<button id="slotMenu" type="button" aria-expanded="false" title="{tr(lang,"Save slot","Save slots")}" aria-label="{tr(lang,"Mở save slot trên thiết bị","Open save slots on this device")}">{icon("save")}</button><button id="playerControls" type="button" aria-expanded="false" title="{tr(lang,"Tùy chọn khác","More options")}" aria-label="{tr(lang,"Mở tùy chọn trình phát","Open player options")}">{icon("more")}</button>'
         speed_settings = f'''<section class="player-settings-group player-speed-settings"><header><strong>{tr(lang,"Tốc độ","Speed")}</strong><small>{tr(lang,"Chỉ trong phiên","Session only")}</small></header><div class="player-speed-controls" role="group" aria-label="{tr(lang,"Tốc độ trò chơi","Game speed")}"><button id="speedDown" type="button" aria-label="{tr(lang,"Chậm hơn","Slower")}">−</button><output id="speedValue" aria-live="polite">1×</output><button id="speedUp" type="button" aria-label="{tr(lang,"Nhanh hơn","Faster")}">+</button></div><small id="speedHint" class="muted">{tr(lang,"Điều chỉnh tốc độ hoạt động sau khi game khởi động.","Speed controls become available after the game starts.")}</small></section>''' if game["system"] in {"gba", "nds"} else ""
         game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div></section>'''
-        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions"><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
-        slot_rows = "".join(f'<div class="save-slot" data-slot="{slot}"><strong>{tr(lang,"Slot","Slot")} {slot}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-slot="{slot}">{tr(lang,"Lưu","Save")}</button><button data-load-slot="{slot}" disabled>{tr(lang,"Nạp","Load")}</button></div>' for slot in range(1, 6))
-        slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{slot_rows}</section>'
+        autosave_settings = f'''<section class="player-settings-group player-autosave-settings"><header><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><label><span>{tr(lang,"Chế độ","Mode")}</span><select id="autosaveMode"><option value="off">{tr(lang,"Tắt","Off")}</option><option value="exit">{tr(lang,"Khi thoát game","On game exit")}</option><option value="30">{tr(lang,"Mỗi 30 giây","Every 30 seconds")}</option><option value="10">{tr(lang,"Mỗi 10 giây","Every 10 seconds")}</option><option value="5">{tr(lang,"Mỗi 5 giây","Every 5 seconds")}</option></select></label><small class="muted">{tr(lang,"Autosave dùng slot riêng, không thay thế save thủ công.","Autosave uses its own slot and never replaces a manual save state.")}</small></section>'''
+        exit_settings = f'''<section class="player-settings-group player-exit-settings"><header><strong>{tr(lang,"Thoát game","Exit game")}</strong></header><p class="player-setting-copy">{tr(lang,"Dừng phiên giả lập và quay về thư viện.","Stop this emulation session and return to the library.")}</p><div class="player-panel-actions"><button id="exitGame" type="button">{tr(lang,"Thoát game","Exit game")}</button></div></section>'''
+        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions"><button id="castScreen" type="button">{tr(lang,"Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
+        slot_rows = "".join(f'<div class="save-slot" data-slot="{slot}"><strong>{tr(lang,"Slot","Slot")} {slot}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-slot="{slot}">{tr(lang,"Lưu","Save")}</button><button data-load-slot="{slot}" disabled>{tr(lang,"Nạp","Load")}</button></div>' for slot in range(1, 11))
+        auto_slot_row = f'<div class="save-slot save-slot-auto" data-auto-slot><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-auto>{tr(lang,"Lưu","Save")}</button><button data-load-auto disabled>{tr(lang,"Nạp","Load")}</button></div>'
+        slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{auto_slot_row}{slot_rows}</section>'
         pad_controls = [("dpad", "D-pad"), ("a", "A"), ("b", "B"), ("start", "Start"), ("select", "Select")]
-        if game["system"] in {"gba", "nds"}:
+        if game["system"] in {"gba", "nds", "3ds"}:
             pad_controls.extend([("l", "L"), ("r", "R")])
-        if game["system"] == "nds":
+        if game["system"] in {"nds", "3ds"}:
             pad_controls.extend([("x", "X"), ("y", "Y")])
         pad_options = "".join(f'<option value="{control}">{label}</option>' for control, label in pad_controls)
         renderer_setting = f'<label><span>{tr(lang,"Trình dựng NDS","NDS renderer")}</span><select id="performanceRenderer"><option value="native">{tr(lang,"Mặc định của core","Core default")}</option><option value="legacy">{tr(lang,"Tương thích / ít yêu cầu hơn","Compatibility / lower demand")}</option></select></label>' if game["system"] == "nds" else ""
+        presentation_renderer = f'''<section class="player-settings-group player-presentation-renderer"><header><strong>{tr(lang,"Trình dựng hiển thị","Presentation renderer")}</strong><small>{tr(lang,"Áp dụng sau khi khởi động lại","Applies after restart")}</small></header><label><span>{tr(lang,"Renderer mong muốn","Requested renderer")}</span><select id="presentationRenderer"><option value="auto">Auto</option><option value="webgpu">WebGPU</option><option value="webgl2">WebGL2</option></select></label><div class="player-renderer-status"><span>{tr(lang,"Đã chọn","Requested")}</span><output id="rendererRequestedValue">—</output><span>{tr(lang,"Đang dùng","Effective")}</span><output id="rendererEffectiveValue">—</output><span>{tr(lang,"Fallback","Fallback")}</span><output id="rendererFallbackValue">—</output></div><button id="applyPresentationRenderer" type="button">{tr(lang,"Áp dụng và khởi động lại","Apply and restart")}</button><small id="presentationRendererHint" class="muted">{tr(lang,"Lựa chọn này có hiệu lực sau khi khởi động lại trình phát.","This choice takes effect after restarting the player.")}</small></section>'''
+        player_diagnostics = f'''<details id="playerDiagnostics" class="player-diagnostics"><summary>{tr(lang,"Chẩn đoán","Diagnostics")}</summary><pre id="playerDiagnosticsText"></pre><div class="player-diagnostics-actions"><button id="copyPlayerDiagnostics" type="button">{tr(lang,"Sao chép chẩn đoán","Copy diagnostics")}</button><span id="copyPlayerDiagnosticsStatus" role="status"></span></div></details>'''
         performance_settings = f'''<section class="player-settings-group player-performance-settings"><header><strong>{tr(lang,"Hiệu năng","Performance")}</strong><small id="performanceRecommendation"></small></header><p class="player-setting-copy">{tr(lang,"Khuyến nghị cho thiết bị này:","Recommended for this device:")} <strong id="recommendedPerformanceProfile"></strong></p><div class="performance-profile-options" role="radiogroup" aria-label="{tr(lang,"Hồ sơ hiệu năng","Performance profile")}"><label><input type="radio" name="performanceProfile" value="auto"> {tr(lang,"Dùng cài đặt khuyến nghị","Use recommended settings")}</label><label><input type="radio" name="performanceProfile" value="low"> {tr(lang,"Máy yếu / Tiết kiệm pin","Low-end / Battery")}</label><label><input type="radio" name="performanceProfile" value="balanced"> {tr(lang,"Cân bằng","Balanced")}</label><label><input type="radio" name="performanceProfile" value="quality"> {tr(lang,"Chất lượng","Quality")}</label><label><input type="radio" name="performanceProfile" value="custom"> {tr(lang,"Tùy chỉnh","Custom")}</label></div><div id="performanceCustomOptions" class="player-performance-custom" hidden>{renderer_setting}</div><div class="player-settings-actions"><button id="useRecommended" type="button">{tr(lang,"Đặt lại theo khuyến nghị","Use recommended settings")}</button><button id="applyPerformanceProfile" type="button">{tr(lang,"Áp dụng và khởi động lại","Apply and restart")}</button></div><small id="performanceProfileHint" class="muted"></small></section>'''
-        pad_settings = f'''<section class="player-pad-settings"><header><strong>{tr(lang,"Phím ảo","Virtual controls")}</strong></header><label><span>{tr(lang,"Kích thước chung","Overall size")} <output id="padGlobalScaleValue">100%</output></span><input id="padGlobalScale" type="range" min="70" max="100" step="1" value="100"></label><small id="padGlobalScaleHint" class="muted">{tr(lang,"Mức tối đa giữ nguyên bố cục đã duyệt để tránh chồng phím trên màn hình hẹp.","The maximum keeps the approved layout from overlapping on narrow screens.")}</small><div><button id="resetPadGlobalScale" type="button">{tr(lang,"Đặt lại kích thước chung","Reset overall size")}</button></div><details class="player-pad-advanced"><summary>{tr(lang,"Kích thước từng phím","Individual control sizes")}</summary><p class="player-setting-copy">{tr(lang,"Tỷ lệ tính theo kích thước mặc định của từng phím. Không thể lưu mức làm phím chồng nhau hoặc ra ngoài màn hình.","Sizes are relative to each control’s approved default. Unsafe overlap and off-screen sizes are not saved.")}</p><label><span>{tr(lang,"Phím cần chỉnh","Control to resize")}</span><select id="padTarget">{pad_options}</select></label><label><span>{tr(lang,"Kích thước tương đối","Relative size")} <output id="padSizeValue">100%</output></span><input id="padSize" type="range" min="50" max="200" step="1" value="100"></label><small id="padSizeHint" class="muted"></small><div class="player-pad-button-actions"><button id="resetPadTarget" type="button">{tr(lang,"Đặt lại phím này","Reset this control")}</button><button id="resetPadSizes" type="button">{tr(lang,"Đặt lại từng phím","Reset all individual sizes")}</button></div></details><label><span>{tr(lang,"Độ mờ","Opacity")}</span><input id="padOpacity" type="range" min="30" max="100" step="1"></label><div class="player-pad-actions"><button id="editPad" type="button">{tr(lang,"Kéo thả","Move")}</button><button id="resetPadLayout" type="button">{tr(lang,"Đặt lại bố cục này","Reset this layout")}</button><button id="resetPad" type="button">{tr(lang,"Đặt lại tất cả phím ảo","Reset all virtual controls")}</button></div></section>''' if game["system"] in {"gb", "gba", "nds"} else ""
+        pad_settings = f'''<section class="player-pad-settings"><header><strong>{tr(lang,"Phím ảo","Virtual controls")}</strong></header><label><span>{tr(lang,"Điều hướng","Directional control")}</span><select id="padDirectionalControl"><option value="dpad">D-Pad</option><option value="joystick">Analog Joystick</option></select></label><label><span>{tr(lang,"Kích thước chung","Overall size")} <output id="padGlobalScaleValue">100%</output></span><input id="padGlobalScale" type="range" min="70" max="100" step="1" value="100"></label><small id="padGlobalScaleHint" class="muted">{tr(lang,"Mức tối đa giữ nguyên bố cục đã duyệt để tránh chồng phím trên màn hình hẹp.","The maximum keeps the approved layout from overlapping on narrow screens.")}</small><div><button id="resetPadGlobalScale" type="button">{tr(lang,"Đặt lại kích thước chung","Reset overall size")}</button></div><details class="player-pad-advanced"><summary>{tr(lang,"Kích thước từng phím","Individual control sizes")}</summary><p class="player-setting-copy">{tr(lang,"Tỷ lệ tính theo kích thước mặc định của từng phím. Không thể lưu mức làm phím chồng nhau hoặc ra ngoài màn hình.","Sizes are relative to each control’s approved default. Unsafe overlap and off-screen sizes are not saved.")}</p><label><span>{tr(lang,"Phím cần chỉnh","Control to resize")}</span><select id="padTarget">{pad_options}</select></label><label><span>{tr(lang,"Kích thước tương đối","Relative size")} <output id="padSizeValue">100%</output></span><input id="padSize" type="range" min="50" max="200" step="1" value="100"></label><small id="padSizeHint" class="muted"></small><div class="player-pad-button-actions"><button id="resetPadTarget" type="button">{tr(lang,"Đặt lại phím này","Reset this control")}</button><button id="resetPadSizes" type="button">{tr(lang,"Đặt lại từng phím","Reset all individual sizes")}</button></div></details><label><span>{tr(lang,"Độ mờ","Opacity")}</span><input id="padOpacity" type="range" min="30" max="100" step="1"></label><div class="player-pad-actions"><button id="editPad" type="button">{tr(lang,"Kéo thả","Move")}</button><button id="resetPadLayout" type="button">{tr(lang,"Đặt lại bố cục này","Reset this layout")}</button><button id="resetPad" type="button">{tr(lang,"Đặt lại tất cả phím ảo","Reset all virtual controls")}</button></div></section>''' if game["system"] in {"gb", "gba", "nds", "3ds"} else ""
         if pad_settings:
             pad_settings = pad_settings.replace('<section class="player-pad-settings">', f'<section class="player-settings-group player-controls-settings player-pad-settings"><header><strong>{tr(lang,"Điều khiển","Controls")}</strong><small>{tr(lang,"Phím ảo","Virtual controls")}</small></header><div class="player-controls-visibility"><span>{tr(lang,"Phím ảo","Virtual controls")}</span><button id="togglePad" type="button" aria-pressed="false">{tr(lang,"Hiện phím ảo","Show virtual controls")}</button></div>', 1).replace(f'<header><strong>{tr(lang,"Phím ảo","Virtual controls")}</strong></header>', '', 1)
-        pad_panel = f'<section id="padPanel" class="pad-panel" role="dialog" aria-label="{tr(lang,"Tùy chọn trình phát","Player options")}"><header><strong>{tr(lang,"Tùy chọn trình phát","Player options")}</strong><button id="closePad" type="button">{tr(lang,"Đóng","Close")}</button></header>{performance_settings}{speed_settings}{pad_settings}{game_settings}{advanced_settings}</section>'
+        pad_panel = f'<section id="padPanel" class="pad-panel" role="dialog" aria-label="{tr(lang,"Tùy chọn trình phát","Player options")}"><header><strong>{tr(lang,"Tùy chọn trình phát","Player options")}</strong><button id="closePad" type="button">{tr(lang,"Đóng","Close")}</button></header>{presentation_renderer}{player_diagnostics}{performance_settings}{speed_settings}{pad_settings}{game_settings}{autosave_settings}{exit_settings}{advanced_settings}</section>'
         mode = "emulator"
     config = {
         "mode": mode, "title": title, "slug": game["slug"], "system": game["system"],
         "romUrl": f"/game-file/{game['slug']}/{quote(browser_rom_name(game))}", "channel": SYSTEMS[game["system"]][1],
         "downloadName": game["rom_name"], "lang": lang, "ndsDebugAllowed": NDS_DEBUG_ALLOWED,
+        "netplayServer": NETPLAY_ORIGIN, "netplayGameId": f"an3:{game['id']}:{game['system']}",
     }
     back_path = f"/game/{game['slug']}"
     body = f"""<main class="player-shell" data-player='{esc(json.dumps(config,ensure_ascii=False))}'>
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
 {slot_panel}{pad_panel}</main>
-<script src="/static/player.js?v={ASSET_VERSION}" defer></script>"""
+<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
 
-def dashboard_analytics(conn):
+DASHBOARD_RANGES = (
+    ("7", "7 days", 7),
+    ("30", "30 days", 30),
+    ("90", "90 days", 90),
+    ("all", "All time", None),
+)
+DASHBOARD_DEFAULT_RANGE = "30"
+
+
+def dashboard_analytics(conn, days):
+    """Return visits/downloads for the selected window plus its comparison.
+
+    ``days`` of ``None`` means all time. The result is a tuple of
+    ``(totals, previous, series)`` where the totals are session-collapsed counts
+    for the window, ``previous`` covers the equal-length window before it, and
+    ``series`` is a list of ``(day, visits, downloads)`` points.
+    """
     now = int(time.time())
-    start = now - 13 * 86400
-    days = [(datetime.fromtimestamp(now - offset * 86400).strftime("%Y-%m-%d"), 0, 0) for offset in range(13, -1, -1)]
-    visits = {day: 0 for day, _, _ in days}
-    plays = {day: 0 for day, _, _ in days}
-    for row in conn.execute("SELECT strftime('%Y-%m-%d',created_at,'unixepoch','localtime') AS day,COUNT(*) AS count FROM page_views WHERE created_at>=? GROUP BY day", (start,)):
-        visits[row["day"]] = int(row["count"])
-    for row in conn.execute("SELECT strftime('%Y-%m-%d',created_at,'unixepoch','localtime') AS day,COUNT(*) AS count FROM play_events WHERE created_at>=? GROUP BY day", (start,)):
-        plays[row["day"]] = int(row["count"])
-    series = [(day, visits.get(day, 0), plays.get(day, 0)) for day, _, _ in days]
-    totals = conn.execute("""SELECT
-        (SELECT COUNT(*) FROM page_views) AS visits,
-        (SELECT COUNT(DISTINCT visitor_hash) FROM page_views) AS visitors,
-        (SELECT COUNT(DISTINCT visitor_hash) FROM play_events) AS players,
-        (SELECT COUNT(DISTINCT visitor_hash) FROM play_events WHERE created_at>=?) AS players_30d""", (now - 30 * 86400,)).fetchone()
-    top_games = conn.execute("""SELECT g.title_vi,g.slug,COUNT(p.id) AS plays
-        FROM games g JOIN play_events p ON p.game_id=g.id GROUP BY g.id
-        ORDER BY plays DESC,g.title_vi COLLATE NOCASE LIMIT 7""").fetchall()
-    return totals, series, top_games
+    today = datetime.fromtimestamp(now).date()
+    if days:
+        start_day = today - timedelta(days=days - 1)
+    else:
+        oldest = []
+        for table in ("page_views", "download_events"):
+            row = conn.execute(f"SELECT MIN(created_at) AS oldest FROM {table}").fetchone()
+            if row and row["oldest"]:
+                oldest.append(int(row["oldest"]))
+        start_day = datetime.fromtimestamp(min(oldest)).date() if oldest else today
+        days = max(1, (today - start_day).days + 1)
+    previous_start_day = start_day - timedelta(days=days)
+    window_start = int(datetime.combine(previous_start_day, datetime_time.min).timestamp())
+    day_keys = [(start_day + timedelta(days=offset)).isoformat() for offset in range(days)]
+    previous_keys = [(previous_start_day + timedelta(days=offset)).isoformat() for offset in range(days)]
+    window_keys = previous_keys + day_keys
+    visits = {day: set() for day in window_keys}
+    downloads = {day: set() for day in window_keys}
+    # Collapse per-route rows into the 30-minute session model so a chart point
+    # represents a person visiting or downloading, not reloads/navigation.
+    for row in conn.execute("SELECT visitor_hash,created_at FROM page_views WHERE created_at>=?", (window_start,)):
+        stamp = int(row["created_at"])
+        day = datetime.fromtimestamp(stamp).strftime("%Y-%m-%d")
+        if day in visits:
+            visits[day].add((row["visitor_hash"], stamp // ANALYTICS_SESSION_SECONDS))
+    for row in conn.execute("SELECT visitor_hash,path,created_at FROM download_events WHERE created_at>=?", (window_start,)):
+        stamp = int(row["created_at"])
+        day = datetime.fromtimestamp(stamp).strftime("%Y-%m-%d")
+        if day in downloads:
+            downloads[day].add((row["visitor_hash"], row["path"], stamp // ANALYTICS_SESSION_SECONDS))
+    series = [(day, len(visits[day]), len(downloads[day])) for day in day_keys]
+    totals = {
+        "visits": sum(len(visits[day]) for day in day_keys),
+        "downloads": sum(len(downloads[day]) for day in day_keys),
+    }
+    previous = {
+        "visits": sum(len(visits[day]) for day in previous_keys),
+        "downloads": sum(len(downloads[day]) for day in previous_keys),
+    }
+    return totals, previous, series
 
 
-def admin_page(lang, user, csrf, edit_id=None):
+def dashboard_range(value):
+    for key, label, days in DASHBOARD_RANGES:
+        if key == value:
+            return key, label, days
+    _, label, days = next(item for item in DASHBOARD_RANGES if item[0] == DASHBOARD_DEFAULT_RANGE)
+    return DASHBOARD_DEFAULT_RANGE, label, days
+
+
+def dashboard_delta(current, previous):
+    if not previous:
+        return ""
+    change = (current - previous) / previous * 100
+    arrow = "▲" if change >= 0 else "▼"
+    return f"{arrow} {abs(change):.0f}%"
+
+
+def dashboard_axis_labels(day_keys):
+    if len(day_keys) <= 6:
+        picks = day_keys
+    else:
+        step = (len(day_keys) - 1) / 5
+        picks = [day_keys[round(index * step)] for index in range(6)]
+    return "".join(f"<span>{datetime.strptime(day, '%Y-%m-%d').strftime('%b %d')}</span>" for day in picks)
+
+
+def format_dashboard_count(value):
+    return f"{int(value):,}"
+
+
+BATCH_STATUS = {
+    "draft": (0, 0, "Draft"),
+    "testing": (1, 1, "Testing"),
+    "release": (1, 0, "Release"),
+}
+
+
+def game_status_key(game):
+    if not game["published"]:
+        return "draft"
+    return "testing" if game["experimental"] else "release"
+
+
+def batch_game_ids(value):
+    if not isinstance(value, list) or not value or len(value) > 50:
+        raise ValueError("select 1-50 games")
+    try:
+        ids = [int(item) for item in value]
+    except (TypeError, ValueError):
+        raise ValueError("invalid game selection")
+    if any(item <= 0 for item in ids) or len(set(ids)) != len(ids):
+        raise ValueError("invalid game selection")
+    return ids
+
+
+def batch_status_request(data):
+    target = str(data.get("status") or "")
+    if target not in BATCH_STATUS:
+        raise ValueError("invalid target status")
+    return target, batch_game_ids(data.get("ids"))
+
+
+def batch_status_preview(conn, target, ids):
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"SELECT id,title_vi,title_en,published,experimental FROM games WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    if len(rows) != len(ids):
+        raise ValueError("one or more games no longer exist")
+    row_by_id = {row["id"]: row for row in rows}
+    selected = [row_by_id[item] for item in ids]
+    published, experimental, label = BATCH_STATUS[target]
+    confirmation = f"APPLY {len(selected)} GAME{'S' if len(selected) != 1 else ''} AS {label.upper()}"
+    return {
+        "target": target,
+        "target_label": label,
+        "published": published,
+        "experimental": experimental,
+        "confirmation": confirmation,
+        "games": [
+            {"id": row["id"], "title": row["title_en"] or row["title_vi"], "current": game_status_key(row)}
+            for row in selected
+        ],
+    }
+
+
+def admin_page(lang, user, csrf, edit_id=None, return_to="/admin", range_key=DASHBOARD_DEFAULT_RANGE):
+    """Product analytics dashboard plus admin operations.
+
+    The top of the page stays focused on the two metrics that matter to an
+    app-distribution site (visits and app downloads). Server monitoring is a
+    collapsed secondary panel; library/account/report tools follow below.
+    Play counts, unique-player and ROM-catalog analytics were intentionally
+    removed.
+    """
+    selected_range, range_label, range_days = dashboard_range(range_key)
     with db() as conn:
         games = conn.execute("SELECT * FROM games ORDER BY updated_at DESC").fetchall()
-        editing = conn.execute("SELECT * FROM games WHERE id=?", (edit_id,)).fetchone() if edit_id else None
         users = conn.execute("SELECT id,name,display_name,role,created_at FROM users ORDER BY role DESC, name COLLATE NOCASE").fetchall()
         reports = conn.execute(
             """SELECT r.*,COALESCE(NULLIF(u.display_name,''),u.name) AS reporter,g.title_vi,g.slug FROM reports r
@@ -958,48 +1586,58 @@ def admin_page(lang, user, csrf, edit_id=None):
                ORDER BY CASE r.status WHEN 'open' THEN 0 ELSE 1 END, r.updated_at DESC LIMIT 80"""
         ).fetchall()
         settings = site_settings(conn)
-        totals, series, top_games = dashboard_analytics(conn)
-    t = lambda vi, en: tr(lang, vi, en)
-    maximum = max([1] + [max(visits, plays) for _, visits, plays in series])
-    chart_rows = "".join(
-        f'<tr><th scope="row">{esc(day[5:])}</th><td><progress class="chart-progress chart-visits" max="{maximum}" value="{visits}" aria-label="{esc(day)}: {visits} {t("lượt truy cập", "visits")}"></progress><span>{visits}</span></td><td><progress class="chart-progress chart-plays" max="{maximum}" value="{plays}" aria-label="{esc(day)}: {plays} {t("lượt chơi", "plays")}"></progress><span>{plays}</span></td></tr>'
-        for day, visits, plays in series
-    )
-    top_rows = "".join(f'<li><a href="/game/{esc(item["slug"])}">{esc(item["title_vi"])}</a><strong>{item["plays"]}</strong></li>' for item in top_games)
-    auto_selected = " selected" if not editing else ""
-    options = f'<option value="auto"{auto_selected}>Tự động nhận diện / Auto detect</option>' + "".join(f'<option value="{esc(key)}"{" selected" if editing and editing["system"]==key else ""}>{esc(label[0])}</option>' for key, label in SYSTEMS.items())
+        totals, previous, series = dashboard_analytics(conn, range_days)
+    visit_series = ",".join(str(visits) for _, visits, _ in series)
+    download_series = ",".join(str(downloads) for _, _, downloads in series)
+    chart_labels = dashboard_axis_labels([day for day, _, _ in series])
+    def range_option(key, label):
+        active = key == selected_range
+        css = "range-option active" if active else "range-option"
+        current = ' aria-current="true"' if active else ""
+        return f'<a class="{css}" href="/admin?range={key}"{current}>{label}</a>'
+
+    range_options = "".join(range_option(key, label) for key, label, _ in DASHBOARD_RANGES)
+
     def game_status(game):
-        labels = [t("Phát hành", "Release") if game["published"] else "Draft"]
-        if game["experimental"]:
-            labels.append("Testing")
-        return " · ".join(labels)
-    rows = "".join(f'<tr><td><a href="/game/{esc(g["slug"])}">{esc(g["title_vi"])}</a></td><td>{esc(SYSTEMS[g["system"]][0])}</td><td>{game_status(g)}</td><td>{format_size(g["file_size"])}</td><td><div class="table-actions"><a href="/play/{esc(g["slug"])}">{t("Chơi","Play")}</a><a href="/admin/game/{g["id"]}">{t("Sửa","Edit")}</a><button class="button danger" type="button" data-delete-game="{g["id"]}">{t("Xóa","Delete")}</button></div></td></tr>' for g in games)
-    value = lambda key: esc(editing[key] if editing else "")
-    checked = lambda key: " checked" if editing and editing[key] else ""
+        return {"draft": "Draft", "testing": "Testing", "release": "Release"}[game_status_key(game)]
+
+    reported_game_ids = {item["game_id"] for item in reports}
+    rows = "".join(
+        f'<tr data-admin-game data-status="{game_status_key(g)}" data-reported="{str(g["id"] in reported_game_ids).lower()}">'
+        f'<td><input type="checkbox" data-batch-game value="{g["id"]}" aria-label="Select {esc(game_title(g, lang))} for batch status"></td>'
+        f'<td><div class="table-actions"><a href="/play/{esc(g["slug"])}">Play</a><button class="button danger" type="button" data-delete-game="{g["id"]}">Delete</button></div></td>'
+        f'<td><a href="/game/{esc(g["slug"])}">{esc(game_title(g, lang))}</a></td><td>{esc(SYSTEMS[g["system"]][0])}</td>'
+        f'<td>{game_status(g)}</td><td>{format_size(g["file_size"])}</td></tr>'
+        for g in games
+    )
     user_rows = "".join(
         f'''<tr><td>{esc(item['name'])}</td><td>{esc(item['role'])}</td><td><form class="user-display-name" data-user-id="{item['id']}"><input name="display_name" value="{esc(item['display_name'] or item['name'])}" maxlength="40" aria-label="Display name"><button class="button" type="submit">Save</button></form></td></tr>'''
         for item in users
     )
     report_rows = "".join(
-        f'''<article class="admin-report" data-report-id="{item['id']}"><header><strong>{esc(item['title_vi'])}</strong><span>{esc(item['category'])}</span><time>{datetime.fromtimestamp(item['created_at']).strftime('%Y-%m-%d %H:%M')}</time></header><p>{esc(item['body'])}</p><footer><span>{esc(item['reporter'])}</span><label>{t('Trạng thái','Status')}<select data-report-status aria-label="{t('Trạng thái báo lỗi','Issue report status')}"><option value="open"{' selected' if item['status']=='open' else ''}>open</option><option value="resolved"{' selected' if item['status']=='resolved' else ''}>resolved</option></select></label></footer></article>'''
+        f'''<article class="admin-report" data-report-id="{item['id']}"><header><strong>{esc(item['title_vi'])}</strong><span>{esc(item['category'])}</span><time>{datetime.fromtimestamp(item['created_at']).strftime('%Y-%m-%d %H:%M')}</time></header><p>{esc(item['body'])}</p><footer><span>{esc(item['reporter'])}</span><label>Status<select data-report-status aria-label="Issue report status"><option value="open"{' selected' if item['status']=='open' else ''}>open</option><option value="resolved"{' selected' if item['status']=='resolved' else ''}>resolved</option></select></label></footer></article>'''
         for item in reports
     )
-    body = f"""<main class="page admin-page"><section class="admin-head"><div><p class="eyebrow">ADMIN ONLY</p><h1>Dashboard</h1></div><span>{len(games)} games</span></section>
-<nav class="admin-task-nav" aria-label="{t('Tác vụ quản trị','Admin tasks')}"><a href="#adminOverview">{t('Tổng quan','Overview')}</a><a href="#gameForm">{t('Thêm hoặc sửa game','Add or edit game')}</a><a href="#adminLibrary">{t('Thư viện','Library')}</a><a href="#adminOperations">{t('Tài khoản và báo lỗi','Accounts and reports')}</a></nav>
-<section id="adminOverview" class="analytics"><div class="stats-overview"><div><span>{t('Lượt truy cập','Visits')}</span><strong>{totals['visits']}</strong></div><div><span>{t('Khách riêng biệt','Unique visitors')}</span><strong>{totals['visitors']}</strong></div><div><span>{t('Người chơi','Players')}</span><strong>{totals['players']}</strong><small>{totals['players_30d']} / 30 {t('ngày','days')}</small></div></div><div class="analytics-grid"><section><header><h2>{t('Truy cập và lượt chơi','Visits and plays')}</h2><span>14 {t('ngày','days')}</span></header><div class="table-wrap stats-table-wrap"><table class="stats-table"><thead><tr><th>{t('Ngày','Day')}</th><th>{t('Lượt truy cập','Visits')}</th><th>{t('Lượt chơi','Plays')}</th></tr></thead><tbody>{chart_rows}</tbody></table></div></section><section class="top-games"><header><h2>{t('Game được chơi nhiều','Most played games')}</h2><span>{t('lượt chơi','plays')}</span></header><ol>{top_rows or f'<li class="muted">{t("Chưa có dữ liệu.","No data yet.")}</li>'}</ol></section></div></section>
-<section id="adminBatch" class="admin-bulk-upload admin-list"><h2>{t('Thử nhanh nhiều game','Batch test games')}</h2><p class="muted">{t('Chọn nhiều ROM. Mỗi file được tạo thành Draft công khai, tự nhận diện hệ máy và dùng tên file làm tiêu đề. Game có thể sửa mô tả hoặc đánh dấu Testing sau.','Choose multiple ROMs. Each becomes a public Draft with automatic system detection and the filename as its title. Edit descriptions or mark Testing later.')}</p><form id="bulkGameForm"><label>{t('Tệp game','Game files')}<input name="roms" type="file" multiple required></label><div class="form-actions"><button class="button primary" type="submit">{t('Upload để thử','Upload for testing')}</button></div></form><progress id="bulkProgress" class="upload-progress" max="100" value="0" aria-label="{t('Tiến trình upload hàng loạt','Batch upload progress')}"></progress><p id="bulkStatus" class="muted" role="status"></p></section>
-<section class="admin-grid"><form id="gameForm" class="admin-form" data-id="{editing['id'] if editing else ''}"><h2>{t('Sửa game','Edit game') if editing else t('Thêm game','New game')}</h2>
-<div class="form-grid"><label>{t('Tên game','Game title')}<input name="title_en" value="{value('title_en')}" maxlength="120" placeholder="{t('Bỏ trống để dùng tên file','Leave blank to use the file name')}"></label>
-<label>{t('Hệ máy','System')}<select name="system">{options}</select></label><label>ROM / game file<input name="rom" type="file"></label><label>{t('Ảnh cover','Cover image')}<input id="coverInput" name="cover" type="file" accept="image/png,image/jpeg,image/webp"></label><div id="coverPasteTarget" class="cover-paste" tabindex="0" role="button" aria-describedby="coverPasteStatus"><strong>{t('Dán cover từ clipboard','Paste cover from clipboard')}</strong><span>{t('Nhấp vào đây rồi nhấn Ctrl/Cmd + V','Click here, then press Ctrl/Cmd + V')}</span><small id="coverPasteStatus"></small></div><label>{t('Ảnh in-game trong mô tả','In-game images in description')}<input name="screenshots" type="file" accept="image/png,image/jpeg,image/webp" multiple></label>
-<label class="check"><input name="published" type="checkbox"{checked('published')}> {t('Bản phát hành','Release')}</label><label class="check"><input name="experimental" type="checkbox"{checked('experimental')}> Testing</label><p class="wide muted">{t('Draft và Testing đều công khai để mọi người cùng chơi. Bản phát hành chỉ dùng để phân loại trạng thái.','Draft and Testing are public for everyone to play. Release only changes the status label.')}</p>
-<label class="wide">Mô tả<textarea name="description_vi" maxlength="8000">{value('description_vi')}</textarea></label><label class="wide">{t('Ghi chú cập nhật','Update note')}<textarea name="update_note" maxlength="4000" placeholder="{t('Nội dung sẽ xuất hiện trong lịch sử cập nhật của game','This note appears in the game update history')}"></textarea></label></div>
-<progress id="adminProgress" class="upload-progress" max="100" value="0" aria-label="{t('Tiến trình upload game','Game upload progress')}"></progress><p id="adminStatus" class="muted" role="status"></p><div class="form-actions"><button class="button primary" type="submit">Save game</button>{f'<button class="button danger" type="button" data-delete-game="{editing["id"]}">Delete</button>' if editing else ''}</div></form>
-<section id="adminLibrary" class="admin-list"><h2>Library</h2><div class="table-wrap"><table><thead><tr><th>Game</th><th>System</th><th>Status</th><th>Size</th><th>{t('Tác vụ','Actions')}</th></tr></thead><tbody>{rows or '<tr><td colspan="5">Empty</td></tr>'}</tbody></table></div></section></section>
-<section id="adminOperations" class="admin-tools"><section class="admin-list"><h2>{t('Quản trị viên','Administrators')}</h2><form id="adminCreateForm" class="admin-create"><label>{t('Tên đăng nhập (không thể đổi)','Username (cannot change)')}<input name="name" minlength="3" maxlength="32" required autocomplete="username"></label><label>{t('Nickname hiển thị','Display nickname')}<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname"></label><label>{t('Mật khẩu','Password')}<input name="password" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="adminPasswordRules"></label><p id="adminPasswordRules" class="field-help">{t('Dùng 10–200 ký tự và ít nhất hai loại ký tự.','Use 10–200 characters and at least two character types.')}</p><label>{t('Xác nhận mật khẩu','Confirm password')}<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="adminPasswordRules"></label><button class="button primary" type="submit">{t('Tạo quản trị viên','Create admin')}</button></form></section>
-<section class="admin-list"><h2>{t('Tài khoản','Accounts')}</h2><div class="table-wrap"><table><thead><tr><th>{t('Tên đăng nhập','Username')}</th><th>{t('Vai trò','Role')}</th><th>{t('Nickname hiển thị','Display nickname')}</th></tr></thead><tbody>{user_rows}</tbody></table></div></section>
-<section class="admin-list"><h2>{t('Báo lỗi','Issue reports')}</h2><div class="report-list">{report_rows or f'<p class="muted">{t("Chưa có báo lỗi.","No reports.")}</p>'}</div></section></section>
-<section class="contact-settings admin-list"><h2>{t('Liên hệ maintain','Maintainer contact')}</h2><form id="siteSettingsForm" class="form-grid"><label>{t('Email','Email')}<input name="maintainer_email" type="email" value="{esc(settings.get('maintainer_email'))}" maxlength="254"></label><label>{t('URL Facebook','Facebook URL')}<input name="maintainer_facebook" type="url" value="{esc(settings.get('maintainer_facebook'))}" maxlength="500" placeholder="https://facebook.com/..." ></label><label class="wide">{t('Liên kết mạng xã hội khác','Other social links')}<textarea name="maintainer_links" maxlength="4000" placeholder="Discord|https://...&#10;YouTube|https://...">{esc(settings.get('maintainer_links'))}</textarea></label><div class="form-actions"><button class="button primary" type="submit">{t('Lưu liên hệ','Save contact')}</button></div></form></section></main>"""
-    return layout("Dashboard", body, lang, user, csrf)
+    reference_monitor = lambda metric, icon, label: f'''<article class="monitor-card reference-monitor-card" data-metric-card="{metric}">{ref_icon(icon)}<div><span>{label}</span><strong class="reference-monitor-value" data-metric-value>—</strong><small class="reference-monitor-status" data-metric-status>Loading…</small></div><i class="reference-monitor-meter" aria-hidden="true"></i></article>'''
+
+    def metric_card(icon, label, value, delta):
+        delta_html = f'<small class="metric-delta">{delta}</small>' if delta else ""
+        return f'<article class="reference-metric-card">{ref_icon(icon)}<div><span>{label}</span><strong>{value}</strong>{delta_html}</div></article>'
+
+    body = f"""<main class="page admin-page">
+<section class="admin-head"><div><p class="eyebrow">ADMIN ONLY</p><h1>Dashboard</h1></div><nav class="range-selector" aria-label="Date range">{range_options}</nav></section>
+<nav class="admin-task-nav" aria-label="Admin tasks"><a href="#adminOverview">{ref_icon("star")}<span>Overview</span></a><a href="#adminMonitoring">Server status</a><a href="#adminLibrary">Library</a><a href="#adminOperations">Accounts and reports</a></nav>
+<section id="adminOverview" class="analytics">
+<div class="stats-overview">{metric_card("globe","Total Visits",format_dashboard_count(totals['visits']),dashboard_delta(totals['visits'],previous['visits']))}{metric_card("download","App Downloads",format_dashboard_count(totals['downloads']),dashboard_delta(totals['downloads'],previous['downloads']))}</div>
+<section class="reference-chart-section"><header><h2>{ref_icon("chart-no-axes-combined")}Visits &amp; downloads</h2><span>{range_label}</span></header><article class="reference-chart-wide"><header><span class="chart-legends"><i class="chart-dot visits"></i>Visits<i class="chart-dot downloads"></i>Downloads</span><b>{format_dashboard_count(totals['visits'])} <small class="chart-total-sep">/</small> {format_dashboard_count(totals['downloads'])}</b></header><canvas class="reference-line-chart" width="900" height="300" data-color="#a855f7" data-series="{visit_series}" data-color2="#22d3ee" data-series2="{download_series}" aria-label="Visits and downloads for {esc(range_label)}"></canvas><footer>{chart_labels}</footer></article></section>
+</section>
+<details id="adminMonitoring" class="admin-monitoring admin-list"><summary><span>{ref_icon("chart-no-axes-combined")}Server status</span><span id="monitoringUpdated" class="monitoring-reference-updated" aria-live="polite"></span><i class="details-chevron" aria-hidden="true"></i></summary><div class="monitoring-grid">{reference_monitor("cpu","cpu","CPU")}{reference_monitor("ram","memory-stick","RAM")}{reference_monitor("disk","hard-drive","Storage")}{reference_monitor("temperature","thermometer","Temperature")}{reference_monitor("power","zap","Power")}{reference_monitor("uptime","clock-3","Uptime")}{reference_monitor("app","router","Vibe Coded")}</div></details>
+<section id="adminLibrary" class="admin-list"><header><h2>Library</h2><span>Select up to 50 games for a safe status change</span></header><form id="batchStatusForm" class="batch-status-form"><label>New status<select name="status"><option value="draft">Draft</option><option value="testing">Testing</option><option value="release">Release</option></select></label><button class="button" type="submit">Preview change</button><p id="batchPreview" class="muted" role="status"></p><label class="batch-confirmation" hidden>Type the exact confirmation to apply<input id="batchConfirmation" autocomplete="off" disabled></label><button id="batchApply" class="button primary" type="button" disabled>Apply previewed change</button></form><div class="table-wrap"><table><thead><tr><th>Select</th><th>Actions</th><th>Game</th><th>System</th><th>Status</th><th>Size</th></tr></thead><tbody>{rows or '<tr><td colspan="6">Empty</td></tr>'}</tbody></table></div></section>
+<section id="adminOperations" class="admin-tools"><section class="admin-list"><h2>Administrators</h2><form id="adminCreateForm" class="admin-create"><label>Username (cannot change)<input name="name" minlength="3" maxlength="32" required autocomplete="username"></label><label>Display nickname<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname"></label><label>Password<input name="password" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="adminPasswordRules"></label><p id="adminPasswordRules" class="field-help">Use 10–200 characters and at least two character types.</p><label>Confirm password<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="adminPasswordRules"></label><button class="button primary" type="submit">Create admin</button></form></section>
+<section class="admin-list"><h2>Accounts</h2><div class="table-wrap"><table><thead><tr><th>Username</th><th>Role</th><th>Display nickname</th></tr></thead><tbody>{user_rows}</tbody></table></div></section>
+<section class="admin-list"><h2>Issue reports</h2><div class="report-list">{report_rows or '<p class="muted">No reports.</p>'}</div></section></section>
+<section class="contact-settings admin-list"><h2>Maintainer contact</h2><form id="siteSettingsForm" class="form-grid"><label>Email<input name="maintainer_email" type="email" value="{esc(settings.get('maintainer_email'))}" maxlength="254"></label><label>Facebook URL<input name="maintainer_facebook" type="url" value="{esc(settings.get('maintainer_facebook'))}" maxlength="500" placeholder="https://facebook.com/..." ></label><label class="wide">Other social links<textarea name="maintainer_links" maxlength="4000" placeholder="Discord|https://...&#10;YouTube|https://...">{esc(settings.get('maintainer_links'))}</textarea></label><div class="form-actions"><button class="button primary" type="submit">Save contact</button></div></form></section></main>"""
+    return layout("Dashboard", body, lang, user, csrf, admin=True)
 
 
 def rate_allowed(ip, action, limit, window=600, subject=""):
@@ -1015,7 +1653,8 @@ def rate_allowed(ip, action, limit, window=600, subject=""):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "AN3Arcade/1.0"
+    server_version = "VibeCodedEmulator/1.0"
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         sys.stdout.write("%s %s\n" % (self.address_string(), fmt % args))
@@ -1053,7 +1692,8 @@ class Handler(BaseHTTPRequestHandler):
     def send_html(self, content, status=200, player=False):
         csp = None
         if player:
-            csp = "default-src 'self' blob: data: https://cdn.emulatorjs.org; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://cdn.emulatorjs.org; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.emulatorjs.org; connect-src 'self' blob: https://cdn.emulatorjs.org; worker-src 'self' blob: https://cdn.emulatorjs.org; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+            netplay_connect = f" {NETPLAY_ORIGIN}" if NETPLAY_ORIGIN else ""
+            csp = f"default-src 'self' blob: data: https://cdn.emulatorjs.org; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://cdn.emulatorjs.org; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.emulatorjs.org; connect-src 'self' blob: https://cdn.emulatorjs.org{netplay_connect}; worker-src 'self' blob: https://cdn.emulatorjs.org; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
         self.send_bytes(status, content.encode("utf-8"), "text/html; charset=utf-8", csp=csp, cross_origin_isolated=player)
 
     def read_json(self, maximum=MAX_JSON_BYTES):
@@ -1079,13 +1719,36 @@ class Handler(BaseHTTPRequestHandler):
         now = int(time.time())
         user_id = user["id"] if user else None
         with db() as conn:
-            recent = conn.execute("SELECT 1 FROM page_views WHERE visitor_hash=? AND path=? AND created_at>? LIMIT 1", (visitor, path, now - 1800)).fetchone()
+            recent = conn.execute("SELECT 1 FROM page_views WHERE visitor_hash=? AND created_at>? LIMIT 1", (visitor, now - ANALYTICS_SESSION_SECONDS)).fetchone()
             if not recent:
                 conn.execute("INSERT INTO page_views(visitor_hash,user_id,path,created_at) VALUES(?,?,?,?)", (visitor, user_id, path, now))
             if game_id:
-                played = conn.execute("SELECT 1 FROM play_events WHERE visitor_hash=? AND game_id=? AND created_at>? LIMIT 1", (visitor, game_id, now - 600)).fetchone()
+                played = conn.execute("SELECT 1 FROM play_events WHERE visitor_hash=? AND game_id=? AND created_at>?", (visitor, game_id, now - ANALYTICS_SESSION_SECONDS)).fetchone()
                 if not played:
                     conn.execute("INSERT INTO play_events(visitor_hash,user_id,game_id,created_at) VALUES(?,?,?,?)", (visitor, user_id, game_id, now))
+
+    def track_download(self, path, user=None):
+        """Record one app-installer download per visitor and session.
+
+        Analytics is best-effort: a tracking failure must never interrupt or
+        fail the actual download response.
+        """
+        try:
+            visitor = self.visitor_hash()
+            now = int(time.time())
+            user_id = user["id"] if user else None
+            with db() as conn:
+                recent = conn.execute(
+                    "SELECT 1 FROM download_events WHERE visitor_hash=? AND path=? AND created_at>?",
+                    (visitor, path, now - ANALYTICS_SESSION_SECONDS),
+                ).fetchone()
+                if not recent:
+                    conn.execute(
+                        "INSERT INTO download_events(visitor_hash,user_id,path,created_at) VALUES(?,?,?,?)",
+                        (visitor, user_id, path, now),
+                    )
+        except Exception:
+            return
 
     def check_contribution_limit(self, user, game_id, kind):
         now = int(time.time())
@@ -1103,13 +1766,13 @@ class Handler(BaseHTTPRequestHandler):
                 f"SELECT COUNT(*) AS count FROM {table} WHERE user_id=? AND created_at>?", (user["id"], now - window)
             ).fetchone()["count"]
         if recent and now - recent["created_at"] < cooldown:
-            raise RateLimited("Vui lòng chờ trước khi gửi tiếp")
+            raise RateLimited("Please wait before sending again")
         if total >= limit:
-            raise RateLimited("Bạn đã đạt giới hạn gửi trong hôm nay")
+            raise RateLimited("You reached today's send limit")
         if not rate_allowed(self.client_address[0], f"{kind}-ip", limit, window):
-            raise RateLimited("Quá nhiều yêu cầu từ mạng này")
+            raise RateLimited("Too many requests from this network")
         if not rate_allowed(self.client_address[0], f"{kind}-user", limit, window, user["id"]):
-            raise RateLimited("Bạn đã đạt giới hạn gửi")
+            raise RateLimited("You reached the send limit")
 
     def current_user(self):
         token = self.cookie_jar().get("an3_session")
@@ -1163,6 +1826,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def serve_static(self, root, relative, cache="public,max-age=86400", sandbox=False):
@@ -1176,13 +1840,26 @@ class Handler(BaseHTTPRequestHandler):
             size = os.path.getsize(path)
             self.send_response(200)
             csp = "sandbox allow-scripts allow-pointer-lock allow-forms; default-src 'self' data: blob:; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; connect-src 'self' blob:; object-src 'none'" if sandbox else None
-            self.common_headers(content_type, size, cache, csp)
+            # Dedicated workers loaded by an isolated player must opt into the
+            # same embedder policy or the browser rejects them before execution.
+            renderer_worker = os.path.abspath(path) == os.path.join(os.path.abspath(STATIC_DIR), "renderer-worker.js")
+            self.common_headers(content_type, size, cache, csp, cross_origin_isolated=renderer_worker)
             if sandbox:
                 self.send_header("Cross-Origin-Resource-Policy", "same-origin")
             self.end_headers()
             if self.command != "HEAD":
                 with open(path, "rb") as handle:
                     shutil.copyfileobj(handle, self.wfile, 1024 * 1024)
+        except Exception:
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+
+    def serve_service_worker(self):
+        """Render the cache namespace after the static content hash is known."""
+        try:
+            path = safe_data_path(STATIC_DIR, "service-worker.js")
+            with open(path, "rb") as handle:
+                payload = handle.read().replace(b"__ASSET_VERSION__", ASSET_VERSION.encode("ascii"))
+            self.send_bytes(200, payload, "application/javascript; charset=utf-8", "no-cache")
         except Exception:
             self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
 
@@ -1201,6 +1878,7 @@ class Handler(BaseHTTPRequestHandler):
                 if start > end or start >= size:
                     self.send_response(416)
                     self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
                     self.end_headers()
                     return
                 status = 206
@@ -1228,18 +1906,101 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        query = parse_qs(parsed.query)
         lang = language(self)
-        user, csrf = self.current_user()
-        if parse_qs(parsed.query).get("lang", [""])[0] in ("vi", "en"):
-            chosen = parse_qs(parsed.query)["lang"][0]
-            clean = path
-            self.send_response(303)
-            self.send_header("Location", clean)
-            self.send_header("Set-Cookie", f"lang={chosen}; Path=/; SameSite=Lax; Max-Age=31536000")
-            self.end_headers()
+        # The dedicated offline app has been consolidated into ``/offline``.
+        # Keep explicit redirects so existing shortcuts and cached bookmarks
+        # land on the supported surface without reviving a second player.
+        #
+        # This is deliberately a tiny retirement worker rather than the old
+        # offline-app implementation. Browsers which had that old PWA open
+        # will fetch it as an update, unregister the obsolete scope, and then
+        # navigate back to the supported offline surface. It neither reads nor
+        # clears the user's IndexedDB, ROMs, or save data.
+        if path == "/offline-app-service-worker.js":
+            retired_worker = b'''self.addEventListener("install", event => event.waitUntil(self.skipWaiting()));
+self.addEventListener("activate", event => event.waitUntil((async () => {
+  const clients = await self.clients.matchAll({type:"window", includeUncontrolled:true});
+  await self.registration.unregister();
+  await Promise.all(clients.map(client => client.navigate("/offline")));
+})()));
+'''
+            self.send_bytes(200, retired_worker, "application/javascript; charset=utf-8", "no-cache")
             return
+        if path in {"/offline-app", "/offline-app/"}:
+            suffix = f"?{parsed.query}" if parsed.query else ""
+            self.redirect(f"/offline{suffix}")
+            return
+        if path.startswith("/offline-app-core-preload/"):
+            system = path.rsplit("/", 1)[1]
+            self.redirect(f"/core-preload/{quote(system)}")
+            return
+        if path == "/download-app/source":
+            # This source bundle is staging-only and never contains runtime
+            # data, databases, credentials, or server ROMs.
+            if ENVIRONMENT not in {"staging", "development"}:
+                self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+                return
+            try:
+                bundle = native_offline_source_bundle()
+            except FileNotFoundError:
+                self.send_bytes(404, b"native source unavailable\n", "text/plain; charset=utf-8")
+                return
+            self.send_response(200)
+            self.common_headers("application/zip", len(bundle), "no-store")
+            self.send_header("Content-Disposition", 'attachment; filename="an3-offline-native-staging-source.zip"')
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(bundle)
+            return
+        if path == "/download-app/artifacts.json":
+            if ENVIRONMENT not in {"staging", "development"}:
+                self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+                return
+            self.send_json(native_artifact_manifest())
+            return
+        if path.startswith("/download-app/release/"):
+            if ENVIRONMENT not in PUBLIC_NATIVE_RELEASE_ENVIRONMENTS:
+                self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+                return
+            filename = unquote(path.rsplit("/", 1)[1])
+            release = published_native_release(filename, query.get("sha256", [None])[0])
+            if not release:
+                self.send_bytes(404, b"release not found\n", "text/plain; charset=utf-8")
+                return
+            content_type = mimetypes.guess_type(release)[0] or "application/octet-stream"
+            size = os.path.getsize(release)
+            if self.command != "HEAD":
+                self.track_download("/download-app/release", None)
+            self.send_response(200)
+            self.common_headers(content_type, size, "no-store")
+            self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(release)}"')
+            self.end_headers()
+            if self.command != "HEAD":
+                with open(release, "rb") as handle:
+                    shutil.copyfileobj(handle, self.wfile, length=1024 * 1024)
+            return
+        # Production is download-first and intentionally carries no public
+        # server-ROM catalog. The offline page remains available for a visitor's
+        # own device-local files, but every legacy public library path is gone.
+        if ENVIRONMENT == "production" and (path == "/games" or path == "/api/library-version" or path.startswith(PRODUCTION_ROM_LIBRARY_PREFIXES) or path.startswith("/api/games/")):
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
+        # Public files are requested in bursts while a game starts.  A logged
+        # in visitor does not need a SQLite session lookup for each CSS, core,
+        # cover, or ROM byte range; dynamic pages continue to resolve the
+        # account exactly as before.
+        public_resource = (
+            path == "/service-worker.js"
+            or path == "/health"
+            or path.startswith(("/emulatorjs/", "/static/", "/cover/", "/screenshot/", "/download/", "/game-file/", "/custom/"))
+        )
+        user, csrf = (None, "") if public_resource else self.current_user()
         if path == "/":
-            self.track_visit("/", user)
+            self.track_visit("/download-app", user)
+            self.send_html(download_app_page(lang, user, csrf))
+        elif path == "/games":
+            self.track_visit("/games", user)
             self.send_html(home_page(lang, user, csrf))
         elif path == "/api/library-version":
             with db() as conn:
@@ -1256,7 +2017,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(account_page(lang, user, csrf))
         elif path == "/offline":
             self.track_visit("/offline", user)
-            self.send_html(offline_page(lang, user, csrf), player=True)
+            self.send_html(offline_page(lang, user, csrf))
+        elif path == "/download-app":
+            self.track_visit("/download-app", user)
+            self.send_html(download_app_page(lang, user, csrf))
         elif path.startswith("/core-preload/"):
             system = path.rsplit("/", 1)[1]
             self.send_html(core_preload_page(system, lang), 200 if system in SYSTEMS and system != "html5" else 404, player=True)
@@ -1277,11 +2041,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html(status_page(403, lang, user, csrf), 403)
             else:
                 edit_id = int(path.rsplit("/", 1)[1]) if path.startswith("/admin/game/") and path.rsplit("/", 1)[1].isdigit() else None
-                self.send_html(admin_page(lang, user, csrf, edit_id))
+                self.send_html(admin_page(lang, user, csrf, edit_id, parse_qs(parsed.query).get("next", ["/admin"])[0], parse_qs(parsed.query).get("range", [DASHBOARD_DEFAULT_RANGE])[0]))
         elif path == "/service-worker.js":
-            self.serve_static(STATIC_DIR, "service-worker.js", "no-cache")
+            self.serve_service_worker()
         elif path.startswith("/emulatorjs/"):
-            match = re.fullmatch(r"/emulatorjs/(stable|latest)/data/(.+)", path)
+            # Data paths are versioned only when a core needs a repaired
+            # binary. They resolve to the same checked server cache while
+            # allowing browsers to retain their old offline core downloads.
+            match = re.fullmatch(r"/emulatorjs/(stable|latest)/data(?:-v[1-9][0-9]*)?/(.+)", path)
             if not match:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:
@@ -1292,8 +2059,16 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
                 except Exception:
                     self.send_bytes(502, b"emulator asset unavailable\n", "text/plain; charset=utf-8")
+        elif path.startswith("/static/v/"):
+            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|player\.js|site\.css)", path)
+            if not match or match.group(1) != ASSET_VERSION:
+                self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            else:
+                self.serve_static(STATIC_DIR, match.group(2), "public,max-age=31536000,immutable")
         elif path.startswith("/static/"):
-            self.serve_static(STATIC_DIR, path[8:])
+            requested_asset = query.get("v", [""])[0]
+            static_cache = "public,max-age=31536000,immutable" if requested_asset == ASSET_VERSION else "public,max-age=86400"
+            self.serve_static(STATIC_DIR, path[8:], static_cache)
         elif path.startswith("/cover/"):
             game_id = path.rsplit("/", 1)[1]
             with db() as conn:
@@ -1339,8 +2114,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:
                 self.serve_static(os.path.join(CUSTOM_DIR, game_id), relative, "no-store", sandbox=True)
+        elif path == "/api/admin/system-metrics":
+            if self.require_user(admin=True, csrf=False):
+                self.send_json(system_metrics())
         elif path == "/health":
-            self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "time": int(time.time())})
+            self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
         else:
             if path.startswith("/api/") or path.startswith("/admin/api/"):
                 self.send_json({"error": "not found"}, 404)
@@ -1353,6 +2131,9 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         lang = language(self)
         try:
+            if ENVIRONMENT == "production" and path.startswith("/api/games/"):
+                self.send_json({"error": "not found"}, 404)
+                return
             if path == "/api/register":
                 if not rate_allowed(self.client_address[0], "register", 5, 3600):
                     raise PermissionError("too many attempts")
@@ -1419,7 +2200,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.check_contribution_limit(user, game_id, "comment")
                 with db() as conn:
                     duplicate = conn.execute("SELECT 1 FROM comments WHERE user_id=? AND game_id=? AND body=? AND created_at>?", (user["id"], game_id, body, int(time.time()) - 86400)).fetchone()
-                    if duplicate: raise RateLimited("Bình luận này đã được gửi")
+                    if duplicate: raise RateLimited("This comment was already sent")
                     conn.execute("INSERT INTO comments(user_id,game_id,body,created_at) VALUES(?,?,?,?)", (user["id"], game_id, body, int(time.time())))
                 self.send_json({"ok": True}, 201)
             elif re.fullmatch(r"/api/games/\d+/favorite", path):
@@ -1453,7 +2234,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not game: raise ValueError("game not found")
                     now = int(time.time())
                     duplicate = conn.execute("SELECT 1 FROM reports WHERE user_id=? AND game_id=? AND body=? AND created_at>?", (user["id"], game_id, body, now - 7 * 86400)).fetchone()
-                    if duplicate: raise RateLimited("Báo lỗi này đã được gửi")
+                    if duplicate: raise RateLimited("This report was already sent")
                     conn.execute("INSERT INTO reports(user_id,game_id,category,body,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", (user["id"], game_id, category, body, "open", now, now))
                 self.send_json({"ok": True}, 201)
             elif path == "/api/account/display-name":
@@ -1527,8 +2308,30 @@ class Handler(BaseHTTPRequestHandler):
                 with db() as conn:
                     slug = unique_slug(conn, title_en or title_vi)
                     cur = conn.execute("INSERT INTO games(slug,title_vi,title_en,description_vi,description_en,system,published,experimental,system_auto,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (slug,title_vi,title_en,str(data.get("description_vi") or "")[:8000],str(data.get("description_en") or "")[:8000],system,int(bool(data.get("published"))),int(bool(data.get("experimental") or system=="3ds")),int(automatic),now,now))
-                    add_game_update(conn, cur.lastrowid, "Tạo game", "Game created", str(data.get("update_note") or "")[:4000], str(data.get("update_note") or "")[:4000])
+                    add_game_update(conn, cur.lastrowid, "Game created", "Game created", str(data.get("update_note") or "")[:4000], str(data.get("update_note") or "")[:4000])
                 self.send_json({"ok": True, "id": cur.lastrowid, "slug": slug}, 201)
+            elif path == "/admin/api/games/batch-status/preview":
+                user = self.require_user(admin=True)
+                if not user: return
+                target, ids = batch_status_request(self.read_json())
+                with db() as conn:
+                    preview = batch_status_preview(conn, target, ids)
+                self.send_json({"ok": True, **preview})
+            elif path == "/admin/api/games/batch-status/apply":
+                user = self.require_user(admin=True)
+                if not user: return
+                data = self.read_json()
+                target, ids = batch_status_request(data)
+                with db() as conn:
+                    preview = batch_status_preview(conn, target, ids)
+                    if str(data.get("confirmation") or "") != preview["confirmation"]:
+                        raise ValueError("explicit preview confirmation does not match")
+                    now = int(time.time())
+                    with conn:
+                        for item in preview["games"]:
+                            conn.execute("UPDATE games SET published=?,experimental=?,updated_at=? WHERE id=?", (preview["published"], preview["experimental"], now, item["id"]))
+                            add_game_update(conn, item["id"], "Batch status updated", "Batch status updated", preview["target_label"], preview["target_label"])
+                self.send_json({"ok": True, "changed": len(preview["games"]), "target": preview["target"], "confirmation": preview["confirmation"]})
             elif re.fullmatch(r"/admin/api/games/\d+", path):
                 user = self.require_user(admin=True)
                 if not user: return
@@ -1545,7 +2348,7 @@ class Handler(BaseHTTPRequestHandler):
                     slug=unique_slug(conn,title_en or title_vi,game_id)
                     conn.execute("UPDATE games SET slug=?,title_vi=?,title_en=?,description_vi=?,description_en=?,system=?,published=?,experimental=?,system_auto=?,updated_at=? WHERE id=?", (slug,title_vi,title_en,str(data.get("description_vi") or "")[:8000],str(data.get("description_en") or "")[:8000],system,int(bool(data.get("published"))),int(bool(data.get("experimental") or system=="3ds")),int(automatic),int(time.time()),game_id))
                     note = str(data.get("update_note") or "").strip()[:4000]
-                    add_game_update(conn, game_id, "Cập nhật thông tin game", "Game information updated", note, note)
+                    add_game_update(conn, game_id, "Game information updated", "Game information updated", note, note)
                 self.send_json({"ok": True,"id":game_id,"slug":slug})
             elif re.fullmatch(r"/admin/api/games/\d+/updates", path):
                 user = self.require_user(admin=True)
@@ -1596,9 +2399,9 @@ class Handler(BaseHTTPRequestHandler):
                 email = str(data.get("maintainer_email") or "").strip()
                 facebook = str(data.get("maintainer_facebook") or "").strip()
                 if email and (len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)):
-                    raise ValueError("email không hợp lệ")
+                    raise ValueError("invalid email")
                 if facebook and not re.fullmatch(r"https?://[^\s]{1,500}", facebook):
-                    raise ValueError("Facebook URL không hợp lệ")
+                    raise ValueError("invalid Facebook URL")
                 links = clean_contact_links(data.get("maintainer_links"))
                 with db() as conn:
                     for key, value in (("maintainer_email", email), ("maintainer_facebook", facebook), ("maintainer_links", links)):
@@ -1623,7 +2426,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError) as exc:
             self.send_json({"error":str(exc)},400)
         except Exception:
-            self.send_json({"error":"Yêu cầu không thể xử lý"},400)
+            self.send_json({"error":"Request could not be processed"},400)
 
     def upload_specs(self, game, kind, name):
         name = os.path.basename(name).strip()
@@ -1669,7 +2472,7 @@ class Handler(BaseHTTPRequestHandler):
         target = safe_data_path(root, filename)
         detected = infer_system(name, temp) if kind == "rom" and game["system_auto"] else game["system"]
         if kind == "rom" and not detected:
-            raise ValueError("Không thể tự nhận diện file; hãy chọn hệ máy trong mục nâng cao")
+            raise ValueError("Could not detect the system; choose it manually")
         os.replace(temp, target)
         if kind == "rom":
             clear_prepared_game_roms(game_id)
@@ -1722,7 +2525,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as exc:
                 self.send_json({"error": str(exc)}, 400)
             except Exception:
-                self.send_json({"error": "Upload không thể xử lý"}, 400)
+                self.send_json({"error": "Upload could not be processed"}, 400)
             return
 
         match = re.fullmatch(r"/admin/api/games/(\d+)/(rom|cover|screenshot)", path)
@@ -1750,7 +2553,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             if temp and os.path.exists(temp):
                 os.remove(temp)
-            self.send_json({"error": "Upload không thể xử lý"}, 400)
+            self.send_json({"error": "Upload could not be processed"}, 400)
 
     def extract_custom(self, game_id, archive, ext):
         destination=os.path.join(CUSTOM_DIR,str(game_id))
@@ -1829,5 +2632,5 @@ if __name__ == "__main__":
     init_db()
     bootstrap_admin()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"AN3 Arcade listening on {HOST}:{PORT}", flush=True)
+    print(f"Vibe Coded Emulator listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()

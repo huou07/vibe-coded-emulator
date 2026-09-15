@@ -1,0 +1,41 @@
+{
+  "health": {
+    "ok": true,
+    "environment": "staging",
+    "asset_version": "11290264c01d",
+    "time": 1788859728
+  },
+  "files": {
+    "player.js": {
+      "sha256": "bbc8a8eb36263d9cdca5b2830a9d8093a09012830f3d32fd2b24bca1f3090f4e",
+      "sourceParity": true,
+      "coep": null,
+      "cache": "public,max-age=31536000,immutable"
+    },
+    "player-runtime.js": {
+      "sha256": "837ec7cc927edfd7fa4ab235bdaeb62a925dab75e2f4cdee9d6feba7432392f8",
+      "sourceParity": true,
+      "coep": null,
+      "cache": "public,max-age=31536000,immutable"
+    },
+    "renderer-worker.js": {
+      "sha256": "91bee436b40231e4aa6a91318afb7f2fa222314ddf25d1eab78ae6852af33856",
+      "sourceParity": true,
+      "coep": "require-corp",
+      "cache": "public,max-age=31536000,immutable"
+    },
+    "nds-touch.js": {
+      "sha256": "3d879130a8df25a9393accaa835d4bcf755c93e72c0fd87810617f34324274f0",
+      "sourceParity": true,
+      "coep": null,
+      "cache": "public,max-age=31536000,immutable"
+    }
+  },
+  "dmg": {
+    "filename": "vibecodedemulator-0.4.4-macos-aarch64.dmg",
+    "bytes": 42282987,
+    "sha256": "37e24bf1d1d6c44ff3267c5649b16010f8bce076cc0bac632cddf17d431b975c",
+    "localSha256": "37e24bf1d1d6c44ff3267c5649b16010f8bce076cc0bac632cddf17d431b975c",
+    "parity": true
+  }
+}

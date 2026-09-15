@@ -1,0 +1,87 @@
+{
+  "url": "http://192.168.1.8:8092/play/pokemon-mystery-dungeon-explorers-of-sky?renderer=webgl2&ndsdebug=1",
+  "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
+  "renderer": {
+    "requested": "webgl2",
+    "selected": "webgl2",
+    "effective": "webgl2",
+    "webgpuAvailable": false,
+    "webgl2Available": true,
+    "webglAvailable": true,
+    "fallback": false,
+    "reason": "",
+    "ownsCoreCanvas": false,
+    "offscreen": true,
+    "frameRingSize": 2,
+    "state": "ready",
+    "renderedFrames": 1354,
+    "droppedFrames": 1,
+    "renderP95Ms": 0.5,
+    "renderP99Ms": 0.800000011920929,
+    "transport": "bounded-latest-frame-wins",
+    "type": "frame-result",
+    "frameId": 1354,
+    "rendered": true,
+    "renderTimeMs": 0.2999999523162842
+  },
+  "telemetry": {
+    "video": {
+      "requested": "webgl2",
+      "selected": "webgl2",
+      "effective": "webgl2",
+      "webgpuAvailable": false,
+      "webgl2Available": true,
+      "webglAvailable": true,
+      "fallback": false,
+      "reason": "",
+      "ownsCoreCanvas": false
+    },
+    "audio": {
+      "owner": "EmulatorJS core",
+      "underruns": null,
+      "overruns": null,
+      "queueDepth": null,
+      "clock": "core-owned"
+    },
+    "framePacing": {
+      "uiFrameP95Ms": 16.80000000000291,
+      "uiFrameP99Ms": 16.80000000000291,
+      "coreFrames": 4,
+      "droppedFrames": null,
+      "longTasks": 10,
+      "renderer": {
+        "requested": "webgl2",
+        "selected": "webgl2",
+        "effective": "webgl2",
+        "webgpuAvailable": false,
+        "webgl2Available": true,
+        "webglAvailable": true,
+        "fallback": false,
+        "reason": "",
+        "ownsCoreCanvas": false
+      },
+      "jsHeapUsedBytes": 194687688
+    }
+  },
+  "frame": 5,
+  "time": 34018.69999998808,
+  "scripts": [
+    "http://192.168.1.8:8092/emulatorjs/stable/data/emulator.min.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/player-runtime.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/renderer-worker.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/nds-touch.js",
+    "http://192.168.1.8:8092/static/v/50d711002677/player.js",
+    "http://192.168.1.8:8092/static/site.js?v=50d711002677",
+    "http://192.168.1.8:8092/emulatorjs/stable/data/loader.js",
+    "blob:http://192.168.1.8:8092/7ba3b95f-d7d2-431a-8a3b-495ead28e4f5"
+  ],
+  "stage": {
+    "rendererRequested": "webgl2",
+    "rendererEffective": "webgl2",
+    "rendererOffscreen": "true",
+    "rendererRenderedFrames": "1354",
+    "rendererDroppedFrames": "1",
+    "rendererP95Ms": "0.5",
+    "rendererP99Ms": "0.800000011920929"
+  }
+}

@@ -171,17 +171,21 @@
   const resetLibrary = document.getElementById("resetLibrary");
   const libraryStatus = document.getElementById("libraryStatus");
   const libraryNoResults = document.getElementById("libraryNoResults");
+  const libraryCards = [...document.querySelectorAll("#gameGrid .game-card")];
+  const librarySections = [...document.querySelectorAll("#gameGrid .game-system-section")];
+  const librarySearchText = new WeakMap();
+  libraryCards.forEach(card => librarySearchText.set(card, card.textContent.toLocaleLowerCase()));
   let activeSystem = "all";
   const filterLibrary = () => {
     const query = search?.value.trim().toLocaleLowerCase() || "";
     const visibleGames = new Set();
-    document.querySelectorAll("#gameGrid .game-card").forEach(card => {
+    libraryCards.forEach(card => {
       const matchesSystem = activeSystem === "all" || card.dataset.system === activeSystem;
-      const matchesSearch = !query || card.textContent.toLocaleLowerCase().includes(query);
+      const matchesSearch = !query || (librarySearchText.get(card) || "").includes(query);
       card.hidden = !(matchesSystem && matchesSearch);
       if (!card.hidden) visibleGames.add(card.dataset.gameSlug || card.textContent);
     });
-    document.querySelectorAll("#gameGrid .game-system-section").forEach(section => {
+    librarySections.forEach(section => {
       section.hidden = !section.querySelector(".game-card:not([hidden])");
     });
     if (clearSearch) clearSearch.hidden = !query;
@@ -193,7 +197,15 @@
         : `${visibleGames.size} matching ${visibleGames.size === 1 ? "game" : "games"}`;
     }
   };
-  search?.addEventListener("input", filterLibrary);
+  let libraryFilterFrame = 0;
+  const scheduleLibraryFilter = () => {
+    if (libraryFilterFrame) return;
+    libraryFilterFrame = requestAnimationFrame(() => {
+      libraryFilterFrame = 0;
+      filterLibrary();
+    });
+  };
+  search?.addEventListener("input", scheduleLibraryFilter);
   document.querySelectorAll("[data-system-filter]").forEach(button => button.addEventListener("click", () => {
     activeSystem = button.dataset.systemFilter || "all";
     document.querySelectorAll("[data-system-filter]").forEach(item => {
@@ -221,19 +233,264 @@
   };
   resetLibrary?.addEventListener("click", resetLibraryState);
   document.querySelectorAll("[data-library-reset]").forEach(button => button.addEventListener("click", resetLibraryState));
-  if (search) filterLibrary();
-
   const gameGrid = document.getElementById("gameGrid");
+  const libraryRefreshKey = "an3-library-refresh-state-v1";
+  let libraryRestore = null;
+  if (gameGrid) {
+    try {
+      libraryRestore = JSON.parse(sessionStorage.getItem(libraryRefreshKey) || "null");
+      sessionStorage.removeItem(libraryRefreshKey);
+    } catch (_) {}
+  }
+  if (libraryRestore && search) {
+    search.value = String(libraryRestore.query || "");
+    activeSystem = String(libraryRestore.system || "all");
+    document.querySelectorAll("[data-system-filter]").forEach(item => {
+      const selected = item.dataset.systemFilter === activeSystem;
+      item.classList.toggle("active", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+  }
+  if (search) filterLibrary();
+  if (libraryRestore && Number.isFinite(Number(libraryRestore.scrollY))) {
+    requestAnimationFrame(() => scrollTo({top: Math.max(0, Number(libraryRestore.scrollY)), behavior: "auto"}));
+  }
+
   if (gameGrid) {
     const currentVersion = gameGrid.dataset.libraryVersion;
-    setInterval(async () => {
-      if (document.hidden || search?.value) return;
+    let libraryUpdateAvailable = false;
+    let libraryVersionTimer = null;
+    const showLibraryUpdate = () => {
+      if (document.getElementById("libraryUpdateNotice")) return;
+      const notice = document.createElement("aside");
+      const message = document.createElement("span");
+      const refresh = document.createElement("button");
+      const english = document.documentElement.lang === "en";
+      notice.id = "libraryUpdateNotice";
+      notice.className = "library-update-notice";
+      notice.setAttribute("role", "status");
+      message.textContent = english ? "New library content is available." : "Có nội dung thư viện mới.";
+      refresh.type = "button";
+      refresh.className = "button";
+      refresh.textContent = english ? "Refresh when ready" : "Làm mới khi sẵn sàng";
+      refresh.addEventListener("click", () => {
+        try {
+          sessionStorage.setItem(libraryRefreshKey, JSON.stringify({
+            query: search?.value || "",
+            system: activeSystem,
+            scrollY: scrollY
+          }));
+        } catch (_) {}
+        location.reload();
+      });
+      notice.append(message, refresh);
+      const target = document.querySelector(".library-head") || gameGrid.parentElement;
+      target?.prepend(notice);
+    };
+    const checkLibraryVersion = async () => {
+      if (document.hidden || libraryUpdateAvailable) return;
       try {
         const response = await fetch("/api/library-version", {cache: "no-store"});
         const data = await response.json();
-        if (response.ok && data.version !== currentVersion) location.reload();
+        if (response.ok && data.version && data.version !== currentVersion) {
+          libraryUpdateAvailable = true;
+          showLibraryUpdate();
+        }
       } catch (_) {}
-    }, 15000);
+    };
+    const stopLibraryVersionPolling = () => {
+      if (libraryVersionTimer) clearTimeout(libraryVersionTimer);
+      libraryVersionTimer = null;
+    };
+    const scheduleLibraryVersionCheck = (delay = 60000) => {
+      stopLibraryVersionPolling();
+      if (document.hidden || libraryUpdateAvailable) return;
+      libraryVersionTimer = setTimeout(async () => {
+        await checkLibraryVersion();
+        scheduleLibraryVersionCheck();
+      }, delay);
+    };
+    const onLibraryVisibilityChange = () => {
+      if (document.hidden) {
+        stopLibraryVersionPolling();
+        return;
+      }
+      checkLibraryVersion().finally(() => scheduleLibraryVersionCheck());
+    };
+    scheduleLibraryVersionCheck();
+    addEventListener("visibilitychange", onLibraryVisibilityChange);
+    addEventListener("pagehide", () => {
+      stopLibraryVersionPolling();
+      removeEventListener("visibilitychange", onLibraryVisibilityChange);
+    }, {once: true});
+  }
+
+  const monitoring = document.getElementById("adminMonitoring");
+  if (monitoring) {
+    const english = document.documentElement.lang === "en";
+    const unavailable = english ? "Unavailable" : "Không khả dụng";
+    const labels = {
+      normal: english ? "Normal" : "Bình thường",
+      warning: english ? "Warning" : "Cảnh báo",
+      unavailable,
+      error: english ? "Error" : "Lỗi",
+      stale: english ? "Stale data" : "Dữ liệu cũ",
+      loading: english ? "Loading…" : "Đang tải…"
+    };
+    let monitorTimer = null;
+    let freshnessTimer = null;
+    let requestController = null;
+    let requestInFlight = false;
+    let stopped = false;
+    let failures = 0;
+    let lastSuccessAt = 0;
+    const finiteNumber = value => {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
+    const formatBytes = value => {
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let number = finiteNumber(value);
+      if (number === null) return unavailable;
+      let index = 0;
+      while (number >= 1024 && index < units.length - 1) {
+        number /= 1024;
+        index += 1;
+      }
+      return number.toFixed(index ? 1 : 0) + " " + units[index];
+    };
+    const formatUptime = seconds => {
+      const number = finiteNumber(seconds);
+      if (number === null) return unavailable;
+      const total = Math.max(0, Math.floor(number));
+      const days = Math.floor(total / 86400);
+      const hours = Math.floor(total % 86400 / 3600);
+      const minutes = Math.floor(total % 3600 / 60);
+      return english
+        ? String(days) + "d " + String(hours) + "h " + String(minutes) + "m"
+        : String(days) + " ngày " + String(hours) + " giờ " + String(minutes) + " phút";
+    };
+    const setCard = (name, value, status, statusText = "") => {
+      const card = monitoring.querySelector('[data-metric-card="' + name + '"]');
+      if (!card) return;
+      card.querySelector("[data-metric-value]").textContent = value;
+      card.querySelector("[data-metric-status]").textContent = statusText || labels[status] || labels.error;
+      card.dataset.status = status;
+    };
+    const updateFreshness = () => {
+      const updated = document.getElementById("monitoringUpdated");
+      if (!updated || !lastSuccessAt) return;
+      const seconds = Math.max(0, Math.floor((Date.now() - lastSuccessAt) / 1000));
+      if (seconds < 5) {
+        updated.textContent = english ? "Updated just now" : "Vừa cập nhật";
+      } else {
+        updated.textContent = english
+          ? "Updated " + String(seconds) + "s ago"
+          : "Cập nhật " + String(seconds) + " giây trước";
+      }
+    };
+    const startFreshness = () => {
+      clearInterval(freshnessTimer);
+      freshnessTimer = setInterval(updateFreshness, 1000);
+      updateFreshness();
+    };
+    const scheduleMonitoring = delay => {
+      clearTimeout(monitorTimer);
+      if (!stopped && !document.hidden) monitorTimer = setTimeout(refreshMonitoring, delay);
+    };
+    const markMonitoringFailure = () => {
+      const stale = Boolean(lastSuccessAt);
+      monitoring.querySelectorAll("[data-metric-card]").forEach(card => {
+        card.dataset.status = stale ? "stale" : "error";
+        card.querySelector("[data-metric-status]").textContent = stale ? labels.stale : labels.error;
+      });
+      if (stale) updateFreshness();
+      else {
+        const updated = document.getElementById("monitoringUpdated");
+        if (updated) updated.textContent = labels.error;
+      }
+    };
+    const formatPercent = metric => {
+      const number = finiteNumber(metric?.used_percent);
+      return number === null ? unavailable : number.toFixed(1) + "%";
+    };
+    const refreshMonitoring = async () => {
+      if (stopped || document.hidden || requestInFlight) return;
+      requestInFlight = true;
+      requestController = new AbortController();
+      const timeout = setTimeout(() => requestController?.abort(), 6000);
+      try {
+        const response = await fetch("/api/admin/system-metrics", {
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: requestController.signal
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data || typeof data !== "object") throw new Error("metrics unavailable");
+        setCard("cpu", formatPercent(data.cpu), data.cpu?.status || "unavailable");
+        setCard("ram", data.ram?.used_percent == null
+          ? unavailable
+          : formatBytes(data.ram.used_bytes) + " / " + formatBytes(data.ram.total_bytes) + " (" + formatPercent(data.ram) + ")",
+        data.ram?.status || "unavailable");
+        setCard("disk", data.disk?.used_percent == null
+          ? unavailable
+          : formatBytes(data.disk.used_bytes) + " / " + formatBytes(data.disk.total_bytes) + " (" + formatPercent(data.disk) + ")",
+        data.disk?.status || "unavailable");
+        const temperature = finiteNumber(data.temperature?.celsius);
+        const power = finiteNumber(data.power?.watts);
+        setCard("temperature", temperature === null ? unavailable : temperature.toFixed(1) + " °C", data.temperature?.status || "unavailable");
+        setCard("power", power === null ? unavailable : power.toFixed(2) + " W", data.power?.status || "unavailable");
+        setCard("uptime", formatUptime(data.uptime_seconds), data.uptime_seconds == null ? "unavailable" : "normal");
+        setCard("app", data.app?.ok ? (english ? "Healthy" : "Bình thường") : (english ? "Unhealthy" : "Lỗi"), data.app?.status || "error");
+        const generatedAt = finiteNumber(data.updated_at);
+        lastSuccessAt = generatedAt === null ? Date.now() : generatedAt * 1000;
+        failures = 0;
+        updateFreshness();
+      } catch (_) {
+        failures = Math.min(failures + 1, 3);
+        markMonitoringFailure();
+      } finally {
+        clearTimeout(timeout);
+        requestController = null;
+        requestInFlight = false;
+        const delay = Math.min(30000, 7000 * (2 ** failures));
+        scheduleMonitoring(delay);
+      }
+    };
+    let begun = false;
+    const beginMonitoring = () => {
+      if (begun) return;
+      begun = true;
+      startFreshness();
+      refreshMonitoring();
+    };
+    // Server status is a collapsed secondary panel. Do not poll until the
+    // administrator actually opens it.
+    if (monitoring.tagName === "DETAILS" && !monitoring.open) {
+      monitoring.addEventListener("toggle", () => {
+        if (monitoring.open) beginMonitoring();
+      }, {once: true});
+    } else {
+      beginMonitoring();
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (!begun) return;
+      if (document.hidden) {
+        clearTimeout(monitorTimer);
+        clearInterval(freshnessTimer);
+        requestController?.abort();
+      } else {
+        startFreshness();
+        refreshMonitoring();
+      }
+    });
+    addEventListener("pagehide", () => {
+      stopped = true;
+      clearTimeout(monitorTimer);
+      clearInterval(freshnessTimer);
+      requestController?.abort();
+    }, {once: true});
   }
 
   document.querySelectorAll("[data-rate]").forEach(button => button.addEventListener("click", async () => {
@@ -291,196 +548,6 @@
     } catch (error) { notify(error.message, true); }
   }));
 
-  const uploadRaw = (url, file, onProgress) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", `${url}?name=${encodeURIComponent(file.name)}`);
-    xhr.setRequestHeader("X-CSRF-Token", csrf);
-    xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(event.loaded / event.total); };
-    xhr.onload = () => {
-      const data = (() => { try { return JSON.parse(xhr.responseText); } catch (_) { return {}; } })();
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new Error(data.error || `Upload failed (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error("Network error"));
-    xhr.send(file);
-  });
-
-  const DIRECT_UPLOAD_LIMIT = 48 * 1024 * 1024;
-  const putChunk = (url, blob, offset, onProgress) => new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("X-CSRF-Token", csrf);
-    xhr.setRequestHeader("X-Upload-Offset", String(offset));
-    xhr.upload.onprogress = event => { if (event.lengthComputable) onProgress(event.loaded / event.total); };
-    xhr.onload = () => {
-      const data = (() => { try { return JSON.parse(xhr.responseText); } catch (_) { return {}; } })();
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new Error(data.error || `Upload failed (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error("Network error"));
-    xhr.send(blob);
-  });
-
-  const uploadChunkedRom = async (gameId, file, onProgress) => {
-    let uploadId = "";
-    try {
-      const session = await api(`/admin/api/games/${gameId}/uploads`, {
-        method: "POST", body: JSON.stringify({kind: "rom", name: file.name, size: file.size})
-      });
-      uploadId = session.upload_id;
-      const chunkSize = Math.max(1024 * 1024, Number(session.chunk_size) || 8 * 1024 * 1024);
-      for (let offset = 0; offset < file.size; offset += chunkSize) {
-        const end = Math.min(file.size, offset + chunkSize);
-        await putChunk(`/admin/api/uploads/${uploadId}`, file.slice(offset, end), offset, ratio => {
-          onProgress((offset + (end - offset) * ratio) / file.size);
-        });
-      }
-      const completed = await api(`/admin/api/uploads/${uploadId}/complete`, {method: "POST", body: "{}"});
-      uploadId = "";
-      return completed;
-    } catch (error) {
-      if (uploadId) {
-        try { await api(`/admin/api/uploads/${uploadId}`, {method: "DELETE", body: null}); } catch (_) {}
-      }
-      throw error;
-    }
-  };
-
-  const uploadRom = (gameId, file, onProgress) => file.size > DIRECT_UPLOAD_LIMIT
-    ? uploadChunkedRom(gameId, file, onProgress)
-    : uploadRaw(`/admin/api/games/${gameId}/rom`, file, onProgress);
-  const setUploadProgress = (bar, value) => {
-    if (!bar) return;
-    bar.value = Math.max(0, Math.min(100, Math.round(value)));
-  };
-
-  const gameForm = document.getElementById("gameForm");
-  const titleFromFilename = value => String(value || "").replace(/^.*[\\/]/, "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim().slice(0, 120) || "Game";
-  const assignFile = (input, file) => {
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    input.files = transfer.files;
-    input.dispatchEvent(new Event("change", {bubbles: true}));
-  };
-  const coverInput = document.getElementById("coverInput");
-  const coverPasteTarget = document.getElementById("coverPasteTarget");
-  const coverPasteStatus = document.getElementById("coverPasteStatus");
-  const setCoverFromClipboard = file => {
-    if (!file || !String(file.type || "").startsWith("image/")) {
-      coverPasteStatus.textContent = document.documentElement.lang === "en" ? "Clipboard does not contain an image." : "Clipboard chưa có ảnh.";
-      return;
-    }
-    const extension = {"image/png":"png", "image/jpeg":"jpg", "image/webp":"webp"}[file.type] || "png";
-    const named = new File([file], `pasted-cover.${extension}`, {type:file.type || "image/png"});
-    assignFile(coverInput, named);
-    coverPasteStatus.textContent = `${document.documentElement.lang === "en" ? "Cover ready" : "Đã chọn cover"}: ${named.name}`;
-  };
-  coverPasteTarget?.addEventListener("click", () => coverPasteTarget.focus());
-  coverPasteTarget?.addEventListener("keydown", event => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); coverPasteTarget.focus(); }
-  });
-  coverPasteTarget?.addEventListener("paste", event => {
-    const item = [...(event.clipboardData?.items || [])].find(candidate => candidate.type.startsWith("image/"));
-    if (!item) return;
-    event.preventDefault();
-    setCoverFromClipboard(item.getAsFile());
-  });
-  coverInput?.addEventListener("change", () => {
-    const file = coverInput.files?.[0];
-    if (file) coverPasteStatus.textContent = `${document.documentElement.lang === "en" ? "Cover ready" : "Đã chọn cover"}: ${file.name}`;
-  });
-
-  gameForm?.addEventListener("submit", async event => {
-    event.preventDefault();
-    const form = new FormData(gameForm);
-    const id = gameForm.dataset.id;
-    const rom = form.get("rom");
-    const cover = form.get("cover");
-    const screenshots = [...form.getAll("screenshots")].filter(file => file?.size);
-    const status = document.getElementById("adminStatus");
-    const bar = document.getElementById("adminProgress");
-    if (!id && (!rom || !rom.size)) { status.textContent = "Chọn file game trước khi lưu."; return; }
-    const shouldPublish = form.get("published") === "on";
-    const title = form.get("title_en");
-    const description = form.get("description_vi");
-    const payload = {
-      title_vi: title, title_en: title, system: form.get("system"),
-      rom_name: rom?.name || "",
-      description_vi: description, description_en: description,
-      published: id ? shouldPublish : false, experimental: form.get("experimental") === "on",
-      update_note: form.get("update_note") || ""
-    };
-    try {
-      status.textContent = "Saving metadata…";
-      const data = await api(id ? `/admin/api/games/${id}` : "/admin/api/games", {method: "POST", body: JSON.stringify(payload)});
-      const gameId = data.id;
-      if (rom?.size) {
-        status.textContent = `Uploading ${rom.name}…`;
-        const upload = await uploadRom(gameId, rom, ratio => { setUploadProgress(bar, ratio * 80); });
-        payload.system = upload.system || payload.system;
-      }
-      if (cover?.size) {
-        status.textContent = `Uploading ${cover.name}…`;
-        await uploadRaw(`/admin/api/games/${gameId}/cover`, cover, ratio => { setUploadProgress(bar, 80 + ratio * 20); });
-      }
-      for (let index = 0; index < screenshots.length; index += 1) {
-        const image = screenshots[index];
-        status.textContent = `Uploading screenshot ${index + 1}/${screenshots.length}…`;
-        await uploadRaw(`/admin/api/games/${gameId}/screenshot`, image, ratio => { setUploadProgress(bar, 80 + ratio * 20); });
-      }
-      if (!id && shouldPublish) {
-        status.textContent = "Publishing…";
-        await api(`/admin/api/games/${gameId}`, {
-          method: "POST",
-          body: JSON.stringify({...payload, published: true})
-        });
-      }
-      setUploadProgress(bar, 100);
-      status.textContent = "Saved.";
-      location.href = `/admin/game/${gameId}`;
-    } catch (error) { status.textContent = error.message; notify(error.message, true); }
-  });
-
-  const bulkGameForm = document.getElementById("bulkGameForm");
-  bulkGameForm?.addEventListener("submit", async event => {
-    event.preventDefault();
-    const files = [...new FormData(bulkGameForm).getAll("roms")].filter(file => file?.size);
-    const status = document.getElementById("bulkStatus");
-    const bar = document.getElementById("bulkProgress");
-    if (!files.length) { status.textContent = "Chọn ít nhất một file game."; return; }
-    const successes = [], failures = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const rom = files[index];
-      const title = titleFromFilename(rom.name);
-      let gameId = null;
-      try {
-        status.textContent = `(${index + 1}/${files.length}) Đang tạo ${rom.name}…`;
-        const created = await api("/admin/api/games", {method:"POST", body:JSON.stringify({
-          title_vi:title, title_en:title, system:"auto", rom_name:rom.name,
-          description_vi:"", description_en:"", published:false, experimental:false,
-          update_note:""
-        })});
-        gameId = created.id;
-        status.textContent = `(${index + 1}/${files.length}) Đang upload ${rom.name}…`;
-        await uploadRom(gameId, rom, ratio => {
-          setUploadProgress(bar, ((index + ratio) / files.length) * 100);
-        });
-        successes.push({title, slug:created.slug});
-      } catch (error) {
-        if (gameId) { try { await api(`/admin/api/games/${gameId}`, {method:"DELETE", body:null}); } catch (_) {} }
-        failures.push(`${rom.name}: ${error.message}`);
-      }
-    }
-    setUploadProgress(bar, 100);
-    if (failures.length) {
-      status.textContent = `Đã upload ${successes.length}/${files.length}. ${failures.join(" | ")}`;
-      notify(status.textContent, true);
-      return;
-    }
-    status.textContent = `Đã tạo ${successes.length} game nháp. Đang mở thư viện…`;
-    setTimeout(() => { location.href = "/admin"; }, 650);
-  });
-
   document.querySelectorAll("[data-delete-game]").forEach(button => button.addEventListener("click", async event => {
     if (!confirm("Delete this game, cover, comments and ratings?")) return;
     try {
@@ -489,6 +556,47 @@
       if (row) row.remove(); else location.href = "/admin";
     } catch (error) { notify(error.message, true); }
   }));
+
+  const batchStatusForm = document.getElementById("batchStatusForm");
+  const batchPreview = document.getElementById("batchPreview");
+  const batchConfirmation = document.getElementById("batchConfirmation");
+  const batchApply = document.getElementById("batchApply");
+  let batchPlan = null;
+  const batchIds = () => [...document.querySelectorAll("[data-batch-game]:checked")].map(input => Number(input.value));
+  const clearBatchPlan = () => {
+    batchPlan = null;
+    if (batchPreview) batchPreview.textContent = "";
+    if (batchConfirmation) { batchConfirmation.value = ""; batchConfirmation.disabled = true; batchConfirmation.closest("label")?.setAttribute("hidden", ""); }
+    if (batchApply) batchApply.disabled = true;
+  };
+  document.querySelectorAll("[data-batch-game]").forEach(input => input.addEventListener("change", clearBatchPlan));
+  batchStatusForm?.querySelector("select[name=status]")?.addEventListener("change", clearBatchPlan);
+  batchStatusForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const ids = batchIds();
+    const status = new FormData(batchStatusForm).get("status");
+    if (!ids.length) { batchPreview.textContent = "Select at least one game."; return; }
+    try {
+      const preview = await api("/admin/api/games/batch-status/preview", {method: "POST", body: JSON.stringify({ids, status})});
+      batchPlan = {ids: [...ids].sort((a, b) => a - b), status, confirmation: preview.confirmation};
+      batchPreview.textContent = `${preview.games.length} game(s) will become ${preview.target_label}. Type: ${preview.confirmation}`;
+      batchConfirmation.closest("label")?.removeAttribute("hidden");
+      batchConfirmation.disabled = false;
+      batchConfirmation.focus();
+    } catch (error) { clearBatchPlan(); batchPreview.textContent = error.message; notify(error.message, true); }
+  });
+  batchConfirmation?.addEventListener("input", () => { batchApply.disabled = !batchPlan || batchConfirmation.value !== batchPlan.confirmation; });
+  batchApply?.addEventListener("click", async () => {
+    const ids = batchIds().sort((a, b) => a - b);
+    const status = new FormData(batchStatusForm).get("status");
+    if (!batchPlan || status !== batchPlan.status || ids.join(",") !== batchPlan.ids.join(",")) { clearBatchPlan(); notify("Selection changed. Preview again.", true); return; }
+    try {
+      batchApply.disabled = true;
+      const result = await api("/admin/api/games/batch-status/apply", {method: "POST", body: JSON.stringify({ids, status, confirmation: batchConfirmation.value})});
+      batchPreview.textContent = `${result.changed} game(s) updated to ${result.target}.`;
+      location.reload();
+    } catch (error) { batchApply.disabled = false; notify(error.message, true); }
+  });
 
   document.getElementById("adminCreateForm")?.addEventListener("submit", async event => {
     event.preventDefault();

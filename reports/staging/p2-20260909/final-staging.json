@@ -1,0 +1,28 @@
+{
+  "asset": "af16e551490f",
+  "release": "/opt/an3-arcade-staging/releases/20260909-144343-af16e551490f",
+  "rollback": "/opt/an3-arcade-staging/releases/20260909-143353-2a6e1d919803",
+  "health": "PASS",
+  "environment": "staging",
+  "sourceServedParity": {
+    "player.js": "4568049c04bbeb6c029a8f1faa0003f4f8dfd72089b32065893a281a56b53b78",
+    "player-runtime.js": "de8f70ea8079732ac2d3df15bed95e6cd0899c53c45e77f9dbfe9714d3b602fa",
+    "renderer-worker.js": "7d94e71fa9223560a2a492a9f7f54ffee41a07faff7b335b50e041cc384e0bf4",
+    "nds-touch.js": "3d879130a8df25a9393accaa835d4bcf755c93e72c0fd87810617f34324274f0"
+  },
+  "finalRuntimeSmoke": {
+    "requestedRenderer": "webgl2",
+    "effectiveRenderer": "webgl2",
+    "offscreen": true,
+    "coreSourceFps": 61.02204358285131,
+    "presentationFps": 59.181720246207895,
+    "droppedFrames": 0,
+    "replacedFrames": 0,
+    "coreCounterRegressions": 0,
+    "source": "2560x1212",
+    "presentation": "2560x1212",
+    "devicePixelRatio": 2
+  },
+  "tests": {"python": 93, "node": 9, "syntax": "PASS", "diffCheck": "PASS"},
+  "production": "UNTOUCHED"
+}

@@ -1,0 +1,22 @@
+# This compose project contains only an in-memory Rust signalling relay.  It
+# intentionally has no volume, no application mount, and no production route.
+name: an3-rust-netplay-staging
+
+services:
+  netplay:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust-netplay
+    image: an3-arcade/emulatorjs-netplay:staging
+    restart: unless-stopped
+    ports:
+      - "${AN3_NETPLAY_STAGE_BIND:-192.168.1.8}:8094:4000"
+    environment:
+      PORT: "4000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

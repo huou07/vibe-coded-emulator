@@ -1,0 +1,12 @@
+DATE=2026-08-23 14:50:40 +07
+DEVICE=physical Android
+ANDROID_VERSION=16
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=151.0.7922.171
+LOGICAL_SCREEN_SIZE=1080x2340
+STAGING_URL=http://192.168.1.8:8092
+TEST=homepage-mobile-smoke
+RESULT=PASS
+EVIDENCE=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/android-regression/20260823-145039-homepage.png; staging homepage HTTP=200
+RUNTIME_ASSERTION=Staging HTTP 200 and Android VIEW intent completed. Search/filter/scroll and reload-retention need the separate visible interaction pass; no browser-tab inspection was used.
+KNOWN_LIMITATION=Screenshots are supporting evidence only.

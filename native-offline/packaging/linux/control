@@ -1,0 +1,11 @@
+Package: vibecodedemulator
+Version: 0.4.4
+Section: games
+Priority: optional
+Architecture: amd64
+Depends: libsdl2-2.0-0, libvulkan1, libgl1, libgtk-3-0, libstdc++6, libgcc-s1
+Maintainer: VibeCodedEmulator staging
+Description: Native local-ROM GBA and NDS player with graphical controls
+ VibeCodedEmulator packages the portable libretro host, native Vulkan
+ presentation with a desktop OpenGL fallback, native Linux audio, graphical
+ controls, and local save storage. It does not use a browser renderer for gameplay.

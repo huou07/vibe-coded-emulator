@@ -1,0 +1,12 @@
+08-30 02:56:58.303  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: unbindService is called for service : com.google.android.gms/.chimera.GmsBoundBrokerService and for client space.an3tocom.offline
+08-30 02:56:58.303  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: size of client connections for client: space.an3tocom.offlineafter removal is 1
+08-30 02:57:01.083  2846  5070 I MIUIInput: [MotionEvent] publisher action=0x0, deviceId=-1, 525105270, channel '43b4d85 space.an3tocom.offline/space.an3tocom.offline.MainActivity'
+08-30 02:57:01.083 17315 17315 I MIUIInput: [MotionEvent] ViewRootImpl windowName 'space.an3tocom.offline/space.an3tocom.offline.MainActivity', { action=ACTION_DOWN, id[0]=0, pointerCount=1, eventTime=525105270, downTime=525105270, phoneEventTime=1788033421080 } moveCount:0
+08-30 02:57:01.089  2846  5070 I MIUIInput: [MotionEvent] publisher action=0x1, deviceId=-1, 525105270, channel '43b4d85 space.an3tocom.offline/space.an3tocom.offline.MainActivity'
+08-30 02:57:01.089 17315 17315 I MIUIInput: [MotionEvent] ViewRootImpl windowName 'space.an3tocom.offline/space.an3tocom.offline.MainActivity', { action=ACTION_UP, id[0]=0, pointerCount=1, eventTime=525105270, downTime=525105270, phoneEventTime=1788033421081 } moveCount:0
+08-30 02:57:01.113  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: bindService is called for service : com.google.android.gms/.chimera.GmsBoundBrokerService and for client space.an3tocom.offline
+08-30 02:57:01.113  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: total connections for client : space.an3tocom.offlineare :2
+08-30 02:57:01.957 17315 17366 W RenderInspector: QueueBuffer time out on space.an3tocom.offline/space.an3tocom.offline.MainActivity, count=1, avg=8 ms, max=8 ms.
+08-30 02:57:16.171  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: unbindService is called for service : com.google.android.gms/.chimera.GmsBoundBrokerService and for client space.an3tocom.offline
+08-30 02:57:16.171  1975  1975 I vendor.qti.hardware.servicetrackeraidl-service: size of client connections for client: space.an3tocom.offlineafter removal is 1
+08-30 02:57:21.325  2071  2071 I SurfaceFlinger: SF-MICapture: mode:0, layerName:space.an3tocom.offline/space.an3tocom.offline.MainActivity#99141

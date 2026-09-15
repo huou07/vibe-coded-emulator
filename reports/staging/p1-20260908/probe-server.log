@@ -1,0 +1,9 @@
+127.0.0.1 - - [08/Sep/2026 11:15:02] "GET /work/p1-renderer-probe.html HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:15:02] "GET /static/renderer-worker.js HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:15:02] code 404, message File not found
+127.0.0.1 - - [08/Sep/2026 11:15:02] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [08/Sep/2026 11:15:23] "GET /work/p1-renderer-baseline.html HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:15:23] "GET /work/p1-renderer-original.js HTTP/1.1" 200 -
+127.0.0.1 - - [08/Sep/2026 11:15:23] "GET /work/p1-renderer-original.js HTTP/1.1" 304 -
+127.0.0.1 - - [08/Sep/2026 11:17:11] "GET /work/p1-renderer-baseline.html HTTP/1.1" 304 -
+127.0.0.1 - - [08/Sep/2026 11:17:11] "GET /work/p1-renderer-original.js HTTP/1.1" 200 -

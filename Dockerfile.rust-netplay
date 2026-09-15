@@ -1,0 +1,37 @@
+# Staging-only EmulatorJS Netplay relay.  The server is Rust upstream code,
+# pinned to an immutable revision so a rebuild cannot silently change the
+# Socket.IO protocol used by the browser player.
+FROM rust:1.88-bookworm AS builder
+
+ARG EMULATORJS_NETPLAY_REV=4090ca7bda795a8b7a7596f4d41a4605b515d9c5
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+RUN git init emulatorjs-netplay \
+    && cd emulatorjs-netplay \
+    && git remote add origin https://github.com/EmulatorJS/EmulatorJS-Netplay.git \
+    && git fetch --depth 1 origin "$EMULATORJS_NETPLAY_REV" \
+    && git checkout --detach FETCH_HEAD \
+    && test "$(git rev-parse HEAD)" = "$EMULATORJS_NETPLAY_REV" \
+    && cargo build --release --locked
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system an3netplay \
+    && useradd --system --gid an3netplay --home-dir /nonexistent --shell /usr/sbin/nologin an3netplay
+
+COPY --from=builder /build/emulatorjs-netplay/target/release/rust-socket-server /usr/local/bin/an3-emulatorjs-netplay
+COPY --from=builder /build/emulatorjs-netplay/LICENSE /usr/share/doc/an3-emulatorjs-netplay/UPSTREAM-APACHE-2.0.txt
+
+USER an3netplay:an3netplay
+EXPOSE 4000
+ENV PORT=4000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:4000/games"]
+
+ENTRYPOINT ["/usr/local/bin/an3-emulatorjs-netplay"]

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "description": "The canonical multi-screen layout order for every native adapter.",
+  "systems": {
+    "nds": [
+      {"id": "left-right", "label": "Side by Side", "coreOption": "melonds_screen_layout1", "coreValue": "left-right"},
+      {"id": "top-bottom", "label": "Top / Bottom", "coreOption": "melonds_screen_layout1", "coreValue": "top-bottom"}
+    ],
+    "3ds": [
+      {"id": "left-right", "label": "Side by Side", "coreOption": "citra_layout_option", "coreValue": "side_by_side"},
+      {"id": "top-bottom", "label": "Top / Bottom", "coreOption": "citra_layout_option", "coreValue": "top_bottom"}
+    ]
+  }
+}

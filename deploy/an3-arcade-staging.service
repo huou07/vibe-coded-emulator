@@ -13,12 +13,12 @@ WorkingDirectory=/opt/an3-arcade-staging/current
 Restart=on-failure
 RestartSec=3
 UMask=0027
-NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/srv/an3-arcade-staging
-MemoryMax=512M
+MemoryMax=1G
+CPUQuota=200%
 
 [Install]
 WantedBy=multi-user.target

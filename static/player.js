@@ -3,6 +3,48 @@
   if (!shell) return;
   const config = JSON.parse(shell.dataset.player);
   const emulatorSystem = config.system === "doom" ? "prboom" : config.system;
+  const debug3ds = config.system === "3ds" && new URLSearchParams(location.search).get("debug3ds") === "1";
+  const debugEvents = [];
+  const debugStart = performance.now();
+  const safeDebugUrl = value => {
+    try {
+      const parsed = new URL(String(value), location.href);
+      return `${parsed.origin}${parsed.pathname}`.slice(0, 512);
+    } catch (_) { return "unknown"; }
+  };
+  const debugMilestone = (name, detail = {}) => {
+    if (!debug3ds) return;
+    const event = Object.freeze({name, atMs:Math.round(performance.now() - debugStart), ...detail});
+    debugEvents.push(event);
+    if (debugEvents.length > 64) debugEvents.shift();
+    globalThis.AN3ThreeDsDiagnostics = Object.freeze({events:debugEvents.slice(), latest:event});
+  };
+  debugMilestone("PLAYER_DOCUMENT_READY", {secureContext:Boolean(window.isSecureContext)});
+  debugMilestone("SECURE_CONTEXT_OK", {ok:Boolean(window.isSecureContext)});
+  debugMilestone("CROSS_ORIGIN_ISOLATED_OK", {ok:Boolean(window.crossOriginIsolated)});
+  debugMilestone("SAB_AVAILABLE", {ok:typeof SharedArrayBuffer === "function"});
+  if (debug3ds && !window.__AN3DebugFetchWrapped) {
+    window.__AN3DebugFetchWrapped = true;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const requestUrl = typeof input === "string" || input instanceof URL ? input : input?.url;
+      const started = performance.now();
+      debugMilestone("CORE_ASSET_REQUEST_START", {path:safeDebugUrl(requestUrl), method:init?.method || input?.method || "GET", serviceWorker:Boolean(navigator.serviceWorker?.controller)});
+      try {
+        const response = await originalFetch(input, init);
+        debugMilestone("CORE_ASSET_REQUEST_COMPLETE", {
+          path:safeDebugUrl(requestUrl), status:response.status, contentLength:response.headers.get("content-length"),
+          contentRange:response.headers.get("content-range"), acceptRanges:response.headers.get("accept-ranges"),
+          etag:Boolean(response.headers.get("etag")), lastModified:Boolean(response.headers.get("last-modified")),
+          cache:response.headers.get("cache-control"), durationMs:Math.round(performance.now() - started)
+        });
+        return response;
+      } catch (error) {
+        debugMilestone("CORE_ASSET_REQUEST_COMPLETE", {path:safeDebugUrl(requestUrl), errorName:error?.name || "Error", error:String(error?.message || error).slice(0, 256), durationMs:Math.round(performance.now() - started)});
+        throw error;
+      }
+    };
+  }
   const primaryCores = {
     gb:"gambatte",gba:"mgba",nds:"melonds","3ds":"azahar",nes:"fceumm",snes:"snes9x",n64:"mupen64plus_next",psx:"pcsx_rearmed",psp:"ppsspp",
     segaMD:"genesis_plus_gx",segaMS:"smsplus",segaGG:"genesis_plus_gx",sega32x:"picodrive",segaCD:"genesis_plus_gx",segaSaturn:"yabause",
@@ -10,6 +52,22 @@
     amiga:"puae",c64:"vice_x64sc",doom:"prboom"
   };
   const ndsPad = config.system === "nds";
+  const threeDsPad = config.system === "3ds";
+  // The order below is a player contract: the toolbar/menu remains above the
+  // custom pad, the custom pad only owns its visible buttons, then the
+  // system touchscreen/canvas receives the remaining touch input, while the
+  // browser's physical keyboard keeps reaching EmulatorJS unchanged.
+  const dualScreenLayout = () => innerWidth > innerHeight ? "Left/Right" : "Top/Bottom";
+  const coreCapabilityError = () => {
+    if (rendererPlan?.selected === "unsupported") return config.lang === "en" ? "This player needs WebGL 2." : "Trình phát này cần WebGL 2.";
+    if (webgl2Required && !capabilityProbe.webgl2) return config.lang === "en" ? "This core requires WebGL 2." : "Core này cần WebGL 2.";
+    if (threadedCore && (!window.crossOriginIsolated || typeof SharedArrayBuffer !== "function")) {
+      return config.lang === "en"
+        ? "This core needs an isolated player page with SharedArrayBuffer. Open the normal player link, not an embedded or browser-preview page."
+        : "Core này cần trang player được cô lập với SharedArrayBuffer. Hãy mở liên kết player bình thường, không dùng trang nhúng hoặc preview của trình duyệt.";
+    }
+    return "";
+  };
   const performanceStorageKey = "an3-player-performance-v1";
   const profileIds = ["auto","low","balanced","quality","custom"];
   const readPlayerStorage = (name, fallback={}) => {
@@ -45,10 +103,16 @@
   const activeProfile = performanceSettings.selectedProfile === "auto" ? recommendedProfile : performanceSettings.selectedProfile;
   const forceLegacyNds = ndsPad && (activeProfile === "low" || (activeProfile === "custom" && performanceSettings.customOverrides.ndsRenderer === "legacy"));
   const performancePlan = Object.freeze({recommendedProfile,activeProfile,forceLegacyNds});
+  const playerRuntime = globalThis.AN3PlayerRuntime;
+  const rendererPreference = playerRuntime?.queryRendererPreference?.() || "auto";
+  const playerSession = playerRuntime?.createEmulatorSession?.({slug:config.slug,rendererPreference}) || null;
+  globalThis.AN3PlayerTelemetry = Object.freeze({snapshot: () => playerSession?.snapshot?.() || null});
+  const rendererPlan = playerSession?.videoBackend || Object.freeze({requested:"auto",selected:capabilityProbe.webgl2 ? "webgl2" : (capabilityProbe.webgl ? "webgl" : "unsupported"),fallback:false,reason:""});
   const savePerformanceSettings = () => { try { localStorage.setItem(performanceStorageKey,JSON.stringify(performanceSettings)); } catch (_) {} };
   const threadedCore = ["psp","3ds"].includes(config.system);
   const webgl2Required = ["psp","3ds"].includes(config.system);
   const stage = document.querySelector(".player-stage");
+  stage?.classList.toggle("lang-en",config.lang === "en");
   const loading = document.getElementById("loading");
   const loadingText = document.getElementById("loadingText");
   const loadingBar = document.getElementById("loadingBar");
@@ -57,10 +121,134 @@
   const notice = document.getElementById("playerNotice");
   const statusText = document.getElementById("playerStatusText");
   const saveStatus = document.getElementById("playerSaveStatus");
+  let coreBooted = false;
+  let runtimeFailed = false;
+  const diagnosticsSnapshot = () => playerRuntime?.playerDiagnostics?.({
+    system: config.system, core: globalThis.EJS_emulator?.gameManager?.core || globalThis.EJS_emulator?.core || null,
+    renderer: globalThis.AN3RendererStatus || {}, pacing: playerSession?.framePacing?.snapshot?.() || {},
+  }) || {};
+  const updateDiagnostics = () => {
+    const data = diagnosticsSnapshot();
+    for (const [id, value] of [["rendererRequestedValue", data.requested], ["rendererEffectiveValue", data.effective], ["rendererFallbackValue", data.fallbackReason]]) {
+      const output = document.getElementById(id);
+      if (output) output.textContent = value ?? "—";
+    }
+    const details = document.getElementById("playerDiagnostics");
+    const output = document.getElementById("playerDiagnosticsText");
+    if (details?.open && output) output.textContent = JSON.stringify(data, null, 2);
+  };
+  const presentationSelect = document.getElementById("presentationRenderer");
+  if (presentationSelect) presentationSelect.value = rendererPreference;
+  presentationSelect?.addEventListener("change", () => {
+    const saved = playerRuntime.saveRendererPreference(presentationSelect.value);
+    const hint = document.getElementById("presentationRendererHint");
+    if (hint) hint.textContent = saved
+      ? (config.lang === "en" ? "Saved on this device. Restart to apply." : "Đã lưu trên thiết bị. Khởi động lại để áp dụng.")
+      : (config.lang === "en" ? "Storage unavailable. Apply and restart to use this choice." : "Không thể lưu. Áp dụng và khởi động lại để dùng lựa chọn này.");
+  });
+  document.getElementById("applyPresentationRenderer")?.addEventListener("click", () => {
+    const value = presentationSelect?.value || "auto";
+    playerRuntime.saveRendererPreference(value);
+    const url = new URL(location.href);
+    url.searchParams.set("renderer", value);
+    location.assign(url.href);
+  });
+  document.getElementById("playerDiagnostics")?.addEventListener("toggle", updateDiagnostics);
+  document.getElementById("copyPlayerDiagnostics")?.addEventListener("click", async () => {
+    const status = document.getElementById("copyPlayerDiagnosticsStatus");
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(diagnosticsSnapshot(), null, 2));
+      if (status) status.textContent = config.lang === "en" ? "Copied" : "Đã sao chép";
+    } catch (_) {
+      if (status) status.textContent = config.lang === "en" ? "Copy unavailable. Select and copy the diagnostics text." : "Không thể sao chép. Hãy chọn và sao chép văn bản chẩn đoán.";
+    }
+  });
+  const publishPerformanceTelemetry = rendererSnapshot => {
+    if (!stage || !playerSession) return;
+    const pacing = playerSession.framePacing.snapshot();
+    const renderer = rendererSnapshot || pacing.renderer || {};
+    const values = {
+      coreFrameNumber: pacing.coreFrameNumber,
+      coreSourceFps: pacing.coreSourceFps,
+      coreSourceWindowMs: pacing.coreSourceWindowMs,
+      coreCounterRegressions: pacing.coreCounterRegressions,
+      uiFrameP50Ms: pacing.uiFrameP50Ms,
+      uiFrameP95Ms: pacing.uiFrameP95Ms,
+      uiFrameP99Ms: pacing.uiFrameP99Ms,
+      longTasks: pacing.longTasks,
+      longTaskTotalMs: pacing.longTaskTotalMs,
+      longTaskMaxMs: pacing.longTaskMaxMs,
+      rendererP50Ms: renderer.renderP50Ms,
+      workerRenderP50Ms: renderer.workerRenderP50Ms,
+      workerRenderP95Ms: renderer.workerRenderP95Ms,
+      workerRenderP99Ms: renderer.workerRenderP99Ms,
+      imageBitmapP50Ms: renderer.imageBitmapP50Ms,
+      imageBitmapP95Ms: renderer.imageBitmapP95Ms,
+      imageBitmapP99Ms: renderer.imageBitmapP99Ms,
+      presentationFps: renderer.presentationFps,
+      presentationSampleCount: renderer.presentationSampleCount,
+      renderedFrames: renderer.renderedFrames,
+      droppedFrames: renderer.droppedFrames,
+      replacedFrames: renderer.replacedFrames,
+      captureSkippedFrames: renderer.captureSkippedFrames,
+      inFlightFrames: renderer.inFlightFrames,
+      sourceWidth: renderer.sourceWidth,
+      sourceHeight: renderer.sourceHeight,
+      presentationWidth: renderer.presentationWidth,
+      presentationHeight: renderer.presentationHeight,
+      presentationPixels: renderer.presentationPixels,
+      devicePixelRatio: renderer.devicePixelRatio,
+    };
+    for (const [name, value] of Object.entries(values)) {
+      stage.dataset[`p2${name[0].toUpperCase()}${name.slice(1)}`] = value == null ? "" : String(value);
+    }
+    stage.dataset.p2CoreFrameSource = pacing.coreFrameSource || "";
+  };
+  const publishRendererStatus = status => {
+    const snapshot = status || rendererPlan?.snapshot?.() || rendererPlan;
+    if (stage) {
+      stage.dataset.rendererRequested = snapshot.requested || rendererPreference;
+      stage.dataset.rendererEffective = snapshot.effective || snapshot.selected || "pending";
+      stage.dataset.rendererOffscreen = String(Boolean(snapshot.offscreen));
+      stage.dataset.rendererRenderedFrames = String(snapshot.renderedFrames ?? 0);
+      stage.dataset.rendererDroppedFrames = String(snapshot.droppedFrames ?? 0);
+      stage.dataset.rendererP95Ms = snapshot.renderP95Ms == null ? "" : String(snapshot.renderP95Ms);
+      stage.dataset.rendererP99Ms = snapshot.renderP99Ms == null ? "" : String(snapshot.renderP99Ms);
+      stage.dataset.rendererPresentationFps = snapshot.presentationFps == null ? "" : String(snapshot.presentationFps);
+      stage.dataset.rendererImageBitmapP95Ms = snapshot.imageBitmapP95Ms == null ? "" : String(snapshot.imageBitmapP95Ms);
+      stage.dataset.rendererImageBitmapP99Ms = snapshot.imageBitmapP99Ms == null ? "" : String(snapshot.imageBitmapP99Ms);
+      stage.dataset.rendererSourceSize = snapshot.sourceWidth && snapshot.sourceHeight ? `${snapshot.sourceWidth}x${snapshot.sourceHeight}` : "";
+      stage.dataset.rendererPresentationSize = snapshot.presentationWidth && snapshot.presentationHeight ? `${snapshot.presentationWidth}x${snapshot.presentationHeight}` : "";
+    }
+    globalThis.AN3RendererStatus = Object.freeze({...snapshot});
+    publishPerformanceTelemetry(snapshot);
+    updateDiagnostics();
+    if (coreBooted && !runtimeFailed) updatePlaybackReadiness(snapshot);
+  };
+  rendererPlan?.subscribe?.(publishRendererStatus);
+  publishRendererStatus(rendererPlan?.snapshot?.() || rendererPlan);
   const setRuntimeStatus = (state, text) => {
     if (statusText) statusText.textContent = text;
     stage?.classList.toggle("is-ready", state === "ready");
     stage?.classList.toggle("has-error", state === "error");
+  };
+  const updatePlaybackReadiness = (renderer = globalThis.AN3RendererStatus || {}) => {
+    const readiness = playerRuntime.playbackReadiness({booted: coreBooted, failed: runtimeFailed, renderer});
+    globalThis.AN3PlaybackReadiness = readiness;
+    if (stage) stage.dataset.playbackMilestone = readiness.milestone;
+    if (runtimeFailed) return;
+    const labels = config.lang === "en" ? {
+      starting: "Starting core",
+      "core-started": "Core started · gameplay unverified",
+      "video-submitted": "Video active · gameplay unverified",
+      "external-video": "Core display fallback · gameplay unverified",
+    } : {
+      starting: "Đang khởi động core",
+      "core-started": "Core đã khởi động · chưa xác minh gameplay",
+      "video-submitted": "Có khung hình · chưa xác minh gameplay",
+      "external-video": "Dùng màn hình core · chưa xác minh gameplay",
+    };
+    setRuntimeStatus("loading", labels[readiness.milestone] || labels.starting);
   };
   const showNotice = (message, error = false) => {
     notice.textContent = message;
@@ -80,13 +268,42 @@
     }
   };
   let preloadReported = false;
+  let bootstrapReadyTimer = 0;
+  let virtualPadGuardTimer = 0;
+  const clearBootstrapTimers = () => {
+    if (bootstrapReadyTimer) clearInterval(bootstrapReadyTimer);
+    if (virtualPadGuardTimer) clearInterval(virtualPadGuardTimer);
+    bootstrapReadyTimer = 0;
+    virtualPadGuardTimer = 0;
+  };
   const reportPreload = (ok, error = "") => {
     if (config.mode !== "preload" || preloadReported) return;
     preloadReported = true;
     window.parent?.postMessage({type:"an3-core-preload", system:config.system, ok, error}, location.origin);
   };
-  const finishLoading = () => { setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");setRuntimeStatus("ready",config.lang === "en" ? "Playing" : "Đang chơi");reportPreload(true);setTimeout(() => loading.classList.add("done"), 350); };
-  const failLoading = error => { const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);setRuntimeStatus("error",config.lang === "en" ? "Could not start" : "Không thể khởi động");reportPreload(false,message); };
+  const finishLoading = () => {
+    clearBootstrapTimers();
+    debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
+    setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
+    coreBooted = true;
+    updatePlaybackReadiness();
+    debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
+    playerSession?.framePacing.start();
+    if (config.mode === "emulator") {
+      playerSession?.startVideoRenderer?.().then(status => {
+        publishRendererStatus(status);
+        if (status?.fallback) showNotice(config.lang === "en"
+          ? `WebGPU was requested; the effective backend is ${status.effective}.`
+          : `Đã yêu cầu WebGPU; backend thực tế là ${status.effective}.`);
+      }).catch(error => showNotice(error.message || String(error), true));
+    }
+    if (config.mode !== "preload") queueTvDiscovery();
+    reportPreload(true);
+    setTimeout(() => loading.classList.add("done"), 350);
+  };
+  const failLoading = error => { runtimeFailed=true;clearBootstrapTimers();const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);setRuntimeStatus("error",config.lang === "en" ? "Could not start" : "Không thể khởi động");reportPreload(false,message); };
+  addEventListener("pagehide", () => { clearBootstrapTimers();playerSession?.framePacing.stop(); }, {once:true});
+  addEventListener("pagehide", () => { playerSession?.stop?.(); }, {once:true});
 
   const openCoreDatabase = () => new Promise((resolve,reject) => {
     const request=indexedDB.open("EmulatorJS-core",1);
@@ -120,24 +337,45 @@
       const core = primaryCores[config.system];
       if (!core) throw new Error(config.lang === "en" ? "This system does not have an offline core manifest." : "Hệ máy này chưa có danh sách core ngoại tuyến.");
       const webgl2 = Boolean(document.createElement("canvas").getContext("webgl2"));
-      if (webgl2Required && !webgl2) throw new Error(config.lang === "en" ? "This core requires WebGL 2." : "Core này cần trình duyệt hỗ trợ WebGL 2.");
-      if (threadedCore && (!crossOriginIsolated || typeof SharedArrayBuffer !== "function")) throw new Error(config.lang === "en" ? "This core requires cross-origin isolation and SharedArrayBuffer." : "Core này cần trình duyệt hỗ trợ SharedArrayBuffer an toàn.");
-      const root = `/emulatorjs/${config.channel}/data/`;
-      const runtimeCache="caches" in globalThis ? await caches.open("an3-arcade-cores-v1") : null;
+      const capabilityError=coreCapabilityError();
+      if (capabilityError) throw new Error(capabilityError);
+      // A core data path is immutable once cached for offline use. Azahar
+      // received a repaired WebAssembly build, so only 3DS uses a new path;
+      // existing downloads for every other system remain untouched.
+      const emulatorDataPath = config.system === "3ds" ? "data-v2" : "data";
+      const configuredOrigin=typeof config.emulatorOrigin === "string" ? config.emulatorOrigin.trim().replace(/\/+$/, "") : "";
+      const root = configuredOrigin ? `${configuredOrigin}/${config.channel}/${emulatorDataPath}/` : `/emulatorjs/${config.channel}/${emulatorDataPath}/`;
+      // `latest/data-v2` carries the repaired 3DS core but no duplicated
+      // locale directory. Locales are shared by stable EmulatorJS data.
+      const localizationRoot = configuredOrigin ? `${configuredOrigin}/stable/data/` : "/emulatorjs/stable/data/";
+      // A controlling worker already writes EmulatorJS assets to the dedicated
+      // core cache. Avoid a second clone/write on the offline preload path;
+      // the manual cache remains the first-control fallback.
+      const runtimeCache="caches" in globalThis && !navigator.serviceWorker?.controller ? await caches.open("an3-arcade-cores-v1") : null;
       const reportUrl=`${root}cores/reports/${core}.json`,reportResponse=await fetch(reportUrl,{credentials:"same-origin"});
       if (!reportResponse.ok) throw new Error(`cores/reports/${core}.json (${reportResponse.status})`);
       if (runtimeCache) await runtimeCache.put(reportUrl,reportResponse.clone());
       const report=await reportResponse.json();
-      const coreUsesWebgl2=!performancePlan.forceLegacyNds && webgl2 && Boolean(report?.options?.defaultWebGL2 || webgl2Required);
+      // Azahar declares `requiresWebgl2`, not `defaultWebGL2`.  Reading both
+      // report forms is important: otherwise the offline preloader requests
+      // a non-existent `azahar-thread-legacy` binary and makes 3DS look like
+      // a broken core even when the checked WebGL2 bundle is present.
+      const coreUsesWebgl2=!performancePlan.forceLegacyNds && webgl2 && Boolean(report?.options?.defaultWebGL2 || report?.options?.requiresWebgl2 || webgl2Required);
       const coreFile = `${core}${threadedCore?"-thread":""}${coreUsesWebgl2?"":"-legacy"}-wasm.data`;
+      const localization = config.lang === "en" ? "en-US.json" : "vi-VN.json";
       const assets = [
-        "loader.js","emulator.min.js","emulator.min.css","localization/en-US.json","compression/extract7z.js","compression/extractzip.js",
-        `cores/${coreFile}`
+        {label:"loader.js",url:`${root}loader.js`},
+        {label:"emulator.min.js",url:`${root}emulator.min.js`},
+        {label:"emulator.min.css",url:`${root}emulator.min.css`},
+        {label:`localization/${localization}`,url:`${localizationRoot}localization/${localization}`},
+        {label:"compression/extract7z.js",url:`${root}compression/extract7z.js`},
+        {label:"compression/extractzip.js",url:`${root}compression/extractzip.js`},
+        {label:`cores/${coreFile}`,url:`${root}cores/${coreFile}`}
       ];
-      if (core === "ppsspp") assets.push("cores/ppsspp-assets.zip");
+      if (core === "ppsspp") assets.push({label:"cores/ppsspp-assets.zip",url:`${root}cores/ppsspp-assets.zip`});
       let coreData=null;
       for (let index=0; index<assets.length; index+=1) {
-        const asset = assets[index], url = root + asset;
+        const {label:asset,url} = assets[index];
         setProgress(8 + ((index + 1) / assets.length) * 82, config.lang === "en" ? `Downloading ${asset}` : `Đang tải ${asset}`);
         const response = await fetch(url, {credentials:"same-origin"});
         if (!response.ok) throw new Error(`${asset} (${response.status})`);
@@ -164,6 +402,110 @@
     else shell.requestFullscreen?.();
   });
 
+  const castButton=document.getElementById("castScreen");
+  let castPreview=null;
+  let castDiscoveryVideo=null;
+  let castAvailabilityWatch=null;
+  let castDiscoveryFrame=0;
+  let castConsoleAutoPad=false;
+  const castText = state => {
+    const vi={idle:"Dò TV & phát màn hình",searching:"Đang dò TV cùng mạng…",available:"TV cùng mạng sẵn sàng · Phát",connecting:"Đang kết nối TV…",connected:"Đang phát trên TV"};
+    const en={idle:"Find TV & cast game",searching:"Looking for TVs on this network…",available:"TV on this network · Cast",connecting:"Connecting to TV…",connected:"Casting to TV"};
+    return (config.lang === "en" ? en : vi)[state] || (config.lang === "en" ? en.idle : vi.idle);
+  };
+  const setCastState=(state,{disabled=false}={})=>{
+    if(!castButton) return;
+    const text=castText(state);
+    castButton.textContent=text;
+    castButton.disabled=disabled;
+    castButton.dataset.castState=state;
+    castButton.setAttribute("aria-label",text);
+  };
+  const releaseTvDiscovery=()=>{
+    if(castDiscoveryVideo?.remote && castAvailabilityWatch!==null) {
+      try { castDiscoveryVideo.remote.cancelWatchAvailability(castAvailabilityWatch); } catch (_) {}
+    }
+    castAvailabilityWatch=null;
+    const stream=castDiscoveryVideo?.srcObject;
+    if(stream?.getTracks) stream.getTracks().forEach(track=>track.stop());
+    castDiscoveryVideo?.remove();
+    castDiscoveryVideo=null;
+  };
+  const leaveTvConsoleMode=()=>{
+    stage?.classList.remove("tv-console-mode");
+    if(castConsoleAutoPad) padRoot?.classList.remove("cast-console-show");
+    castConsoleAutoPad=false;
+    if(gameStarted) updatePlaybackReadiness();
+  };
+  const enterTvConsoleMode=()=>{
+    stage?.classList.add("tv-console-mode");
+    if(customPad && padRoot && !padVisible()) {
+      padRoot.classList.add("cast-console-show");
+      castConsoleAutoPad=true;
+    }
+    updatePlaybackReadiness();
+    showNotice(config.lang === "en" ? "TV is showing the game. This device is now the console controller." : "TV đang hiển thị game. Thiết bị này hiện là tay cầm console.");
+  };
+  const stopCastPreview=()=>{
+    leaveTvConsoleMode();
+    const stream=castPreview?.srcObject;
+    if(stream?.getTracks) stream.getTracks().forEach(track=>track.stop());
+    castPreview?.remove();
+    castPreview=null;
+    releaseTvDiscovery();
+    queueTvDiscovery();
+  };
+  const queueTvDiscovery=()=>{
+    if(!castButton || castPreview || castDiscoveryVideo || castDiscoveryFrame) return;
+    if(!("remote" in HTMLVideoElement.prototype)) { setCastState("idle");return; }
+    castDiscoveryFrame=requestAnimationFrame(()=>{
+      castDiscoveryFrame=0;
+      if(castPreview || castDiscoveryVideo) return;
+      const canvas=document.querySelector("#game canvas");
+      if(!canvas?.captureStream) { setCastState("idle");return; }
+      const video=document.createElement("video");
+      video.muted=true;
+      video.playsInline=true;
+      video.className="an3-cast-preview";
+      video.srcObject=canvas.captureStream(1);
+      document.body.appendChild(video);
+      castDiscoveryVideo=video;
+      if(typeof video.remote?.watchAvailability !== "function") { setCastState("idle");return; }
+      setCastState("searching");
+      video.remote.watchAvailability(available=>setCastState(available ? "available" : "idle")).then(watchId=>{
+        if(castDiscoveryVideo===video) castAvailabilityWatch=watchId;
+        else try { video.remote.cancelWatchAvailability(watchId); } catch (_) {}
+      }).catch(()=>setCastState("idle"));
+    });
+  };
+  const castGameToTv=async()=>{
+    try {
+      const canvas=document.querySelector("#game canvas");
+      if(!canvas?.captureStream) throw new Error(config.lang === "en" ? "The current game canvas cannot be cast by this browser." : "Trình duyệt này không thể phát canvas game hiện tại.");
+      if(!("remote" in HTMLVideoElement.prototype)) throw new Error(config.lang === "en" ? "No TV receiver is available here. Use your browser's Cast tab command instead." : "Trình duyệt chưa có bộ nhận TV. Hãy dùng lệnh Phát tab (Cast tab) của trình duyệt.");
+      releaseTvDiscovery();
+      stopCastPreview();
+      const video=document.createElement("video");
+      video.className="an3-cast-preview";
+      video.muted=true;
+      video.playsInline=true;
+      video.srcObject=canvas.captureStream(60);
+      document.body.appendChild(video);
+      castPreview=video;
+      await video.play();
+      if(typeof video.remote?.prompt !== "function") throw new Error(config.lang === "en" ? "No TV receiver is available here. Use your browser's Cast tab command instead." : "Trình duyệt chưa có bộ nhận TV. Hãy dùng lệnh Phát tab (Cast tab) của trình duyệt.");
+      video.remote.addEventListener("connect",()=>{enterTvConsoleMode();setCastState("connected");},{once:true});
+      video.remote.addEventListener("disconnect",stopCastPreview,{once:true});
+      setCastState("connecting",{disabled:true});
+      await video.remote.prompt();
+      castButton && (castButton.disabled=false);
+      if(video.remote.state === "connected") { enterTvConsoleMode();setCastState("connected"); }
+      else { setCastState("idle");showNotice(config.lang === "en" ? "Choose a TV in your browser's receiver list." : "Hãy chọn TV trong danh sách bộ nhận của trình duyệt."); }
+    } catch(error) { stopCastPreview();showNotice(error.message || String(error),true); }
+  };
+  castButton?.addEventListener("click",castGameToTv);
+  addEventListener("pagehide",()=>{if(castDiscoveryFrame)cancelAnimationFrame(castDiscoveryFrame);stopCastPreview();},{once:true});
+
   if (config.mode === "html5") {
     document.querySelector(".custom-frame")?.addEventListener("load", finishLoading);
     document.getElementById("playerControls")?.remove();
@@ -171,13 +513,18 @@
     return;
   }
 
-  const customPad = ["gba", "gb", "nds"].includes(config.system);
-  const touchFirst = Boolean(window.matchMedia?.("(pointer:coarse)")?.matches || (navigator.maxTouchPoints > 0 && !window.matchMedia?.("(hover:hover)")?.matches));
+  const customPad = ["gba", "gb", "nds", "3ds"].includes(config.system);
+  const touchFirst = Boolean(!window.matchMedia?.("(hover:hover)")?.matches && (window.matchMedia?.("(pointer:coarse)")?.matches || navigator.maxTouchPoints > 0));
   const touchVariant = ndsPad ? new URLSearchParams(location.search).get("touch") || "geometry-mapped" : "baseline";
   const isolatedNdsMovement = ["geometry-only","geometry-mapped"].includes(touchVariant);
   const ndsDebugEnabled = ndsPad && config.ndsDebugAllowed === true && new URLSearchParams(location.search).get("ndsdebug") === "1";
   document.documentElement.classList.toggle("custom-pad", customPad);
   stage.classList.toggle("nds-stage", ndsPad);
+  stage.classList.toggle("three-ds-stage", threeDsPad);
+  const syncDualScreenStage=()=>stage?.classList.toggle("dual-screen-landscape",(ndsPad || threeDsPad) && innerWidth>innerHeight);
+  syncDualScreenStage();
+  let appliedNdsScreenLayout=dualScreenLayout();
+  let appliedThreeDsScreenLayout=dualScreenLayout();
 
   const NDS_DEBUG_LIMIT = 160;
   const ndsDebugEvents = [];
@@ -247,7 +594,11 @@
       buttons:finiteNdsDebugValue(event?.buttons),
       pressure:finiteNdsDebugValue(event?.pressure),
       target:describeNdsDebugNode(event?.target),
+      composedPath:(event?.composedPath?.() || []).slice(0,12).map(describeNdsDebugNode).filter(Boolean),
       pointerId,
+      touchesLength:event?.touches?.length ?? 0,
+      targetTouchesLength:event?.targetTouches?.length ?? 0,
+      changedTouchesLength:event?.changedTouches?.length ?? 0,
       pointerCaptureOwner:describeNdsDebugNode(captureOwner),
       defaultPreventedAtCapture:Boolean(event?.defaultPrevented),
       canvas:describeNdsDebugNode(canvas),
@@ -305,7 +656,10 @@
       const trackedTouch=allTouchIds.some(id=>activeTouchIds.has(id));
       const trackedPointer=pointerId!==null && activePointerIds.has(pointerId);
       if (!inside && !trackedTouch && !trackedPointer) return;
-      const canvas=path.find(node=>node?.nodeName === "CANVAS") || event.target?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
+      const protectedUi=globalThis.AN3NdsTouchBridge?.isProtectedUiTarget?.(gameRoot,event.target,path);
+      if (protectedUi) return;
+      const hit=path.find(node=>node?.nodeName === "CANVAS") || event.target?.closest?.("#game canvas") || null;
+      const canvas=globalThis.AN3NdsTouchBridge?.resolveSourceCanvas?.(gameRoot,hit,path) || gameRoot.querySelector("#game canvas:not(.an3-render-canvas)");
       recordNdsDebugEvent(event,canvas,gameRoot);
       if (["touchend","touchcancel"].includes(event.type)) changedTouchIds.forEach(id=>activeTouchIds.delete(id));
       if (["pointerup","pointercancel"].includes(event.type) && pointerId!==null) activePointerIds.delete(pointerId);
@@ -335,8 +689,9 @@
     const cached=ndsViewportCache.get(canvas);
     if (cached && cached.rectWidth===rect.width && cached.rectHeight===rect.height && cached.backingWidth===backingWidth && cached.backingHeight===backingHeight) return cached;
     const manager=window.EJS_emulator?.gameManager;
-    const videoWidth=Number(manager?.getVideoDimensions?.("width"))||256;
-    const videoHeight=Number(manager?.getVideoDimensions?.("height"))||384;
+    const fallbackDimensions=appliedNdsScreenLayout === "Left/Right" ? {width:512,height:192} : {width:256,height:384};
+    const videoWidth=Number(manager?.getVideoDimensions?.("width"))||fallbackDimensions.width;
+    const videoHeight=Number(manager?.getVideoDimensions?.("height"))||fallbackDimensions.height;
     let left=0,top=0,width=0,height=0;
     try {
       const gl=canvas.getContext("webgl2")||canvas.getContext("webgl");
@@ -364,11 +719,36 @@
   };
   const mapNdsCursor = (canvas, rect, source) => {
     const viewport=resolveNdsVideoViewport(canvas,rect);
-    const frameX=source.clientX-rect.left-viewport.left;
-    const touchY=source.clientY-rect.top-viewport.top-(viewport.height/2);
-    const x=Math.round(Math.max(0,Math.min(viewport.videoWidth-1,frameX*viewport.videoWidth/viewport.width)));
-    const y=Math.round(Math.max(0,Math.min((viewport.videoHeight/2)-1,touchY*viewport.videoHeight/viewport.height)));
-    return {x,y};
+    return globalThis.AN3NdsTouchBridge?.mapPoint?.({
+      clientX:source.clientX,
+      clientY:source.clientY,
+      viewport:{left:rect.left+viewport.left,top:rect.top+viewport.top,width:viewport.width,height:viewport.height},
+      layout:appliedNdsScreenLayout
+    }) || null;
+  };
+  const recordNdsDebugAction = (action, {source, canvas, mapped=null, accepted=true, reason=null, family=null, state=null, bridgePrevented=false, releaseState=null}={}) => {
+    if (!ndsDebugEnabled) return;
+    const point=source || state?.lastTouch || null;
+    ndsDebugEvents.push({
+      sequence:++ndsDebugSequence,
+      timestampMs:Date.now(),
+      phase:"logical",
+      action,
+      eventFamily:family || (point?.identifier !== undefined ? "touch" : "pointer"),
+      pointerId:point?.identifier ?? point?.pointerId ?? null,
+      mappedX:mapped?.x ?? state?.mapped?.x ?? null,
+      mappedY:mapped?.y ?? state?.mapped?.y ?? null,
+      sourceCanvas:describeNdsDebugNode(canvas),
+      accepted:Boolean(accepted),
+      ignoreReason:accepted ? null : reason,
+      duplicateSuppressionReason:reason === "active-gesture" || reason === "non-owner-touch" ? reason : null,
+      durationMs:state?.startedAt ? Math.max(0,Math.round(performance.now()-state.startedAt)) : null,
+      moveCount:state?.moveCount ?? 0,
+      pressedState:action === "logical-down" ? true : action === "logical-up" || action === "logical-cancel" ? false : null,
+      bridgePrevented:Boolean(bridgePrevented),
+      releaseState:releaseState || state?.releaseState || null
+    });
+    if (ndsDebugEvents.length>NDS_DEBUG_LIMIT) ndsDebugEvents.splice(0,ndsDebugEvents.length-NDS_DEBUG_LIMIT);
   };
   const dispatchNdsMouse = (canvas, type, source, buttons) => {
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
@@ -380,9 +760,17 @@
     if (touchVariant === "geometry-mapped") {
       if (type === "mousedown") ndsViewportCache.delete(canvas);
       const mapped=mapNdsCursor(canvas,rect,source);
-      movementX=mapped.x-ndsMappedCursor.x;
-      movementY=mapped.y-ndsMappedCursor.y;
-      ndsMappedCursor=mapped;
+      if (!mapped && type !== "mouseup") return false;
+      if (mapped) {
+        movementX=mapped.x-ndsMappedCursor.x;
+        movementY=mapped.y-ndsMappedCursor.y;
+        ndsMappedCursor=mapped;
+      } else {
+        // A captured gesture can end outside the DS touchscreen. Always send
+        // the release so the core cannot retain a stuck touch button.
+        movementX=0;
+        movementY=0;
+      }
     }
     canvas[pointKey]=type === "mouseup" ? null : {x:cssX,y:cssY};
     const event=new MouseEvent(type,{bubbles:true,cancelable:true,view:window,clientX:source.clientX,clientY:source.clientY,screenX:source.screenX||source.clientX,screenY:source.screenY||source.clientY,button:0,buttons});
@@ -391,10 +779,16 @@
     for (const [name,value] of [["offsetX",offsetX],["offsetY",offsetY],["layerX",offsetX],["layerY",offsetY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
+    // EmulatorJS uses pointerType to distinguish a real desktop mouse from a
+    // touchscreen.  This compatibility MouseEvent is one half of the proven
+    // geometry-mapped input contract, not a desktop-menu gesture.
+    try { Object.defineProperty(event,"pointerType",{value:"touch",writable:false,enumerable:true}); } catch (_) {}
     if (["delta","geometry-only","geometry-mapped"].includes(touchVariant)) for (const [name,value] of [["movementX",movementX],["movementY",movementY]]) {
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
     canvas.dispatchEvent(event);
+    recordNdsDebugAction(`synthetic-${type}`,{source,canvas,mapped:touchVariant === "geometry-mapped" ? mapNdsCursor(canvas,rect,source) : null,family:"mouse",releaseState:type === "mouseup" ? "released" : null});
+    return true;
   };
   const dispatchNdsPointer = (canvas, type, source, buttons) => {
     const rect=canvas.getBoundingClientRect(),width=canvas.width||rect.width,height=canvas.height||rect.height;
@@ -409,15 +803,32 @@
       try { Object.defineProperty(event,name,{value,writable:false,enumerable:true}); } catch (_) {}
     }
     canvas.dispatchEvent(event);
+    recordNdsDebugAction(`synthetic-${type}`,{source,canvas,family:"pointer"});
+    return true;
   };
   const dispatchNdsEvent = (canvas, type, source, buttons) => {
     if (touchVariant === "pointer-touch") return dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
     if (["hybrid","hybrid-root","geometry-only","geometry-mapped"].includes(touchVariant)) {
       dispatchNdsPointer(canvas, `pointer${type.slice(5)}`, source, buttons);
-      dispatchNdsMouse(canvas, type, source, buttons);
-      return;
+      // The root touch lifecycle uses this result to decide whether it owns
+      // the physical finger.  Returning the mapped mouse result is essential:
+      // an accepted zero-move touchstart must become a logical press rather
+      // than being discarded before its matching touchend can release it.
+      return dispatchNdsMouse(canvas, type, source, buttons);
     }
-    dispatchNdsMouse(canvas, type, source, buttons);
+    return dispatchNdsMouse(canvas, type, source, buttons);
+  };
+  const shieldSyntheticNdsMouseFromMenu = canvas => {
+    if (!canvas || canvas.dataset.an3NdsSyntheticMouseShield === "1") return;
+    canvas.dataset.an3NdsSyntheticMouseShield="1";
+    // The EmulatorJS core listens on its source canvas, while its desktop menu
+    // observer listens on the parent. Let the historical compatibility mouse
+    // events reach the core, but prevent a synthetic touch move from bubbling
+    // into that desktop-only observer and cancelling the logical gesture.
+    const shield=event=>{
+      if (!event.isTrusted && event.pointerType === "touch") event.stopPropagation();
+    };
+    ["mousedown","mousemove","mouseup"].forEach(type=>canvas.addEventListener(type,shield,false));
   };
   const bindNdsTouch = canvas => {
     if (!ndsPad || canvas.dataset.an3NdsTouch === "1") return;
@@ -444,43 +855,110 @@
       document.addEventListener("touchcancel",release,{capture:true,passive:false});
     }
   };
+  let releaseRootNdsTouch=()=>{};
   const bindRootNdsTouch = gameRoot => {
     if (!["root","root-touch","overlay","hybrid-root","core-touch","geometry-only","geometry-mapped"].includes(touchVariant) || gameRoot.dataset.an3RootTouch === "1") return;
     gameRoot.dataset.an3RootTouch="1";
     let active=null;
     const isTouch=event=>event.pointerType === "touch" || event.pointerType === "";
+    const isProtectedUiEvent=event=>Boolean(globalThis.AN3NdsTouchBridge?.isProtectedUiTarget?.(gameRoot,event.target,event.composedPath?.()));
     const resolveCanvas=event=>{
+      if (isProtectedUiEvent(event)) return null;
       const hit=document.elementFromPoint(event.clientX,event.clientY);
-      return hit?.closest?.("#game canvas") || gameRoot.querySelector("canvas");
+      return globalThis.AN3NdsTouchBridge?.resolveSourceCanvas?.(gameRoot,hit,event.composedPath?.()) || null;
     };
+    addEventListener("blur",()=>releaseRootNdsTouch("window-blur"),{capture:true});
+    document.addEventListener("visibilitychange",()=>{if(document.hidden)releaseRootNdsTouch("document-hidden");},{capture:true});
+    document.addEventListener("fullscreenchange",()=>releaseRootNdsTouch("fullscreen-change"),{capture:true});
     if (["root-touch","hybrid-root","geometry-only","geometry-mapped"].includes(touchVariant) || touchVariant === "core-touch") {
-      let touchId=null;
-      const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
-      const start=event=>{if(touchId!==null||!event.changedTouches?.length)return;const touch=event.changedTouches[0],canvas=resolveCanvas(touch);if(!canvas)return;touchId=touch.identifier;event.preventDefault();dispatchNdsEvent(canvas,"mousedown",touch,1);};
-      const move=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(!canvas)return;event.preventDefault();dispatchNdsEvent(canvas,"mousemove",touch,1);};
-      const end=event=>{const touch=findTouch(event);if(!touch)return;const canvas=resolveCanvas(touch);if(canvas)dispatchNdsEvent(canvas,"mouseup",touch,0);event.preventDefault();touchId=null;};
+      const tapRelease=globalThis.AN3NdsTouchBridge?.createTapReleaseLatch?.();
+      const sendRelease=state=>{
+        state.releaseState="released";
+        dispatchNdsEvent(state.canvas,"mouseup",state.lastTouch,0);
+      };
+      const owner=globalThis.AN3NdsTouchBridge?.createTouchGestureOwner?.({
+        begin:touch=>{tapRelease?.flush?.();const canvas=resolveCanvas(touch),mapped=canvas ? mapNdsCursor(canvas,canvas.getBoundingClientRect(),touch) : null;return canvas && mapped && dispatchNdsEvent(canvas,"mousedown",touch,1) ? {canvas,lastTouch:touch,mapped,startedAt:performance.now(),moveCount:0,releaseState:"pressed"} : null;},
+        move:(touch,state)=>{state.lastTouch=touch;state.mapped=mapNdsCursor(state.canvas,state.canvas.getBoundingClientRect(),touch) || state.mapped;state.moveCount+=1;dispatchNdsEvent(state.canvas,"mousemove",touch,1);},
+        end:(touch,state,cancelled)=>{state.lastTouch=touch||state.lastTouch;if(cancelled || state.moveCount>0 || !tapRelease){sendRelease(state);return;}state.releaseState="latched-next-input-frame";tapRelease.defer(state,()=>sendRelease(state));}
+      });
+      const activeTouchId=()=>owner?.active?.()?.id ?? null;
+      const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===activeTouchId());
+      const release=(releaseReason="forced-release")=>{const result=owner?.release?.();const flushed=tapRelease?.flush?.();if(result)recordNdsDebugAction(result.reason,{canvas:result.state?.canvas,accepted:result.accepted,reason:releaseReason,state:result.state,family:"touch",releaseState:flushed ? "released" : null});return result;};
+      releaseRootNdsTouch=release;
+      const start=event=>{if(!owner||!event.changedTouches?.length||isProtectedUiEvent(event))return;const touch=event.changedTouches[0],result=owner.start(touch);if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
+      const move=event=>{if(isProtectedUiEvent(event))return;const touch=findTouch(event);if(!touch)return;const result=owner.move(touch);if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
+      const end=event=>{if(isProtectedUiEvent(event))return;const touch=findTouch(event);if(!touch)return;const result=owner.end(touch,event.type==="touchcancel");if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
       gameRoot.addEventListener("touchstart",start,{capture:true,passive:false});
       document.addEventListener("touchmove",move,{capture:true,passive:false});
       document.addEventListener("touchend",end,{capture:true,passive:false});
       document.addEventListener("touchcancel",end,{capture:true,passive:false});
       return;
     }
-    gameRoot.addEventListener("pointerdown",event=>{if(!isTouch(event)||active)return;const canvas=resolveCanvas(event);if(!canvas)return;active={id:event.pointerId,canvas};event.preventDefault();canvas.focus?.({preventScroll:true});try{gameRoot.setPointerCapture(event.pointerId);}catch(_){}dispatchNdsMouse(canvas,"mousedown",event,1);},true);
-    gameRoot.addEventListener("pointermove",event=>{if(!isTouch(event)||!active||event.pointerId!==active.id)return;event.preventDefault();dispatchNdsMouse(active.canvas,"mousemove",event,1);},true);
-    const release=event=>{if(!isTouch(event)||!active||event.pointerId!==active.id)return;event.preventDefault();dispatchNdsMouse(active.canvas,"mouseup",event,0);try{gameRoot.releasePointerCapture(active.id);}catch(_){}active=null;};
-    gameRoot.addEventListener("pointerup",release,true);gameRoot.addEventListener("pointercancel",release,true);
+    const release=event=>{if(!active)return;const current=event || active.lastEvent;dispatchNdsMouse(active.canvas,"mouseup",current,0);try{gameRoot.releasePointerCapture(active.id);}catch(_){}active=null;};
+    releaseRootNdsTouch=()=>release();
+    gameRoot.addEventListener("pointerdown",event=>{if(!isTouch(event)||active||isProtectedUiEvent(event))return;const canvas=resolveCanvas(event);if(!canvas || !dispatchNdsMouse(canvas,"mousedown",event,1))return;active={id:event.pointerId,canvas,lastEvent:event};event.preventDefault();canvas.focus?.({preventScroll:true});try{gameRoot.setPointerCapture(event.pointerId);}catch(_){}},true);
+    gameRoot.addEventListener("pointermove",event=>{if(!isTouch(event)||!active||event.pointerId!==active.id||isProtectedUiEvent(event))return;active.lastEvent=event;event.preventDefault();dispatchNdsMouse(active.canvas,"mousemove",event,1);},true);
+    const pointerRelease=event=>{if(!isTouch(event)||!active||event.pointerId!==active.id||isProtectedUiEvent(event))return;event.preventDefault();release(event);};
+    gameRoot.addEventListener("pointerup",pointerRelease,true);gameRoot.addEventListener("pointercancel",pointerRelease,true);
   };
   const protectNdsCanvas = () => {
     if (!ndsPad) return;
-    document.querySelectorAll("#game .ejs_canvas,#game canvas").forEach(canvas=>{
+    document.querySelectorAll("#game canvas:not(.an3-render-canvas)").forEach(canvas=>{
       if (canvas.classList.contains("ejs-canvas-no-pointer")) canvas.classList.remove("ejs-canvas-no-pointer");
       canvas.style.setProperty("pointer-events","auto","important");
       canvas.style.setProperty("touch-action","none","important");
+      shieldSyntheticNdsMouseFromMenu(canvas);
       bindNdsTouch(canvas);
+    });
+  };
+  const bindThreeDsTouch = canvas => {
+    if (!threeDsPad || canvas.dataset.an3ThreeDsTouch === "1") return;
+    canvas.dataset.an3ThreeDsTouch="1";
+    if ("PointerEvent" in window) {
+      let pointerId=null;
+      canvas.addEventListener("pointerdown",event=>{
+        if(event.pointerType!=="touch" || pointerId!==null)return;
+        pointerId=event.pointerId;event.preventDefault();canvas.focus?.({preventScroll:true});
+        try{canvas.setPointerCapture(pointerId);}catch(_){}
+        dispatchNdsMouse(canvas,"mousedown",event,1);
+      },true);
+      canvas.addEventListener("pointermove",event=>{
+        if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;
+        event.preventDefault();dispatchNdsMouse(canvas,"mousemove",event,1);
+      },true);
+      const release=event=>{
+        if(event.pointerType!=="touch" || event.pointerId!==pointerId)return;
+        event.preventDefault();dispatchNdsMouse(canvas,"mouseup",event,0);
+        try{canvas.releasePointerCapture(pointerId);}catch(_){}
+        pointerId=null;
+      };
+      canvas.addEventListener("pointerup",release,true);canvas.addEventListener("pointercancel",release,true);
+      return;
+    }
+    let touchId=null;
+    const findTouch=event=>[...(event.touches||[]),...(event.changedTouches||[])].find(touch=>touch.identifier===touchId);
+    canvas.addEventListener("touchstart",event=>{
+      if(touchId!==null || !event.changedTouches?.length)return;
+      const touch=event.changedTouches[0];touchId=touch.identifier;event.preventDefault();dispatchNdsMouse(canvas,"mousedown",touch,1);
+    },{capture:true,passive:false});
+    const move=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();dispatchNdsMouse(canvas,"mousemove",touch,1);};
+    const release=event=>{const touch=findTouch(event);if(!touch)return;event.preventDefault();dispatchNdsMouse(canvas,"mouseup",touch,0);touchId=null;};
+    document.addEventListener("touchmove",move,{capture:true,passive:false});
+    document.addEventListener("touchend",release,{capture:true,passive:false});
+    document.addEventListener("touchcancel",release,{capture:true,passive:false});
+  };
+  const protectThreeDsCanvas = () => {
+    if (!threeDsPad) return;
+    document.querySelectorAll("#game canvas:not(.an3-render-canvas)").forEach(canvas=>{
+      if (canvas.classList.contains("ejs-canvas-no-pointer")) canvas.classList.remove("ejs-canvas-no-pointer");
+      canvas.style.setProperty("pointer-events","auto","important");
+      canvas.style.setProperty("touch-action","none","important");
+      bindThreeDsTouch(canvas);
     });
   };
   let emulatorMenuFrame=0;
   let emulatorMenuTimer=0;
+  const customPadUsesEmulatorMenuLayer=ndsPad || threeDsPad;
   const emulatorMenuSelector=".ejs_menu_bar,.ejs_popup_body,.ejs_context_menu";
   const visibleEmulatorMenu = element => {
     const style=getComputedStyle(element),rect=element.getBoundingClientRect();
@@ -488,13 +966,14 @@
   };
   const syncEmulatorMenuLayer = () => {
     emulatorMenuFrame=0;
-    if (!ndsPad) return;
+    if (!customPadUsesEmulatorMenuLayer) return;
     const gameRoot=document.getElementById("game");
     const menuOpen=Boolean(gameRoot && [...gameRoot.querySelectorAll(emulatorMenuSelector)].some(visibleEmulatorMenu));
+    if (menuOpen) releaseRootNdsTouch("emulator-menu-open");
     stage?.classList.toggle("emulator-menu-open",menuOpen);
   };
   const scheduleEmulatorMenuLayer = () => {
-    if (!ndsPad || emulatorMenuFrame) return;
+    if (!customPadUsesEmulatorMenuLayer || emulatorMenuFrame) return;
     emulatorMenuFrame=requestAnimationFrame(syncEmulatorMenuLayer);
   };
   const queueEmulatorMenuLayer = () => {
@@ -506,55 +985,151 @@
     if (mutation.target?.closest?.(emulatorMenuSelector)) return true;
     return [...mutation.addedNodes,...mutation.removedNodes].some(node=>node.nodeType===1 && (node.matches?.(emulatorMenuSelector) || node.querySelector?.(emulatorMenuSelector)));
   };
+  const gameRoot=document.getElementById("game");
+  // Core boot mutates several wrapper classes in a burst.  Coalesce those
+  // mutations into one canvas query per animation frame so the touch bridge
+  // never competes with the emulator's render loop.
+  let canvasProtectionFrame=0;
+  const queueCanvasProtection=()=>{
+    if(canvasProtectionFrame) return;
+    canvasProtectionFrame=requestAnimationFrame(()=>{
+      canvasProtectionFrame=0;
+      protectNdsCanvas();
+      protectThreeDsCanvas();
+    });
+  };
+  addEventListener("pagehide",()=>{if(canvasProtectionFrame)cancelAnimationFrame(canvasProtectionFrame);canvasProtectionFrame=0;},{once:true});
   if (ndsPad) {
-    const gameRoot=document.getElementById("game");
     bindNdsDebug(gameRoot);
-    new MutationObserver(protectNdsCanvas).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
-    new MutationObserver(mutations=>{if(mutations.some(mutationTouchesEmulatorMenu))queueEmulatorMenuLayer();}).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class","style"]});
-    protectNdsCanvas();
+    new MutationObserver(queueCanvasProtection).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
+    queueCanvasProtection();
     bindRootNdsTouch(gameRoot);
+  }
+  if (threeDsPad) {
+    new MutationObserver(queueCanvasProtection).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
+    queueCanvasProtection();
+  }
+  if (customPadUsesEmulatorMenuLayer) {
+    new MutationObserver(mutations=>{if(mutations.some(mutationTouchesEmulatorMenu))queueEmulatorMenuLayer();}).observe(gameRoot,{subtree:true,childList:true,attributes:true,attributeFilter:["class","style"]});
     syncEmulatorMenuLayer();
     document.addEventListener("click",event=>{if(event.target?.closest?.("#game .ejs_menu_bar,#game .ejs_popup_body,#game .ejs_context_menu"))queueEmulatorMenuLayer();},true);
   }
 
   async function fetchGame() {
     if (config.offlineId) {
+      debugMilestone("ROM_REQUEST_START", {path:"offline-library", method:"indexeddb"});
       setProgress(18, config.lang === "en" ? "Opening local game" : "Đang mở game trên máy");
-      const local = await window.AN3OfflineLibrary?.get(config.offlineId);
-      if (!local?.file) throw new Error(config.lang === "en" ? "Local game file is unavailable" : "Không tìm thấy game ngoại tuyến trên máy này");
-      return new File([local.file], local.name || config.downloadName, {type: "application/octet-stream"});
+      const file = await window.AN3OfflineLibrary?.getFile?.(config.offlineId);
+      if (!file) throw new Error(config.lang === "en" ? "Local game file is unavailable" : "Không tìm thấy game ngoại tuyến trên máy này");
+      debugMilestone("ROM_DOWNLOAD_COMPLETE", {path:"offline-library", bytes:file.size || null});
+      return file;
     }
     if (!config.romUrl) throw new Error(config.lang === "en" ? "Game URL is unavailable" : "Không tìm thấy đường dẫn game");
+    debugMilestone("ROM_REQUEST_START", {path:safeDebugUrl(config.romUrl), method:"GET"});
     setProgress(18, config.lang === "en" ? "Starting game stream" : "Đang mở luồng game");
+    debugMilestone("ROM_HEADERS_RECEIVED", {path:safeDebugUrl(config.romUrl), note:"EmulatorJS owns the streaming body"});
     return config.romUrl;
   }
 
   let gameStarted = false;
+  let threeDsGateStarted = false;
+  const threeDsAudioContext = () => {
+    const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
+    return candidates.find(context => context && typeof context.state === "string") || null;
+  };
+  const waitForThreeDsPlayable = () => {
+    if (!threeDsPad || threeDsGateStarted) return;
+    threeDsGateStarted = true;
+    let attempts = 0;
+    let sourceCanvasSeen = false;
+    let firstFrameSeen = false;
+    let audioSeen = false;
+    const check = () => {
+      const canvas = document.querySelector("#game canvas");
+      if (canvas && !sourceCanvasSeen) {
+        sourceCanvasSeen = true;
+        debugMilestone("SOURCE_CANVAS_AVAILABLE", {width:canvas.width || 0, height:canvas.height || 0});
+      }
+      const frame = playerSession?.core?.frameNumber?.();
+      if (sourceCanvasSeen && Number.isFinite(frame) && frame > 0 && !firstFrameSeen) {
+        firstFrameSeen = true;
+        debugMilestone("FIRST_VIDEO_FRAME", {frame});
+      }
+      const audioContext = threeDsAudioContext();
+      if (audioContext?.state === "running" && !audioSeen) {
+        audioSeen = true;
+        debugMilestone("AUDIO_STARTED", {state:audioContext.state});
+      }
+      if (sourceCanvasSeen && firstFrameSeen && audioSeen) {
+        debugMilestone("THREAD_POOL_READY", {isolated:Boolean(window.crossOriginIsolated)});
+        finishLoading();
+        return;
+      }
+      attempts += 1;
+      if (attempts > 1200) {
+        failLoading(new Error(config.lang === "en"
+          ? "3DS did not reach a verified source canvas, first frame, and running audio output."
+          : "3DS chưa đạt đủ canvas nguồn, frame đầu tiên và audio đang chạy để xác nhận."));
+        return;
+      }
+      requestAnimationFrame(check);
+    };
+    check();
+  };
   async function boot() {
     try {
-      if (webgl2Required && !document.createElement("canvas").getContext("webgl2")) throw new Error(config.lang === "en" ? "This core requires WebGL 2." : "Core này cần WebGL 2.");
-      if (threadedCore && (!crossOriginIsolated || typeof SharedArrayBuffer !== "function")) throw new Error(config.lang === "en" ? "This core requires SharedArrayBuffer support." : "Core này cần trình duyệt hỗ trợ SharedArrayBuffer an toàn.");
+      const capabilityError=coreCapabilityError();
+      if (capabilityError) throw new Error(capabilityError);
       const file = await fetchGame();
       setProgress(86, config.lang === "en" ? "Loading emulator" : "Đang tải giả lập");
       window.EJS_player = "#game";
       window.EJS_core = emulatorSystem;
-      // EmulatorJS exposes the FPS HUD as the native `fps` setting.  This is
-      // deliberately a default: an existing non-NDS player preference still
-      // wins, while NDS remains isolated from EmulatorJS local storage.
+      // EmulatorJS exposes the FPS HUD and frame pacing as native settings.
+      // VSync is deliberately off by default so the core is not made to wait
+      // for the shell compositor; players can still re-enable it in the
+      // EmulatorJS menu. NDS and 3DS use a clean per-launch core config: NDS
+      // needs a fixed touchscreen geometry, and 3DS must not inherit a stale
+      // Direct Keyboard Input choice that prevents the core's physical-key
+      // handler from receiving events.
       window.EJS_defaultOptions = {
         fps:"show",
+        vsync:"disabled",
+        ...(threeDsPad ? {
+          // Azahar's libretro core names this option citra_layout_option.
+          // Set it before boot so the core's touchscreen mapping follows the
+          // Side by Side framebuffer on wide screens.
+          citra_layout_option:dualScreenLayout()==="Left/Right"?"side_by_side":"default",
+          // Azahar declares useKeyboard=true. Explicitly retain that native
+          // default after clearing stale EmulatorJS settings for 3DS.
+          keyboardInput:"enabled"
+        } : {}),
         ...(ndsPad ? {
           retroarch_core:"melonds",
+          // melonDS exposes a real Left/Right core layout.  Choose it before
+          // boot on wide displays, preserving Top/Bottom in portrait without
+          // rotating or intercepting either DS touchscreen.
+          melonds_screen_layout:dualScreenLayout(),
+          // melonDS libretro accepts "16-bit" (not a numeric value). This
+          // preserves the requested audio precision and avoids the old
+          // automatic 10-bit DS default.
+          melonds_audio_bitrate:"16-bit",
           ...(touchVariant === "core-touch" ? {melonds_touch_mode:"Touch"} : {})
         } : {})
       };
-      window.EJS_disableLocalStorage = ndsPad;
+      window.EJS_disableLocalStorage = ndsPad || threeDsPad;
       window.EJS_gameName = config.slug;
+      window.EJS_gameID = config.netplayGameId || config.slug;
+      window.EJS_netplayServer = config.netplayServer || undefined;
+      window.EJS_netplayICEServers = config.netplayServer ? [] : undefined;
       window.EJS_gameUrl = file;
-      window.EJS_pathtodata = `/emulatorjs/${config.channel}/data/`;
+      const configuredOrigin=typeof config.emulatorOrigin === "string" ? config.emulatorOrigin.trim().replace(/\/+$/, "") : "";
+      window.EJS_pathtodata = configuredOrigin ? `${configuredOrigin}/${config.channel}/${config.system === "3ds" ? "data-v2" : "data"}/` : `/emulatorjs/${config.channel}/${config.system === "3ds" ? "data-v2" : "data"}/`;
+      const localizationRoot = configuredOrigin ? `${configuredOrigin}/stable/data/` : "/emulatorjs/stable/data/";
+      const emulatorLanguage = config.lang === "en" ? "en-US" : "vi-VN";
+      window.EJS_paths = {[emulatorLanguage]:`${localizationRoot}localization/${emulatorLanguage}.json`};
       window.EJS_startOnLoaded = true;
       window.EJS_controlScheme = config.system;
-      window.EJS_language = config.lang === "en" ? "en-US" : "vi-VN";
+      window.EJS_language = emulatorLanguage;
       window.EJS_disableDatabases = false;
       window.EJS_fixedSaveInterval = 60000;
       window.EJS_browserMode = customPad ? 2 : undefined;
@@ -563,29 +1138,46 @@
       window.EJS_threads = threadedCore;
       window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;
       window.EJS_hideSettings = ["fastForward","ff-ratio","slowMotion","sm-ratio"];
-      window.EJS_onGameStart = () => { gameStarted=true;protectNdsCanvas();applySpeed(1);syncSpeedControls();finishLoading(); };
+      window.EJS_onGameStart = () => {
+        gameStarted = true;
+        protectNdsCanvas();
+        protectThreeDsCanvas();
+        applySpeed(1);
+        syncSpeedControls();
+        syncAutoSaveTimer();
+        debugMilestone("CORE_LOAD_GAME_SUCCESS", {system:config.system});
+        if (threeDsPad) waitForThreeDsPlayable();
+        else finishLoading();
+      };
       const script = document.createElement("script");
       script.src = `${window.EJS_pathtodata}loader.js`;
-      script.onload = () => setProgress(92, config.lang === "en" ? "Starting core" : "Đang khởi động core");
-      script.onerror = () => failLoading(new Error(config.lang === "en" ? "Emulator files are unavailable. Connect once and preload this core." : "Không tải được tệp giả lập. Hãy kết nối mạng và tải trước core này."));
+      script.onload = () => {
+        debugMilestone("EJS_LOADER_READY", {path:safeDebugUrl(script.src)});
+        debugMilestone("WASM_COMPILE_START", {source:"EmulatorJS loader"});
+        setProgress(92, config.lang === "en" ? "Starting core" : "Đang khởi động core");
+      };
+      script.onerror = () => failLoading(new Error(globalThis.AN3NativeOfflineApp === true
+        ? (config.lang === "en" ? "The bundled emulator files are unavailable. Reinstall the verified VibeCodedEmulator app." : "Không tìm thấy tệp giả lập đã đóng gói. Hãy cài lại bản VibeCodedEmulator đã kiểm tra.")
+        : (config.lang === "en" ? "Emulator files are unavailable. Connect once and preload this core." : "Không tải được tệp giả lập. Hãy kết nối mạng và tải trước core này.")));
+      debugMilestone("CORE_LOAD_GAME_START", {system:config.system});
       document.body.appendChild(script);
       let checks = 0;
-      const ready = setInterval(() => {
-        protectNdsCanvas();
-        if (gameStarted) clearInterval(ready);
+      bootstrapReadyTimer = setInterval(() => {
+        protectNdsCanvas();protectThreeDsCanvas();
+        if (gameStarted) clearBootstrapTimers();
         else if (window.EJS_emulator?.failedToStart) {
-          clearInterval(ready);
-          failLoading(new Error(window.EJS_emulator?.textElem?.innerText || (config.lang === "en" ? "The NDS core failed to start." : "Core NDS khởi động thất bại.")));
+          const fallback=threeDsPad ? (config.lang === "en" ? "The 3DS core failed to start." : "Core 3DS khởi động thất bại.") : (ndsPad ? (config.lang === "en" ? "The NDS core failed to start." : "Core NDS khởi động thất bại.") : (config.lang === "en" ? "The emulator failed to start." : "Core giả lập khởi động thất bại."));
+          failLoading(new Error(window.EJS_emulator?.textElem?.innerText || fallback));
         }
-        else if (!ndsPad && window.EJS_emulator?.gameManager) { clearInterval(ready);gameStarted=true;applySpeed(1);syncSpeedControls();finishLoading(); }
-        else if (++checks > 720) { clearInterval(ready); failLoading(new Error(ndsPad ? (config.lang === "en" ? "The NDS game did not start after 3 minutes." : "Game NDS chưa khởi động sau 3 phút.") : (config.lang === "en" ? "The emulator did not start." : "Giả lập chưa khởi động."))); }
+        else if (!ndsPad && window.EJS_emulator?.gameManager) { gameStarted=true;applySpeed(1);syncSpeedControls();syncAutoSaveTimer();finishLoading(); }
+        else if (++checks > 720) { failLoading(new Error(ndsPad ? (config.lang === "en" ? "The NDS game did not start after 3 minutes." : "Game NDS chưa khởi động sau 3 phút.") : (config.lang === "en" ? "The emulator did not start." : "Giả lập chưa khởi động."))); }
       }, 250);
       if (customPad) {
-        const guard = setInterval(() => {
+        virtualPadGuardTimer = setInterval(() => {
           document.querySelectorAll(".ejs_virtualGamepad_parent,.ejs_virtualGamepad_open").forEach(element => element.style.setProperty("display", "none", "important"));
-          protectNdsCanvas();
+          protectNdsCanvas();protectThreeDsCanvas();
           try { window.EJS_emulator?.toggleVirtualGamepad?.(false); } catch (_) {}
-          if (gameStarted) clearInterval(guard);
+          if (gameStarted) clearBootstrapTimers();
         }, 250);
       }
     } catch (error) { failLoading(error); }
@@ -593,7 +1185,7 @@
 
   document.getElementById("saveState")?.addEventListener("click", () => {
     try {
-      const state = window.EJS_emulator?.gameManager?.getState();
+      const state = playerSession?.saveStateManager.exportBytes() || window.EJS_emulator?.gameManager?.getState();
       if (!state?.byteLength) throw new Error("Save state is not ready");
       const url = URL.createObjectURL(new Blob([state], {type: "application/octet-stream"}));
       const anchor = document.createElement("a");
@@ -607,58 +1199,55 @@
     try {
       const file = event.target.files[0];
       if (!file) return;
-      const manager = window.EJS_emulator?.gameManager;
-      if (!manager) throw new Error(config.lang === "en" ? "Emulator is not ready" : "Giả lập chưa sẵn sàng");
-      manager.loadState(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (playerSession) playerSession.saveStateManager.importBytes(bytes);
+      else {
+        const manager = window.EJS_emulator?.gameManager;
+        if (!manager) throw new Error(config.lang === "en" ? "Emulator is not ready" : "Giả lập chưa sẵn sàng");
+        manager.loadState(bytes);
+      }
       event.target.value = "";
       showNotice(config.lang === "en" ? "Save state loaded" : "Đã nạp save state");
     } catch (error) { showNotice(error.message || String(error), true); }
   });
 
   const slotPanel = document.getElementById("slotPanel");
-  const slotDatabase = () => new Promise((resolve, reject) => {
-    const request = indexedDB.open("an3-arcade-save-slots", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("states", {keyPath: "id"});
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error("save slot storage unavailable"));
-  });
-  const slotTransaction = async (mode, action) => {
-    const database = await slotDatabase();
-    return new Promise((resolve, reject) => {
-      const request = action(database.transaction("states", mode).objectStore("states"));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error("save slot storage failed"));
-    }).finally(() => database.close());
+  const quickSaves = playerSession?.quickSaveManager;
+  const requireQuickSaves = () => {
+    if (!quickSaves) throw new Error(config.lang === "en" ? "Save slot runtime is unavailable" : "Không thể mở runtime save slot");
+    return quickSaves;
   };
-  const slotId = slot => `${config.slug}:slot:${slot}`;
-  const slotGet = slot => slotTransaction("readonly", store => store.get(slotId(slot)));
-  const slotPut = item => slotTransaction("readwrite", store => store.put(item));
+  const slotGet = slot => requireQuickSaves().get(slot);
+  const slotGetMany = slots => requireQuickSaves().getMany(slots);
   const slotStamp = time => new Intl.DateTimeFormat(config.lang === "en" ? "en-GB" : "vi-VN", {dateStyle:"short", timeStyle:"short"}).format(new Date(time));
   const refreshSlots = async () => {
     if (!slotPanel) return;
-    const states = await Promise.all([...slotPanel.querySelectorAll("[data-slot]")].map(async row => {
-      const slot = Number(row.dataset.slot);
-      const state = await slotGet(slot);
+    const rows=[...slotPanel.querySelectorAll("[data-slot]")];
+    const states = await slotGetMany(rows.map(row=>Number(row.dataset.slot))).then(states => {
+      rows.forEach((row,index) => {
+        const state=states[index];
       row.querySelector("small").textContent = state ? slotStamp(state.updatedAt) : (config.lang === "en" ? "Empty" : "Trống");
       row.querySelector("[data-load-slot]").disabled = !state;
-      return state;
-    })).catch(error => { showNotice(error.message || String(error), true); return []; });
+      });
+      return states;
+    }).catch(error => { showNotice(error.message || String(error), true); return []; });
     const latest = states.filter(Boolean).sort((a,b) => b.updatedAt-a.updatedAt)[0];
     if (saveStatus) saveStatus.textContent = latest ? (config.lang === "en" ? "Saved on this device" : "Đã lưu trên thiết bị") : (config.lang === "en" ? "No save on this device" : "Chưa có save trên thiết bị");
   };
   const saveSlot = async slot => {
-    const state = window.EJS_emulator?.gameManager?.getState();
+    const state = playerSession?.saveStateManager.exportBytes() || window.EJS_emulator?.gameManager?.getState();
     if (!state?.byteLength) throw new Error(config.lang === "en" ? "Save state is not ready" : "Save state chưa sẵn sàng");
     const bytes = state instanceof Uint8Array ? state : new Uint8Array(state);
-    await slotPut({id: slotId(slot), state: new Blob([bytes], {type:"application/octet-stream"}), updatedAt: Date.now()});
+    await requireQuickSaves().put(slot, bytes, Date.now());
     await refreshSlots();
     showNotice(config.lang === "en" ? `Saved to slot ${slot}` : `Đã lưu vào slot ${slot}`);
   };
   const loadSlot = async slot => {
     const saved = await slotGet(slot);
-    const manager = window.EJS_emulator?.gameManager;
-    if (!saved?.state || !manager) throw new Error(config.lang === "en" ? "Save slot is unavailable" : "Save slot chưa sẵn sàng");
-    manager.loadState(new Uint8Array(await saved.state.arrayBuffer()));
+    if (!saved?.state) throw new Error(config.lang === "en" ? "Save slot is unavailable" : "Save slot chưa sẵn sàng");
+    const bytes = new Uint8Array(await saved.state.arrayBuffer());
+    if (playerSession) playerSession.saveStateManager.importBytes(bytes);
+    else window.EJS_emulator?.gameManager?.loadState?.(bytes);
     showNotice(config.lang === "en" ? `Loaded slot ${slot}` : `Đã nạp slot ${slot}`);
   };
   document.getElementById("slotMenu")?.addEventListener("click", () => {
@@ -667,12 +1256,104 @@
     document.getElementById("playerControls")?.setAttribute("aria-expanded","false");
     slotPanel.hidden = !slotPanel.hidden;
     document.getElementById("slotMenu")?.setAttribute("aria-expanded", String(!slotPanel.hidden));
-    if (!slotPanel.hidden) { refreshSlots();document.getElementById("closeSlots")?.focus(); }
+    if (!slotPanel.hidden) { refreshSlots();refreshAutoSlot();document.getElementById("closeSlots")?.focus(); }
   });
   document.getElementById("closeSlots")?.addEventListener("click", () => { if (slotPanel) slotPanel.hidden = true;const trigger=document.getElementById("slotMenu");trigger?.setAttribute("aria-expanded","false");trigger?.focus(); });
   slotPanel?.querySelectorAll("[data-save-slot]").forEach(button => button.addEventListener("click", () => saveSlot(Number(button.dataset.saveSlot)).catch(error => showNotice(error.message || String(error), true))));
   slotPanel?.querySelectorAll("[data-load-slot]").forEach(button => button.addEventListener("click", () => loadSlot(Number(button.dataset.loadSlot)).catch(error => showNotice(error.message || String(error), true))));
   refreshSlots();
+
+  // ---- Autosave + Exit Game (Phase A) -------------------------------------
+  // Autosave preference is per device and validated on read so a hand-edited
+  // localStorage value can never enable an unknown cadence.
+  const AUTOSAVE_KEY="vibe-autosave-v1";
+  const AUTOSAVE_MODES=["off","exit","30","10","5"];
+  const readAutosaveMode=()=>{try{const value=localStorage.getItem(AUTOSAVE_KEY);return AUTOSAVE_MODES.includes(value)?value:"off";}catch(_){return "off";}};
+  const writeAutosaveMode=mode=>{try{localStorage.setItem(AUTOSAVE_KEY,AUTOSAVE_MODES.includes(mode)?mode:"off");}catch(_){}};
+  let autosaveMode=readAutosaveMode();
+  let autosaveTimer=0;
+  let lastAutosaveDigest=null;
+  const readStateBytes=()=>{
+    const state=playerSession?.saveStateManager.exportBytes()||window.EJS_emulator?.gameManager?.getState?.();
+    if(!state?.byteLength)return null;
+    return state instanceof Uint8Array?state:new Uint8Array(state);
+  };
+  const digestBytes=async bytes=>{
+    try{
+      if(globalThis.crypto?.subtle?.digest){
+        const hash=await crypto.subtle.digest("SHA-256",bytes);
+        return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+      }
+    }catch(_){}
+    // Bounded fallback: length plus byte samples, never a full O(n) scan.
+    let hash=bytes.length>>>0;
+    const step=Math.max(1,Math.floor(bytes.length/256));
+    for(let index=0;index<bytes.length;index+=step)hash=(hash*31+bytes[index])>>>0;
+    return `s${bytes.length}:${hash.toString(16)}`;
+  };
+  const runAutosave=async()=>{
+    const bytes=readStateBytes();
+    if(!bytes)return false;
+    const digest=await digestBytes(bytes);
+    // Nothing changed since the last autosave: skip the write entirely so the
+    // emulator thread and IndexedDB are not touched needlessly.
+    if(digest===lastAutosaveDigest)return false;
+    await requireQuickSaves().putAuto(bytes,Date.now(),digest);
+    lastAutosaveDigest=digest;
+    if(saveStatus)saveStatus.textContent=config.lang==="en"?"Autosaved on this device":"Đã tự động lưu trên thiết bị";
+    return true;
+  };
+  function syncAutoSaveTimer(){
+    if(autosaveTimer){clearInterval(autosaveTimer);autosaveTimer=0;}
+    if(!gameStarted||!/^(30|10|5)$/.test(autosaveMode))return;
+    autosaveTimer=setInterval(()=>{runAutosave().catch(()=>{});},Number(autosaveMode)*1000);
+  }
+  function exitGame(){
+    const back=document.querySelector(".player-back")?.getAttribute("href")||"/";
+    const finish=()=>{window.location.href=back;};
+    if(autosaveMode!=="off"){
+      // Bounded best-effort final autosave; Exit never hangs on storage.
+      Promise.race([runAutosave().catch(()=>false),new Promise(resolve=>setTimeout(resolve,1500))]).then(finish,finish);
+    }else finish();
+  }
+  const refreshAutoSlot=async()=>{
+    const row=document.querySelector("[data-auto-slot]");
+    if(!row)return;
+    try{
+      const saved=await requireQuickSaves().getAuto();
+      row.querySelector("small").textContent=saved?slotStamp(saved.updatedAt):(config.lang==="en"?"Empty":"Trống");
+      const loadButton=row.querySelector("[data-load-auto]");
+      if(loadButton)loadButton.disabled=!saved;
+    }catch(_){}
+  };
+  const autosaveSelect=document.getElementById("autosaveMode");
+  if(autosaveSelect){
+    autosaveSelect.value=autosaveMode;
+    autosaveSelect.addEventListener("change",()=>{
+      autosaveMode=AUTOSAVE_MODES.includes(autosaveSelect.value)?autosaveSelect.value:"off";
+      writeAutosaveMode(autosaveMode);
+      syncAutoSaveTimer();
+    });
+  }
+  document.querySelector("[data-save-auto]")?.addEventListener("click",()=>{
+    runAutosave().then(changed=>showNotice(changed?(config.lang==="en"?"Autosave saved":"Đã lưu autosave"):(config.lang==="en"?"Autosave is already current":"Autosave đã là bản mới nhất"))).then(refreshAutoSlot).catch(error=>showNotice(error.message||String(error),true));
+  });
+  document.querySelector("[data-load-auto]")?.addEventListener("click",async()=>{
+    try{
+      const saved=await requireQuickSaves().getAuto();
+      if(!saved?.state)throw new Error(config.lang==="en"?"Autosave is unavailable":"Autosave chưa sẵn sàng");
+      const bytes=new Uint8Array(await saved.state.arrayBuffer());
+      if(playerSession)playerSession.saveStateManager.importBytes(bytes);
+      else window.EJS_emulator?.gameManager?.loadState?.(bytes);
+      showNotice(config.lang==="en"?"Autosave loaded":"Đã nạp autosave");
+    }catch(error){showNotice(error.message||String(error),true);}
+  });
+  document.getElementById("exitGame")?.addEventListener("click",exitGame);
+  document.querySelector(".player-back")?.addEventListener("click",event=>{event.preventDefault();exitGame();});
+  // Last-chance flush for tab close/navigation while an autosave mode is on.
+  document.addEventListener("pagehide",()=>{if(autosaveMode!=="off")runAutosave().catch(()=>{});});
+  refreshAutoSlot();
+  // ------------------------------------------------------------------------
 
   const profileLabel = profile => {
     const labels=config.lang === "en" ? {auto:"Use recommended settings",low:"Low-end / Battery",balanced:"Balanced",quality:"Quality",custom:"Custom"} : {auto:"Dùng cài đặt khuyến nghị",low:"Máy yếu / Tiết kiệm pin",balanced:"Cân bằng",quality:"Chất lượng",custom:"Tùy chỉnh"};
@@ -796,16 +1477,27 @@
     portrait:{dpad:{x:23.4,y:81.6},a:{x:89,y:80},b:{x:78.2,y:89.7},x:{x:78,y:70.2},y:{x:67.3,y:79.9},l:{x:8.1,y:63.3},r:{x:91.2,y:62.5},start:{x:47.4,y:62.1},select:{x:57.9,y:62}},
     landscape:{dpad:{x:13,y:69},a:{x:90,y:65},b:{x:80,y:76},x:{x:90,y:38},y:{x:80,y:50},l:{x:13,y:18},r:{x:87,y:18},start:{x:40,y:90},select:{x:60,y:90}}
   };
-  const padDefaults = ndsPad ? ndsDefaults : defaults;
+  // 3DS originally inherited the GBA geometry. On a narrow portrait stage
+  // several controls overlapped the four-pixel safety gap, which made a valid
+  // drag impossible to finish. Keep the proven GBA layout intact and give 3DS
+  // a separate, fully non-overlapping portrait placement.
+  const threeDsDefaults = {
+    portrait:{dpad:{x:19,y:79},a:{x:87,y:78.5},b:{x:73,y:88.5},x:{x:89,y:55},y:{x:74,y:69},l:{x:15,y:52},r:{x:85,y:45},start:{x:39,y:61},select:{x:62,y:61}},
+    landscape:{...defaults.landscape,r:{x:87,y:20}}
+  };
+  const padDefaults = ndsPad ? ndsDefaults : threeDsPad ? threeDsDefaults : defaults;
   let orientation = innerWidth > innerHeight ? "landscape" : "portrait";
-  const key = () => `an3-pad-v${ndsPad ? 4 : 3}:${config.system}:${orientation}`;
+  // Version the NDS/3DS keys rather than deleting a user's former layout.
+  // Previous records remain in local storage as recovery references.
+  const key = () => `an3-pad-v${ndsPad ? 5 : threeDsPad ? 7 : 3}:${config.system}:${orientation}`;
   const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
   const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
   const read = (name, fallback={}) => { try { const value=JSON.parse(localStorage.getItem(name));return isRecord(value) ? value : fallback; } catch (_) { return fallback; } };
   let positions = {...padDefaults[orientation], ...read(key())};
   const settingsVersion = ndsPad ? 4 : 2;
-  const settingsKey = ndsPad ? "an3-pad-settings-v4:nds" : "an3-pad-settings-v2";
+  const settingsKey = ndsPad ? "an3-pad-settings-v4:nds" : threeDsPad ? "an3-pad-settings-v1:3ds" : "an3-pad-settings-v2";
   const defaultSettings = ndsPad ? {version:4,globalScale:1,opacity:.48,visibilityMode:"auto",buttonScales:{}} : {version:2,globalScale:1,opacity:.82,visible:true,buttonScales:{}};
+  defaultSettings.directionalControl = threeDsPad ? "joystick" : "dpad";
   const legacyDefaults = ndsPad ? {scale:1,opacity:.48,visibilityMode:"auto",sizes:{dpad:1.4,start:.7,select:.7}} : {scale:1,opacity:.82,visible:true,sizes:{}};
   const controlIds=["dpad","a","b","x","y","l","r","start","select"];
   const baseControlScale = id => ndsPad ? ({dpad:1.4,start:.7,select:.7}[id] || 1) : 1;
@@ -825,6 +1517,7 @@
   const normalizeSettings = source => {
     const buttons=isRecord(source.buttonScales) ? source.buttonScales : {};
     const result={...defaultSettings,globalScale:clamp(Number(source.globalScale) || 1,.7,1),opacity:clamp(Number(source.opacity) || defaultSettings.opacity,.3,1),buttonScales:{}};
+    result.directionalControl = ["dpad", "joystick"].includes(source.directionalControl) ? source.directionalControl : defaultSettings.directionalControl;
     if (ndsPad) result.visibilityMode=["auto","shown","hidden"].includes(source.visibilityMode) ? source.visibilityMode : "auto";
     else result.visible=source.visible!==false;
     controlIds.forEach(id=>{
@@ -855,8 +1548,17 @@
   const saveSettings = () => { try { localStorage.setItem(settingsKey,JSON.stringify(settings)); } catch (_) {} };
   if (!hasCurrentSettings && hasLegacySettings) saveSettings();
   const input = (index,value) => {
-    try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {}
+    if (playerSession) playerSession.inputRouter.setVirtualButton(index, value);
+    else { try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {} }
   };
+  const analogInput = (x,y) => {
+    if (playerSession) playerSession.inputRouter.setVirtualAxis(x,y);
+    else for (const [index,value] of [[16,x],[17,-x],[18,y],[19,-y]]) {
+      try { window.EJS_emulator?.gameManager?.simulateInput(0,index,Math.round(Math.max(0,Math.min(1,value))*32767)); } catch (_) {}
+    }
+    if (!threeDsPad) for (const [index,pressed] of [[4,y<-.35],[5,y>.35],[6,x<-.35],[7,x>.35]]) input(index,pressed?1:0);
+  };
+  let releaseStick = () => {};
   const PAD_EDGE_GAP=4;
   const PAD_CONTROL_GAP=4;
   const controlBounds = element => {
@@ -921,11 +1623,52 @@
     if (!padRoot.classList.contains("edit")) return;
     event.preventDefault(); try{element.setPointerCapture(event.pointerId)}catch(_){}
     const move=e=>{const rect=padRoot.getBoundingClientRect(),bounds=controlBounds(element);if(!rect.width||!rect.height)return;positions[element.dataset.id]={x:Math.round(clamp((e.clientX-rect.left)/rect.width*100,bounds?.minX ?? 0,bounds?.maxX ?? 100)*10)/10,y:Math.round(clamp((e.clientY-rect.top)/rect.height*100,bounds?.minY ?? 0,bounds?.maxY ?? 100)*10)/10};place(element);};
-    const up=()=>{saveLayout();element.removeEventListener("pointermove",move);element.removeEventListener("pointerup",up);element.removeEventListener("pointercancel",up);};
-    element.addEventListener("pointermove",move);element.addEventListener("pointerup",up);element.addEventListener("pointercancel",up);
+    // Drag placement is deliberately free-form. Players may intentionally
+    // overlap controls; the position is persisted exactly as released.
+    const up=()=>{saveLayout();element.removeEventListener("pointermove",move);["pointerup","pointercancel","lostpointercapture"].forEach(name=>element.removeEventListener(name,up));};
+    element.addEventListener("pointermove",move);["pointerup","pointercancel","lostpointercapture"].forEach(name=>element.addEventListener(name,up));
   });
   const makeButton=(id,label,index)=>{const wrap=document.createElement("div");wrap.className="tvCtrl";wrap.dataset.id=id;wrap.innerHTML=`<div class="tvBtn ${label.length>1?"small":""}">${label}</div>`;bindDrag(wrap);bindInput(wrap,index);return wrap;};
   const makeDpad=()=>{const wrap=document.createElement("div"),labels=config.lang==="en"?{up:"Up",down:"Down",left:"Left",right:"Right"}:{up:"Lên",down:"Xuống",left:"Trái",right:"Phải"};wrap.className="tvCtrl";wrap.dataset.id="dpad";wrap.innerHTML=`<div class="tvDpad"><button class="up" aria-label="${labels.up}"><img src="/static/ui-chevron-up.svg" alt=""></button><button class="down" aria-label="${labels.down}"><img src="/static/ui-chevron-down.svg" alt=""></button><button class="left" aria-label="${labels.left}"><img src="/static/ui-chevron-left.svg" alt=""></button><button class="right" aria-label="${labels.right}"><img src="/static/ui-chevron-right.svg" alt=""></button></div>`;bindDrag(wrap);[[".up",4],[".down",5],[".left",6],[".right",7]].forEach(([selector,index])=>bindInput(wrap.querySelector(selector),index));return wrap;};
+  const addAnalogStick = wrap => {
+    const ui = globalThis.AN3PlayerUI;
+    if (!ui) return;
+    const stick = document.createElement("div"), thumb = document.createElement("span");
+    stick.className = "tvStick"; stick.setAttribute("role","group"); stick.setAttribute("aria-label","Analog Joystick");
+    thumb.className = "tvStickThumb"; thumb.setAttribute("aria-hidden","true");
+    thumb.style.width = thumb.style.height = `${ui.model.joystick.thumbRadiusRatio*100}%`;
+    stick.appendChild(thumb); wrap.appendChild(stick);
+    let owner = null;
+    const update = event => {
+      if (event.pointerId !== owner) return;
+      const rect = stick.getBoundingClientRect();
+      const travel = Math.max(1, Math.min(rect.width,rect.height)*.5*ui.model.joystick.travelRatio);
+      const axis = ui.normalize((event.clientX-rect.left-rect.width/2)/travel,(event.clientY-rect.top-rect.height/2)/travel);
+      thumb.style.left = `${50+axis.x*ui.model.joystick.travelRatio*50}%`;
+      thumb.style.top = `${50+axis.y*ui.model.joystick.travelRatio*50}%`;
+      analogInput(axis.x,axis.y);
+    };
+    releaseStick = () => {
+      const pointer = owner; owner = null;
+      thumb.style.left = thumb.style.top = "50%"; analogInput(0,0);
+      if (pointer !== null) try { stick.releasePointerCapture(pointer); } catch (_) {}
+    };
+    stick.addEventListener("pointerdown",event=>{
+      if (owner !== null || padRoot.classList.contains("edit") || stage?.classList.contains("emulator-menu-open")) return;
+      event.preventDefault(); event.stopPropagation(); owner=event.pointerId;
+      try { stick.setPointerCapture(owner); } catch (_) {}
+      update(event);
+    });
+    stick.addEventListener("pointermove",update);
+    for (const name of ["pointerup","pointercancel","lostpointercapture"]) stick.addEventListener(name,event=>{
+      if (event.pointerId === owner) releaseStick();
+    });
+    window.addEventListener("blur",releaseStick);
+    document.addEventListener("visibilitychange",()=>{ if(document.hidden) releaseStick(); });
+    if (stage) new MutationObserver(()=>{
+      if (stage.classList.contains("emulator-menu-open") || !padRoot.classList.contains("show")) releaseStick();
+    }).observe(stage,{attributes:true,attributeFilter:["class"]});
+  };
   const padTarget = document.getElementById("padTarget");
   const padSize = document.getElementById("padSize");
   const padSizeValue = document.getElementById("padSizeValue");
@@ -998,6 +1741,10 @@
     return check;
   };
   const applySettings=()=>{
+    releaseStick();
+    padRoot.classList.toggle("analog-mode",settings.directionalControl==="joystick" && Boolean(globalThis.AN3PlayerUI));
+    const directionChoice=document.getElementById("padDirectionalControl");
+    if(directionChoice) directionChoice.value=settings.directionalControl;
     padRoot.style.setProperty("--pad-scale",globalScale());
     padRoot.style.setProperty("--pad-opacity",settings.opacity);
     const visible=padVisible();
@@ -1020,19 +1767,32 @@
   if (customPad) {
     const controls=[makeDpad(),makeButton("a","A",8),makeButton("b","B",0),makeButton("start","Start",3),makeButton("select","Select",2)];
     if(config.system==="gba")controls.push(makeButton("l","L",10),makeButton("r","R",11));
-    if(ndsPad)controls.push(makeButton("x","X",9),makeButton("y","Y",1),makeButton("l","L",10),makeButton("r","R",11));
-    controls.forEach(control=>{padRoot.appendChild(control);place(control);});applySettings();
+    if(ndsPad || threeDsPad)controls.push(makeButton("x","X",9),makeButton("y","Y",1),makeButton("l","L",10),makeButton("r","R",11));
+    controls.forEach(control=>{padRoot.appendChild(control);place(control);});
+    addAnalogStick(controls[0]);
+    applySettings();
   }
-  const setPadEditing = editing => {
-    if (editing && (!padVisible() || padSafetyBlocked)) {
-      const reason=padSafetyBlocked ? "unsafe" : "hidden";
-      setPadSizeHint(reason);
-      showNotice(padSafetyBlocked ? padSizeMessage(reason) : (config.lang === "en" ? "Show virtual controls before moving them." : "Bật phím ảo trước khi di chuyển."),true);
+  document.getElementById("padDirectionalControl")?.addEventListener("change",event=>{
+    releaseStick();
+    settings.directionalControl=event.target.value==="joystick"?"joystick":"dpad";
+    saveSettings(); applySettings();
+  });
+  const setPadEditing = (editing,{force=false}={}) => {
+    if (editing && !padVisible()) {
+      setPadSizeHint("hidden");
+      showNotice(config.lang === "en" ? "Show virtual controls before moving them." : "Bật phím ảo trước khi di chuyển.",true);
       return false;
+    }
+    // On a phone the options sheet covers the controller.  Close it as the
+    // user enters NDS/3DS edit mode so the first drag can reach the control.
+    if (editing && (ndsPad || threeDsPad)) {
+      panel?.classList.remove("open");
+      document.getElementById("playerControls")?.setAttribute("aria-expanded","false");
     }
     padRoot.classList.toggle("edit",editing);
     const button=document.getElementById("editPad");
-    if (button) button.textContent=editing ? (config.lang==="en"?"Done":"Xong") : (config.lang==="en"?"Move":"Kéo thả");
+    if (button) {button.textContent=editing ? (config.lang==="en"?"Done":"Xong") : (config.lang==="en"?"Move":"Kéo thả");button.setAttribute("aria-pressed",String(editing));}
+    if(editing) showNotice(config.lang==="en"?"Drag controls, then reopen the player menu and choose Done to lock their positions.":"Kéo các phím, rồi mở lại menu player và bấm Xong để cố định vị trí.");
     if (!editing) saveLayout();
     return true;
   };
@@ -1085,9 +1845,9 @@
   if (ndsPad && stage) new MutationObserver(()=>{if(stage.classList.contains("emulator-menu-open"))closePlayerOptions();}).observe(stage,{attributes:true,attributeFilter:["class"]});
   document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();closePlayerOptions();try{window.EJS_emulator?.menu?.toggle()}catch(_){}queueEmulatorMenuLayer();});
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(!panel)return;if(stage?.classList.contains("emulator-menu-open")){showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true);return;}closeSlotOptions();const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();});
-  document.getElementById("closePad")?.addEventListener("click",()=>{setPadEditing(false);closePlayerOptions();document.getElementById("playerControls")?.focus()});
+  document.getElementById("closePad")?.addEventListener("click",()=>{if(!setPadEditing(false))return;closePlayerOptions();document.getElementById("playerControls")?.focus()});
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
-  const togglePad=()=>{const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false);saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
+  const togglePad=()=>{if(castConsoleAutoPad){padRoot.classList.remove("cast-console-show");castConsoleAutoPad=false;}const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);
   document.getElementById("togglePad")?.addEventListener("click",togglePad);
   padAdvanced?.addEventListener("toggle",()=>syncPadSize(true));
@@ -1110,9 +1870,9 @@
   document.getElementById("resetPadSizes")?.addEventListener("click",resetAllButtonScales);
   document.getElementById("padOpacity")?.addEventListener("input",event=>{settings.opacity=Number(event.target.value)/100;saveSettings();applySettings();});
   document.getElementById("resetPadLayout")?.addEventListener("click",resetCurrentLayout);
-  document.getElementById("resetPad")?.addEventListener("click",()=>{["portrait","landscape"].forEach(nextOrientation=>{try{localStorage.removeItem(`an3-pad-v${ndsPad ? 4 : 3}:${config.system}:${nextOrientation}`);}catch(_){}});positions={...padDefaults[orientation]};settings.globalScale=1;settings.opacity=defaultSettings.opacity;if(ndsPad)settings.visibilityMode="auto";else settings.visible=true;settings.buttonScales={};setPadEditing(false);saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);});
+  document.getElementById("resetPad")?.addEventListener("click",()=>{["portrait","landscape"].forEach(nextOrientation=>{try{localStorage.removeItem(`an3-pad-v${ndsPad ? 5 : threeDsPad ? 7 : 3}:${config.system}:${nextOrientation}`);}catch(_){}});positions={...padDefaults[orientation]};settings.globalScale=1;settings.opacity=defaultSettings.opacity;if(ndsPad)settings.visibilityMode="auto";else settings.visible=true;settings.buttonScales={};setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);});
   document.addEventListener("keydown",event=>{if(event.key!=="Escape")return;if(panel?.classList.contains("open")){event.preventDefault();document.getElementById("closePad")?.click();}else if(slotPanel&&!slotPanel.hidden){event.preventDefault();document.getElementById("closeSlots")?.click();}});
-  let resizeTimer;const queuePadLayout=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);},160)};addEventListener("resize",queuePadLayout);document.addEventListener("fullscreenchange",queuePadLayout);
+  let resizeTimer;const queuePadLayout=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{const next=innerWidth>innerHeight?"landscape":"portrait";if(next!==orientation){saveLayout();orientation=next;positions={...padDefaults[orientation],...read(key())};}syncDualScreenStage();const desiredNdsLayout=dualScreenLayout();if(ndsPad && gameStarted && desiredNdsLayout!==appliedNdsScreenLayout){showNotice(config.lang==="en"?`Restart the player to apply the ${desiredNdsLayout} DS screen layout.`:`Khởi động lại player để áp dụng bố cục màn hình DS ${desiredNdsLayout === "Left/Right" ? "trái/phải" : "trên/dưới"}.`);appliedNdsScreenLayout=desiredNdsLayout;}if(threeDsPad && gameStarted && desiredNdsLayout!==appliedThreeDsScreenLayout){showNotice(config.lang==="en"?`Restart the player to apply the ${desiredNdsLayout} 3DS screen layout.`:`Khởi động lại player để áp dụng bố cục màn hình 3DS ${desiredNdsLayout === "Left/Right" ? "trái/phải" : "trên/dưới"}.`);appliedThreeDsScreenLayout=desiredNdsLayout;}const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);},160)};addEventListener("resize",queuePadLayout);document.addEventListener("fullscreenchange",queuePadLayout);
   document.addEventListener("visibilitychange",()=>{if(document.hidden)[0,2,3,4,5,6,7,8,10,11].forEach(index=>input(index,0))});
   boot();
 })();

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
+  "artifacts": [
+    {
+      "version": "1.0.1",
+      "platform": "macOS",
+      "architecture": "arm64",
+      "format": "DMG",
+      "filename": "vibecodedemulator-1.0.1-macos-aarch64.dmg",
+      "size": 42239986,
+      "sha256": "a03e6017531ef2188595dfa6a6d91d9b2d5956c587cc68c6707bb65e8fc9659e",
+      "signature_status": "Ad-hoc native package from frozen source; unsigned/not notarized staging build.",
+      "runtime_status": "Redesigned offline-first app shell (Play, Library, Settings, Help, About) on the violet theme; bundled mGBA, melonDS DS and Azahar 2126.1.1 cores with native local-ROM playback unchanged."
+    },
+    {
+      "version": "1.0.1",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "APK",
+      "filename": "vibecodedemulator-1.0.1-android-arm64-staging.apk",
+      "size": 48105150,
+      "sha256": "c198d425be08078885c1dcdf5fc65e60388c6e25051020771eef3a18344fbc3f",
+      "signature_status": "Android Debug certificate (v2); same signer as the prior production APK.",
+      "runtime_status": "Redesigned compact app shell (Play, Library, Settings, Help, About) with Add ROM/Open ROM and the violet theme. Includes the shared Vulkan presenter color-space fix; local GBA/NDS/3DS import, native launch recovery, Auto Save and the native emulator pipeline are unchanged."
+    },
+    {
+      "version": "1.0.1",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "DEB",
+      "filename": "vibecodedemulator-1.0.1-linux-amd64.deb",
+      "size": 44215158,
+      "sha256": "f57c5defdcbf86fea196380e91cbff4c9803b3b8a8c4636a3c1eddb93bea617b",
+      "signature_status": "Frozen Debian package; no additional installation check requested.",
+      "runtime_status": "Redesigned Tauri desktop shell (Play, Library, Settings, Help, About) on the violet theme plus the bundled native SDL/GTK player with pinned GBA/NDS/3DS cores (Azahar 2126.1.1) and the shared Vulkan presenter color-space fix."
+    },
+    {
+      "version": "1.0.1",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "Flatpak",
+      "filename": "an3-offline-1.0.1-linux-amd64-staging.flatpak",
+      "size": 27819624,
+      "sha256": "2b46b153c5e32bb044a281eca8aca597e6bac7dd5a7eb05d31fa24c07f9c18e5",
+      "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
+      "runtime_status": "Redesigned Tauri desktop shell (Play, Library, Settings, Help, About) plus the bundled native player with Azahar 2126.1.1 and the shared Vulkan presenter color-space fix."
+    },
+    {
+      "version": "1.0.1",
+      "platform": "Windows",
+      "architecture": "x64",
+      "format": "EXE",
+      "filename": "vibecodedemulator-1.0.1-windows-x64-staging.exe",
+      "size": 42530728,
+      "sha256": "86ceef648d8f40c1b4bf0b417bc3b985a064f8e77c68fbee15673c9c0cda354e",
+      "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
+      "runtime_status": "Redesigned Tauri NSIS shell (Play, Library, Settings, Help, About) on the violet theme with the bundled native player and mGBA, melonDS DS and Azahar libretro cores plus the shared Vulkan presenter color-space fix.",
+      "release_gate": "PASS"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+DATE=2026-08-23 16:07:21 +07
+DEVICE=physical Android
+ANDROID_VERSION=16
+BROWSER_PACKAGE=com.android.chrome
+BROWSER_VERSION=151.0.7922.171
+LOGICAL_SCREEN_SIZE=1080x2340
+STAGING_URL=http://192.168.1.8:8092
+TEST=gba-pokemon-emerald
+RESULT=PASS
+EVIDENCE=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/android-regression/20260823-160720-gba-start.png; player HTTP=200; virtual Start tap=370,1260
+RUNTIME_ASSERTION=Android injected the current-layout virtual Start tap after the authorized GBA player route opened. A visible canvas/FPS check remains required before treating this as WebGL evidence.
+KNOWN_LIMITATION=No stale coordinates are embedded; fullscreen/save-load use smoke-fullscreen.sh and visible native-menu confirmation.
