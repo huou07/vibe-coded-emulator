@@ -313,3 +313,33 @@ Windows path:
 **Still open (features, not release):** controller QR + emulator input binding,
 rooms wired to the relay, LAN discovery/transfer, sync wiring, Switch companion.
 Windows 1.2.0 was **not** runtime-tested (built only).
+
+## Update — 2026-09-16 (eighth session): 1.3.0 player fixes + worktree independence
+
+**Feature/fix changes (all three native shells):**
+- Toolbar **Save now exposes all ten quick slots** (macOS NSMenu submenus,
+  Android action->slot dialog, Linux GTK submenus). Previously slot 1 only.
+- **FPS badge is pointer-inert**: macOS `AN3InertLabel.hitTest` returns nil;
+  Android clears clickable/focusable/longClickable and ignores touches. It no
+  longer blocks clicks.
+- **Menu-first pointer precedence**: an open menu owns input. macOS mouse
+  handlers bail while `_menu_panel` is visible and opening the menu releases any
+  held NDS/3DS touch; Android ignores NDS/3DS touches while `isMenuOpen()`;
+  Linux skips the SDL touch mapping while the GTK panel is visible.
+- `tools/ssh/staging-env.sh` (path-only) lets any worktree run
+  `check-staging-key.sh` / `deploy-stage.sh` without the original checkout.
+
+**Version 1.2.0 -> 1.3.0**, all five platforms rebuilt and published:
+DMG 44,706,349 · APK 49,571,879 · DEB 45,484,618 · Flatpak 29,090,480 ·
+EXE 46,720,549. `RELEASE_CATALOG=PASS`; suite **225 tests, 0 failures**.
+Deployed **from the `apps-web` worktree** (asset `dea10670c1a7`); all five 1.3.0
+installer URLs return 200.
+
+Android 1.3.0 was installed/launched earlier in the 1.2.0 cycle; the 1.3.0 APK
+was built but not re-installed. Windows 1.3.0 built (not runtime-tested); VM
+shut down, autostart disabled.
+
+**Worktrees:** `.../vibe-coded-emulator` (branch `vibe-coded-emulator`) and
+`~/Documents/edit an3tocom apps&web` (branch `apps-web`) both hold the current
+source and can deploy. Android generated Kotlin under `native-offline/src-tauri/gen`
+remains untracked (pre-existing).
