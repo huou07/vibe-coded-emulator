@@ -6,6 +6,7 @@ import html
 import io
 import json
 import mimetypes
+import netcode
 import os
 import re
 import secrets
@@ -115,6 +116,31 @@ NETPLAY_ORIGIN = (
     and not _netplay_parts.fragment
     else ""
 )
+# AN3 multiplayer rooms are staging-only, exactly like the EmulatorJS Netplay
+# relay they pair with. Production serves 404 for every room endpoint, so no
+# unauthenticated room or controller endpoint is ever exposed there.
+MULTIPLAYER_ENABLED = ENVIRONMENT in {"staging", "development"} and bool(NETPLAY_ORIGIN)
+ROOMS = netcode.RoomService(
+    room_ttl_seconds=900,
+    join_limiter=netcode.SlidingRateLimiter(limit=20, window_seconds=60),
+)
+
+
+def room_signature_from(data):
+    """Validate the client-supplied game identity (system + core + ROM hash)."""
+
+    system = str(data.get("system") or "").strip().lower()
+    core = str(data.get("core") or "").strip()
+    rom_hash = str(data.get("romHash") or data.get("rom_hash") or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9]{1,24}", system):
+        raise netcode.NetcodeError("invalid system")
+    if not re.fullmatch(r"[A-Za-z0-9_.:\-]{1,64}", core):
+        raise netcode.NetcodeError("invalid core")
+    if not re.fullmatch(r"(sha256:)?[a-f0-9]{16,64}", rom_hash):
+        raise netcode.NetcodeError("invalid rom hash")
+    return netcode.GameSignature(system=system, core=core, rom_hash=rom_hash)
+
+
 AUTH_PEPPER = os.environ.get("AN3_AUTH_PEPPER", "")
 EMULATOR_CDN = "https://cdn.emulatorjs.org"
 EMULATOR_CACHE_LOCK = threading.Lock()
@@ -1903,6 +1929,90 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
 
+    def multiplayer_unavailable(self):
+        self.send_json({"error": "not found"}, 404)
+
+    def multiplayer_create_room(self):
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        data = self.read_json()
+        try:
+            signature = room_signature_from(data)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        device = str(data.get("deviceId") or "")[:64]
+        room, token = ROOMS.create_room(signature, device or "host", signaling_hint=NETPLAY_ORIGIN)
+        self.send_json({
+            "code": room.code,
+            "token": token,
+            "role": "host",
+            "relay": NETPLAY_ORIGIN,
+            "expiresInSeconds": int(room.ttl_seconds),
+            "signature": {"system": signature.system, "core": signature.core, "romHash": signature.rom_hash},
+        }, 201)
+
+    def multiplayer_join_room(self):
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        data = self.read_json()
+        try:
+            signature = room_signature_from(data)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        code = str(data.get("code") or "")
+        device = str(data.get("deviceId") or "")[:64]
+        try:
+            room, token = ROOMS.join_room(code, signature, device or "guest", client_key=self.client_address[0])
+        except netcode.RateLimitedError as exc:
+            return self.send_json({"error": str(exc)}, 429)
+        except netcode.IncompatibleError as exc:
+            return self.send_json({"error": str(exc), "reason": "incompatible"}, 409)
+        except netcode.ExpiredError as exc:
+            return self.send_json({"error": str(exc), "reason": "expired"}, 410)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 404)
+        self.send_json({
+            "code": room.code,
+            "token": token,
+            "role": "guest",
+            "relay": NETPLAY_ORIGIN,
+            "expiresInSeconds": int(room.ttl_seconds),
+        })
+
+    def multiplayer_leave_room(self):
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        data = self.read_json()
+        code = str(data.get("code") or "")
+        token = str(data.get("token") or "")
+        try:
+            role = ROOMS.authenticate(code, token)
+        except netcode.NetcodeError:
+            return self.send_json({"ok": True})
+        ROOMS.leave(code, role)
+        self.send_json({"ok": True})
+
+    def multiplayer_room_status(self):
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        code = query.get("code", [""])[0]
+        token = query.get("token", [""])[0]
+        try:
+            role = ROOMS.authenticate(code, token)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 404)
+        room = ROOMS.rooms.get(netcode.normalize_code(code))
+        if room is None:
+            return self.send_json({"error": "room not found"}, 404)
+        remaining = max(0, int(room.ttl_seconds - (room.clock() - room.created_at)))
+        self.send_json({
+            "state": "full" if room.full else "waiting",
+            "role": role.value,
+            "players": 2 if room.full else 1,
+            "expiresInSeconds": remaining,
+        })
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -2119,6 +2229,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_json(system_metrics())
         elif path == "/health":
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
+        elif path == "/api/multiplayer/room":
+            self.multiplayer_room_status()
         else:
             if path.startswith("/api/") or path.startswith("/admin/api/"):
                 self.send_json({"error": "not found"}, 404)
@@ -2417,6 +2529,12 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                     cur = conn.execute("UPDATE reports SET status=?,updated_at=? WHERE id=?", (status, int(time.time()), report_id))
                     if cur.rowcount != 1: raise ValueError("report not found")
                 self.send_json({"ok": True, "status": status})
+            elif path == "/api/multiplayer/room":
+                self.multiplayer_create_room()
+            elif path == "/api/multiplayer/join":
+                self.multiplayer_join_room()
+            elif path == "/api/multiplayer/leave":
+                self.multiplayer_leave_room()
             else:
                 self.send_json({"error":"not found"},404)
         except RateLimited as exc:

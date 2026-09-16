@@ -197,6 +197,18 @@ The existing EmulatorJS-Netplay Rust relay remains the staging transport. Core-
 specific netplay behaviour is **not** uniform: any per-system netplay must be
 evaluated per core (GBA, NDS, 3DS differ) and is **not implemented** here.
 
+**Wired (staging-only):** `app.py` now exposes the room service as a small JSON
+API — `POST /api/multiplayer/room` (create), `POST /api/multiplayer/join`,
+`POST /api/multiplayer/leave`, `GET /api/multiplayer/room?code=&token=`
+(status). It is gated by `MULTIPLAYER_ENABLED` (staging/development **and** a
+configured `AN3_NETPLAY_ORIGIN`), so production returns 404 for every room
+endpoint. Responses carry the relay origin (never a raw host IP) and the
+validated system/core/ROM-hash signature; join is rate-limited and rejects a
+mismatched game with HTTP 409. Covered by `tests/test_multiplayer_api.py`
+(create/join/status, incompatible 409, unknown room 404, token check, disabled
+404, host-leave-ends-room, guest-leave-rejoin). A dedicated room UI page is not
+built yet; the API is consumed by the existing EmulatorJS host/join flow.
+
 ## 11. Nintendo Switch (research only — no integration)
 
 Findings from current research (August 2026):
