@@ -91,6 +91,9 @@ From the original spec plus later requests:
   until owner credentials exist. See `reports/handoff/SYNC_WIRING_20260916.md`.
 - Android 1.1.0 published; **1.2.0** published for all five platforms; **1.3.0**
   published for all five platforms (DMG/APK/DEB/Flatpak/EXE), catalog PASS.
+- **1.4.0** published for all five platforms (adds the native phone controller;
+  release scripts now derive artifact names from the version field). See
+  `reports/handoff/RELEASE_1.4.0_20260916.md`.
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
 
 **Not done**
