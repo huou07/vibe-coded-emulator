@@ -29,5 +29,19 @@ if(APPLE)
     target_link_libraries(an3_eden_bridge PRIVATE "-framework IOKit")
 endif()
 
+# Eden's own GPU dependency (FetchContent external project). Link it explicitly
+# because the standalone target does not inherit it through `core`.
+if(TARGET GPUOpen::VulkanMemoryAllocator)
+    target_link_libraries(an3_eden_bridge PRIVATE GPUOpen::VulkanMemoryAllocator)
+elseif(TARGET VulkanMemoryAllocator)
+    target_link_libraries(an3_eden_bridge PRIVATE VulkanMemoryAllocator)
+endif()
+
 add_executable(an3_eden_bridge_smoke "${AN3_EDEN_BRIDGE_DIR}/tests/bridge_smoke.c")
 target_link_libraries(an3_eden_bridge_smoke PRIVATE an3_eden_bridge)
+
+# A weak reference to a base-class typeinfo does not pull the archive member on
+# macOS, so load Eden's core objects explicitly.
+if(TARGET core)
+    target_link_options(an3_eden_bridge_smoke PRIVATE "LINKER:-force_load,$<TARGET_FILE:core>")
+endif()

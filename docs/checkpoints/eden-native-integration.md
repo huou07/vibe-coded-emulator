@@ -73,23 +73,29 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
   against `core/core.h`, `core/frontend/emu_window.h`, `graphics_context.h`,
   `am/applet_manager.h`).
 - **Link is not complete.** `an3_eden_bridge_smoke` fails to link with:
-  - `typeinfo for Core::Frontend::EmuWindow` undefined (weak typeinfo reference
-    from a derived class does not pull the archive member; needs
-    `-force_load` or an explicit strong reference), and
+  - `typeinfo for Core::Frontend::EmuWindow` undefined. Diagnosis:
+    `src/core/CMakeFiles/core.dir/frontend/emu_window.cpp.o` defines the class's
+    methods and vtable (`__ZTVN4Core8Frontend9EmuWindowE`) but emits **no
+    typeinfo symbol**, so a derived class with RTTI in a separate TU cannot
+    resolve it. Likely Eden compiles `core` without RTTI or with hidden
+    visibility; the fix is to compile the bridge with matching flags
+    (`-fno-rtti`) or to obtain the base typeinfo the way Eden's own frontends do.
   - `vmaAllocateMemory` / `vmaCreateAllocator` undefined — Eden's
-    `GPUOpen::VulkanMemoryAllocator` (FetchContent external project,
-    `VMA_BINARY_DIR=/tmp/eden-build/_deps/vulkanmemoryallocator-build`) is not
-    linked by the standalone target.
-- Fix path (next step): link the same library set as Eden's own frontend
-  (`yuzu_cmd`, built with `-DYUZU_CMD=ON`) and add
-  `-Wl,-force_load,<libcore.a>`. Both are build-integration details, not
-  architecture changes.
+    `GPUOpen::VulkanMemoryAllocator` is a FetchContent package
+    (`VMA_BINARY_DIR=/tmp/eden-build/_deps/vulkanmemoryallocator-build`) whose
+    implementation object is not linked by the standalone target, and no
+    `vk_mem_alloc.h`/`.a` was produced in this build configuration.
+- Both are build-integration details (compiler flags + which Eden targets to
+  link), not architecture changes. `core` itself built cleanly.
 - Not runtime-verified: `initialize`/`load` have not executed yet.
 
 ## Next step
 
-Finish the Milestone A link integration (build `yuzu_cmd` as the reference link
-set, force-load `libcore.a`, link VMA), then run
+Resolve the two link items: build Eden with `-DYUZU_CMD=ON` and copy that
+target's link set (it links `core`, VMA and every subsystem the frontends need),
+and/or compile the bridge with the same RTTI/visibility flags as `core`
+(`an3_eden_bridge` uses no RTTI itself). Then run
 `/tmp/eden-build/bin/an3_eden_bridge_smoke` with `backend=eden` to verify
 create/initialize/shutdown and the error paths against real Eden.
+
 
