@@ -33,11 +33,10 @@ native-offline/src-tauri/gen/android/app/build/
 native-offline/src-tauri/gen/android/local.properties
 .codegraph/
 
-# Generated Tauri Android project and vendored/downloadable binaries
-native-offline/src-tauri/gen/
-native-offline/vendor/
-native-offline/releases/*.dmg
-native-offline/releases/*.exe
-native-offline/releases/*.deb
+# Release installer binaries (published via the catalog, not source commits)
 native-offline/releases/*.apk
+native-offline/releases/*.deb
+native-offline/releases/*.dmg
 native-offline/releases/*.flatpak
+native-offline/releases/*.exe
+native-offline/releases/*.idsig

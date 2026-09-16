@@ -1,0 +1,331 @@
+{
+  "platform": "Windows x64",
+  "entry": "an3-native-runtime.exe",
+  "files": [
+    {
+      "name": "an3-native-runtime.exe",
+      "size": 541116,
+      "sha256": "883b15d900744849988d495b27fbc76a9a70f50be6c90b19723e0f215b73bdb2"
+    },
+    {
+      "name": "libcairo-2.dll",
+      "size": 1241396,
+      "sha256": "10cb3ddfb67ef352365d5cdf1fce0376693d2d6e90aefefee41b3c0c5ce363e4"
+    },
+    {
+      "name": "libgcc_s_seh-1.dll",
+      "size": 151654,
+      "sha256": "80940372431cc76224dfda06e2d33f01e49af3b4e7c499c535be856ebcadd273"
+    },
+    {
+      "name": "libglib-2.0-0.dll",
+      "size": 1568604,
+      "sha256": "642d4da7a378374a84b1edc30100b9e9c7b798e53347853aadd1c86691a81468"
+    },
+    {
+      "name": "libgobject-2.0-0.dll",
+      "size": 358171,
+      "sha256": "516bef266569d691924097224502e45ea04f6cd423bdfa23251f609007b9fb0e"
+    },
+    {
+      "name": "libgtk-3-0.dll",
+      "size": 7159259,
+      "sha256": "c5df1e6dcb722602938510a03a6a13af3be46c651ca4c52ff97c92c777593844"
+    },
+    {
+      "name": "libpango-1.0-0.dll",
+      "size": 435180,
+      "sha256": "fd92503a3fcab12fcf555cf8a47610f23b203cf888b48b5628629987d68215b8"
+    },
+    {
+      "name": "libwinpthread-1.dll",
+      "size": 63105,
+      "sha256": "bbe82da090a3a135eb4209466142e28e97fc9d61d8d4070a8585cbc8a15ab970"
+    },
+    {
+      "name": "SDL2.dll",
+      "size": 2401788,
+      "sha256": "2e44d5bae9a97859eccde14ad4467df14bae7468594bba7fe8eb417f517ce31b"
+    },
+    {
+      "name": "libstdc++-6.dll",
+      "size": 2661272,
+      "sha256": "69200d6d96b903dac4c873031813485a0455828be8101479efc56008862420cc"
+    },
+    {
+      "name": "libfontconfig-1.dll",
+      "size": 505833,
+      "sha256": "be30a200fa4000d0a7a1d3911391969627440148f01d0028a319bcb9fa112202"
+    },
+    {
+      "name": "libfreetype-6.dll",
+      "size": 791593,
+      "sha256": "a3271784f8366b3c6412e0c35474884fa12899c392bacb08bc8eac00f4be7e64"
+    },
+    {
+      "name": "libpixman-1-0.dll",
+      "size": 737775,
+      "sha256": "12e693d94829f013e0bd7c042b30998b20e91ece7b6f4d5f075ddbb58b373c92"
+    },
+    {
+      "name": "libpng16-16.dll",
+      "size": 258972,
+      "sha256": "5c1dd5410af563f4a3c4aee10d1f749aa71e0d7fb3b4fac240eb9e96cadebd26"
+    },
+    {
+      "name": "zlib1.dll",
+      "size": 127291,
+      "sha256": "11cd91171765cd65f1c3362e3df67e5f5a618a6b88c8cdec899b802eaf1c7b0d"
+    },
+    {
+      "name": "libintl-8.dll",
+      "size": 298164,
+      "sha256": "0e5a178731e6be6d115442a6ade3df7f03265cd1fc4338f8b6f86a8001cbf582"
+    },
+    {
+      "name": "libpcre2-8-0.dll",
+      "size": 706534,
+      "sha256": "752f04bb7a60d2a049788ffaec14b45602c4dec4c29534001dfcf434d26da19c"
+    },
+    {
+      "name": "libffi-8.dll",
+      "size": 39826,
+      "sha256": "f96cf79b75f33a10023d001673b564538023395c94b3c58e1db53114976a7c25"
+    },
+    {
+      "name": "libatk-1.0-0.dll",
+      "size": 159962,
+      "sha256": "22e30146d38fa760ce36dd250085cf8bc2c0167acc312bd77bff64ae0cc89faa"
+    },
+    {
+      "name": "libcairo-gobject-2.dll",
+      "size": 36263,
+      "sha256": "bdba64fdd18aad8de2773d3553786d0f9560ae3ae005a17b6cc6bef124219370"
+    },
+    {
+      "name": "libepoxy-0.dll",
+      "size": 1770497,
+      "sha256": "dc4055b53d0d6507740e9f3be18c9f2b1318faa531b9b2913eef3c5332fffedc"
+    },
+    {
+      "name": "libfribidi-0.dll",
+      "size": 155504,
+      "sha256": "73a712fd51fa0085e8660084743a821ae7388de138069cd6cd8c171d4487da84"
+    },
+    {
+      "name": "libgdk_pixbuf-2.0-0.dll",
+      "size": 359253,
+      "sha256": "ed9ab5fce358af212fbde9dac122b6f4b68ca45449a38444da61b0c3a11e328f"
+    },
+    {
+      "name": "libgio-2.0-0.dll",
+      "size": 1919044,
+      "sha256": "6457697b77638c9cc20baa3c19228dcecc15aeea886e72815b2079cdb0b8d941"
+    },
+    {
+      "name": "libgmodule-2.0-0.dll",
+      "size": 23440,
+      "sha256": "4a3e1bf8b17425c58be37d0a2bda2340364e19d18320f414a6537a3069867ad4"
+    },
+    {
+      "name": "libharfbuzz-0.dll",
+      "size": 1561272,
+      "sha256": "b862f499e35f335a8428e29834788d0e1dbee97c3f8691f64b3e61dfc923ad8c"
+    },
+    {
+      "name": "libpangocairo-1.0-0.dll",
+      "size": 82317,
+      "sha256": "0af768e57c0aaf8f1dbafdff21b95a21d9cff7ae5be2e3e5ffa366c9dbf4f5c8"
+    },
+    {
+      "name": "libpangowin32-1.0-0.dll",
+      "size": 109864,
+      "sha256": "152832e8add3031293fca8152ac8450db9122ee5b20561160e025a078954162d"
+    },
+    {
+      "name": "libgdk-3-0.dll",
+      "size": 1382980,
+      "sha256": "867de3778673beed6aa5ecaed274c8dbb31eda2cc3f72c814d42e994ac655100"
+    },
+    {
+      "name": "libthai-0.dll",
+      "size": 71780,
+      "sha256": "d8d8b87e9089a811e088f6a01da57c19ed54d2b6613bb85697f1958473f63666"
+    },
+    {
+      "name": "libexpat-1.dll",
+      "size": 236660,
+      "sha256": "3331b4d4a77cd21edc26518cbb818e17b49b2c1de34a79d2ef4dca4013670f19"
+    },
+    {
+      "name": "libbrotlidec.dll",
+      "size": 62619,
+      "sha256": "e270b6e576594ee8ee6e33ccc54e34a54304616dd6225652e11e49d6f17ef896"
+    },
+    {
+      "name": "libbz2-1.dll",
+      "size": 107741,
+      "sha256": "1790bf6473c9d48db14c1f0ee8124142327556d281299ea2a72ee361118ee01a"
+    },
+    {
+      "name": "libiconv-2.dll",
+      "size": 1141951,
+      "sha256": "94ec68fb8d342b6c91b6b48a8d95092819cdcd006a7166e0b68062f946afd08a"
+    },
+    {
+      "name": "libjpeg-8.dll",
+      "size": 967184,
+      "sha256": "c63acd5a3231725aa96aa35444b74cd8d607a6fbdab1dd18b0e0ada7e39476d4"
+    },
+    {
+      "name": "libtiff-6.dll",
+      "size": 618616,
+      "sha256": "ce0eb686a9b03a8586d7d1f833fadcbe67ad2f6ff8538c3f431d4edb072f935d"
+    },
+    {
+      "name": "libgraphite2.dll",
+      "size": 167857,
+      "sha256": "93953e4744bcfce9a7bc439b956544bc213095cb1349c3602a58370f32b25c18"
+    },
+    {
+      "name": "libpangoft2-1.0-0.dll",
+      "size": 111100,
+      "sha256": "27620f9c842109690616393b3616c29d5dfda8f8a0a980c0a5e869d4f75be925"
+    },
+    {
+      "name": "libdatrie-1.dll",
+      "size": 35223,
+      "sha256": "40aee3ae9a62a77454dfe8419fe21b54c54d969e0471c9e817b65d4502a9949f"
+    },
+    {
+      "name": "libbrotlicommon.dll",
+      "size": 144565,
+      "sha256": "c62c08223e450dfc2fff33c752cc228505ffd9d755201958ba800d5d30481a2c"
+    },
+    {
+      "name": "libdeflate.dll",
+      "size": 97053,
+      "sha256": "61a60665da9fd15a0e8668c47424f325e1d74479c3f896fa7ae48ffcee4ca300"
+    },
+    {
+      "name": "libjbig-0.dll",
+      "size": 61598,
+      "sha256": "36b6155be36d24a19154a48177a09978ff6c26f48665d8c7bb5057aaace6b91c"
+    },
+    {
+      "name": "libLerc.dll",
+      "size": 803103,
+      "sha256": "1ffee78579c25b073267bcac8d0a6045d9bd446e010c7953b569b2629ca8a58a"
+    },
+    {
+      "name": "liblzma-5.dll",
+      "size": 190872,
+      "sha256": "d97a260b8bb4f6affc34ec47249429240068b94bb6f7dc30c4d64daaafb3ac69"
+    },
+    {
+      "name": "libwebp-7.dll",
+      "size": 746378,
+      "sha256": "8dfe40c4e0abc90ddf18f080898987e01253d099b2b2d6daf7db521e55c00446"
+    },
+    {
+      "name": "libzstd.dll",
+      "size": 1217412,
+      "sha256": "48368ab0ca622d0ec12f41ce85d91f22866bf5da92c77a69a06483564c93816c"
+    },
+    {
+      "name": "libsharpyuv-0.dll",
+      "size": 48938,
+      "sha256": "d29380c7056383f3e7a80bf9e150f0b8c425c1cf2568d1336e88979ddc2307af"
+    }
+  ],
+  "sources": [
+    {
+      "path": "native-runtime/core/core_options.h",
+      "sha256": "e428ed6b6e98c6f9c80179ce790c3c64c68b16bd9a199b28f7e55de44079d174"
+    },
+    {
+      "path": "native-runtime/core/libretro_host.cpp",
+      "sha256": "dc736d9964180efdcab4861ffe57f00c9c9497db7f77a34011b3f9862ec3ddd2"
+    },
+    {
+      "path": "native-runtime/core/libretro_host.h",
+      "sha256": "a69a2105bb6490cf618f092a4714d3e5bce4d3f97b5dfc8651cd00e86402714a"
+    },
+    {
+      "path": "native-runtime/core/renderer_contract.h",
+      "sha256": "367517646c9248ec367d73b1b54dc55426f4757ba17c9bf78b5a4ea399f76773"
+    },
+    {
+      "path": "native-runtime/core/vendor/libretro.h",
+      "sha256": "5875414c47d8af4facf118c184b40b0e311285333a46bbfe8221a853efe5ba7a"
+    },
+    {
+      "path": "native-runtime/core/video_backend.h",
+      "sha256": "aa1cd71dfedbdd25089b2cc9df16245a797380bc5220480a726db5fa69b3979c"
+    },
+    {
+      "path": "native-runtime/core/window_surface.h",
+      "sha256": "78adde68d17718fb7939e7438f906d7212d76112a2146da971b55305119f898a"
+    },
+    {
+      "path": "native-runtime/video/opengl/gles3_backend.cpp",
+      "sha256": "6d9f6ed7cc05c774d2dda18f3d3adcfb520e3a3cd856f7dda3246fc3e1d4a266"
+    },
+    {
+      "path": "native-runtime/video/opengl/gles3_backend.h",
+      "sha256": "5e0c3131d9b09a98cd183a3db91be60feb737c01d29a8dc2675ea7c44d6ce028"
+    },
+    {
+      "path": "native-runtime/video/vulkan/hardware_backend.h",
+      "sha256": "1bb4793d536b22f3305b7a01cc9a04bd49e6ad49680009c7540166eaca1b9e61"
+    },
+    {
+      "path": "native-runtime/video/vulkan/software_backend.h",
+      "sha256": "f4040bb2b98b30c540f087fabc7f30329e3d356e3a35f20d3feacee39e5db3ad"
+    },
+    {
+      "path": "native-runtime/video/vulkan/vulkan_backend.cpp",
+      "sha256": "94c3937a8d704b02bfc298805c4f031c21e56c1586110162ddf29a7548b5ec7d"
+    },
+    {
+      "path": "native-runtime/video/vulkan/vulkan_backend.h",
+      "sha256": "248223b9f6fb3da381dae4c5eb28c14c0bdebb28727f2f2b6f55cf28bdb04e18"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_controls.cpp",
+      "sha256": "2541d2c284f059fed6634f332849ee28ca0f3bde1ab54bf544a28a1c2a2219fd"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_controls.h",
+      "sha256": "ea1d4e347a0dd3d0645ba86061d8839d15db16e16a56e5d336ee72be5193e0b7"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_runtime.cpp",
+      "sha256": "01c888e32e761bdab7f92bafcbb27a36098a239f3961568ec057a57a1ce862ae"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_audio_backend.cpp",
+      "sha256": "01d0969fd18a137e3345123e6ebfbbde83c75ac64bea50189a2c118f958bd3a8"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_audio_backend.h",
+      "sha256": "1cda1a5562499e8bb7037f84e4142fbc495fbb1635ac75b6f440fab94af67d32"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_gl_backend.cpp",
+      "sha256": "e04ca8973f70b93ec74c532bc410ef45281930c1b86dfb126dbf8b059d9a31b3"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_gl_backend.h",
+      "sha256": "f4d8452df75d398a9170729830684fe6ae873c71cb32bffa0ba34273285b381f"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_window_surface.h",
+      "sha256": "42dbff6419cba7e9b91eff05aa403d2762264ba40d8e46154968c16e9e9fa43a"
+    },
+    {
+      "path": "shared/generated/player_ui.h",
+      "sha256": "31ab54cae5a4ec4c0bb8417239b222502b3eb2197feb412da769da179eb69752"
+    }
+  ]
+}

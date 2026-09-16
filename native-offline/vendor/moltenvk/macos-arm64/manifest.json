@@ -1,0 +1,11 @@
+{
+  "runtime": "MoltenVK",
+  "version": "1.4.2",
+  "platform": "macOS arm64",
+  "library": "libMoltenVK.dylib",
+  "sha256": "aef00b13bcc808adf15b85bef9ae67393d92be7ed5dfe41cad16fa809e4a4c5f",
+  "archiveSha256": "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e",
+  "license": "Apache-2.0",
+  "upstream": "https://github.com/KhronosGroup/MoltenVK",
+  "release": "https://github.com/KhronosGroup/MoltenVK/releases/tag/v1.4.2"
+}

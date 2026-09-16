@@ -1,0 +1,13 @@
+{
+  "engine": "Azahar libretro",
+  "version": "2126.1.1",
+  "platform": "Android arm64-v8a",
+  "core": "azahar_libretro_android.so",
+  "sha256": "de4364104250bd6f7b61b06ef4286a4835924382936b89cf4836e0462305c2c3",
+  "archiveSha256": "9b13b40be733cd182c24be45f59b382660b516d03aca73a4d3549232b91ff70c",
+  "sourceUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-unified-source-2126.1.1.tar.xz",
+  "licenseUrl": "https://raw.githubusercontent.com/azahar-emu/azahar/2126.1.1/license.txt",
+  "licenseSha256": "a77e81713ddfe05f9f7f3a3c46de4147f82b5fe9d6e5e24af96e36a6de53f613",
+  "license": "GPL-2.0-or-later",
+  "upstream": "https://github.com/azahar-emu/azahar"
+}
