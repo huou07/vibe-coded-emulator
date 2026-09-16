@@ -119,3 +119,28 @@ pushes `main`, and applies secret scanning + push protection, Dependabot alerts
 and security updates, private vulnerability reporting and branch protection,
 reporting each result (settings that the plan or permissions reject are listed,
 not silently assumed).
+
+## Published — 2026-09-16
+
+`https://github.com/huou07/vibe-coded-emulator` is live (public).
+
+- Published from a **clean snapshot** (`tools/build-public-snapshot.sh`), not the
+  development history: one fresh commit authored
+  `huou07 <huou07@users.noreply.github.com>`, merged non-destructively with the
+  repository's pre-existing commit (snapshot files win, no force-push).
+- Security gate before the push: `PUBLICATION_CHECK=PASS` (gitleaks 0 findings;
+  personal-data and infra patterns clean).
+- Repository settings applied: secret scanning + push protection, Dependabot
+  alerts, Dependabot security updates, private vulnerability reporting, branch
+  protection (required PR + the `test` CI check).
+- GitHub token scope `workflow` was required to publish `.github/workflows/`;
+  granted via `gh auth refresh -h github.com -s workflow`.
+
+Republish/update later with:
+
+```bash
+tools/publish-github.sh --confirm
+```
+
+It rebuilds the snapshot, re-runs the gate, and pushes. Publishing is never
+automatic.
