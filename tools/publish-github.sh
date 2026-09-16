@@ -13,6 +13,7 @@
 # Environment (author identity for the single public commit):
 #   AN3_PUBLIC_AUTHOR_NAME   default: GitHub username from --repo
 #   AN3_PUBLIC_AUTHOR_EMAIL  default: <username>@users.noreply.github.com
+#   AN3_PUBLIC_GIT_PROTOCOL  https (default) or ssh
 #
 # It never prints secrets and never force-pushes.
 set -euo pipefail
@@ -99,15 +100,22 @@ gh repo edit "$REPO" \
 
 step "5/7 push main (no force)"
 git -C "$SNAPSHOT" remote remove origin 2>/dev/null || true
-PROTOCOL="$(gh config get git_protocol -h github.com 2>/dev/null || echo https)"
+# `gh auth login` grants an HTTPS token, so HTTPS + gh's credential helper is
+# the reliable default. SSH is used only when explicitly requested and a key is
+# actually registered with GitHub.
+gh auth setup-git >/dev/null 2>&1 || true
+PROTOCOL="${AN3_PUBLIC_GIT_PROTOCOL:-https}"
 if [[ "$PROTOCOL" == "ssh" ]]; then
   REMOTE="git@github.com:$REPO.git"
+  note "using SSH; this requires a key registered at https://github.com/settings/keys"
 else
   REMOTE="https://github.com/$REPO.git"
 fi
 note "remote: $REMOTE"
 git -C "$SNAPSHOT" remote add origin "$REMOTE"
-git -C "$SNAPSHOT" push -u origin main
+if ! git -C "$SNAPSHOT" push -u origin main; then
+  die "push failed. If you see 'Permission denied (publickey)', your configured protocol is SSH without a registered key: either run 'gh auth setup-git' and re-run with AN3_PUBLIC_GIT_PROTOCOL=https, or add an SSH key to GitHub."
+fi
 
 step "6/7 security settings (best effort; reported individually)"
 set +e
