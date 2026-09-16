@@ -180,8 +180,18 @@ endpoint.
   to request a full state after a reconnect.
 - Rate limiting for pairing attempts.
 
-**Not done:** the phone touch-controller UI, the QR renderer, LAN discovery of
-hosts, and the actual transport (WebSocket/WebRTC/QUIC). No unauthenticated
+**Wired (staging-only):** `app.py` exposes the session as a small JSON API —
+`POST /api/controller/session` (host creates, returns a pairing code + host
+token), `POST /api/controller/pair` (phone pairs with the code), `POST
+/api/controller/state` (phone submits a frame), `POST /api/controller/disconnect`
+and token-authenticated `GET /api/controller/state` (host reads the latest
+state). Sessions have a 2-minute TTL, are reaped on every mutating request, and
+are gated by `CONTROLLER_ENABLED` (staging/development); production returns 404.
+Pages: `/controller` (host — pairing code, join link, live status) and
+`/controller/join` (phone touch pad → `static/controller.js`), verified live on
+staging (create → pair → submit → host read). Transport is the same-origin HTTP
+JSON API for both directions; a QR renderer and binding the host state into the
+live EmulatorJS input path are the remaining pieces. No unauthenticated
 controller endpoint is exposed.
 
 ## 10. Multiplayer / rooms

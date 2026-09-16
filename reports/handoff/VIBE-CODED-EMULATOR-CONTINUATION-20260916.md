@@ -165,3 +165,26 @@ Android (AVD) and Linux (Dell Debian) but never published or deployed them.
   flow is what consumes it today).
 - Remote-controller phone UI/QR/transport, LAN discovery/transfer, sync wiring
   in `app.py`, Switch companion — unchanged, all still codeable.
+
+## Update — 2026-09-16 (third session)
+
+**Multiplayer room page (DONE):** `/multiplayer` renders Create/Join controls
+(`static/multiplayer.js`); `PRIMARY_CORES` mirrors `static/player.js` (parity
+test) and `game_rom_hash()` derives a cached stable SHA-256 so a `?slug=` prefill
+gives two players the same room signature. Staging asset `cd10db2b92fb`.
+
+**Remote phone controller (DONE, staging-only):** `app.py` wraps
+`netcode.ControllerSession` as `/api/controller/session|pair|state|disconnect`
+plus token-authenticated `GET /api/controller/state`, with 2-minute TTL, reaping
+and rate limiting; production 404s. Pages `/controller` (host: code + join link +
+live status) and `/controller/join` (phone touch pad) with
+`static/controller.js`. Verified live on staging (create → pair → submit →
+host read). Staging asset `6b602866d487`.
+
+**Latest verification:** full suite **219 tests, 0 failures**; deploys PASS with
+rollback retained. Commits `69f325c`, `4c0ecbf`, `b8191e9`, `b95db9e`, `c53f12c`,
+`0540e78`.
+
+**Still not done:** Flatpak/Windows 1.1.0; a QR renderer for the controller and
+binding host state into the live EmulatorJS input path; LAN device discovery +
+direct transfer; sync wiring in `app.py`; Switch companion.
