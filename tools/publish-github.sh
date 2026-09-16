@@ -22,12 +22,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="huou07/vibe-coded-emulator"
 SNAPSHOT="${AN3_PUBLICATION_CANDIDATE:-$ROOT/work/public-snapshot}"
 CONFIRMED=0
+ADOPT_REMOTE=0
 
 usage() {
   cat <<'USAGE'
 Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
 
   --confirm        required; acknowledge that this publishes publicly
+  --adopt-remote   merge an existing remote main into the snapshot (no force-push)
   --repo OWNER/NAME  default: huou07/vibe-coded-emulator
   --snapshot DIR     default: work/public-snapshot
   -h, --help       show this help
@@ -39,6 +41,7 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRMED=1; shift ;;
+    --adopt-remote) ADOPT_REMOTE=1; shift ;;
     --repo) [[ -n "${2:-}" ]] || { printf 'ERROR: --repo needs OWNER/NAME\n' >&2; exit 2; }; REPO="$2"; shift 2 ;;
     --snapshot) [[ -n "${2:-}" ]] || { printf 'ERROR: --snapshot needs a directory\n' >&2; exit 2; }; SNAPSHOT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -113,8 +116,25 @@ else
 fi
 note "remote: $REMOTE"
 git -C "$SNAPSHOT" remote add origin "$REMOTE"
+
+# A repository created without --source may already contain an initial commit
+# (for example a README). Detect it and merge non-destructively when asked:
+# no force-push, no history rewrite, and the snapshot's files win.
+if git -C "$SNAPSHOT" fetch -q origin main 2>/dev/null; then
+  if [[ "$ADOPT_REMOTE" -eq 1 ]]; then
+    note "remote main exists; merging it with the snapshot (snapshot files win, no force)"
+    git -C "$SNAPSHOT" \
+      -c user.name="$AUTHOR_NAME" -c user.email="$AUTHOR_EMAIL" \
+      merge -q --allow-unrelated-histories -X ours \
+      -m "Merge the existing remote commit into the initial public release" origin/main \
+      || die "merge failed; resolve manually in $SNAPSHOT"
+  else
+    die "the remote repository already has a 'main' branch. Re-run with --adopt-remote to merge it into the snapshot (snapshot files win, no force-push), or delete the repository and re-run."
+  fi
+fi
+
 if ! git -C "$SNAPSHOT" push -u origin main; then
-  die "push failed. If you see 'Permission denied (publickey)', your configured protocol is SSH without a registered key: either run 'gh auth setup-git' and re-run with AN3_PUBLIC_GIT_PROTOCOL=https, or add an SSH key to GitHub."
+  die "push failed. Check 'gh auth status'; for SSH errors add a key to GitHub or re-run with AN3_PUBLIC_GIT_PROTOCOL=https."
 fi
 
 step "6/7 security settings (best effort; reported individually)"
