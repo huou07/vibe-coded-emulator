@@ -144,3 +144,23 @@ tools/publish-github.sh --confirm
 
 It rebuilds the snapshot, re-runs the gate, and pushes. Publishing is never
 automatic.
+
+## Production release 2.0.0 (owner-approved) — 2026-09-17
+
+- The root `deploy.sh` was **stale and unsafe** (packaged only `app.py/static`,
+  so production would fail to import `netcode`/`sync_engine`/`qrcodegen`). It now
+  exits with a pointer to the reviewed path.
+- New `deploy-production.sh` (requires `AN3_PRODUCTION_APPROVED=1`): packages with
+  `deploy/package-production.sh`, runs a payload security preflight, uploads, and
+  runs the host-side `update-production.sh` (backup + asset check + health gate).
+- Deployed: `PRODUCTION_RELEASE=PASS`, asset `973c9002b67f`, release
+  `production-388027d63bb9c5a4`; app backup
+  `/opt/an3-arcade-backups/20260917-010822`, DB backup
+  `/srv/an3-arcade/backups/arcade-predeploy-20260917-010822.db` (integrity PASS).
+- Verified live: `/health` = production, `/` 200, `/licenses` 200,
+  `/licenses/gpl-3.0.txt` 200 (35,149 B); staging-only routes (`/controller`,
+  `/multiplayer`, `/api/sync/*`) correctly 404.
+- **Finding**: the production database still stores a personal maintainer email
+  in `site_settings.maintainer_email`, which the footer renders publicly. The
+  code default is now empty; clear or replace the stored value if it should not
+  be public.
