@@ -1,9 +1,15 @@
+# Example reverse-proxy configuration for Vibe Coded Emulator.
+#
+# This is a generic example. Replace the placeholder values with your own
+# before deploying; the project ships no production domain or address.
 {
-    email nguyen.tntl88@gmail.com
+    # ACME/Let's Encrypt contact address. Use an address you control.
+    email YOUR_EMAIL@example.com
     http_port 8088
 }
 
-an3tocom.space, www.an3tocom.space {
+# Your public hostname(s). Replace example.com.
+example.com, www.example.com {
     encode zstd gzip
     reverse_proxy 127.0.0.1:8091
     header {

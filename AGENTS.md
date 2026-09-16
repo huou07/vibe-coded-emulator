@@ -51,3 +51,24 @@ version + filename.
 - Web NDS touch must resolve the EmulatorJS source canvas; presentation canvases are output-only and must remain pointer-inert. Validate Top/Bottom, Left/Right, scaled/letterboxed, pointer capture, release/cancel, menu precedence, and keyboard passthrough.
 - Any edit to `static/player.js`, `static/nds-touch.js`, `static/site.css`, or `static/renderer-worker.js` that affects player canvas/input/layers must run the Web NDS gameplay-touch, menu-precedence, Settings-clickability, virtual-pad-precedence, presentation/source-ownership, pointer-release/cancel, and fullscreen/resize tests before and after the edit.
 - For staging verification, record the asset version, active release, browser/runtime, ROM identity, visible-frame result, input result, and console/runtime errors. Do not access production while performing this audit.
+
+## Public release security gate (mandatory)
+
+Before any push, release, or publication to a public GitHub repository, run the
+public-release-security workflow (`tools/publication-check.sh`, policy in
+`.opencode/skills/public-release-security/SKILL.md`). Do not publish if secret
+scanning, personal-data checks, licence checks, or relevant source-history
+checks are incomplete or failing. Never bypass the security gate without
+explicit user approval of the specific finding — and approval does not make an
+exposed active credential safe: rotate or revoke it first.
+
+Publishing rules for this repo:
+
+- The public repository is only the product source. Never publish `.opencode/`,
+  `.codex/`, `AGENTS.md`, `reports/`, `work/`, handoff/status documents,
+  staging/production operational docs, SSH material, real environment files,
+  ROMs, saves, firmware or keys.
+- The development history contains personal paths and private infrastructure
+  details. Do not push this history to a public remote; export a clean snapshot
+  and add a truthful provenance note instead.
+- All source comments, documentation and public-facing text must be in English.

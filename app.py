@@ -855,7 +855,7 @@ def init_db():
         if "system_auto" not in columns:
             conn.execute("ALTER TABLE games ADD COLUMN system_auto INTEGER NOT NULL DEFAULT 0")
         defaults = {
-            "maintainer_email": os.environ.get("AN3_MAINTAINER_EMAIL", "nguyen.tntl88@gmail.com"),
+            "maintainer_email": os.environ.get("AN3_MAINTAINER_EMAIL", ""),
             "maintainer_facebook": "",
             "maintainer_links": "",
         }
