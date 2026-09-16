@@ -74,21 +74,22 @@ without explicit owner approval.
   `Vibe Coded Emulator` + `brand-logo.png`, icons/manifest served, deployed
   `player.js` contains `vibe-autosave-v1`.
 
-## Not done (all codeable; ran out of session budget — not blocked)
+## Done after this handoff (updated 2026-09-16)
 
-1. **Android + Linux native autosave-mode UI parity.** Android:
-   `native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeGameOverlay.kt`
-   (checkbox `"Auto Save (state snapshot)"` + `choice("Auto Save interval", …, 60/120/300)`)
-   and `native-offline/native-runtime/platform/android/jni_runtime.cpp`
-   (`cmd=="autosave"`, `cmd=="autosave-interval"`, stop-time
-   `if (autosave) s.host.save_auto(error)`). Linux:
-   `native-offline/native-runtime/platform/linux/linux_controls.{h,cpp}` and
-   `linux_runtime.cpp` (same enabled+interval model). Replace with the single
-   Off/On-exit/30/10/5 mode and a save-on-exit stop path. Update
-   `tests/test_android_native_runtime.py` (asserts `'"autosave-interval"'` and
-   `'if (autosave) s.host.save_auto(error)'`) and `tests/test_linux_native_runtime.py`.
-   Then rebuild the APK (`npm run android:build` / `scripts/build-android-staging.sh`)
-   and Linux packages (`scripts/build-linux-staging.sh` on Linux).
+- **Android + Linux native autosave-mode UI parity: DONE.** A shared model
+  (`native-offline/native-runtime/core/auto_save_mode.h` + `shared/player-ui.json#autoSave`
+  → `NativePlayerUi.kt` / `player_ui.h`) replaced the old checkbox+interval UI on
+  both platforms; `autosave-mode` is the single command. Android 1.1.0 APK rebuilt.
+- **macOS autosave now uses the same shared model: DONE** (commit `c399679`).
+  `azahar_host.mm` includes `auto_save_mode.h`, builds the menu from
+  `player_ui::auto_save_titles/tokens`, parses with `an3::parse_auto_save_mode`,
+  and keeps the legacy boolean+interval keys as a migration fallback. macOS
+  parity test added to `tests/test_shared_player_ui.py`; `cargo check` + rebuilt
+  DMG + runtime smoke (off=none, 5s/10s=written, exit=periodic off) pass.
+
+## Not done (all codeable — not blocked)
+
+1. ~~Android + Linux native autosave-mode UI parity~~ (done, see above).
 2. **Wire `netcode`/`sync_engine` into `app.py`:** controller routes + phone
    page + QR, `/sync/*` settings + mode, `/multiplayer/*` rooms connected to the
    existing EmulatorJS-Netplay relay (`docs/netplay-staging.md`, `AN3_NETPLAY_ORIGIN`,
@@ -114,7 +115,7 @@ without explicit owner approval.
   destructive-clean it. The clean checkpoint lives in the separate worktree.
 - Pre-existing failing test (unrelated): `test_integration.SystemInferenceTests.
   test_current_staging_catalog_names_only_the_current_verified_installers`
-  expects the older `1.0.0` catalog. Full suite is otherwise green (195 tests).
+  expects the older `1.0.0` catalog. Full suite is otherwise green (199 tests).
 - `rg` is not installed on this host; use the Grep tool or `grep`.
 
 ## Baseline commands
