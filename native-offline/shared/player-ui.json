@@ -39,5 +39,22 @@
       "1x",
       "x2"
     ]
+  },
+  "autoSave": {
+    "label": "Auto Save",
+    "titles": [
+      "Off",
+      "On game exit",
+      "Every 30 seconds",
+      "Every 10 seconds",
+      "Every 5 seconds"
+    ],
+    "tokens": [
+      "off",
+      "exit",
+      "30",
+      "10",
+      "5"
+    ]
   }
 }

@@ -77,15 +77,48 @@ compatibility renderer vs native, Azahar side-by-side layout).
 
 ### Native macOS (`native-offline/src-tauri/src/azahar_host.mm`)
 
-- Autosave is now a single mode popup: **Off, On game exit, Every 30s, Every
-  10s, Every 5s** (`an3.native-auto-save-mode.v1`), with backwards-compatible
-  reading of the previous `an3.native-auto-save.v1` boolean + interval keys.
+- Autosave is a single mode popup: **Off, On game exit, Every 30s, Every 10s,
+  Every 5s** (`an3.native-auto-save-mode.v1`), with backwards-compatible reading
+  of the previous `an3.native-auto-save.v1` boolean + interval keys.
+- It now uses the **same shared model** as Android/Linux: titles/tokens come from
+  `shared/player-ui.json` (`an3::player_ui::auto_save_titles/tokens`) and the
+  token is parsed by `native-runtime/core/auto_save_mode.h`
+  (`an3::parse_auto_save_mode`). The macOS shell no longer keeps a private copy
+  of the titles/tokens.
 - An explicit **Exit Game** control writes a final autosave when enabled, then
   stops the session and returns to the library.
 - Autosave still writes to `<rom_id>.autosave.state` through the existing atomic
   writer, separate from quick slots 1–10.
-- **Not done:** the Linux/Android native autosave UI still exposes the older
-  enabled + interval model; parity is pending.
+
+### Native Android and Linux
+
+- Both now expose the same single mode as macOS: **Off, On game exit, Every 30s,
+  Every 10s, Every 5s**. The titles/tokens come from the shared
+  `native-offline/shared/player-ui.json` model and are generated into
+  `NativePlayerUi.kt` and `player_ui.h`; all three native shells (macOS, Android,
+  Linux) parse the persisted token through `native-runtime/core/auto_save_mode.h`,
+  so the platforms cannot drift.
+- The Android menu persists the mode in `autosave-mode` (migrating the previous
+  `autosave` boolean + `autosave-interval` keys through `NativeAutoSave`) and
+  sends one `autosave-mode` command; the Linux GTK panel sends the same token.
+- `native-runtime/core/auto_save_mode.h` parses the token identically for both:
+  `off`, `exit`, and any positive numeric interval (so a legacy 60/120/300 value
+  keeps working). Periodic modes save on their own timer; the `exit` mode writes
+  one final atomic snapshot on the stop path.
+- Verified on hardware/VM:
+  - **Android (arm64 API 35 AVD, debug build installed):** native mGBA ran at
+    59 fps; the Save States menu shows one Auto Save spinner with **Off / On
+    game exit / Every 30s / Every 10s / Every 5s**, no checkbox or interval
+    control; `autosave-mode` persisted in prefs; "Every 5 seconds" wrote
+    `<rom>.autosave.state` on a timer; "On game exit" wrote nothing on the timer
+    and wrote the autosave as the game activity stopped.
+  - **Linux (Debian builder, native runtime under Xvfb with a legal GBA ROM):**
+    the GTK Save States tab shows the same single Auto Save combo with all five
+    modes; "Every 5 seconds" wrote the autosave, and "On game exit" wrote it when
+    returning to the library.
+  - Shared-header parse unit test, Android `jni_runtime.cpp` compile + link and
+    Kotlin compile, and a rebuilt
+    `releases/vibecodedemulator-1.1.0-android-arm64-staging.apk`.
 
 ## 6. Google sign-in and Drive sync (core implemented; server wiring pending)
 

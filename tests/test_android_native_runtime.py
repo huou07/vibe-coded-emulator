@@ -217,7 +217,10 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             self.assertIn('"'+label+'"', shared)
         self.assertIn('"Save Settings"', overlay)
         self.assertIn("for(slot in 1..10)", overlay)
-        self.assertIn('"autosave-interval"', overlay)
+        self.assertIn('"autosave-mode"', overlay)
+        self.assertIn("NativePlayerUi.autoSaveTitles", overlay)
+        self.assertIn("NativePlayerUi.autoSaveTokens", overlay)
+        self.assertNotIn("autosave-interval", overlay)
         self.assertIn("val draft = mutableMapOf", overlay)
         self.assertIn("val flags = mutableMapOf", overlay)
         self.assertIn('button("Save Settings")', overlay)
@@ -285,12 +288,32 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             body = body[: body.find("\nextern \"C\"", 1)] if "\nextern \"C\"" in body else body
             self.assertIn("owns(e,activity)", body, method)
 
+    def test_android_native_autosave_uses_the_single_shared_mode(self):
+        jni = source(JNI)
+        activity = source(GAME_ACTIVITY)
+        overlay = source(GAME_ACTIVITY.with_name("NativeGameOverlay.kt"))
+        resolver = source(GAME_ACTIVITY.with_name("NativeAutoSave.kt"))
+        self.assertIn('#include "../../core/auto_save_mode.h"', jni)
+        self.assertIn('cmd=="autosave-mode"', jni)
+        self.assertIn("auto_save.enabled", jni)
+        self.assertIn("auto_save.on_exit", jni)
+        self.assertNotIn('cmd=="autosave-interval"', jni)
+        self.assertNotIn("if (autosave) s.host.save_auto(error)", jni)
+        self.assertIn("autoSaveMode: String", activity)
+        self.assertIn("NativeAutoSave.resolve(preferences)", activity)
+        self.assertIn('commandWhenReady("autosave-mode"', activity)
+        self.assertIn('choice(NativePlayerUi.AUTO_SAVE_LABEL, "autosave-mode"', overlay)
+        # One mode token drives the menu, the persisted setting and the host.
+        for token in ('"off"', '"exit"', '"30"', '"10"', '"5"'):
+            self.assertIn(token, source(ROOT / "native-offline/shared/generated/player_ui.h"))
+        self.assertIn('getBoolean("autosave", true)', resolver)
+
     def test_failed_suspend_export_removes_stale_resume_snapshot(self):
         jni = source(JNI)
         failed_export = between(
             jni,
             'if (s.suspend && s.host.export_state(saves+"/.suspend.state",error))',
-            'if (autosave) s.host.save_auto(error)',
+            'if (auto_save.on_exit) s.host.save_auto(error)',
         )
 
         self.assertIn('} else if (s.suspend) {', failed_export)

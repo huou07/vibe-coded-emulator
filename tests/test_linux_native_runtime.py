@@ -86,9 +86,13 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         model = json.loads((ROOT / "native-offline/shared/player-ui.json").read_text())
         self.assertEqual(model["tabs"], ["General", "Graphics", "Audio", "Keyboard", "Controller", "Emulation", "Save States", "Diagnostics", "About"])
         self.assertIn("append_page(player_ui::tabs[i]", CONTROLS)
-        for action in ("Toggle fullscreen", "Return to library", "x4", "x8", "Auto Save (state snapshot)",
+        for action in ("Toggle fullscreen", "Return to library", "x4", "x8",
                        "Export Save State…", "Import Save State…", "Release held native input"):
             self.assertIn(action, CONTROLS)
+        self.assertIn("player_ui::auto_save_label", CONTROLS)
+        self.assertIn("player_ui::auto_save_titles", CONTROLS)
+        self.assertIn("player_ui::auto_save_tokens", CONTROLS)
+        self.assertNotIn("Auto Save (state snapshot)", CONTROLS)
         for speed in ("player_ui::toolbar_speed[0]", "player_ui::toolbar_speed[1]", "player_ui::toolbar_speed[2]"):
             self.assertIn(speed, CONTROLS)
         self.assertIn("host_.core_options()", CONTROLS)
@@ -98,6 +102,19 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn("callbacks_.set_layout", CONTROLS)
         for forbidden in ("WebView", "OffscreenCanvas", "glReadPixels", "glFinish"):
             self.assertNotIn(forbidden, CONTROLS)
+
+    def test_linux_native_autosave_uses_the_single_shared_mode(self):
+        self.assertIn('#include "../../core/auto_save_mode.h"', RUNTIME)
+        self.assertIn("set_auto_save_mode", RUNTIME)
+        self.assertIn("parse_auto_save_mode", RUNTIME)
+        self.assertIn("auto_save.enabled", RUNTIME)
+        self.assertIn("auto_save.on_exit", RUNTIME)
+        self.assertNotIn("set_autosave_interval", RUNTIME)
+        self.assertNotIn("autosave_interval", RUNTIME)
+        # The shared model is the single source for the offered mode tokens.
+        native = (ROOT / "native-offline/shared/generated/player_ui.h").read_text(encoding="utf-8")
+        for token in ('"off"', '"exit"', '"30"', '"10"', '"5"'):
+            self.assertIn(token, native)
 
 
 if __name__ == "__main__":

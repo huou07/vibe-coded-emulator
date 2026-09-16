@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const model = JSON.parse(await readFile(resolve(root, "shared/player-ui.json"), "utf8"));
-const j = model.joystick, p = model.panel, t = model.toolbar;
+const j = model.joystick, p = model.panel, t = model.toolbar, a = model.autoSave;
 if (!(j.deadzone >= 0 && j.deadzone < 1 && j.travelRatio > 0 && j.travelRatio + j.thumbRadiusRatio < 1)) throw new Error("Invalid joystick geometry");
 if (!t || ![t.menu, t.pad, t.nextLayout, t.cursorLock].every(value => typeof value === "string" && value) || !Array.isArray(t.speed) || t.speed.length !== 3 || !t.speed.every(value => typeof value === "string" && value)) throw new Error("Invalid shared toolbar model");
+if (!a || typeof a.label !== "string" || !a.label || !Array.isArray(a.titles) || !Array.isArray(a.tokens) || a.titles.length === 0 || a.titles.length !== a.tokens.length || !a.titles.every(value => typeof value === "string" && value) || !a.tokens.every(value => typeof value === "string" && value)) throw new Error("Invalid shared auto-save model");
 const signedColor = value => {
   const numeric = Number.parseInt(value.replace(/^#/, ""), 16);
   if (!Number.isInteger(numeric)) throw new Error(`Invalid player UI color: ${value}`);
@@ -23,6 +24,9 @@ namespace an3::player_ui {
 inline constexpr std::array<std::string_view, ${model.tabs.length}> tabs = {${model.tabs.map(JSON.stringify).join(", ")}};
 inline constexpr std::string_view toolbar_menu = ${JSON.stringify(t.menu)}, toolbar_pad = ${JSON.stringify(t.pad)}, toolbar_next_layout = ${JSON.stringify(t.nextLayout)}, toolbar_cursor_lock = ${JSON.stringify(t.cursorLock)};
 inline constexpr std::array<std::string_view, ${t.speed.length}> toolbar_speed = {${t.speed.map(JSON.stringify).join(", ")}};
+inline constexpr std::string_view auto_save_label = ${JSON.stringify(a.label)};
+inline constexpr std::array<std::string_view, ${a.titles.length}> auto_save_titles = {${a.titles.map(JSON.stringify).join(", ")}};
+inline constexpr std::array<std::string_view, ${a.tokens.length}> auto_save_tokens = {${a.tokens.map(JSON.stringify).join(", ")}};
 inline constexpr double stick_diameter = ${j.diameter}.0, thumb_radius_ratio = ${j.thumbRadiusRatio}, travel_ratio = ${j.travelRatio}, deadzone = ${j.deadzone};
 inline constexpr double panel_width = ${p.maxWidth}.0, panel_height = ${p.maxHeight}.0, panel_edge = ${p.edge}.0;
 struct Axis { double x = 0, y = 0; };
@@ -45,6 +49,9 @@ object NativePlayerUi {
     const val NEXT_LAYOUT_LABEL = ${JSON.stringify(t.nextLayout)}
     const val CURSOR_LOCK_LABEL = ${JSON.stringify(t.cursorLock)}
     val speedLabels = listOf(${t.speed.map(JSON.stringify).join(", ")})
+    const val AUTO_SAVE_LABEL = ${JSON.stringify(a.label)}
+    val autoSaveTitles = listOf(${a.titles.map(JSON.stringify).join(", ")})
+    val autoSaveTokens = listOf(${a.tokens.map(JSON.stringify).join(", ")})
     const val CONTROL_COLOR = ${signedColor(model.colors.control)}
     const val BORDER_COLOR = ${signedColor(model.colors.border)}
     const val THUMB_COLOR = ${signedColor(model.colors.thumb)}

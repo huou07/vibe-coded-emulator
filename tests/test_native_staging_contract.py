@@ -30,7 +30,7 @@ class NativeStagingContractTests(unittest.TestCase):
         self.assertIn("kMaxQuickStateSlot", HOST)
         self.assertIn("Quick-save slots range from 1 to 10.", HOST)
         self.assertIn("kNativeAutoSaveModeDefaultsKey", HOST)
-        self.assertIn("On game exit", HOST)
+        self.assertIn("parse_auto_save_mode", HOST)
 
     def test_core_options_are_announced_persisted_and_updated(self):
         self.assertIn("CoreOptionsRegistry", OPTIONS)

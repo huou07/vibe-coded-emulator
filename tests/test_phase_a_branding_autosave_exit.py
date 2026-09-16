@@ -84,8 +84,10 @@ class PhaseAAutosaveExitTests(unittest.TestCase):
 
     def test_native_macos_shell_exposes_autosave_modes_and_exit_game(self):
         host = (ROOT / "native-offline" / "src-tauri" / "src" / "azahar_host.mm").read_text(encoding="utf-8")
-        for token in ('@"Off"', '@"On game exit"', '@"Every 30 seconds"', '@"Every 10 seconds"', '@"Every 5 seconds"'):
-            self.assertIn(token, host)
+        # macOS shares the auto-save model/parser with Android and Linux.
+        self.assertIn('#include "../../native-runtime/core/auto_save_mode.h"', host)
+        self.assertIn("an3::parse_auto_save_mode", host)
+        self.assertIn("player_ui::auto_save_titles", host)
         self.assertIn("native_apply_auto_save_mode", host)
         self.assertIn("auto_save_on_exit()", host)
         self.assertIn('buttonWithTitle:@"Exit Game"', host)

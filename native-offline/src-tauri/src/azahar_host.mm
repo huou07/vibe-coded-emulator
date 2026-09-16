@@ -4,6 +4,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include "../../shared/generated/player_ui.h"
+#include "../../native-runtime/core/auto_save_mode.h"
 
 #include <array>
 #include <atomic>
@@ -463,6 +464,9 @@ static std::string core_option_namespace_for_system(const std::string& system) {
     return system;
 }
 
+// Resolve the persisted Auto Save token from the shared model/parser below.
+static NSString* native_stored_auto_save_mode();
+
 class AzaharHost {
   public:
     bool start(const char* core_path,
@@ -508,21 +512,16 @@ class AzaharHost {
         speed_budget_ = 0.0;
         active_game_seconds_ = 0.0;
         last_autosave_game_seconds_ = 0.0;
-        // Auto Save mode token: off | exit | 30 | 10 | 5. Fall back to the
-        // earlier enabled+interval keys so an existing install keeps working.
-        NSString* auto_save_mode = [[NSUserDefaults standardUserDefaults] stringForKey:@"an3.native-auto-save-mode.v1"];
-        if (auto_save_mode.length == 0) {
-            const bool legacy_enabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"an3.native-auto-save.v1"];
-            const NSInteger legacy_interval = [[NSUserDefaults standardUserDefaults] integerForKey:@"an3.native-auto-save-interval.v1"];
-            auto_save_mode = legacy_enabled
-                ? [NSString stringWithFormat:@"%ld", (long)(legacy_interval > 0 ? legacy_interval : 60)] : @"off";
+        // One shared Auto Save token, resolved through the same
+        // native-runtime/core/auto_save_mode.h parser Android and Linux use.
+        {
+            NSString* stored_mode = native_stored_auto_save_mode();
+            auto parsed = an3::parse_auto_save_mode(std::string(stored_mode.UTF8String ?: "off"));
+            if (!parsed) parsed = an3::parse_auto_save_mode("off");
+            auto_save_enabled_ = parsed->enabled;
+            auto_save_on_exit_ = parsed->on_exit;
+            auto_save_interval_seconds_ = parsed->enabled ? std::max(1u, parsed->interval) : 60u;
         }
-        const bool auto_save_off = [auto_save_mode isEqualToString:@"off"];
-        const bool auto_save_exit = [auto_save_mode isEqualToString:@"exit"];
-        auto_save_enabled_ = !auto_save_off && !auto_save_exit;
-        auto_save_on_exit_ = auto_save_exit;
-        auto_save_interval_seconds_ = auto_save_off || auto_save_exit
-            ? 60u : std::max(1u, static_cast<unsigned>(auto_save_mode.integerValue ?: 60));
         set_audio_speed(1.0);
 
         core_.set_environment(environment_callback);
@@ -1411,20 +1410,31 @@ static NSString* const kNativeAutoSaveDefaultsKey = @"an3.native-auto-save.v1";
 static NSString* const kNativeAutoSaveIntervalDefaultsKey = @"an3.native-auto-save-interval.v1";
 static NSString* const kNativeAutoSaveModeDefaultsKey = @"an3.native-auto-save-mode.v1";
 
-// Auto Save mode is a single, unambiguous choice: off, save on game exit, or a
-// periodic snapshot. Titles/tokens are kept together so the menu and the
-// persisted value can never drift apart.
-static NSArray<NSString*>* native_auto_save_mode_titles() {
-    return @[@"Off", @"On game exit", @"Every 30 seconds", @"Every 10 seconds", @"Every 5 seconds"];
+// Auto Save mode is a single, unambiguous choice from the shared model
+// (native-offline/shared/player-ui.json) and is parsed by the same
+// native-runtime/core/auto_save_mode.h header Android and Linux use, so the
+// three native shells cannot drift apart.
+static NSArray<NSString*>* native_auto_save_titles() {
+    NSMutableArray<NSString*>* titles = [NSMutableArray arrayWithCapacity:an3::player_ui::auto_save_titles.size()];
+    for (std::string_view title : an3::player_ui::auto_save_titles) {
+        [titles addObject:[NSString stringWithUTF8String:std::string(title).c_str()]];
+    }
+    return titles;
 }
 
-static NSArray<NSString*>* native_auto_save_mode_tokens() {
-    return @[@"off", @"exit", @"30", @"10", @"5"];
+static NSArray<NSString*>* native_auto_save_tokens() {
+    NSMutableArray<NSString*>* tokens = [NSMutableArray arrayWithCapacity:an3::player_ui::auto_save_tokens.size()];
+    for (std::string_view token : an3::player_ui::auto_save_tokens) {
+        [tokens addObject:[NSString stringWithUTF8String:std::string(token).c_str()]];
+    }
+    return tokens;
 }
 
 static NSString* native_stored_auto_save_mode() {
     NSString* stored = [[NSUserDefaults standardUserDefaults] stringForKey:kNativeAutoSaveModeDefaultsKey];
-    if (stored.length && [native_auto_save_mode_tokens() containsObject:stored]) return stored;
+    // An empty or unrecognised value falls through to the earlier boolean +
+    // interval keys so an existing install keeps its configured interval.
+    if (stored.length && an3::parse_auto_save_mode(std::string(stored.UTF8String))) return stored;
     const bool legacy_enabled = [[NSUserDefaults standardUserDefaults] boolForKey:kNativeAutoSaveDefaultsKey];
     if (!legacy_enabled) return @"off";
     const NSInteger legacy_interval = [[NSUserDefaults standardUserDefaults] integerForKey:kNativeAutoSaveIntervalDefaultsKey];
@@ -1432,15 +1442,19 @@ static NSString* native_stored_auto_save_mode() {
 }
 
 static void native_apply_auto_save_mode(NSString* mode) {
-    NSString* resolved = [native_auto_save_mode_tokens() containsObject:mode] ? mode : @"off";
-    const bool off = [resolved isEqualToString:@"off"];
-    const bool on_exit = [resolved isEqualToString:@"exit"];
-    if (auto* host = active_host()) {
-        host->set_auto_save_enabled(!off && !on_exit);
-        host->set_auto_save_on_exit(on_exit);
-        if (!off && !on_exit) host->set_auto_save_interval_seconds(static_cast<unsigned>(std::max<long>(1L, static_cast<long>(resolved.intValue))));
+    std::string token = mode.length ? std::string(mode.UTF8String) : std::string("off");
+    auto parsed = an3::parse_auto_save_mode(token);
+    if (!parsed) {
+        token = "off";
+        parsed = an3::parse_auto_save_mode(token);
     }
-    [[NSUserDefaults standardUserDefaults] setObject:resolved forKey:kNativeAutoSaveModeDefaultsKey];
+    if (auto* host = active_host()) {
+        host->set_auto_save_enabled(parsed->enabled);
+        host->set_auto_save_on_exit(parsed->on_exit);
+        if (parsed->enabled) host->set_auto_save_interval_seconds(std::max(1u, parsed->interval));
+    }
+    [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:token.c_str()]
+                                              forKey:kNativeAutoSaveModeDefaultsKey];
 }
 
 static float native_audio_volume() {
@@ -2119,8 +2133,8 @@ static NSString* native_player_ui_text(std::string_view value) {
     menu_rows = save_rows;
     NSStackView* auto_save_mode_row = [NSStackView stackViewWithViews:@[[NSTextField labelWithString:@"Auto Save"],
         (_auto_save_mode_popup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO])]];
-    [_auto_save_mode_popup addItemsWithTitles:an3::native_auto_save_mode_titles()];
-    const NSUInteger auto_save_index = [an3::native_auto_save_mode_tokens() indexOfObject:an3::native_stored_auto_save_mode()];
+    [_auto_save_mode_popup addItemsWithTitles:an3::native_auto_save_titles()];
+    const NSUInteger auto_save_index = [an3::native_auto_save_tokens() indexOfObject:an3::native_stored_auto_save_mode()];
     [_auto_save_mode_popup selectItemAtIndex:(auto_save_index == NSNotFound ? 0 : auto_save_index)];
     [_auto_save_mode_popup setTarget:self];
     [_auto_save_mode_popup setAction:@selector(changeAutoSaveMode:)];
@@ -2497,7 +2511,7 @@ static NSString* native_player_ui_text(std::string_view value) {
 }
 
 - (void)changeAutoSaveMode:(NSPopUpButton*)sender {
-    const NSArray<NSString*>* tokens = an3::native_auto_save_mode_tokens();
+    const NSArray<NSString*>* tokens = an3::native_auto_save_tokens();
     const NSInteger index = sender.indexOfSelectedItem;
     NSString* mode = (index >= 0 && index < (NSInteger)tokens.count) ? tokens[index] : @"off";
     an3::native_apply_auto_save_mode(mode);

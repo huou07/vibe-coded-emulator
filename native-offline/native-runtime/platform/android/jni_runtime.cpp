@@ -1,5 +1,6 @@
 #include "window_surface.h"
 #include "aaudio_backend.h"
+#include "../../core/auto_save_mode.h"
 #include "../../core/libretro_host.h"
 #include "../../video/vulkan/software_backend.h"
 #include "../../video/vulkan/hardware_backend.h"
@@ -61,7 +62,7 @@ struct FinishGuard {
     std::atomic<bool>& flag;
     ~FinishGuard() { flag.store(true,std::memory_order_release); }
 };
-void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,bool autosave,bool resume) {
+void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume) {
     FinishGuard finish_guard{s.finished};
     std::lock_guard runtime_lock(runtime_serial);
     const bool can_resume=resume && resumable_save_path==saves;
@@ -114,7 +115,7 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
     bool paused=false;
     bool audio_failed=false;
     double speed=1.0;
-    unsigned auto_interval=60;
+    AutoSaveSettings auto_save=parse_auto_save_mode(auto_save_mode).value_or(AutoSaveSettings{});
     const auto parse_number=[](const std::string& value,int maximum) {
         if(value.empty() || value.size()>3)return -1;int number=0;
         for(char c:value){if(c<'0' || c>'9')return -1;number=number*10+c-'0';}
@@ -127,7 +128,10 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
             bool ok=true;error.clear();
             if (cmd=="pause") { paused=value=="1";s.host.input().clear();deadline=Clock::now(); }
             else if (cmd=="clear-input") s.host.input().clear();
-            else if (cmd=="autosave") autosave=value=="1";
+            else if (cmd=="autosave-mode") {
+                auto parsed=parse_auto_save_mode(value);
+                if (parsed) auto_save=*parsed; else {ok=false;error="Unsupported Auto Save mode";}
+            }
             else if (cmd=="speed") {
                 if(value=="0.5" || value=="1" || value=="2" || value=="4" || value=="8") {
                     speed=value=="0.5"?.5:double(value[0]-'0');ok=audio.set_emulation_speed(speed);deadline=Clock::now();
@@ -140,7 +144,6 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
                 if(value=="low" || value=="medium" || value=="high")ok=audio.set_resampler_quality(value=="low"?AAudioResamplerQuality::Low:value=="high"?AAudioResamplerQuality::High:AAudioResamplerQuality::Medium);
                 else ok=false;
             }
-            else if(cmd=="autosave-interval") {const int v=parse_number(value,300);ok=v==60 || v==120 || v==300;if(ok)auto_interval=v;}
             else if(cmd=="option") {
                 const auto split=value.find('\t');
                 if(split==std::string::npos){ok=false;error="Invalid core option";}
@@ -174,7 +177,7 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
             if (Clock::now()-deadline>s.host.frame_duration()*2) deadline=Clock::now();
         } else { deadline=Clock::now()+std::chrono::milliseconds(20);previous_frame={}; }
         auto now=Clock::now();
-        if (autosave && now-last_auto>=std::chrono::seconds(auto_interval)) {
+        if (auto_save.enabled && now-last_auto>=std::chrono::seconds(auto_save.interval)) {
             message=s.host.save_auto(error)?"Auto Save completed":"Auto Save failed: "+error;
             last_auto=now;
         }
@@ -215,19 +218,21 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         std::filesystem::remove(saves+"/.suspend.state",ignored);
         report("Native resume snapshot failed: "+error);
     }
-    if (autosave) s.host.save_auto(error);
+    // A save-on-exit mode writes one final atomic snapshot as the session
+    // stops. Periodic modes already saved on their own timer.
+    if (auto_save.on_exit) s.host.save_auto(error);
     s.host.shutdown();audio.shutdown();video->shutdown();
 }
 }
 
-extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jboolean autosave,jboolean resume) {
+extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jstring autoSaveMode,jboolean resume) {
     std::lock_guard lock(lifecycle);stop_session();
     if (activity_owner) e->DeleteWeakGlobalRef(activity_owner);
     activity_owner=e->NewWeakGlobalRef(activity);
     ANativeWindow* window=ANativeWindow_fromSurface(e,surface);
     session=std::make_shared<Session>();
     if (!window) { session->diagnostics="Native surface unavailable";return; }
-    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),bool(autosave),bool(resume));
+    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume));
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStop(JNIEnv* e,jobject activity,jboolean suspend) { std::lock_guard lock(lifecycle);if(owns(e,activity)) {if(session) session->suspend=bool(suspend);stop_session();e->DeleteWeakGlobalRef(activity_owner);activity_owner=nullptr;} }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {

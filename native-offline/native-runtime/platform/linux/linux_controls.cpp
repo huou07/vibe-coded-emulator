@@ -416,24 +416,24 @@ class LinuxControlPanel::Impl {
     GtkWidget* build_saves() {
         GtkWidget* box = make_box();
         const auto current = snapshot();
-        gtk_box_pack_start(GTK_BOX(box), checkbox("Auto Save (state snapshot)", current.autosave, [this](bool value) {
-            callbacks_.set_autosave(value);
-            status(value ? "Auto Save enabled." : "Auto Save disabled.");
-        }), false, false, 0);
-        GtkWidget* interval = gtk_combo_box_text_new();
-        const std::array<unsigned, 3> intervals{{60, 120, 300}};
+        gtk_box_pack_start(GTK_BOX(box), make_label(std::string(player_ui::auto_save_label)), false, false, 0);
+        GtkWidget* mode = gtk_combo_box_text_new();
         int selected = 0;
-        for (size_t index = 0; index < intervals.size(); ++index) {
-            const std::string label = std::to_string(intervals[index]) + " seconds";
-            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(interval), label.c_str());
-            if (intervals[index] == current.autosave_interval) selected = static_cast<int>(index);
+        for (size_t index = 0; index < player_ui::auto_save_tokens.size(); ++index) {
+            gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(mode), std::string(player_ui::auto_save_titles[index]).c_str());
+            if (player_ui::auto_save_tokens[index] == current.auto_save_mode) selected = static_cast<int>(index);
         }
-        gtk_combo_box_set_active(GTK_COMBO_BOX(interval), selected);
-        combos_.push_back(std::make_unique<ComboSignal>(ComboSignal{[this, intervals](int index) {
-            if (index >= 0 && static_cast<size_t>(index) < intervals.size()) callbacks_.set_autosave_interval(intervals[static_cast<size_t>(index)]);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(mode), selected);
+        combos_.push_back(std::make_unique<ComboSignal>(ComboSignal{[this](int index) {
+            if (index < 0 || static_cast<size_t>(index) >= player_ui::auto_save_tokens.size()) return;
+            const std::string token(player_ui::auto_save_tokens[static_cast<size_t>(index)]);
+            callbacks_.set_auto_save_mode(token);
+            if (token == "off") status("Auto Save disabled.");
+            else if (token == "exit") status("Auto Save runs when you exit the game.");
+            else status("Auto Save will run every configured interval.");
         }}));
-        g_signal_connect(interval, "changed", G_CALLBACK(combo_changed), combos_.back().get());
-        gtk_box_pack_start(GTK_BOX(box), interval, false, false, 0);
+        g_signal_connect(mode, "changed", G_CALLBACK(combo_changed), combos_.back().get());
+        gtk_box_pack_start(GTK_BOX(box), mode, false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), button("Load Auto Save", [this] {
             std::string error; status(user_facing_error("Load Auto Save", host_.load_auto(error), error));
         }), false, false, 0);

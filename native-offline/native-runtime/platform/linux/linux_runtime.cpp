@@ -3,6 +3,7 @@
 #include "sdl_gl_backend.h"
 #include "sdl_window_surface.h"
 
+#include "../../core/auto_save_mode.h"
 #include "../../core/libretro_host.h"
 #include "../../video/vulkan/hardware_backend.h"
 #include "../../video/vulkan/software_backend.h"
@@ -271,9 +272,10 @@ int main(int argc, char** argv) {
     std::array<bool, 4> physical_dpad{}, analog_dpad{};
     auto apply_dpad = [&] { for (unsigned offset = 0; offset < 4; ++offset) host.input().set_button(4 + offset, physical_dpad[offset] || analog_dpad[offset]); };
     int mouse_x = 0, mouse_y = 0;
-    bool mouse_pressed = false, running = true, paused = false, autosave = false;
+    bool mouse_pressed = false, running = true, paused = false;
     double speed = 1.0;
-    unsigned autosave_interval = 60;
+    std::string auto_save_mode = "off";
+    AutoSaveSettings auto_save = parse_auto_save_mode(auto_save_mode).value_or(AutoSaveSettings{});
     uint64_t scheduled_frames = 0;
     std::string runtime_message;
     auto deadline = std::chrono::steady_clock::now();
@@ -306,8 +308,7 @@ int main(int argc, char** argv) {
         value.video = video->metrics();
         value.audio = audio.metrics();
         value.paused = paused;
-        value.autosave = autosave;
-        value.autosave_interval = autosave_interval;
+        value.auto_save_mode = auto_save_mode;
         value.speed = speed;
         value.layout = options.layout;
         value.last_message = runtime_message.empty() ? value.core.last_message : runtime_message;
@@ -320,8 +321,13 @@ int main(int argc, char** argv) {
             deadline = std::chrono::steady_clock::now();
         }
     };
-    control_callbacks.set_autosave = [&](bool value) { autosave = value; last_auto = std::chrono::steady_clock::now(); };
-    control_callbacks.set_autosave_interval = [&](unsigned value) { if (value == 60 || value == 120 || value == 300) autosave_interval = value; };
+    control_callbacks.set_auto_save_mode = [&](const std::string& value) {
+        const auto parsed = parse_auto_save_mode(value);
+        if (!parsed) return;
+        auto_save_mode = value;
+        auto_save = *parsed;
+        last_auto = std::chrono::steady_clock::now();
+    };
     control_callbacks.toggle_fullscreen = toggle_fullscreen;
     control_callbacks.return_to_library = [&] { running = false; };
     control_callbacks.set_layout = set_layout;
@@ -470,7 +476,7 @@ int main(int argc, char** argv) {
             } else if (paused) {
                 deadline = now + std::chrono::milliseconds(20);
             }
-            if (autosave && now - last_auto >= std::chrono::seconds(autosave_interval)) {
+            if (auto_save.enabled && now - last_auto >= std::chrono::seconds(auto_save.interval)) {
                 runtime_message = host.save_auto(error) ? "Auto Save completed." : "Auto Save failed: " + error;
                 last_auto = now;
             }
@@ -478,6 +484,9 @@ int main(int argc, char** argv) {
             if (now < deadline) SDL_Delay(1);
         }
     }
+    // A save-on-exit mode writes one final atomic snapshot as the session
+    // stops. Periodic modes already saved on their own timer.
+    if (auto_save.on_exit) host.save_auto(error);
     host.shutdown(); video->shutdown(); if (controller) SDL_GameControllerClose(controller); SDL_Quit();
     return 0;
 }

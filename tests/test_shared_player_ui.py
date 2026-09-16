@@ -25,6 +25,59 @@ class SharedPlayerUiTests(unittest.TestCase):
             self.assertIn(label, android)
             self.assertIn(label, web)
 
+    def test_shared_auto_save_mode_parses_the_same_for_android_and_linux(self):
+        model = json.loads((ROOT / "native-offline/shared/player-ui.json").read_text())["autoSave"]
+        self.assertEqual(model["label"], "Auto Save")
+        self.assertEqual(model["titles"], ["Off", "On game exit", "Every 30 seconds", "Every 10 seconds", "Every 5 seconds"])
+        self.assertEqual(model["tokens"], ["off", "exit", "30", "10", "5"])
+        native = (ROOT / "native-offline/shared/generated/player_ui.h").read_text()
+        self.assertIn('auto_save_label = "Auto Save"', native)
+        for title in model["titles"]:
+            self.assertIn(json.dumps(title), native)
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "auto_save_mode.cpp"
+            source_path.write_text(
+                '#include "native-offline/native-runtime/core/auto_save_mode.h"\n'
+                '#include <iostream>\n'
+                'int main(){for(const char* v:{"off","exit","30","10","5","60","nope","0","3601",""}){'
+                'auto s=an3::parse_auto_save_mode(v);'
+                'if(!s){std::cout<<v<<" invalid\\n";continue;}'
+                'std::cout<<v<<" "<<s->enabled<<" "<<s->on_exit<<" "<<s->interval<<"\\n";}}'
+            )
+            binary = Path(directory) / "auto_save_mode"
+            subprocess.run(["c++", "-std=c++20", "-I", str(ROOT), str(source_path), "-o", str(binary)], check=True, capture_output=True)
+            output = subprocess.check_output([str(binary)], text=True)
+        parsed = {}
+        for line in output.splitlines():
+            value, _, result = line.partition(" ")
+            parsed[value] = result
+        self.assertEqual(parsed["off"], "0 0 60")
+        self.assertEqual(parsed["exit"], "0 1 60")
+        self.assertEqual(parsed["30"], "1 0 30")
+        self.assertEqual(parsed["10"], "1 0 10")
+        self.assertEqual(parsed["5"], "1 0 5")
+        # A legacy numeric interval still enables periodic autosave.
+        self.assertEqual(parsed["60"], "1 0 60")
+        self.assertEqual(parsed[""], "0 0 60")
+        for invalid in ("nope", "0", "3601"):
+            self.assertEqual(parsed[invalid], "invalid")
+
+    def test_macos_native_shell_uses_the_shared_auto_save_model(self):
+        host = (ROOT / "native-offline/src-tauri/src/azahar_host.mm").read_text()
+        # macOS must consume the same header and generated model as Android/Linux.
+        self.assertIn('#include "../../native-runtime/core/auto_save_mode.h"', host)
+        self.assertIn("an3::parse_auto_save_mode", host)
+        self.assertIn("player_ui::auto_save_titles", host)
+        self.assertIn("player_ui::auto_save_tokens", host)
+        # The earlier boolean + interval keys stay readable for migration.
+        self.assertIn("kNativeAutoSaveModeDefaultsKey", host)
+        self.assertIn("kNativeAutoSaveDefaultsKey", host)
+        # No private copy of the shared titles/tokens may remain.
+        self.assertNotIn("native_auto_save_mode_titles", host)
+        self.assertNotIn("native_auto_save_mode_tokens", host)
+        for title in ('@"Off"', '@"On game exit"', '@"Every 30 seconds"', '@"Every 10 seconds"', '@"Every 5 seconds"'):
+            self.assertNotIn(title, host)
+
     def test_circle_normalization_matches_cpp_and_keeps_thumb_inside_base(self):
         vectors = [[0, 0], [.1, .1], [1, 0], [0, -1], [1, 1], [-4, 3], [.3, -.4]]
         js = "const ui=require('./static/player-ui.js');console.log(JSON.stringify(" + json.dumps(vectors) + ".map(([x,y])=>ui.normalize(x,y))));"
