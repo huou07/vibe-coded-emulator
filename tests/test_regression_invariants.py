@@ -220,7 +220,19 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('NETPLAY_ORIGIN = (', APP)
         self.assertIn('ENVIRONMENT in {"staging", "development"}', APP)
         self.assertIn('"netplayServer": NETPLAY_ORIGIN', APP)
-        self.assertIn('netplay_connect = f" {NETPLAY_ORIGIN}" if NETPLAY_ORIGIN else ""', APP)
+        # CSP connect-src treats ws:/wss: as distinct schemes; the player must
+        # allow the relay's WebSocket or the Socket.IO upgrade is blocked.
+        self.assertIn("def player_content_security_policy(netplay_origin):", APP)
+        self.assertIn('netplay_connect += " " + netplay_origin.replace("http://", "ws://", 1)', APP)
+        self.assertIn('netplay_connect += " " + netplay_origin.replace("https://", "wss://", 1)', APP)
+        self.assertIn("csp = player_content_security_policy(NETPLAY_ORIGIN)", APP)
+        # The multiplayer room -> relay bridge is a staging-only player panel.
+        self.assertIn('"multiplayerEnabled": MULTIPLAYER_ENABLED', APP)
+        self.assertIn('"roomSignature": {', APP)
+        self.assertIn('id="mpPlayerPanel"', APP)
+        self.assertIn('id="playerMultiplayer"', APP)
+        self.assertIn('netplay.openRoom(code, 2, "")', PLAYER)
+        self.assertIn('netplay.joinRoom(key, data.code)', PLAYER)
 
     def test_player_keeps_input_order_and_persists_drag_until_done(self):
         self.assertIn('const dualScreenLayout = () => innerWidth > innerHeight ? "Left/Right" : "Top/Bottom";', PLAYER)

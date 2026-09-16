@@ -377,3 +377,27 @@ Workspace: `/Users/meomeo/Documents/edit an3tocom apps&web` (branch `apps-web`).
 **Still open:** native controller input injection; rooms → relay bridge with
 invite codes; LAN discovery/transfer; sync wiring in `app.py`; Switch companion;
 CodeGraph re-index; skills/agents.
+
+## Update — 2026-09-16 (ninth session, part 2): multiplayer relay bridge
+
+**Step 3 — AN3 rooms bridged to the EmulatorJS relay (staging).**
+- Fixed RG-085: the player CSP listed only the relay's HTTP origin, so the
+  Socket.IO **WebSocket** was blocked and netplay could never connect. The CSP
+  now derives `ws://`/`wss://` from `NETPLAY_ORIGIN`
+  (`player_content_security_policy`).
+- The AN3 invite code is now the relay room name: player `Multiplayer` panel +
+  `#mpPlayerPanel`; host → `netplay.openRoom(code, 2, "")`; join → AN3 compat
+  check then `getOpenRooms()` + `netplay.joinRoom(key, code)`. Server-computed
+  `roomSignature`; `/api/multiplayer/qr.svg` deep-link QR.
+- Staging relay restarted (`compose.rust-netplay.staging.yml up -d
+  --force-recreate`) because its published port was inactive.
+- **Runtime VERIFIED** (Chrome/Playwright, two pages, live relay): host room
+  `B4VZ0W` at relay `current:1`, guest joined at `current:2`, both
+  `isNetplay=true` with connected sockets. WebRTC peer media sync UNVERIFIED.
+- Suite **242 tests, 0 failures**; asset `0e2a7d7a1a3b`, release
+  `/opt/an3-arcade-staging/releases/20260916-144055-0e2a7d7a1a3b`.
+- New guards RG-085/086. Report:
+  `reports/handoff/MULTIPLAYER_RELAY_BRIDGE_20260916.md`.
+
+**Still open:** controller native injection; LAN discovery/transfer; sync wiring
+in `app.py`; Switch companion; CodeGraph re-index; skills/agents.

@@ -1601,11 +1601,13 @@ def player_page(game, lang, user, csrf):
         autosave_settings = f'''<section class="player-settings-group player-autosave-settings"><header><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><label><span>{tr(lang,"Chế độ","Mode")}</span><select id="autosaveMode"><option value="off">{tr(lang,"Tắt","Off")}</option><option value="exit">{tr(lang,"Khi thoát game","On game exit")}</option><option value="30">{tr(lang,"Mỗi 30 giây","Every 30 seconds")}</option><option value="10">{tr(lang,"Mỗi 10 giây","Every 10 seconds")}</option><option value="5">{tr(lang,"Mỗi 5 giây","Every 5 seconds")}</option></select></label><small class="muted">{tr(lang,"Autosave dùng slot riêng, không thay thế save thủ công.","Autosave uses its own slot and never replaces a manual save state.")}</small></section>'''
         exit_settings = f'''<section class="player-settings-group player-exit-settings"><header><strong>{tr(lang,"Thoát game","Exit game")}</strong></header><p class="player-setting-copy">{tr(lang,"Dừng phiên giả lập và quay về thư viện.","Stop this emulation session and return to the library.")}</p><div class="player-panel-actions"><button id="exitGame" type="button">{tr(lang,"Thoát game","Exit game")}</button></div></section>'''
         phone_controller_button = f'<button id="phoneController" type="button">{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</button>' if CONTROLLER_ENABLED else ""
-        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions">{phone_controller_button}<button id="castScreen" type="button">{tr(lang,"Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
+        multiplayer_button = f'<button id="playerMultiplayer" type="button">{tr(lang,"Chơi chung","Multiplayer")}</button>' if MULTIPLAYER_ENABLED else ""
+        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions">{multiplayer_button}{phone_controller_button}<button id="castScreen" type="button">{tr(lang,"Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
         slot_rows = "".join(f'<div class="save-slot" data-slot="{slot}"><strong>{tr(lang,"Slot","Slot")} {slot}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-slot="{slot}">{tr(lang,"Lưu","Save")}</button><button data-load-slot="{slot}" disabled>{tr(lang,"Nạp","Load")}</button></div>' for slot in range(1, 11))
         auto_slot_row = f'<div class="save-slot save-slot-auto" data-auto-slot><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-auto>{tr(lang,"Lưu","Save")}</button><button data-load-auto disabled>{tr(lang,"Nạp","Load")}</button></div>'
         slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{auto_slot_row}{slot_rows}</section>'
         controller_panel = f'''<section id="ctrlPhonePanel" class="slot-panel controller-panel" hidden role="dialog" aria-label="{tr(lang,"Điện thoại làm tay cầm","Phone controller")}"><header><strong>{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</strong><button id="closeCtrlPhone" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Quét mã QR bằng điện thoại cùng mạng LAN. Tay cầm chỉ được điều khiển khi game đang chạy.","Scan the QR with a phone on the same LAN. The phone only drives the game while it is running.")}</p><img id="ctrlPhoneQr" class="ctrl-qr" alt="{tr(lang,"Mã QR ghép đôi","Pairing QR code")}" hidden><p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlPhoneCode" class="ctrl-code">—</span></p><p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlPhoneLink" href="#">—</a></p><p id="ctrlPhoneStatus" class="muted" role="status"></p></section>''' if CONTROLLER_ENABLED else ""
+        multiplayer_panel = f'''<section id="mpPlayerPanel" class="slot-panel multiplayer-panel" hidden role="dialog" aria-label="{tr(lang,"Chơi chung","Multiplayer")}"><header><strong>{tr(lang,"Chơi chung","Multiplayer")}</strong><button id="closeMpPanel" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Phòng chỉ trao đổi chữ ký game (hệ máy, core, hash ROM). Mã mời dùng làm tên phòng trên relay.","A room only exchanges the game signature (system, core, ROM hash). The invite code is the relay room name.")}</p><div class="form-actions"><button id="mpPlayerCreate" type="button" class="button">{tr(lang,"Tạo phòng","Create room")}</button><button id="mpPlayerHost" type="button" class="button primary">{tr(lang,"Mở phòng trên relay","Host on relay")}</button></div><p><strong>{tr(lang,"Mã mời","Invite code")}:</strong> <span id="mpPlayerCode" class="ctrl-code">—</span></p><img id="mpPlayerQr" class="ctrl-qr" alt="{tr(lang,"Mã QR phòng chơi","Room QR code")}" hidden><p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="mpPlayerLink" href="#">—</a></p><label>{tr(lang,"Nhập mã mời để vào","Enter an invite code to join")}<input id="mpPlayerJoinCode" autocomplete="off" spellcheck="false" autocapitalize="characters"></label><div class="form-actions"><button id="mpPlayerJoin" type="button" class="button">{tr(lang,"Vào phòng relay","Join relay room")}</button><button id="mpPlayerLeave" type="button" class="button">{tr(lang,"Rời relay","Leave relay")}</button></div><p id="mpPlayerStatus" class="muted" role="status"></p></section>''' if MULTIPLAYER_ENABLED else ""
         pad_controls = [("dpad", "D-pad"), ("a", "A"), ("b", "B"), ("start", "Start"), ("select", "Select")]
         if game["system"] in {"gba", "nds", "3ds"}:
             pad_controls.extend([("l", "L"), ("r", "R")])
@@ -1627,12 +1629,18 @@ def player_page(game, lang, user, csrf):
         "downloadName": game["rom_name"], "lang": lang, "ndsDebugAllowed": NDS_DEBUG_ALLOWED,
         "netplayServer": NETPLAY_ORIGIN, "netplayGameId": f"an3:{game['id']}:{game['system']}",
         "controllerEnabled": CONTROLLER_ENABLED,
+        "multiplayerEnabled": MULTIPLAYER_ENABLED,
+        "roomSignature": {
+            "system": game["system"],
+            "core": PRIMARY_CORES.get(game["system"], game["system"]),
+            "romHash": game_rom_hash(game),
+        },
     }
     back_path = f"/game/{game['slug']}"
     body = f"""<main class="player-shell" data-player='{esc(json.dumps(config,ensure_ascii=False))}'>
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
-{slot_panel}{pad_panel}{controller_panel}</main>
+{slot_panel}{pad_panel}{controller_panel}{multiplayer_panel}</main>
 <script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
@@ -1867,6 +1875,33 @@ def rate_allowed(ip, action, limit, window=600, subject=""):
     return True
 
 
+def player_content_security_policy(netplay_origin):
+    """The strict CSP for the player page.
+
+    The EmulatorJS netplay client reaches the relay over a WebSocket, and CSP
+    ``connect-src`` treats ``ws:``/``wss:`` as distinct schemes from
+    ``http:``/``https:``, so the WebSocket origin must be listed explicitly.
+    """
+
+    netplay_connect = ""
+    if netplay_origin:
+        netplay_connect = f" {netplay_origin}"
+        if netplay_origin.startswith("https://"):
+            netplay_connect += " " + netplay_origin.replace("https://", "wss://", 1)
+        elif netplay_origin.startswith("http://"):
+            netplay_connect += " " + netplay_origin.replace("http://", "ws://", 1)
+    return (
+        "default-src 'self' blob: data: https://cdn.emulatorjs.org; "
+        "img-src 'self' data: blob:; "
+        "style-src 'self' 'unsafe-inline' https://cdn.emulatorjs.org; "
+        "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.emulatorjs.org; "
+        f"connect-src 'self' blob: https://cdn.emulatorjs.org{netplay_connect}; "
+        "worker-src 'self' blob: https://cdn.emulatorjs.org; "
+        "frame-src 'self' blob:; object-src 'none'; base-uri 'self'; "
+        "form-action 'self'; frame-ancestors 'self'"
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "VibeCodedEmulator/1.0"
     protocol_version = "HTTP/1.1"
@@ -1907,8 +1942,7 @@ class Handler(BaseHTTPRequestHandler):
     def send_html(self, content, status=200, player=False):
         csp = None
         if player:
-            netplay_connect = f" {NETPLAY_ORIGIN}" if NETPLAY_ORIGIN else ""
-            csp = f"default-src 'self' blob: data: https://cdn.emulatorjs.org; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://cdn.emulatorjs.org; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.emulatorjs.org; connect-src 'self' blob: https://cdn.emulatorjs.org{netplay_connect}; worker-src 'self' blob: https://cdn.emulatorjs.org; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+            csp = player_content_security_policy(NETPLAY_ORIGIN)
         self.send_bytes(status, content.encode("utf-8"), "text/html; charset=utf-8", csp=csp, cross_origin_isolated=player)
 
     def read_json(self, maximum=MAX_JSON_BYTES):
@@ -2220,6 +2254,28 @@ class Handler(BaseHTTPRequestHandler):
             "players": 2 if room.full else 1,
             "expiresInSeconds": remaining,
         })
+
+    def multiplayer_qr(self):
+        """Serve a same-origin join QR for a game's room as an SVG."""
+
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        slug = query.get("slug", [""])[0]
+        code = netcode.normalize_code(query.get("code", [""])[0])
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", slug) or not re.fullmatch(r"[A-Z0-9]{1,16}", code):
+            return self.send_json({"error": "invalid room link"}, 400)
+        scheme = self.headers.get("X-Forwarded-Proto", "https" if COOKIE_SECURE else "http")
+        if scheme not in {"http", "https"}:
+            scheme = "http"
+        host = (self.headers.get("Host", "") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9.\-]{1,253}(:\d{1,5})?", host):
+            return self.send_json({"error": "invalid host"}, 400)
+        try:
+            svg = controller_qr_svg(f"{scheme}://{host}/play/{slug}?room={code}")
+        except ValueError:
+            return self.send_json({"error": "invalid payload"}, 400)
+        self.send_bytes(200, svg.encode("utf-8"), "image/svg+xml; charset=utf-8", cache="no-store")
 
     def controller_unavailable(self):
         self.send_json({"error": "not found"}, 404)
@@ -2568,6 +2624,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
         elif path == "/api/multiplayer/room":
             self.multiplayer_room_status()
+        elif path == "/api/multiplayer/qr.svg":
+            self.multiplayer_qr()
         elif path == "/api/controller/state":
             self.controller_host_state()
         elif path == "/api/controller/qr.svg":

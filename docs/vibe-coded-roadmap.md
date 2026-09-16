@@ -63,7 +63,11 @@ From the original spec plus later requests:
   (`native-layout-schema.json` → `native_layouts.h`), macOS/Android/Linux.
 - Toolbar Save with all 10 quick slots (macOS/Linux/Android).
 - FPS pointer-inert + menu-first touch precedence (macOS/Android/Linux).
-- Multiplayer room **API** + `/multiplayer` page (staging-only).
+- Multiplayer room **API** + `/multiplayer` page (staging-only). The AN3 invite
+  code **is** the EmulatorJS relay room name: the player hosts via
+  `netplay.openRoom(code)` and joins via the compat-checked AN3 API +
+  `netplay.joinRoom(key, code)`. Verified on staging (host `current:1` → guest
+  `current:2`); see `reports/handoff/MULTIPLAYER_RELAY_BRIDGE_20260916.md`.
 - Phone-controller **API** + `/controller`, `/controller/join` pages
   (staging-only).
 - Phone controller is **real on the web player**: a CSP-safe server-side SVG QR
@@ -79,8 +83,8 @@ From the original spec plus later requests:
 **Not done**
 - Controller **native input injection** into the packaged apps (macOS/Android/
   Linux/Windows). The web player host binding and QR are done.
-- Multiplayer rooms **bridged to the EmulatorJS-Netplay relay** with AN3 invite
-  codes end-to-end in the game UI.
+- Multiplayer **peer media/input sync** was not asserted (relay room bridge and
+  Socket.IO handshake verified only).
 - **LAN discovery + direct transfer** (transport only; `sync_engine` planning
   exists).
 - **Sync wiring in `app.py`** (Drive mode UI + routes). Google OAuth routes/UI
@@ -178,7 +182,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    **Done on the web player** (staging-verified 2026-09-16); native injection
    still open.
 3. **Bridge rooms to the relay** — compatibility check → relay handout → invite
-   code surfaced in the game UI.
+   code surfaced in the game UI. **Done and staging-verified** (invite code ==
+   relay room name; peer media sync still unverified).
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
 6. **Create the skills/agents** in §7 as the workflows stabilize.

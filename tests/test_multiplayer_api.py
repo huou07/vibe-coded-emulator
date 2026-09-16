@@ -64,6 +64,28 @@ class MultiplayerRoomApiTests(unittest.TestCase):
         base.update(overrides)
         return base
 
+    def request_full(self, method, path):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        connection.request(method, path)
+        response = connection.getresponse()
+        status, headers, data = response.status, dict(response.getheaders()), response.read()
+        connection.close()
+        return status, headers, data
+
+    def test_room_qr_svg_is_served_for_a_valid_link(self):
+        status, headers, body = self.request_full("GET", "/api/multiplayer/qr.svg?slug=pokemon-emerald&code=AB12CD")
+        self.assertEqual(status, 200)
+        self.assertIn("image/svg+xml", headers.get("Content-Type", ""))
+        text = body.decode("utf-8")
+        self.assertTrue(text.startswith("<svg "))
+        self.assertNotIn("<script", text)
+
+    def test_room_qr_rejects_a_bad_slug_or_code(self):
+        for query in ("?slug=../etc&code=AB12CD", "?slug=pokemon-emerald&code=", "?code=AB12CD", "?slug=pokemon-emerald&code=<<>>"):
+            with self.subTest(query=query):
+                status, _, _ = self.request_full("GET", "/api/multiplayer/qr.svg" + query)
+                self.assertEqual(status, 400)
+
     def test_create_join_status_flow(self):
         status, body = self.request("POST", "/api/multiplayer/room", {**self.signature(), "deviceId": "tv"})
         self.assertEqual(status, 201)
@@ -266,6 +288,25 @@ class ControllerApiTests(unittest.TestCase):
         connection.close()
         self.assertEqual(health.status, 200)
         self.assertIn(b'"ok": true', payload)
+
+
+class PlayerCspTests(unittest.TestCase):
+    def test_netplay_websocket_origin_is_allowed(self):
+        csp = app.player_content_security_policy("http://192.168.1.8:8094")
+        self.assertIn(
+            "connect-src 'self' blob: https://cdn.emulatorjs.org http://192.168.1.8:8094 ws://192.168.1.8:8094;",
+            csp,
+        )
+
+    def test_secure_netplay_origin_uses_wss(self):
+        csp = app.player_content_security_policy("https://relay.example")
+        self.assertIn("https://relay.example wss://relay.example;", csp)
+        self.assertNotIn("ws://relay.example", csp)
+
+    def test_without_netplay_connect_src_stays_self_only(self):
+        csp = app.player_content_security_policy("")
+        self.assertIn("connect-src 'self' blob: https://cdn.emulatorjs.org;", csp)
+        self.assertNotIn("ws://", csp)
 
 
 if __name__ == "__main__":

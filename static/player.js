@@ -1916,6 +1916,96 @@
   document.getElementById("closeCtrlPhone")?.addEventListener("click",()=>{if(controllerPanel)controllerPanel.hidden=true;controllerStop();document.getElementById("phoneController")?.focus();});
   addEventListener("pagehide",()=>controllerStop(),{once:true});
 
+  // ---- Multiplayer room -> EmulatorJS relay bridge (staging-only) ---------
+  // The player creates the AN3 room (the server enforces the system+core+ROM
+  // hash compatibility check) and then hands the invite code to the EmulatorJS
+  // netplay client as the relay room name. Hosting and joining both go through
+  // the official netplay object; nothing is re-implemented here.
+  const mpPanel = document.getElementById("mpPlayerPanel");
+  const mpPost = async (url, payload) => {
+    const response = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    let data = {}; try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    return data;
+  };
+  const mpStatus = text => { const node=document.getElementById("mpPlayerStatus"); if(node)node.textContent=text; };
+  const mpNetplay = () => { try { return globalThis.EJS_emulator?.netplay || null; } catch (_) { return null; } };
+  const mpEnsureNetplay = () => {
+    const emulator = globalThis.EJS_emulator;
+    if (!emulator) throw new Error("Emulator is not ready");
+    if (typeof emulator.openNetplayMenu !== "function") throw new Error("This core has no netplay menu");
+    if (!emulator.netplay) {
+      emulator.openNetplayMenu();
+      // openNetplayMenu also reveals its own panel; keep AN3's surface clean.
+      try { if (emulator.netplayMenu) emulator.netplayMenu.style.display = "none"; } catch (_) {}
+    }
+    const netplay = emulator.netplay;
+    if (!netplay) throw new Error("Netplay is unavailable");
+    if (!netplay.name) netplay.name = "AN3 player";
+    return netplay;
+  };
+  const mpShowRoom = data => {
+    const codeNode = document.getElementById("mpPlayerCode"); if (codeNode) codeNode.textContent = data.code;
+    const linkNode = document.getElementById("mpPlayerLink");
+    if (linkNode) { linkNode.href = `/play/${encodeURIComponent(config.slug)}?room=${encodeURIComponent(data.code)}`; linkNode.textContent = linkNode.href; }
+    const joinInput = document.getElementById("mpPlayerJoinCode"); if (joinInput && !joinInput.value) joinInput.value = data.code;
+    const qrNode = document.getElementById("mpPlayerQr");
+    if (qrNode) { qrNode.src = `/api/multiplayer/qr.svg?slug=${encodeURIComponent(config.slug)}&code=${encodeURIComponent(data.code)}`; qrNode.hidden = false; }
+  };
+  const mpSignature = () => Object.assign({}, config.roomSignature || {}, {deviceId: "web-player"});
+  const mpCreateRoom = async () => {
+    if (!config.multiplayerEnabled) return "";
+    mpStatus(config.lang==="en"?"Creating room…":"Đang tạo phòng…");
+    const data = await mpPost("/api/multiplayer/room", mpSignature());
+    mpShowRoom(data);
+    mpStatus((config.lang==="en"?"Room ready: ":"Phòng đã sẵn sàng: ") + data.code + " · " + Math.round(data.expiresInSeconds/60) + " min");
+    return data.code;
+  };
+  const mpHostOnRelay = async () => {
+    try {
+      let code = document.getElementById("mpPlayerCode")?.textContent || "";
+      if (!code || code === "—") code = await mpCreateRoom();
+      if (!code || code === "—") return;
+      const netplay = mpEnsureNetplay();
+      mpStatus((config.lang==="en"?"Hosting on relay: ":"Đang mở phòng trên relay: ") + code);
+      netplay.openRoom(code, 2, "");
+    } catch (error) { mpStatus(error.message || String(error)); }
+  };
+  const mpFindRoomKey = async netplay => {
+    const rooms = await netplay.getOpenRooms();
+    return Object.keys(rooms || {}).find(key => (rooms[key]?.room_name || "") === (document.getElementById("mpPlayerJoinCode")?.value || "").trim().toUpperCase()) || "";
+  };
+  const mpJoinRelay = async () => {
+    try {
+      const code = (document.getElementById("mpPlayerJoinCode")?.value || "").trim().toUpperCase();
+      if (!code) throw new Error(config.lang==="en"?"Enter an invite code.":"Hãy nhập mã mời.");
+      // The AN3 service enforces the compatibility check before any relay join.
+      const data = await mpPost("/api/multiplayer/join", Object.assign(mpSignature(), {code}));
+      mpShowRoom(data);
+      const netplay = mpEnsureNetplay();
+      const key = await mpFindRoomKey(netplay);
+      if (!key) throw new Error(config.lang==="en"?"That relay room is not open yet.":"Phòng relay chưa mở.");
+      mpStatus((config.lang==="en"?"Joining relay room: ":"Đang vào phòng relay: ") + data.code);
+      netplay.joinRoom(key, data.code);
+    } catch (error) { mpStatus(error.message || String(error)); }
+  };
+  const mpLeaveRelay = () => { try { mpNetplay()?.leaveRoom?.(); mpStatus(config.lang==="en"?"Left the relay room.":"Đã rời phòng relay."); } catch (error) { mpStatus(error.message || String(error)); } };
+  const mpOpen = () => {
+    if (!mpPanel) return;
+    mpPanel.hidden = false;
+    const prefill = new URLSearchParams(location.search).get("room");
+    const joinInput = document.getElementById("mpPlayerJoinCode");
+    if (prefill && joinInput && !joinInput.value) joinInput.value = prefill.trim().toUpperCase();
+    document.getElementById("closeMpPanel")?.focus();
+  };
+  document.getElementById("playerMultiplayer")?.addEventListener("click",()=>{showHints();closePlayerOptions();closeSlotOptions();mpOpen();});
+  document.getElementById("closeMpPanel")?.addEventListener("click",()=>{mpLeaveRelay();if(mpPanel)mpPanel.hidden=true;document.getElementById("playerMultiplayer")?.focus();});
+  document.getElementById("mpPlayerCreate")?.addEventListener("click",()=>mpCreateRoom().catch(error=>mpStatus(error.message||String(error))));
+  document.getElementById("mpPlayerHost")?.addEventListener("click",()=>mpHostOnRelay());
+  document.getElementById("mpPlayerJoin")?.addEventListener("click",()=>mpJoinRelay());
+  document.getElementById("mpPlayerLeave")?.addEventListener("click",()=>mpLeaveRelay());
+  addEventListener("pagehide",()=>mpLeaveRelay(),{once:true});
+
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
   const togglePad=()=>{if(castConsoleAutoPad){padRoot.classList.remove("cast-console-show");castConsoleAutoPad=false;}const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);

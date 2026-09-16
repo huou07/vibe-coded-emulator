@@ -355,6 +355,17 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         self.assertEqual(player_config["controllerEnabled"], True)
         self.assertIn(b'id="ctrlPhonePanel"', player_body)
         self.assertIn(b'id="phoneController"', player_body)
+        # The multiplayer bridge ships only where the relay is configured, with
+        # the server-computed compatibility signature for the room. This class
+        # runs without a relay, so the config flag gates the panel markup.
+        self.assertIn("multiplayerEnabled", player_config)
+        self.assertEqual(player_config["roomSignature"]["system"], "nds")
+        self.assertTrue(player_config["roomSignature"]["romHash"].startswith("sha256:"))
+        if player_config["multiplayerEnabled"]:
+            self.assertIn(b'id="mpPlayerPanel"', player_body)
+            self.assertIn(b'id="playerMultiplayer"', player_body)
+        else:
+            self.assertNotIn(b'id="mpPlayerPanel"', player_body)
         status, _, debug_player_body = public.request("GET", f"/play/{zipped_nds['slug']}?ndsdebug=1")
         self.assertEqual(status, 200)
         debug_config_match = re.search(rb"data-player='([^']+)'", debug_player_body)
