@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Every local module app.py imports must ship in the staged/production payloads.
 
 A missing module is not a build error: the archive simply excludes it and the

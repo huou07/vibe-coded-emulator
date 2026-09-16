@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 import http.client
 import hashlib
 import html
@@ -110,16 +112,16 @@ class SystemInferenceTests(unittest.TestCase):
         self.assertEqual(
             [item["filename"] for item in available],
             [
-                "vibecodedemulator-1.4.1-macos-aarch64.dmg",
-                "vibecodedemulator-1.4.0-android-arm64-staging.apk",
-                "vibecodedemulator-1.4.1-linux-amd64.deb",
-                "an3-offline-1.4.1-linux-amd64-staging.flatpak",
-                "vibecodedemulator-1.4.1-windows-x64-staging.exe",
+                "vibecodedemulator-2.0.0-macos-aarch64.dmg",
+                "vibecodedemulator-2.0.0-android-arm64-staging.apk",
+                "vibecodedemulator-2.0.0-linux-amd64.deb",
+                "an3-offline-2.0.0-linux-amd64-staging.flatpak",
+                "vibecodedemulator-2.0.0-windows-x64-staging.exe",
             ],
         )
         self.assertEqual(
             {item["format"]: item["version"] for item in available},
-            {"DMG": "1.4.1", "APK": "1.4.0", "DEB": "1.4.1", "Flatpak": "1.4.1", "EXE": "1.4.1"},
+            {"DMG": "2.0.0", "APK": "2.0.0", "DEB": "2.0.0", "Flatpak": "2.0.0", "EXE": "2.0.0"},
         )
         self.assertTrue(all(item["size"] and item["sha256"] for item in available))
 

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Consumed by static/offline.js to remain in the installed local-ROM flow.
 window.AN3NativeOfflineApp = true;
 // Desktop streams private ROMs from Rust to its bundled native libretro

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Phase A contract: Vibe Coded Emulator branding, Exit Game, autosave options.
 
 These are source/asset contracts. The interactive autosave/exit path is
@@ -50,10 +52,10 @@ class PhaseABrandingTests(unittest.TestCase):
         package = json.loads((ROOT / "native-offline" / "package.json").read_text(encoding="utf-8"))
         tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         android = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.android.conf.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["version"], "1.4.1")
-        self.assertEqual(tauri["version"], "1.4.1")
-        # Desktop is 1.4.1 (ACL fix); the Android app keeps 1.4.0.
-        self.assertEqual(android["version"], "1.4.0")
+        self.assertEqual(package["version"], "2.0.0")
+        self.assertEqual(tauri["version"], "2.0.0")
+        # GPLv3 transition release: every packaged app moves to 2.0.0.
+        self.assertEqual(android["version"], "2.0.0")
 
     def test_flatpak_sources_track_the_desktop_version(self):
         tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))

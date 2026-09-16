@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Explicit browser compatibility additions; these are not native libretro states.
 // Automatic recovery lives in its own database and never consumes slot 1–10.
 (() => {

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
 // Compatibility include for the original macOS host. The libretro option ABI

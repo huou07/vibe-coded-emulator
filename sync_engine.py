@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Vibe Coded Emulator sync engine (transport-agnostic core).
 
 This module is deliberately pure: it has no network, database, or browser

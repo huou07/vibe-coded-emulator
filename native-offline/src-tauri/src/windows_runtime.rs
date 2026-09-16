@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Own the bundled portable player. No shell, external emulator lookup, or
 //! browser frame transport participates in native Windows gameplay.
 use super::{NativeCapabilities, NativeInput, NativeStart};

@@ -662,3 +662,26 @@ Switch Phase 1 (needs sign-off).
   `reports/handoff/LAN_TRANSFER_20260916.md`.
 - This is LAN-mediated through the staging server (the LAN rendezvous); true
   peer-to-peer device listeners and client-store wiring remain.
+
+## Update — 2026-09-16 (eighteenth session): GPLv3 licensing + Eden audit
+
+- **Licensed the project GPL-3.0-or-later**: added `LICENSE` (official GPLv3),
+  rewrote `README.md`, `THIRD_PARTY_NOTICES.md`, added SPDX headers to 84
+  original files, and a Licenses surface (`/licenses`, `/licenses/gpl-3.0.txt`
+  web route + native Settings card). No §7(b) term added.
+- **Audit**: `docs/licensing/license-audit.md` — no incompatible component; no
+  STOP condition. No ROMs/keys/firmware bundled.
+- **Packaging fix**: packages previously shipped no GPL text. Now every package
+  bundles `LICENSE` + notices + core license texts (verified in DMG/APK/DEB/
+  Flatpak/EXE).
+- **Eden**: audited upstream, pinned `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`.
+  Direct integration **blocked technically** (no embeddable/FFI interface; Qt
+  frontends; heavy deps; no legal Switch test content). No fake integration.
+  `docs/licensing/eden-integration-feasibility.md`.
+- Version **2.0.0** for all five platforms; suite **271 tests, 0 failures**;
+  catalog PASS; staging asset `973c9002b67f`.
+- Report: `reports/handoff/GPLV3_EDEN_AUDIT_20260916.md`. Checkpoint:
+  `docs/checkpoints/gplv3-eden-integration.md`.
+
+**Owner action needed:** set the real public source repository URL
+(`AN3_SOURCE_REPOSITORY` / README) — currently a placeholder.

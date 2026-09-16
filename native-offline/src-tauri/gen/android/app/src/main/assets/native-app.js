@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Compact offline-first app shell around the existing local-ROM library.
 // It only switches sections, filters rendered cards and forwards the obvious
 // "Open ROM" action to the import controls that static/offline.js already

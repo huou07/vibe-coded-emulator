@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // app.py replaces this static template marker at request time. Keeping the
 // template itself hashable avoids a circular asset-version calculation while
 // giving every deployment an isolated PWA shell cache.

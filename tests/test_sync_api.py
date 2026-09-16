@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Staging-only cross-device sync: settings, planning, and LAN discovery.
 
 The pure decision logic is covered by ``tests/test_sync_engine.py``; these

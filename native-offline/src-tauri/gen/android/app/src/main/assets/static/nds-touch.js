@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 (() => {
   const SOURCE_SELECTOR = "#game canvas:not(.an3-render-canvas)";
   const SCREEN_WIDTH = 256;

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Own the bundled portable player on Linux. The Tauri shell owns the local-ROM
 //! library and import UI; gameplay runs in the bundled native SDL/GTK player.
 //! No shell, external emulator lookup, or browser frame transport participates

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """The vendored QR encoder and the controller pairing-SVG renderer.
 
 The pairing QR is rendered server-side as a standalone SVG so it stays inside

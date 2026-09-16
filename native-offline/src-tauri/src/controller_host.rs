@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Staging-only phone-controller host for the desktop shells.
 //!
 //! The desktop app is the pairing host: it creates a session on the configured

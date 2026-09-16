@@ -226,10 +226,13 @@ Findings from current research (August 2026):
 - **Eden** (`eden-emu`, GPLv3) is the actively maintained Yuzu fork with Windows,
   Linux, macOS, Android and FreeBSD builds. Citron and Sudachi are further
   forks; Ryujinx is discontinued (Ryubing continues it); Yuzu/Suyu are dead.
-- **Licensing blocker:** the leading options are **GPLv3**. The native app is
-  currently distributed as `LicenseRef-proprietary`. Bundling or linking a
-  GPLv3 core into that app triggers GPL obligations for the combined work and
-  needs an explicit licensing decision before any integration.
+- **Licensing (resolved 2026-09-16):** the project is now licensed
+  **GPL-3.0-or-later** (`LICENSE`); the earlier `LicenseRef-proprietary`
+  statement no longer applies. Linking a GPLv3 Switch core into that app is
+  compatible, and the combined work must carry the GPL obligations
+  (`docs/licensing/distribution-compliance.md`). See
+  `docs/licensing/eden-integration-feasibility.md` for the Eden verdict: the
+  blocker is technical, not licensing.
 - **Architecture blocker:** there is no maintained **libretro** Switch core, and
   the Yuzu-family emulators are standalone applications with their own
   frontend. The existing `NativeCoreHost` libretro abstraction cannot host them;

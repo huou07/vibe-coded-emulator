@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "sdl_audio_backend.h"
 #include "linux_controls.h"
 #include "sdl_gl_backend.h"

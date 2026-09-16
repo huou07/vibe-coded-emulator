@@ -2601,3 +2601,9 @@ body.reference-shell .site-header .brand{
 .sync-peers{margin:12px 0 0;padding:0;list-style:none}
 .sync-peers li{border-top:1px dotted var(--line);padding:8px 0;color:#d6ddd7}
 @media(max-width:520px){.ctrl-pad{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Licenses page (GPLv3 notices). */
+.licenses-page .native-card{margin-top:16px}
+.licenses-table{width:100%;border-collapse:collapse;margin-top:10px}
+.licenses-table th,.licenses-table td{text-align:left;padding:7px 8px;border-top:1px dotted var(--line);font-size:13px}
+.licenses-table th{color:var(--muted);font-weight:600}

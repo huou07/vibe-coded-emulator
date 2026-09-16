@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 (() => {
   const parse = value => (value || "").split(",").map(Number).filter(Number.isFinite);
 

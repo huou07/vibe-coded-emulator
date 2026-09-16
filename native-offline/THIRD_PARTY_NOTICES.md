@@ -2,6 +2,31 @@
 
 This macOS-arm64 staging build includes the following native components.
 
+## Vibe Coded Emulator (the application itself)
+
+The Vibe Coded Emulator application code (the Tauri shell, the portable native
+runtime under `native-offline/native-runtime/`, the Android Kotlin/C++ hosts,
+and the web assets) is Copyright (C) 2026 Vibe Coded Emulator contributors and
+is licensed under **GPL-3.0-or-later**. The full license text is in `LICENSE`
+at the repository root and should be shipped alongside this file.
+
+## EmulatorJS 4.2.3 (served to the web player and cached by the native shells)
+
+EmulatorJS is licensed under **GPL-3.0** by the EmulatorJS contributors
+(https://github.com/EmulatorJS/EmulatorJS). The native shells cache its
+`data/` and `data-v2/` distributions under `dist/emulatorjs/` and the Android
+assets. Its corresponding source is the upstream repository at the version
+string reported by `emulator.min.js` (`ejs_version`).
+
+## Tauri, Rust and Android dependencies
+
+The native shells build on Tauri 2 and `tauri-plugin-dialog` (Apache-2.0 OR
+MIT), `include_dir`, `serde` and `serde_json` (MIT/Apache-2.0), and the crates
+pinned in `src-tauri/Cargo.lock`. The Android build additionally uses AndroidX
+WebKit/AppCompat/Activity/Lifecycle (Apache-2.0), Google Material Components
+(Apache-2.0), Apache Commons Compress 1.21 (Apache-2.0) and XZ for Java 1.9
+(public domain). See the repository-root `THIRD_PARTY_NOTICES.md` for the table.
+
 ## Azahar libretro 2126.1.1
 
 `azahar_libretro.dylib` is from the official Azahar 2126.1.1 release and is licensed under GPL-2.0-or-later. Its GPL text is included in the app at `Resources/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt`.

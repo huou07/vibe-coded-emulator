@@ -3,59 +3,59 @@
   "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
   "artifacts": [
     {
-      "version": "1.4.1",
+      "version": "2.0.0",
       "platform": "macOS",
       "architecture": "arm64",
       "format": "DMG",
-      "filename": "vibecodedemulator-1.4.1-macos-aarch64.dmg",
-      "size": 44806337,
-      "sha256": "80899d0ddb7634075d39a5bd2d643e363b1f6d8fa3ffae0ecacaf4916992accb",
+      "filename": "vibecodedemulator-2.0.0-macos-aarch64.dmg",
+      "size": 44761461,
+      "sha256": "693ae026e6eaa450984882a81e66f957f1d10dbcfaed819724ed5a10c54fcbb7",
       "signature_status": "Ad-hoc native package from frozen source; unsigned/not notarized staging build.",
-      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
+      "runtime_status": "Vibe Coded Emulator 2.0.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0)."
     },
     {
-      "version": "1.4.0",
+      "version": "2.0.0",
       "platform": "Android",
       "architecture": "arm64",
       "format": "APK",
-      "filename": "vibecodedemulator-1.4.0-android-arm64-staging.apk",
-      "size": 49587834,
-      "sha256": "3c7518a2809335c8687c153c08bb2c6e8d427ff0712924c167dff202af4397ba",
+      "filename": "vibecodedemulator-2.0.0-android-arm64-staging.apk",
+      "size": 49643722,
+      "sha256": "2e3668f1199e95c35ac3ed6d06a9cb46adf752cd0bbafcd2d30333bfac55be8a",
       "signature_status": "Android Debug certificate (v2); same signer as the prior staging APK.",
-      "runtime_status": "New: a staging-only phone controller. The in-game General menu starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Existing branding, the shared Auto Save model, the 10-slot quick save, and the layout chooser are unchanged. Runtime acceptance still required before publication."
+      "runtime_status": "Vibe Coded Emulator 2.0.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0)."
     },
     {
-      "version": "1.4.1",
+      "version": "2.0.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-1.4.1-linux-amd64.deb",
-      "size": 45515398,
-      "sha256": "5594b071305dc42eabdc5e69501cb3ae62a976cfa2bdcc107dd534033764e411",
+      "filename": "vibecodedemulator-2.0.0-linux-amd64.deb",
+      "size": 45532262,
+      "sha256": "7af756348bd7a9c5e28532081e02d13928b7a4e6dc0e219712bdf30dc9168e46",
       "signature_status": "Frozen Debian package; no additional installation check requested.",
-      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
+      "runtime_status": "Vibe Coded Emulator 2.0.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0)."
     },
     {
-      "version": "1.4.1",
+      "version": "2.0.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-1.4.1-linux-amd64-staging.flatpak",
-      "size": 29105496,
-      "sha256": "d206a015e365b085b7cc1b36c8157b905ab750b39088dd0b97339863ed7720df",
+      "filename": "an3-offline-2.0.0-linux-amd64-staging.flatpak",
+      "size": 29119392,
+      "sha256": "7319448054d5a4af2bc8e9904eb1e8e5d99474e65738701149e392c4341800aa",
       "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
-      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
+      "runtime_status": "Vibe Coded Emulator 2.0.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0)."
     },
     {
-      "version": "1.4.1",
+      "version": "2.0.0",
       "platform": "Windows",
       "architecture": "x64",
       "format": "EXE",
-      "filename": "vibecodedemulator-1.4.1-windows-x64-staging.exe",
-      "size": 46794903,
-      "sha256": "88be4c1f2cf0005ba9d1ee821881817b510301ea8f6cb0a3acf057f2a9c4c36f",
+      "filename": "vibecodedemulator-2.0.0-windows-x64-staging.exe",
+      "size": 46798442,
+      "sha256": "a4061022bcd05b9f61b431155c8cfb2b893ca2a51da286f85c9fc05ad6e61d96",
       "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
-      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged.",
+      "runtime_status": "Vibe Coded Emulator 2.0.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0).",
       "release_gate": "PASS"
     }
   ]

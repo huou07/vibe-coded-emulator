@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Shared networking core for controller, LAN sync, and multiplayer rooms.
 
 Section 13 of the product spec asks for one reusable layer (discovery,

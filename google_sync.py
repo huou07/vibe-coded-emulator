@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Google sign-in and Google Drive sync for Vibe Coded Emulator.
 
 This module contains the parts that must be correct regardless of the web

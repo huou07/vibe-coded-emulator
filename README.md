@@ -1,99 +1,88 @@
-# Ăn 3 Tô Cơm
+# Vibe Coded Emulator
 
-Web game riêng cho `an3tocom.space`, chạy backend nhẹ trên TV Box và render game bằng WebAssembly/canvas trên trình duyệt máy khách.
+A cross-platform, offline-first emulator front-end. It runs GBA, Nintendo DS and
+Nintendo 3DS games from your own local ROM files, with native clients for macOS,
+Windows, Linux and Android and a browser player served by a small Python server.
 
-## Chức năng
+## Highlights
 
-- Thư viện song ngữ Việt/Anh, tìm kiếm nhanh, trang riêng cho từng game.
-- Tài khoản dùng tên đăng nhập cố định và nickname hiển thị có thể đổi; mật khẩu tối thiểu 10 ký tự, hash mới dùng scrypt với salt riêng. PBKDF2 chỉ còn để đọc hash cũ và làm fallback trên Python không có scrypt.
-- Mọi người có thể chơi hoặc tải tất cả game, gồm Draft, Testing và Release, không cần đăng nhập; đánh giá, bình luận, báo lỗi và yêu thích yêu cầu đăng nhập.
-- Mỗi tài khoản đánh giá 1-5 sao một lần cho mỗi game và có thể cập nhật lại; danh sách yêu thích nằm ở trang tài khoản.
-- Chỉ tài khoản quản trị đã đăng nhập được thấy Dashboard, upload ROM/cover, sửa mô tả, xóa game lỗi và thay đổi trạng thái Draft/Testing/Release.
-- Dashboard cho phép tạo thêm quản trị viên, đổi nickname hiển thị, xử lý báo lỗi, chỉnh liên hệ maintainer và xem tổng lượt truy cập, khách riêng biệt, người chơi, game được mở nhiều cùng biểu đồ 14 ngày.
-- Upload mặc định tự nhận diện hệ máy theo định dạng/tên file; file ZIP được đọc danh sách nội dung để chọn core hoặc nhận game HTML5. ROM lớn tự chuyển sang upload chia nhỏ 8 MB để tránh giới hạn request của proxy.
-- Trang chủ tự chia game thành từng khu vực GBA, NDS, 3DS… và có bộ lọc theo hệ máy. Các bản GBA Release không Testing được ưu tiên trong mục Recommended.
-- Bình luận và báo lỗi yêu cầu đăng nhập; quản trị viên có thể xóa bình luận và đóng báo lỗi.
-- Player có tiến độ tải ROM, fullscreen, tải/nạp save state và TVPad kéo thả cho GB/GBA/NDS.
-- Mỗi game có năm save slot cục bộ trên thiết bị, screenshot và lịch sử cập nhật do quản trị viên ghi.
-- Chỉnh vị trí, kích thước, độ mờ hoặc ẩn phím ảo không reload game; layout được lưu theo hệ máy và hướng màn hình.
-- NDS dùng nút riêng A/B/X/Y/L/R/Start/Select, không che màn hình cảm ứng và cho phép kéo thả như các hệ máy cầm tay khác. Canvas NDS được giám sát liên tục để gỡ lớp chặn pointer và có cầu nối touch-to-mouse cho trình duyệt điện thoại.
-- NDS dùng core `melonds` với `EJS_startOnLoaded=true`; không dùng DeSmuME, nút **Vào game** hoặc flow start thủ công. Touch bridge theo dõi canvas, gỡ lớp chặn pointer và chuyển touch thành mouse events cho màn hình DS. Với ZIP NDS, luồng Chơi giữ ZIP gốc để melonDS xử lý phía trình duyệt; nút Tải xuống vẫn giữ nguyên archive gốc.
-- Core offline được ghi và xác minh trong IndexedDB `EmulatorJS-core`/store `core` theo contract của EmulatorJS, đồng thời dùng cache bền vững `an3-arcade-cores-v1`, không bị xóa khi nâng phiên bản app shell. Trang Kho ngoại tuyến đọc/xóa cả IndexedDB và Cache Storage; marker hiện tại là `an3-offline-core-v7`.
-- Thư viện tìm kiếm từ chỉ mục đã chuẩn bị sẵn và chỉ kiểm tra game/đánh giá mới khi tab đang hiển thị, mỗi 60 giây; tài nguyên CSS/JS tự đổi phiên bản khi cập nhật, không cần xóa cache trình duyệt.
-- PWA cho phép cài Ăn 3 Tô Cơm, chuyển nhanh giữa Online/Offline, đưa ROM vào kho offline riêng trên trình duyệt và chơi không cần kết nối; kho này không đồng bộ tài khoản, thư viện chung, đánh giá hay bình luận.
-- PWA shell hiện dùng marker `an3-arcade-pwa-v29`. Nút tải trước core đọc report trước, chọn đúng binary theo report/capability, rồi lưu và xác minh runtime, extractor và core binary qua proxy cùng nguồn; chỉ báo sẵn sàng sau khi IndexedDB EmulatorJS và cache đã được kiểm tra.
-- Trang Offline có nút tải và verify core theo từng hệ máy, nhận diện ROM/ZIP cục bộ, tự chia kho ROM theo hệ máy và giữ nguyên menu player, save slot, fullscreen, save/import state và phím ảo.
-- Tài nguyên EmulatorJS đi qua proxy/cache cùng origin `/emulatorjs/<channel>/data/...`; TVBox chỉ tải một lần từ CDN, còn trình duyệt không phụ thuộc trực tiếp vào CDN có thể bị ad-blocker hoặc chính sách cross-origin chặn.
-- Lần truy cập đầu tiên có hướng dẫn tự đóng sau 5 giây; nút hướng dẫn trên trang chủ luôn có thể mở lại. Khi mở menu của player, chú giải nút điều khiển hiển thị mờ trong 3 giây.
-- 3DS dùng core Azahar trên kênh EmulatorJS `latest` và được gắn nhãn thử nghiệm.
-- Game tự làm hỗ trợ `.zip` có `index.html` hoặc một file `.html`, chạy trong iframe sandbox.
-- ROM lớn được stream và hỗ trợ HTTP Range; backend không render game.
+- **Web app** (`app.py`): bilingual library, per-game pages, web player
+  (EmulatorJS), local save slots and autosave, controller pairing, multiplayer
+  rooms on a LAN relay, phone-as-controller, LAN save transfer.
+- **Native desktop/Android apps** (`native-offline/`): Tauri shell plus a
+  portable libretro player for GBA/NDS/3DS with per-platform renderers
+  (Metal/Vulkan on macOS, Vulkan/OpenGL on Linux/Windows, Vulkan/OpenGL ES on
+  Android), the shared layout chooser, 10 quick-save slots, Exit Game, autosave
+  and the native phone-controller host.
+- **Offline by design**: ROMs and saves stay on your device.
 
-Trên HTTP LAN, trình duyệt vẫn lưu core vào IndexedDB nhưng không có Service Worker/Cache Storage bền vững; trải nghiệm đóng/mở hoàn toàn offline yêu cầu HTTPS/PWA.
+## Building
 
-## Vận hành hiện tại
+See `native-offline/scripts/` for the per-platform build scripts and
+`deploy/` for staging packaging. The web app runs with the Python standard
+library only:
 
-| Bề mặt | Địa chỉ hiện hành |
-| --- | --- |
-| Production LAN | `http://192.168.1.8:8091` |
-| Staging LAN tách biệt | `http://192.168.1.8:8092` |
-| Public | `https://an3tocom.space` |
-
-Production và staging có code root, SQLite, ROM, session, cookie và protected environment file riêng. Không sao chép `/srv` dữ liệu, user, session, ROM hoặc fixture từ staging sang production. Production chỉ là đích phê duyệt rõ ràng của owner; mọi thay đổi phải qua staging, test, rollback preflight và phê duyệt đó.
-
-## Thư mục production
-
-- Ứng dụng: `/opt/an3-arcade`
-- Dữ liệu/SQLite/ROM/cover: `/srv/an3-arcade`
-- Cấu hình bí mật: `/etc/an3-arcade.env`
-- Dịch vụ: `an3-arcade.service`
-- Cổng LAN: `8091`
-- URL LAN: `http://192.168.1.8:8091`
-
-## Biến môi trường
-
-```text
-AN3_APP_DIR=/opt/an3-arcade
-AN3_DATA_DIR=/srv/an3-arcade
-AN3_PORT=8091
-AN3_BASE_URL=http://192.168.1.8:8091
-AN3_COOKIE_SECURE=0
+```bash
+python3 app.py            # serve the web app
+python3 -m unittest discover -s tests
 ```
 
-Không ghi giá trị secret (pepper, password, token, session hoặc SSH credential) vào repository, report hay command history. Production HTTPS dùng `AN3_BASE_URL=https://an3tocom.space` và `AN3_COOKIE_SECURE=1`.
+## Licensing
 
-## Bảo mật
+**Vibe Coded Emulator is free software licensed under the GNU General Public
+License, version 3 or (at your option) any later version
+(`SPDX-License-Identifier: GPL-3.0-or-later`).**
 
-- Cài đặt mặc định dùng cookie `HttpOnly`, `SameSite=Lax`, `Secure` khi chạy HTTPS, token CSRF và session có hạn.
-- Tài khoản chỉ dùng tên đăng nhập, mật khẩu và nickname hiển thị. API đăng ký, đăng nhập, đánh giá, yêu thích và upload đều có giới hạn tốc độ; upload có giới hạn kích thước, phiên upload hết hạn sau 24 giờ và kiểm tra tên/đường dẫn.
-- Bình luận/báo lỗi có honeypot, chống lặp, khoảng nghỉ bắt buộc, quota theo tài khoản/IP và lọc mẫu spam cơ bản.
-- HTTP header gồm CSP, HSTS khi HTTPS, `nosniff`, Referrer Policy, Permissions Policy, COOP/CORP và chặn nhúng trang từ origin khác.
-- Chỉ admin mới có endpoint upload, quản lý tài khoản và cấu hình liên hệ. Không chia sẻ mật khẩu router, SSH hoặc admin trong bình luận hay ticket.
-- Cloudflare WAF/rate-limit/Bot controls là hạng mục security review riêng; không khẳng định chúng đã được cấu hình nếu chưa có bằng chứng owner-authorized. Dùng SQLite Online Backup thay vì raw-copy database WAL đang chạy.
+Copyright (C) 2026 Vibe Coded Emulator contributors.
 
-## Quy trình staging-first
+Under that license you may:
 
-Mỗi lần cập nhật phải package/test/triển khai và thử trước tại `http://192.168.1.8:8092`. Staging dùng ứng dụng, SQLite, ROM và cookie riêng, không đụng vào production. Staging scripts là `deploy/package-staging.sh`, `deploy/update-staging.sh` và `deploy/rollback-staging.sh`; release switch dùng tên trung tính `YYYYMMDD-HHMMSS-<asset>`, giữ release cũ và phục hồi symlink nếu health check thất bại. Quy trình đầy đủ nằm trong `docs/staging.md`.
+- use the software for any purpose, including **commercial** use;
+- study and **modify** it;
+- **redistribute** it and distribute **modified versions / forks**.
 
-Tệp `/etc/an3-arcade-staging.env` là protected configuration; chỉ ghi public path/role, không ghi secret value. Staging service là `an3-arcade-staging.service`, code root `/opt/an3-arcade-staging/current`, writable root `/srv/an3-arcade-staging`, port `8092`, và không có write access tới `/srv/an3-arcade`.
+If you distribute the software or a modified version, the GPL requires you to:
 
-## Kích hoạt tên miền
+- keep the applicable **copyright notices, license notices and attributions**;
+- license your modified version under the GPL and make its **complete
+  corresponding source code** available;
+- mark modified files and record relevant modification dates.
 
-`an3tocom.space` đang hoạt động qua Cloudflare Tunnel tới `http://127.0.0.1:8091`; không phụ thuộc IP WAN và không cần DMZ/port forward. Production phải giữ cookie secure.
+There is no additional advertising, splash-screen, branding or non-commercial
+restriction. **Forks do not have to keep the Vibe Coded Emulator name, logo,
+branding or original UI.**
 
-Mẫu ingress nằm tại `deploy/cloudflared-config.yml.example`. Không thay đổi Cloudflare/tunnel, deploy production, hoặc chạy migration dữ liệu chỉ để thực hiện staging/P3 acceptance. ROM lớn nên được upload từ Dashboard qua URL LAN để tránh giới hạn kích thước request của proxy công cộng.
+The full license text is in [`LICENSE`](LICENSE).
 
-## P3 operations
+### Source
 
-- Android staging-first harness and private localhost PWA procedure: `docs/android-regression.md`.
-- Shared public/admin visual rules: `docs/design-system.md` and `docs/ui-page-contract.md`.
-- Production/staging boundaries, checks and rollback discipline: `docs/operations.md` and `docs/staging.md`.
-- Admin Quick Edit reuses `/admin/game/<id>` and retains server-side authorization/CSRF. Enrichment stays pending until explicit admin approval; ROM files are never altered. Batch status changes are limited to 50 selected games and require preview plus typed confirmation.
+- Source repository: `https://REPLACE-WITH-PUBLIC-REPOSITORY-URL`
+  <!-- TODO(owner): replace with the real public repository URL. -->
+- The exact source revision for a released binary is the tagged commit listed in
+  the release notes and `native-offline/releases/catalog.json`.
 
-## P4 operations
+## Third-party components
 
-- `deploy/an3-arcade-health.sh` is a read-only host helper for production/staging health, Cloudflare Tunnel and backup-timer state, disk use, and SQLite integrity. It deliberately has no credentials, no polling loop, and no observability-stack dependency.
+The distributed binaries bundle or serve third-party components, each under its
+own license and copyright; they are **not** relicensed by this project. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and
+[`docs/licensing/license-audit.md`](docs/licensing/license-audit.md) for the full
+list, exact versions, copyright holders and corresponding-source links.
 
-## Nguồn công cụ
+Notable components:
 
-Footer của website ghi và liên kết tới EmulatorJS, RetroArch, mGBA, melonDS, Azahar, Python và SQLite. Quản trị viên chỉ nên upload các game/ROM mà mình có quyền phân phối.
+- Emulator cores: **Azahar** (GPL-2.0-or-later), **melonDS DS**
+  (GPL-3.0-or-later), **mGBA** (MPL-2.0).
+- **EmulatorJS** web player and its netplay relay (GPL-3.0 / Apache-2.0).
+- **MoltenVK** (Apache-2.0), **Tauri** (Apache-2.0 OR MIT), Rust/Android
+  dependencies (MIT/Apache-2.0/BSD), **Lucide** icons (ISC), **Pixelify Sans**
+  and **Roboto Condensed** fonts (SIL OFL 1.1).
+
+No proprietary firmware, encryption keys, or commercial ROMs are bundled.
+Users supply their own legally obtained game files.
+
+## Contributing and attribution
+
+Contributions are accepted under `GPL-3.0-or-later`. Keep existing copyright and
+license notices, and add your own copyright notice to files you create. See
+`docs/licensing/distribution-compliance.md` for the release checklist.

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 import base64
 import binascii
 import hashlib
@@ -62,6 +64,28 @@ def static_asset_version():
 
 ASSET_VERSION = static_asset_version()
 PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "player.js", "site.css"})
+
+# The public source location for the GPL corresponding source. The owner sets
+# the real URL (via AN3_SOURCE_REPOSITORY or by editing this default) so the
+# project never advertises an invented repository.
+SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://REPLACE-WITH-PUBLIC-REPOSITORY-URL")
+
+# Shown on /licenses. Each component keeps its own copyright and license.
+LICENSES_THIRD_PARTY = (
+    ("Azahar libretro 2126.1.1", "GPL-2.0-or-later", "Azahar Emulator Project"),
+    ("melonDS DS libretro 1.3.1", "GPL-3.0-or-later", "melonDS DS contributors"),
+    ("mGBA libretro 0.11-219", "MPL-2.0", "mGBA contributors"),
+    ("EmulatorJS 4.2.3", "GPL-3.0", "EmulatorJS contributors"),
+    ("MoltenVK 1.4.2", "Apache-2.0", "The Khronos Group"),
+    ("Tauri 2 / tauri-plugin-dialog", "Apache-2.0 OR MIT", "Tauri contributors"),
+    ("Rust crates (Cargo.lock)", "MIT / Apache-2.0 / BSD", "respective authors"),
+    ("AndroidX / Material Components", "Apache-2.0", "The Android Open Source Project / Google"),
+    ("Apache Commons Compress 1.21", "Apache-2.0", "The Apache Software Foundation"),
+    ("XZ for Java 1.9", "Public domain", "Lasse Collin"),
+    ("Lucide icons", "ISC", "Lucide Icons and Contributors"),
+    ("Pixelify Sans, Roboto Condensed", "SIL OFL 1.1", "respective font authors"),
+    ("qrcodegen (Python)", "MIT", "Project Nayuki"),
+)
 
 
 def versioned_player_asset(name):
@@ -1144,7 +1168,7 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
 <header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-download-app" href="/">{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
 {content}
 <footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span></div>{contact_block}
-<div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a></div></footer>
+<div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a><a href="/licenses">{tr(lang,"Giấy phép","Licenses")}</a></div></footer>
 {welcome}<div id="toast" role="status"></div>{page_scripts}</body></html>"""
 
 
@@ -1691,6 +1715,34 @@ def sync_page(lang, user, csrf):
 <script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
+
+
+def licenses_page(lang, user, csrf):
+    rows = "".join(
+        f'<tr><td>{esc(name)}</td><td>{esc(license_name)}</td><td>{esc(holder)}</td></tr>'
+        for name, license_name, holder in LICENSES_THIRD_PARTY
+    )
+    body = f'''<main class="page licenses-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"GIẤY PHÉP","LICENSES")}</p><h1>{tr(lang,"Giấy phép &amp; nguồn mở","Licenses &amp; open source")}</h1></div></section>
+<section class="native-card">
+<h2>{esc(SITE_NAME)}</h2>
+<p>{tr(lang,"Phần mềm này là phần mềm tự do theo GNU General Public License, phiên bản 3 hoặc mới hơn (GPL-3.0-or-later).","This software is free software under the GNU General Public License, version 3 or later (GPL-3.0-or-later).")}</p>
+<p class="muted">Copyright (C) 2026 Vibe Coded Emulator contributors.</p>
+<ul>
+<li>{tr(lang,"Được dùng cho mục đích cá nhân và thương mại.","Use for personal and commercial purposes is permitted.")}</li>
+<li>{tr(lang,"Được sửa đổi, phân phối và tạo bản phái sinh.","Modification, redistribution and forks are permitted.")}</li>
+<li>{tr(lang,"Bản phân phối phải giữ thông báo bản quyền/giấy phép và cung cấp mã nguồn tương ứng theo GPL.","Distributions must keep the copyright/license notices and provide the corresponding source under the GPL.")}</li>
+<li>{tr(lang,"Bản phái sinh không bắt buộc giữ tên, logo hay giao diện gốc.","Forks do not have to keep the original name, logo or UI.")}</li>
+</ul>
+<p><a href="/licenses/gpl-3.0.txt">GNU General Public License v3</a> · {tr(lang,"Mã nguồn:","Source:")} <code>{esc(SOURCE_REPOSITORY)}</code></p>
+</section>
+<section class="native-card">
+<h2>{tr(lang,"Thành phần bên thứ ba","Third-party components")}</h2>
+<p class="muted">{tr(lang,"Mỗi thành phần giữ bản quyền và giấy phép riêng.","Each component keeps its own copyright and license.")}</p>
+<table class="licenses-table"><thead><tr><th>{tr(lang,"Thành phần","Component")}</th><th>{tr(lang,"Giấy phép","License")}</th><th>{tr(lang,"Bản quyền","Copyright")}</th></tr></thead><tbody>{rows}</tbody></table>
+</section>
+</main>'''
+    return layout(tr(lang, "Giấy phép", "Licenses"), body, lang, user, csrf)
 
 
 def player_page(game, lang, user, csrf):
@@ -2996,6 +3048,15 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             else:
                 self.track_visit("/sync", user)
                 self.send_html(sync_page(lang, user, csrf))
+        elif path == "/licenses":
+            self.send_html(licenses_page(lang, user, csrf))
+        elif path == "/licenses/gpl-3.0.txt":
+            license_path = os.path.join(APP_DIR, "LICENSE")
+            if not os.path.isfile(license_path):
+                self.send_bytes(404, b"license not found\n", "text/plain; charset=utf-8")
+            else:
+                with open(license_path, "rb") as handle:
+                    self.send_bytes(200, handle.read(), "text/plain; charset=utf-8")
         elif path == "/controller":
             if not CONTROLLER_ENABLED:
                 self.send_html(status_page(404, lang, user, csrf), 404)

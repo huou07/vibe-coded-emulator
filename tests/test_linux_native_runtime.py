@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Regression contracts for the real portable Linux native package.
 
 The Debian release job compiles and runs these adapters.  These lightweight
