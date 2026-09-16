@@ -22,14 +22,28 @@ REPO="huou07/vibe-coded-emulator"
 SNAPSHOT="${AN3_PUBLICATION_CANDIDATE:-$ROOT/work/public-snapshot}"
 CONFIRMED=0
 
+usage() {
+  cat <<'USAGE'
+Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
+
+  --confirm        required; acknowledge that this publishes publicly
+  --repo OWNER/NAME  default: huou07/vibe-coded-emulator
+  --snapshot DIR     default: work/public-snapshot
+  -h, --help       show this help
+
+Environment: AN3_PUBLIC_AUTHOR_NAME, AN3_PUBLIC_AUTHOR_EMAIL
+USAGE
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --confirm) CONFIRMED=1 ;;
-    --repo) REPO="$2"; shift ;;
-    --snapshot) SNAPSHOT="$2"; shift ;;
-    *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
+    --confirm) CONFIRMED=1; shift ;;
+    --repo) [[ -n "${2:-}" ]] || { printf 'ERROR: --repo needs OWNER/NAME\n' >&2; exit 2; }; REPO="$2"; shift 2 ;;
+    --snapshot) [[ -n "${2:-}" ]] || { printf 'ERROR: --snapshot needs a directory\n' >&2; exit 2; }; SNAPSHOT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; exit 2 ;;
+    *) SNAPSHOT="$1"; shift ;;
   esac
-  shift
 done
 
 die() { printf 'PUBLISH=FAIL %s\n' "$*" >&2; exit 1; }
@@ -85,7 +99,14 @@ gh repo edit "$REPO" \
 
 step "5/7 push main (no force)"
 git -C "$SNAPSHOT" remote remove origin 2>/dev/null || true
-git -C "$SNAPSHOT" remote add origin "https://github.com/$REPO.git"
+PROTOCOL="$(gh config get git_protocol -h github.com 2>/dev/null || echo https)"
+if [[ "$PROTOCOL" == "ssh" ]]; then
+  REMOTE="git@github.com:$REPO.git"
+else
+  REMOTE="https://github.com/$REPO.git"
+fi
+note "remote: $REMOTE"
+git -C "$SNAPSHOT" remote add origin "$REMOTE"
 git -C "$SNAPSHOT" push -u origin main
 
 step "6/7 security settings (best effort; reported individually)"

@@ -14,12 +14,29 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CANDIDATE="${AN3_PUBLICATION_CANDIDATE:-/tmp/an3-public/vibe-coded-emulator}"
+CANDIDATE="${AN3_PUBLICATION_CANDIDATE:-$ROOT/work/public-snapshot}"
 SCAN_HISTORY=0
-for argument in "$@"; do
-  case "$argument" in
-    --history) SCAN_HISTORY=1 ;;
-    *) CANDIDATE="$argument" ;;
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/publication-check.sh [--history] [--candidate DIR]
+
+  --history         also scan the candidate's Git history
+  --candidate DIR   candidate directory (default: work/public-snapshot)
+  -h, --help        show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --history) SCAN_HISTORY=1; shift ;;
+    --candidate) [[ -n "${2:-}" ]] || { printf 'ERROR: --candidate needs a directory\n' >&2; exit 2; }; CANDIDATE="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; exit 2 ;;
+    *)
+      # A bare path is accepted only when it really is a directory.
+      [[ -d "$1" ]] || { printf 'ERROR: not a directory: %s\n(use --candidate DIR; run tools/build-public-snapshot.sh first)\n' "$1" >&2; exit 2; }
+      CANDIDATE="$1"; shift ;;
   esac
 done
 

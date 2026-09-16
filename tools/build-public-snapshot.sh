@@ -13,8 +13,26 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="${1:-$ROOT/work/public-snapshot}"
+OUT="$ROOT/work/public-snapshot"
 TEMPLATES="$ROOT/tools/publication"
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/build-public-snapshot.sh [--output DIR]
+
+  --output DIR   where to write the snapshot (default: work/public-snapshot)
+  -h, --help     show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) [[ -n "${2:-}" ]] || { printf 'ERROR: --output needs a directory\n' >&2; exit 2; }; OUT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; exit 2 ;;
+    *) OUT="$1"; shift ;;
+  esac
+done
 
 die() { printf 'BUILD_SNAPSHOT=FAIL %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
