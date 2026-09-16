@@ -103,8 +103,10 @@ From the original spec plus later requests:
   menu-vs-touch) and on Linux/Windows. 1.3.0 was **built**, not run.
   (1.2.0 was verified: Android 59 fps, 12 layouts, saved state; macOS/Linux
   runtime smoke.)
-- Windows 1.3.0 at all (build only); no interactive Windows run has ever been
-  recorded.
+- Windows 1.3.0 **launch smoke done** (2026-09-16): installs silently, the app
+  launches/responds and initializes WebView2 on the `an3-win11-build` VM.
+  Windows **gameplay/rendering/audio/input remain UNVERIFIED** (Session 0, no
+  Vulkan ICD). See `reports/handoff/WINDOWS_1.3.0_LAUNCH_SMOKE_20260916.md`.
 - macOS menu **click** interaction (GUI), and the new FPS/menu guards at runtime.
 - Web UI via Playwright for `/multiplayer` and `/controller`.
 - Controller on a real phone (the QR was decoded programmatically, not by a
@@ -198,6 +200,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    **Sync wiring + LAN discovery done** (staging-verified 2026-09-16); actual
    byte transfer between devices still open.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
+   **Done:** Android verified; Linux launch smoke; Windows launch smoke
+   (gameplay unverified); CodeGraph synced.
 6. **Create the skills/agents** in §7 as the workflows stabilize.
 7. **Switch companion** last, behind its own abstraction and after a design sign-off.
    **Design note written** (`docs/vibe-coded-switch-companion.md`: Eden, separate

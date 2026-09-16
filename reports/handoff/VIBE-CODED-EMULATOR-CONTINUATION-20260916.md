@@ -464,3 +464,24 @@ UI; Windows 1.3.0 runtime smoke; Switch companion.
 
 **Still open:** controller native injection; LAN byte transfer; Google routes/UI;
 Windows 1.3.0 runtime smoke; Switch Phase 1 (needs sign-off).
+
+## Update — 2026-09-16 (tenth session, part 3): Windows 1.3.0 launch smoke
+
+**Step 5 (Windows) — launch smoke done; gameplay still UNVERIFIED.**
+- Started `an3-win11-build` on the Dell on demand, copied the verified
+  1.3.0 installer (46,720,549 B), installed silently (`/S`, exit 0), launched
+  `C:\AN3\app100\an3-offline-native.exe` (FileVersion **1.3.0**):
+  `alive, responding=True`, 32.3 MB RSS, **6 `msedgewebview2.exe`** children →
+  the WebView2 UI initialized.
+- Stopped the app, then shut the VM down from inside Windows (`shutdown /s`);
+  `shut off`, `Autostart: disable`.
+- **Not claimed:** any Windows gameplay/rendering/audio/input (Session 0, no
+  Vulkan ICD, GDI Generic GL 1.1). Guard RG-088; report
+  `reports/handoff/WINDOWS_1.3.0_LAUNCH_SMOKE_20260916.md`.
+
+**Plan status:** steps 1, 2, 3, 6 done+verified; step 4 sync wiring + LAN
+discovery done (byte transfer open); step 5 Android verified/Linux+Windows launch
+smokes done; step 7 Switch design note written (implementation needs sign-off).
+
+**Still open:** controller native injection; LAN byte transfer; Google routes/UI;
+Switch Phase 1; Windows interactive gameplay.
