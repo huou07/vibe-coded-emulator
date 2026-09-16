@@ -272,3 +272,38 @@ Windows installer), the modified `azahar_host.mm` was **not compiled**, live
 Google sign-in, two-device LAN sync, remote controller on a real phone, netplay
 rooms between two machines, and any Switch core. GBA/NDS/3DS runtime behaviour
 is unchanged by these edits but was not re-measured here.
+
+## 14. Screen layout chooser and toolbar Save (2026-09-16)
+
+**Layout chooser.** The gameplay toolbar's Layout button no longer cycles
+between two layouts; it opens a chooser of every layout the active core
+supports.
+
+- `native-offline/shared/native-layout-schema.json` (v2) is the single source:
+  each entry has `id` (the persisted preference), `label`, `coreOption` and the
+  exact `coreValue` the libretro core accepts.
+  - melonDS DS: 12 layouts — left/right, right/left, top/bottom, bottom/top,
+    hybrid and flipped-hybrid (focus top/bottom), large screen and flipped
+    large screen (top/bottom).
+  - Azahar: 4 layouts — side by side, top/bottom (`default`), single screen,
+    large screen.
+- `generate-player-ui.mjs` now also emits `shared/generated/native_layouts.h`
+  from that schema. macOS (`azahar_host.mm`) and Linux (`linux_controls.cpp`,
+  `linux_runtime.cpp`) include the generated header; Android reads the JSON
+  asset (`NativeLayoutModel`). One source, no private copies.
+- Picking a layout applies it live and persists it per system
+  (`an3.native-screen-layout.v1.<system>` on macOS, `screen-layout-<system>` /
+  `nds-layout` preferences on Android, `screen-layout.txt` on Linux). Legacy
+  spellings (`side_by_side`, `top_bottom`, `left-right`, `top-bottom`) still
+  resolve so an existing preference keeps working.
+
+**Toolbar Save.** A Save button beside the speed row exposes the Save States
+tab's quick actions without opening the menu: **Quick Save**, **Quick Load**,
+**Auto Save now**, **Load Auto Save** (slot 1 quick save/load; auto save uses
+the shared atomic writer).
+
+**Verification.** macOS: generator `--check` OK, `cargo check` compiles the
+`.mm`, `npm run build:macos` produced the 1.2.0 DMG, and the runtime smoke ran
+the new NDS layouts (left-right, hybrid-top, largescreen-bottom, right-left,
+bottom-top) at ~50 fps each. Linux/Android code was updated to consume the same
+schema but their runtime builds were **not** rerun here.

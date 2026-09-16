@@ -188,3 +188,31 @@ rollback retained. Commits `69f325c`, `4c0ecbf`, `b8191e9`, `b95db9e`, `c53f12c`
 **Still not done:** Flatpak/Windows 1.1.0; a QR renderer for the controller and
 binding host state into the live EmulatorJS input path; LAN device discovery +
 direct transfer; sync wiring in `app.py`; Switch companion.
+
+## Update — 2026-09-16 (fourth session)
+
+**Requested feature changes, done on all three native shells:**
+
+1. **Layout chooser instead of a two-option cycle.** `native-layout-schema.json`
+   is v2 now: each entry carries `id`, `label`, `coreOption` and the exact
+   `coreValue`. melonDS exposes 12 layouts, Azahar 4. `generate-player-ui.mjs`
+   emits `shared/generated/native_layouts.h`, which macOS and Linux include;
+   Android reads the JSON asset. The toolbar Layout button opens a chooser on
+   macOS (NSMenu), Linux (GTK menu) and Android (AlertDialog); F1 on Linux
+   cycles the same list.
+2. **Toolbar Save button.** Beside the speed row on macOS/Linux/Android: Quick
+   Save, Quick Load, Auto Save now, Load Auto Save — the Save States tab's quick
+   actions without opening the menu. (The web player already had a slot button.)
+
+**Version:** native 1.1.0 -> **1.2.0** (feature; the published app bytes
+changed). macOS DMG rebuilt and published; Android/Linux catalog entries stay at
+1.1.0 until those binaries are rebuilt.
+
+**Verified:** 220 tests pass; generator `--check` OK; `cargo check` + macOS
+build + DMG; runtime smoke of five NDS layouts at ~50 fps. Staging asset
+`dea10670c1a7` (macOS 1.2.0 DMG served 200, served `player-ui.js` carries the
+new toolbar model). Commit `bcde87e`.
+
+**Not verified:** Android/Linux builds for 1.2.0 (Kotlin/C++ updated but not
+rebuilt here). Unchanged-from-before: Flatpak/Windows 1.2.0, LAN discovery,
+sync wiring, Switch companion.
