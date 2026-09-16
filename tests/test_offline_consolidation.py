@@ -2,6 +2,7 @@ import pathlib
 import sys
 import unittest
 import io
+import re
 import zipfile
 import subprocess
 import json
@@ -178,6 +179,23 @@ console.log(JSON.stringify(result));
         self.assertIn('"allow-stop-native-game"', capabilities)
         self.assertIn('"allow-set-native-input"', capabilities)
         self.assertNotIn('"allow-launch-native-3ds"', capabilities)
+        # Every Tauri command must be allowed by the capability ACL and listed in
+        # build.rs's AppManifest, or the WebView gets "Command ... not allowed by
+        # ACL" at runtime. Commands may be defined in lib.rs or a helper module.
+        command_sources = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((native_root / "src-tauri" / "src").glob("*.rs"))
+        )
+        commands = re.findall(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)", command_sources)
+        self.assertIn("native_controller_status", commands)
+        build_rs = (native_root / "src-tauri" / "build.rs").read_text(encoding="utf-8")
+        manifest = build_rs[build_rs.index(".commands(&["):]
+        manifest = manifest[:manifest.index("]")]
+        declared = re.findall(r'"([a-z0-9_]+)"', manifest)
+        self.assertEqual(sorted(declared), sorted(commands), "build.rs commands must match the #[tauri::command] set")
+        for command in commands:
+            permission = "allow-" + command.replace("_", "-")
+            self.assertIn(f'"{permission}"', capabilities, f"capability missing {permission}")
         self.assertIn('const nativeOfflineApp = globalThis.AN3NativeOfflineApp === true;', OFFLINE_JS)
         self.assertIn('const configuredOrigin=typeof config.emulatorOrigin', PLAYER_JS)
         self.assertIn('def native_offline_source_bundle():', source)

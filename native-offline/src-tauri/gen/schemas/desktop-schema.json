@@ -189,6 +189,24 @@
           "markdownDescription": "Enables the native_capabilities command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_controller_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-start",
+          "markdownDescription": "Enables the native_controller_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-status",
+          "markdownDescription": "Enables the native_controller_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-stop",
+          "markdownDescription": "Enables the native_controller_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_and_import_native_rom command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-and-import-native-rom",
@@ -247,6 +265,24 @@
           "type": "string",
           "const": "deny-native-capabilities",
           "markdownDescription": "Denies the native_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-start",
+          "markdownDescription": "Denies the native_controller_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-status",
+          "markdownDescription": "Denies the native_controller_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-stop",
+          "markdownDescription": "Denies the native_controller_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_and_import_native_rom command without any pre-configured scope.",

@@ -11,7 +11,10 @@
     "allow-native-capabilities",
     "allow-start-native-game",
     "allow-stop-native-game",
-    "allow-set-native-input"
+    "allow-set-native-input",
+    "allow-native-controller-start",
+    "allow-native-controller-stop",
+    "allow-native-controller-status"
   ],
   "remote": {
     "urls": ["http://127.0.0.1:38471/*"]

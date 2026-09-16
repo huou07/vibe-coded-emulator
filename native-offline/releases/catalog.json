@@ -3,15 +3,15 @@
   "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
   "artifacts": [
     {
-      "version": "1.4.0",
+      "version": "1.4.1",
       "platform": "macOS",
       "architecture": "arm64",
       "format": "DMG",
-      "filename": "vibecodedemulator-1.4.0-macos-aarch64.dmg",
-      "size": 44810277,
-      "sha256": "638d44eee2eefab000177a98d5d35779be08f06295fd44c05d577252b9420c9f",
+      "filename": "vibecodedemulator-1.4.1-macos-aarch64.dmg",
+      "size": 44806337,
+      "sha256": "80899d0ddb7634075d39a5bd2d643e363b1f6d8fa3ffae0ecacaf4916992accb",
       "signature_status": "Ad-hoc native package from frozen source; unsigned/not notarized staging build.",
-      "runtime_status": "New: a staging-only phone controller. Settings → Phone controller starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Branding, the shared Auto Save model, the 10-slot quick save, the layout chooser and Exit Game are unchanged. Runtime acceptance still required before publication."
+      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
     },
     {
       "version": "1.4.0",
@@ -25,37 +25,37 @@
       "runtime_status": "New: a staging-only phone controller. The in-game General menu starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Existing branding, the shared Auto Save model, the 10-slot quick save, and the layout chooser are unchanged. Runtime acceptance still required before publication."
     },
     {
-      "version": "1.4.0",
+      "version": "1.4.1",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-1.4.0-linux-amd64.deb",
-      "size": 45513922,
-      "sha256": "82ffaca9d3fe491756b6a1f443c31a8d91d5082a2791cd5bbdea697cd21381a7",
+      "filename": "vibecodedemulator-1.4.1-linux-amd64.deb",
+      "size": 45515398,
+      "sha256": "5594b071305dc42eabdc5e69501cb3ae62a976cfa2bdcc107dd534033764e411",
       "signature_status": "Frozen Debian package; no additional installation check requested.",
-      "runtime_status": "New: a staging-only phone controller. Settings → Phone controller starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Branding, the shared Auto Save model, the 10-slot quick save, the layout chooser and Exit Game are unchanged. Native runtime acceptance on the Dell still required before publication."
+      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
     },
     {
-      "version": "1.4.0",
+      "version": "1.4.1",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-1.4.0-linux-amd64-staging.flatpak",
-      "size": 29103144,
-      "sha256": "cc74f5a6ceed21fc4001059b37c837b0939a5525d2eaa3f082c1df7dad5ef6b9",
+      "filename": "an3-offline-1.4.1-linux-amd64-staging.flatpak",
+      "size": 29105496,
+      "sha256": "d206a015e365b085b7cc1b36c8157b905ab750b39088dd0b97339863ed7720df",
       "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
-      "runtime_status": "Phone-controller desktop shell plus the bundled native player (GBA/NDS/3DS, Azahar 2126.1.1). Built from the 1.4.0 DEB."
+      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged."
     },
     {
-      "version": "1.4.0",
+      "version": "1.4.1",
       "platform": "Windows",
       "architecture": "x64",
       "format": "EXE",
-      "filename": "vibecodedemulator-1.4.0-windows-x64-staging.exe",
-      "size": 46784588,
-      "sha256": "be5f84f9a65738ebbbab931e8c275c8e78fc1360f9c99571781269f658c53e66",
+      "filename": "vibecodedemulator-1.4.1-windows-x64-staging.exe",
+      "size": 46794903,
+      "sha256": "88be4c1f2cf0005ba9d1ee821881817b510301ea8f6cb0a3acf057f2a9c4c36f",
       "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
-      "runtime_status": "New: a staging-only phone controller. Settings → Phone controller starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Branding, the shared Auto Save model, the 10-slot quick save, the layout chooser and Exit Game are unchanged. Windows runtime acceptance still required before publication.",
+      "runtime_status": "Phone controller (staging-only). Fixed in 1.4.1: the three controller commands are now in the Tauri capability ACL and build.rs manifest, so Settings -> Phone controller actually starts (\"Command native_controller_status not allowed by ACL\" in 1.4.0). Branding, Auto Save, quick-save slots, layout chooser and Exit Game are unchanged.",
       "release_gate": "PASS"
     }
   ]

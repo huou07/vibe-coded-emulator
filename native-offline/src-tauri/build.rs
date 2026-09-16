@@ -42,6 +42,9 @@ fn main() {
             "start_native_game",
             "stop_native_game",
             "set_native_input",
+            "native_controller_start",
+            "native_controller_stop",
+            "native_controller_status",
         ]),
     ))
     .expect("failed to generate Tauri capabilities");

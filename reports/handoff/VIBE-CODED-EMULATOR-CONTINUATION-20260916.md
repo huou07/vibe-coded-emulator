@@ -624,3 +624,28 @@ polling; a phone driving a running desktop game; Windows gameplay.
 (live probe), Linux `input()` → `INPUT` line (unit test), runtime `INPUT` → core
 (headless screenshot). Remaining: the app's own GUI glue and a real phone
 driving a running desktop game.
+
+## Update — 2026-09-16 (sixteenth session): desktop GUI e2e + 1.4.1 ACL fix
+
+**Desktop end-to-end VERIFIED on Linux** (Xvfb + openbox, installed with the
+owner's approval): the 1.4.1 app created session `FM9MVQ`, the MacBook paired as
+the phone (`Phone connected · 3518s`), and eight `start` frames advanced the
+running GBA to its NEW GAME / OPTION menu.
+Evidence: `reports/staging/linux-desktop-controller-*.png`.
+
+**Bug found and fixed (RG-093):** the Tauri commands were missing from
+`build.rs`'s `AppManifest`, so 1.4.0's desktop controller panel failed with
+"Command native_controller_status not allowed by ACL". Added to `build.rs` plus a
+guard deriving commands from `src/*.rs`.
+
+**1.4.1 published for desktop** (Android stays 1.4.0):
+DMG 44,806,337 `80899d0d…` · DEB 45,515,398 `5594b071…` · Flatpak 29,105,496
+`d206a015…` · EXE 46,794,903 `88be4c1f…`. All five URLs 200 on staging (asset
+`e792e8578089`, release `20260916-175421-e792e8578089`); suite **259 tests, 0
+failures**. macOS 1.4.1 mounts/launches; Windows 1.4.1 installs/launches (VM
+shut down). Report
+`reports/handoff/DESKTOP_CONTROLLER_ACL_FIX_1.4.1_20260916.md`.
+
+**Still UNVERIFIED:** macOS/Windows GUI pairing; a phone driving a running
+macOS/Windows game; LAN byte transfer; Google routes (needs credentials);
+Switch Phase 1 (needs sign-off).
