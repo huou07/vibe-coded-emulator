@@ -102,8 +102,10 @@ From the original spec plus later requests:
   app's UI/WebView was not driven). Android is done and verified (1.4.0).
 - Multiplayer **peer video** on the web (the staged EmulatorJS build has no
   WebRTC; it is relay input lockstep, and peer input sync is verified).
-- **LAN direct transfer of save bytes** (the registry + plan/conflict API are
-  done; moving bytes device-to-device is client/native work).
+- **LAN byte-level transfer** is implemented and **verified across the MacBook
+  and the Debian** (publish → manifest → blob, SHA-256 byte-exact both ways).
+  It is LAN-mediated through the staging server (the LAN rendezvous); true
+  peer-to-peer device listeners and client-store wiring remain.
 - **Google sign-in + Drive transport** (owner skipped; needs OAuth
   credentials). `google_sync.py` is tested against an injected transport only.
 - **Switch companion** integration.
@@ -215,8 +217,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    code surfaced in the game UI. **Done and staging-verified** (invite code ==
    relay room name; peer media sync still unverified).
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
-   **Sync wiring + LAN discovery done** (staging-verified 2026-09-16); actual
-   byte transfer between devices still open.
+   **Sync wiring, LAN discovery, and LAN byte transfer done** (verified across
+   the MacBook and the Debian); true P2P listeners + client-store wiring open.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
    **Done:** Android verified; Linux launch smoke; Windows launch smoke
    (gameplay unverified); CodeGraph synced.
