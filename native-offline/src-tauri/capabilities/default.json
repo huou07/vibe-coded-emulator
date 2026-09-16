@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Offline local-ROM player window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "allow-pick-and-import-native-rom",
+    "allow-remove-native-rom",
+    "allow-native-capabilities",
+    "allow-start-native-game",
+    "allow-stop-native-game",
+    "allow-set-native-input",
+    "allow-native-controller-start",
+    "allow-native-controller-stop",
+    "allow-native-controller-status"
+  ],
+  "remote": {
+    "urls": ["http://127.0.0.1:38471/*"]
+  }
+}

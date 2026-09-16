@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily AN3 Arcade backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15m
+Unit=an3-arcade-backup.service
+
+[Install]
+WantedBy=timers.target

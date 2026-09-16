@@ -1,0 +1,24 @@
+[Unit]
+Description=AN3 Arcade staging game library
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tvshare
+Group=tvshare
+EnvironmentFile=/etc/an3-arcade-staging.env
+ExecStart=/usr/bin/python3 /opt/an3-arcade-staging/current/app.py
+WorkingDirectory=/opt/an3-arcade-staging/current
+Restart=on-failure
+RestartSec=3
+UMask=0027
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/an3-arcade-staging
+MemoryMax=1G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

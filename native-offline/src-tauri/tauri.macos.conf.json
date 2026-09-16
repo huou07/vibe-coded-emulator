@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "resources": {
+      "../vendor/azahar/macos-arm64/azahar_libretro.dylib": "azahar/macos-arm64/azahar_libretro.dylib",
+      "../vendor/azahar/macos-arm64/manifest.json": "azahar/macos-arm64/manifest.json",
+      "../vendor/azahar/macos-arm64/LICENSE": "azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt",
+      "../vendor/libretro/macos-arm64/mgba_libretro.dylib": "libretro/macos-arm64/mgba_libretro.dylib",
+      "../vendor/libretro/macos-arm64/melondsds_libretro.dylib": "libretro/macos-arm64/melondsds_libretro.dylib",
+      "../vendor/libretro/macos-arm64/manifest.json": "libretro/macos-arm64/manifest.json",
+      "../vendor/libretro/macos-arm64/mGBA-MPL-2.0.txt": "libretro/macos-arm64/mGBA-MPL-2.0.txt",
+      "../vendor/libretro/macos-arm64/melonDS-DS-GPL-3.0-or-later.txt": "libretro/macos-arm64/melonDS-DS-GPL-3.0-or-later.txt",
+      "../vendor/moltenvk/macos-arm64/libMoltenVK.dylib": "azahar/macos-arm64/libMoltenVK.dylib",
+      "../vendor/moltenvk/macos-arm64/manifest.json": "azahar/macos-arm64/moltenvk-manifest.json",
+      "../vendor/moltenvk/macos-arm64/LICENSE": "azahar/macos-arm64/MoltenVK-LICENSE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+    }
+  }
+}
