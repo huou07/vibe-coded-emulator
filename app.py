@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import base64
 import hashlib
+import hmac
 import html
 import io
 import json
@@ -124,6 +125,25 @@ ROOMS = netcode.RoomService(
     room_ttl_seconds=900,
     join_limiter=netcode.SlidingRateLimiter(limit=20, window_seconds=60),
 )
+
+# The remote controller is staging-only too. A host creates a short-lived
+# pairing session, the phone pairs with the code, and both sides use
+# role-scoped tokens. No controller endpoint exists in production.
+CONTROLLER_ENABLED = ENVIRONMENT in {"staging", "development"}
+CONTROLLERS = {}
+CONTROLLER_LOCK = threading.Lock()
+CONTROLLER_LIMITER = netcode.SlidingRateLimiter(limit=30, window_seconds=60)
+CONTROLLER_TTL_SECONDS = 120
+
+
+def controller_reap():
+    """Drop expired controller sessions. Called on every mutating request."""
+
+    with CONTROLLER_LOCK:
+        expired = [code for code, record in CONTROLLERS.items() if record["session"].is_expired()]
+        for code in expired:
+            CONTROLLERS.pop(code, None)
+    return len(expired)
 
 
 def room_signature_from(data):
@@ -1485,6 +1505,40 @@ def multiplayer_page(lang, user, csrf, slug=""):
     return layout(tr(lang, "Phòng chơi chung", "Multiplayer"), body, lang, user, csrf)
 
 
+def controller_host_page(lang, user, csrf):
+    body = f'''<main class="page controller-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · ĐIỀU KHIỂN","STAGING · CONTROLLER")}</p><h1>{tr(lang,"Điện thoại làm tay cầm","Phone as controller")}</h1></div></section>
+<section class="admin-form" id="ctrlHostPanel">
+<p class="muted">{tr(lang,"Phiên ghép đôi kéo dài 2 phút. Mở liên kết trên điện thoại cùng mạng LAN.","Pairing lasts 2 minutes. Open the link on a phone on the same LAN.")}</p>
+<p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlCode" class="ctrl-code">—</span></p>
+<p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlLink" href="#">—</a></p>
+<p id="ctrlStatus" class="muted" role="status">{tr(lang,"Đang tạo phiên…","Creating session…")}</p>
+</section>
+<script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
+</main>'''
+    return layout(tr(lang, "Điều khiển", "Controller"), body, lang, user, csrf)
+
+
+def controller_join_page(lang, user, csrf, code=""):
+    labels = (
+        ("up", "↑"), ("down", "↓"), ("left", "←"), ("right", "→"),
+        ("a", "A"), ("b", "B"), ("x", "X"), ("y", "Y"),
+        ("l", "L"), ("r", "R"), ("start", "Start"), ("select", "Select"),
+    )
+    pad = "".join(f'<button type="button" class="button ctrl-btn" data-btn="{name}">{label}</button>' for name, label in labels)
+    body = f'''<main class="page controller-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · TAY CẦM","STAGING · CONTROLLER")}</p><h1>{tr(lang,"Tay cầm điện thoại","Phone controller")}</h1></div></section>
+<section class="admin-form" id="ctrlJoinPanel">
+<label>{tr(lang,"Mã ghép đôi","Pairing code")}<input id="ctrlCode" value="{esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
+<div class="form-actions"><button id="ctrlConnect" type="button" class="button primary">{tr(lang,"Kết nối","Connect")}</button></div>
+<p id="ctrlStatus" class="muted" role="status"></p>
+<div id="ctrlPad" class="ctrl-pad" hidden>{pad}</div>
+</section>
+<script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
+</main>'''
+    return layout(tr(lang, "Tay cầm", "Controller"), body, lang, user, csrf)
+
+
 def player_page(game, lang, user, csrf):
     title = game_title(game, lang)
     icon = lambda name: f'<img src="/static/ui-{name}.svg?v={ASSET_VERSION}" alt="" width="24" height="24">'
@@ -2101,6 +2155,106 @@ class Handler(BaseHTTPRequestHandler):
             "expiresInSeconds": remaining,
         })
 
+    def controller_unavailable(self):
+        self.send_json({"error": "not found"}, 404)
+
+    def controller_create_session(self):
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        CONTROLLER_LIMITER.check(self.client_address[0])
+        controller_reap()
+        with CONTROLLER_LOCK:
+            code = netcode.generate_pairing_code(6)
+            while code in CONTROLLERS:
+                code = netcode.generate_pairing_code(6)
+            session = netcode.ControllerSession(
+                code=code,
+                host_device_id="host",
+                created_at=time.monotonic(),
+                ttl_seconds=CONTROLLER_TTL_SECONDS,
+            )
+            host_token, host_digest = netcode.new_session_token()
+            CONTROLLERS[code] = {"session": session, "host": host_digest}
+        self.send_json({
+            "code": code,
+            "hostToken": host_token,
+            "ttlSeconds": CONTROLLER_TTL_SECONDS,
+            "joinPath": f"/controller/join?code={code}",
+        }, 201)
+
+    def controller_pair(self):
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        data = self.read_json()
+        code = netcode.normalize_code(str(data.get("code") or ""))
+        try:
+            CONTROLLER_LIMITER.check(self.client_address[0])
+            controller_reap()
+            with CONTROLLER_LOCK:
+                record = CONTROLLERS.get(code)
+            if record is None:
+                raise netcode.NetcodeError("pairing code not found")
+            token = record["session"].pair(str(data.get("deviceId") or "phone")[:64])
+        except netcode.RateLimitedError as exc:
+            return self.send_json({"error": str(exc)}, 429)
+        except netcode.ExpiredError as exc:
+            return self.send_json({"error": str(exc), "reason": "expired"}, 410)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 404)
+        self.send_json({"code": code, "token": token, "role": "phone"})
+
+    def controller_submit_state(self):
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        data = self.read_json()
+        code = netcode.normalize_code(str(data.get("code") or ""))
+        token = str(data.get("token") or "")
+        frame = data.get("frame") or data
+        with CONTROLLER_LOCK:
+            record = CONTROLLERS.get(code)
+        if record is None:
+            return self.send_json({"error": "session not found"}, 404)
+        try:
+            applied = record["session"].accept_state(frame, token=token)
+        except netcode.NotPairedError as exc:
+            return self.send_json({"error": str(exc)}, 403)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        self.send_json({"ok": True, "applied": applied is not None})
+
+    def controller_host_state(self):
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        code = netcode.normalize_code(query.get("code", [""])[0])
+        host_token = query.get("hostToken", [""])[0]
+        controller_reap()
+        with CONTROLLER_LOCK:
+            record = CONTROLLERS.get(code)
+        if record is None:
+            return self.send_json({"error": "session not found"}, 404)
+        if not host_token or not hmac.compare_digest(record["host"], netcode.token_digest(host_token)):
+            return self.send_json({"error": "host token rejected"}, 403)
+        session = record["session"]
+        latest = session.latest_state()
+        self.send_json({
+            "paired": session.paired,
+            "needsResync": session.needs_resync(),
+            "expiresInSeconds": max(0, int(session.ttl_seconds - (session.clock() - session.created_at))),
+            "state": latest.to_wire() if latest else None,
+        })
+
+    def controller_disconnect(self):
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        data = self.read_json()
+        code = netcode.normalize_code(str(data.get("code") or ""))
+        with CONTROLLER_LOCK:
+            record = CONTROLLERS.get(code)
+        if record:
+            record["session"].disconnect()
+        self.send_json({"ok": True})
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -2325,6 +2479,19 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
         elif path == "/api/multiplayer/room":
             self.multiplayer_room_status()
+        elif path == "/api/controller/state":
+            self.controller_host_state()
+        elif path == "/controller":
+            if not CONTROLLER_ENABLED:
+                self.send_html(status_page(404, lang, user, csrf), 404)
+            else:
+                self.track_visit("/controller", user)
+                self.send_html(controller_host_page(lang, user, csrf))
+        elif path == "/controller/join":
+            if not CONTROLLER_ENABLED:
+                self.send_html(status_page(404, lang, user, csrf), 404)
+            else:
+                self.send_html(controller_join_page(lang, user, csrf, parse_qs(parsed.query).get("code", [""])[0]))
         else:
             if path.startswith("/api/") or path.startswith("/admin/api/"):
                 self.send_json({"error": "not found"}, 404)
@@ -2629,6 +2796,14 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.multiplayer_join_room()
             elif path == "/api/multiplayer/leave":
                 self.multiplayer_leave_room()
+            elif path == "/api/controller/session":
+                self.controller_create_session()
+            elif path == "/api/controller/pair":
+                self.controller_pair()
+            elif path == "/api/controller/state":
+                self.controller_submit_state()
+            elif path == "/api/controller/disconnect":
+                self.controller_disconnect()
             else:
                 self.send_json({"error":"not found"},404)
         except RateLimited as exc:

@@ -2588,3 +2588,9 @@ body.reference-shell .site-header .brand{
 .site-header .brand-logo{display:block;height:56px;width:auto;max-width:min(280px,50vw);object-fit:contain}
 @media(max-width:820px){.site-header .brand-logo{height:44px}}
 @media(max-width:520px){.site-header .brand-logo{height:38px;max-width:42vw}}
+
+/* Phone controller (staging-only). */
+.ctrl-code{font-size:28px;font-weight:800;letter-spacing:.22em}
+.ctrl-pad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.ctrl-btn{min-height:56px;font-size:16px;touch-action:none;user-select:none;-webkit-user-select:none}
+@media(max-width:520px){.ctrl-pad{grid-template-columns:repeat(3,minmax(0,1fr))}}

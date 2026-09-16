@@ -630,6 +630,9 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
         public = Client(PRODUCTION_PORT)
         self.assertEqual(public.request("GET", "/multiplayer")[0], 404)
         self.assertEqual(public.request("POST", "/api/multiplayer/room", {"system": "gba", "core": "mgba", "romHash": "sha256:" + "a" * 64})[0], 404)
+        self.assertEqual(public.request("GET", "/controller")[0], 404)
+        self.assertEqual(public.request("GET", "/controller/join")[0], 404)
+        self.assertEqual(public.request("POST", "/api/controller/session", {})[0], 404)
 
 
 class MultiplayerIntegrationTests(ServerBackedTestCase):
@@ -665,6 +668,26 @@ class MultiplayerIntegrationTests(ServerBackedTestCase):
         status, _, body = public.request("GET", f"/api/multiplayer/room?code={room['code']}&token={room['token']}")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["state"], "full")
+
+    def test_controller_pages_and_api_over_http(self):
+        public = Client(MULTIPLAYER_PORT)
+        for path in ("/controller", "/controller/join"):
+            status, _, body = public.request("GET", path)
+            self.assertEqual(status, 200, path)
+            self.assertIn(b"/static/controller.js", body)
+        self.assertIn(b'id="ctrlCode"', public.request("GET", "/controller")[2])
+
+        status, _, body = public.request("POST", "/api/controller/session", {"deviceId": "host"})
+        self.assertEqual(status, 201)
+        session = json.loads(body)
+        status, _, body = public.request("POST", "/api/controller/pair", {"code": session["code"], "deviceId": "phone"})
+        self.assertEqual(status, 200)
+        phone = json.loads(body)
+        status, _, _ = public.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": ["start"]})
+        self.assertEqual(status, 200)
+        status, _, body = public.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["state"]["b"], ["start"])
 
 
 if __name__ == "__main__":

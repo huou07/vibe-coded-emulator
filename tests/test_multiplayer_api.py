@@ -140,5 +140,92 @@ class MultiplayerRoomApiTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["state"], "waiting")
 
 
+class ControllerApiTests(unittest.TestCase):
+    def setUp(self):
+        self.patches = [
+            patch.object(app, "CONTROLLER_ENABLED", True),
+            patch.object(app, "CONTROLLERS", {}),
+        ]
+        for active in self.patches:
+            active.start()
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        for active in self.patches:
+            active.stop()
+
+    def request(self, method, path, payload=None):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        body = json.dumps(payload).encode() if payload is not None else None
+        headers = {"Content-Type": "application/json"} if body else {}
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        status, data = response.status, response.read()
+        connection.close()
+        return status, data
+
+    def _session(self):
+        status, body = self.request("POST", "/api/controller/session", {"deviceId": "host"})
+        self.assertEqual(status, 201)
+        return json.loads(body)
+
+    def test_pair_submit_and_latest_wins(self):
+        session = self._session()
+        self.assertEqual(len(session["code"]), 6)
+        status, body = self.request("POST", "/api/controller/pair", {"code": session["code"], "deviceId": "phone"})
+        self.assertEqual(status, 200)
+        phone = json.loads(body)
+
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 2, "b": ["a"]})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["applied"])
+        # A duplicate/older frame is accepted but not applied.
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 2, "b": ["b"]})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["applied"])
+
+        status, body = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        self.assertEqual(status, 200)
+        state = json.loads(body)
+        self.assertTrue(state["paired"])
+        self.assertEqual(state["state"]["s"], 2)
+        self.assertEqual(state["state"]["b"], ["a"])
+
+    def test_host_state_requires_the_host_token(self):
+        session = self._session()
+        status, _ = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken=wrong")
+        self.assertEqual(status, 403)
+        status, _ = self.request("GET", f"/api/controller/state?code={session['code']}")
+        self.assertEqual(status, 403)
+
+    def test_input_requires_a_paired_token(self):
+        session = self._session()
+        status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": "nope", "s": 1, "b": []})
+        self.assertEqual(status, 403)
+
+    def test_unknown_session_and_disabled(self):
+        status, _ = self.request("POST", "/api/controller/pair", {"code": "ZZZZZZ"})
+        self.assertEqual(status, 404)
+        with patch.object(app, "CONTROLLER_ENABLED", False):
+            status, _ = self.request("POST", "/api/controller/session", {})
+            self.assertEqual(status, 404)
+            status, _ = self.request("GET", "/api/controller/state?code=X&hostToken=Y")
+            self.assertEqual(status, 404)
+
+    def test_disconnect_stops_accepting_input(self):
+        session = self._session()
+        _, body = self.request("POST", "/api/controller/pair", {"code": session["code"]})
+        phone = json.loads(body)
+        status, _ = self.request("POST", "/api/controller/disconnect", {"code": session["code"]})
+        self.assertEqual(status, 200)
+        status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": []})
+        self.assertEqual(status, 403)
+
+
 if __name__ == "__main__":
     unittest.main()
