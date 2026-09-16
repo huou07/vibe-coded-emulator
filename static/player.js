@@ -1845,7 +1845,77 @@
   if (ndsPad && stage) new MutationObserver(()=>{if(stage.classList.contains("emulator-menu-open"))closePlayerOptions();}).observe(stage,{attributes:true,attributeFilter:["class"]});
   document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();closePlayerOptions();try{window.EJS_emulator?.menu?.toggle()}catch(_){}queueEmulatorMenuLayer();});
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(!panel)return;if(stage?.classList.contains("emulator-menu-open")){showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true);return;}closeSlotOptions();const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();});
-  document.getElementById("closePad")?.addEventListener("click",()=>{if(!setPadEditing(false))return;closePlayerOptions();document.getElementById("playerControls")?.focus()});
+   document.getElementById("closePad")?.addEventListener("click",()=>{if(!setPadEditing(false))return;closePlayerOptions();document.getElementById("playerControls")?.focus()});
+
+  // ---- Remote phone controller (staging-only) -----------------------------
+  // The player page is the pairing host: it creates a session, shows a QR, and
+  // polls the host-state endpoint, applying the phone's latest frame through the
+  // same virtual-input path the on-screen pad uses. Input is applied only while
+  // gameplay is running and no EmulatorJS menu owns input, so a phone can never
+  // drive a stopped session or leak a touch past an open menu.
+  const controllerPanel = document.getElementById("ctrlPhonePanel");
+  const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
+  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false};
+  const controllerRunning = () => Boolean(gameStarted) && !runtimeFailed && !stage?.classList.contains("emulator-menu-open");
+  const controllerRelease = () => {
+    for (const name of controller.applied) input(controllerButtonIndex[name],0);
+    controller.applied = new Set();
+    if (controller.axes) { analogInput(0,0); controller.axes = false; }
+  };
+  const controllerApply = payload => {
+    const frame = payload?.state || {};
+    const pressed = new Set((frame.b || []).filter(name=>Object.prototype.hasOwnProperty.call(controllerButtonIndex,name)));
+    for (const name of controller.applied) if (!pressed.has(name)) input(controllerButtonIndex[name],0);
+    for (const name of pressed) if (!controller.applied.has(name)) input(controllerButtonIndex[name],1);
+    controller.applied = pressed;
+    const axes = frame.a || [0,0,0,0];
+    const leftX = Number(axes[0]) || 0, leftY = Number(axes[1]) || 0;
+    const engaged = Math.abs(leftX) > 0.35 || Math.abs(leftY) > 0.35;
+    if (engaged) { analogInput(leftX,leftY); controller.axes = true; }
+    else if (controller.axes) { analogInput(0,0); controller.axes = false; }
+  };
+  const controllerStatus = text => { const node=document.getElementById("ctrlPhoneStatus"); if(node)node.textContent=text; };
+  const controllerStop = message => {
+    controllerRelease();
+    if (controller.timer) clearInterval(controller.timer);
+    controller.timer = 0; controller.code = ""; controller.hostToken = "";
+    if (message) controllerStatus(message);
+  };
+  const controllerPoll = async () => {
+    if (!controller.code || !controller.hostToken) return;
+    try {
+      const response = await fetch("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
+      if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Session ended.":"Phiên đã kết thúc."); return; }
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (controllerRunning()) controllerApply(payload); else controllerRelease();
+      const buttons = payload?.state?.b?.join(",") || "";
+      controllerStatus((payload.paired ? (config.lang==="en"?"Phone connected":"Điện thoại đã kết nối") : (config.lang==="en"?"Waiting for a phone…":"Đang chờ điện thoại…")) + (buttons ? " · " + buttons : "") + " · " + payload.expiresInSeconds + "s");
+    } catch (_) { /* transient; the next poll retries */ }
+  };
+  const controllerStart = async () => {
+    if (!config.controllerEnabled) return;
+    controllerStop();
+    controllerStatus(config.lang==="en"?"Creating session…":"Đang tạo phiên…");
+    try {
+      const response = await fetch("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player"})});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      controller.code = data.code; controller.hostToken = data.hostToken;
+      const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = data.code;
+      const linkNode = document.getElementById("ctrlPhoneLink");
+      if (linkNode) { linkNode.href = data.joinPath; linkNode.textContent = location.origin + data.joinPath; }
+      const qrNode = document.getElementById("ctrlPhoneQr");
+      if (qrNode) { qrNode.src = "/api/controller/qr.svg?code=" + encodeURIComponent(data.code); qrNode.hidden = false; }
+      controllerStatus((config.lang==="en"?"Waiting for a phone… ":"Đang chờ điện thoại… ") + data.ttlSeconds + "s");
+      controller.timer = setInterval(controllerPoll, 250);
+    } catch (error) { controllerStatus(error.message || String(error)); }
+  };
+  const controllerOpen = () => { if (!controllerPanel) return; controllerPanel.hidden = false; controllerStart(); document.getElementById("closeCtrlPhone")?.focus(); };
+  document.getElementById("phoneController")?.addEventListener("click",()=>{showHints();closePlayerOptions();closeSlotOptions();controllerOpen();});
+  document.getElementById("closeCtrlPhone")?.addEventListener("click",()=>{if(controllerPanel)controllerPanel.hidden=true;controllerStop();document.getElementById("phoneController")?.focus();});
+  addEventListener("pagehide",()=>controllerStop(),{once:true});
+
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
   const togglePad=()=>{if(castConsoleAutoPad){padRoot.classList.remove("cast-console-show");castConsoleAutoPad=false;}const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);

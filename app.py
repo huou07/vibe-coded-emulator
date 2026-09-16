@@ -9,6 +9,7 @@ import json
 import mimetypes
 import netcode
 import os
+import qrcodegen
 import re
 import secrets
 import shutil
@@ -1505,6 +1506,48 @@ def multiplayer_page(lang, user, csrf, slug=""):
     return layout(tr(lang, "Phòng chơi chung", "Multiplayer"), body, lang, user, csrf)
 
 
+CONTROLLER_QR_MAX_TEXT = 512
+
+
+def controller_join_url(scheme, host, code):
+    """Absolute pairing URL built from the request's own host, never a caller value."""
+    host = (host or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9.\-]{1,253}(:\d{1,5})?", host):
+        return ""
+    return f"{scheme}://{host}/controller/join?code={quote(code)}"
+
+
+def controller_qr_svg(text, border=4):
+    """Render ``text`` as a standalone SVG QR code.
+
+    The output is a plain ``<svg>`` with a single module path: no scripts, no
+    external references, no fonts, so it stays inside a strict CSP and can be
+    embedded through ``img-src 'self'``.
+    """
+    if not text or len(text) > CONTROLLER_QR_MAX_TEXT:
+        raise ValueError("unsupported QR payload length")
+    qr = qrcodegen.QrCode.encode_text(text, qrcodegen.QrCode.Ecc.MEDIUM)
+    size = qr.get_size()
+    span = size + border * 2
+    commands = []
+    for y in range(size):
+        run_start = -1
+        for x in range(size + 1):
+            dark = x < size and qr.get_module(x, y)
+            if dark and run_start < 0:
+                run_start = x
+            elif not dark and run_start >= 0:
+                commands.append(f"M{run_start + border} {y + border}h{x - run_start}v1h-{x - run_start}z")
+                run_start = -1
+    path = "".join(commands)
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{span}" height="{span}" '
+        f'viewBox="0 0 {span} {span}" shape-rendering="crispEdges" role="img" aria-label="QR code">'
+        f'<rect width="{span}" height="{span}" fill="#ffffff"/>'
+        f'<path d="{path}" fill="#000000"/></svg>'
+    )
+
+
 def controller_host_page(lang, user, csrf):
     body = f'''<main class="page controller-page">
 <section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · ĐIỀU KHIỂN","STAGING · CONTROLLER")}</p><h1>{tr(lang,"Điện thoại làm tay cầm","Phone as controller")}</h1></div></section>
@@ -1512,6 +1555,7 @@ def controller_host_page(lang, user, csrf):
 <p class="muted">{tr(lang,"Phiên ghép đôi kéo dài 2 phút. Mở liên kết trên điện thoại cùng mạng LAN.","Pairing lasts 2 minutes. Open the link on a phone on the same LAN.")}</p>
 <p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlCode" class="ctrl-code">—</span></p>
 <p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlLink" href="#">—</a></p>
+<img id="ctrlQr" class="ctrl-qr" alt="{tr(lang,"Mã QR ghép đôi","Pairing QR code")}" hidden>
 <p id="ctrlStatus" class="muted" role="status">{tr(lang,"Đang tạo phiên…","Creating session…")}</p>
 </section>
 <script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
@@ -1556,10 +1600,12 @@ def player_page(game, lang, user, csrf):
         game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div></section>'''
         autosave_settings = f'''<section class="player-settings-group player-autosave-settings"><header><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><label><span>{tr(lang,"Chế độ","Mode")}</span><select id="autosaveMode"><option value="off">{tr(lang,"Tắt","Off")}</option><option value="exit">{tr(lang,"Khi thoát game","On game exit")}</option><option value="30">{tr(lang,"Mỗi 30 giây","Every 30 seconds")}</option><option value="10">{tr(lang,"Mỗi 10 giây","Every 10 seconds")}</option><option value="5">{tr(lang,"Mỗi 5 giây","Every 5 seconds")}</option></select></label><small class="muted">{tr(lang,"Autosave dùng slot riêng, không thay thế save thủ công.","Autosave uses its own slot and never replaces a manual save state.")}</small></section>'''
         exit_settings = f'''<section class="player-settings-group player-exit-settings"><header><strong>{tr(lang,"Thoát game","Exit game")}</strong></header><p class="player-setting-copy">{tr(lang,"Dừng phiên giả lập và quay về thư viện.","Stop this emulation session and return to the library.")}</p><div class="player-panel-actions"><button id="exitGame" type="button">{tr(lang,"Thoát game","Exit game")}</button></div></section>'''
-        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions"><button id="castScreen" type="button">{tr(lang,"Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
+        phone_controller_button = f'<button id="phoneController" type="button">{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</button>' if CONTROLLER_ENABLED else ""
+        advanced_settings = f'''<section class="player-settings-group player-advanced-settings"><header><strong>{tr(lang,"Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">{tr(lang,"Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions">{phone_controller_button}<button id="castScreen" type="button">{tr(lang,"Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">{tr(lang,"Mở menu giả lập","Open emulator menu")}</button></div></section>'''
         slot_rows = "".join(f'<div class="save-slot" data-slot="{slot}"><strong>{tr(lang,"Slot","Slot")} {slot}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-slot="{slot}">{tr(lang,"Lưu","Save")}</button><button data-load-slot="{slot}" disabled>{tr(lang,"Nạp","Load")}</button></div>' for slot in range(1, 11))
         auto_slot_row = f'<div class="save-slot save-slot-auto" data-auto-slot><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-auto>{tr(lang,"Lưu","Save")}</button><button data-load-auto disabled>{tr(lang,"Nạp","Load")}</button></div>'
         slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{auto_slot_row}{slot_rows}</section>'
+        controller_panel = f'''<section id="ctrlPhonePanel" class="slot-panel controller-panel" hidden role="dialog" aria-label="{tr(lang,"Điện thoại làm tay cầm","Phone controller")}"><header><strong>{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</strong><button id="closeCtrlPhone" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Quét mã QR bằng điện thoại cùng mạng LAN. Tay cầm chỉ được điều khiển khi game đang chạy.","Scan the QR with a phone on the same LAN. The phone only drives the game while it is running.")}</p><img id="ctrlPhoneQr" class="ctrl-qr" alt="{tr(lang,"Mã QR ghép đôi","Pairing QR code")}" hidden><p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlPhoneCode" class="ctrl-code">—</span></p><p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlPhoneLink" href="#">—</a></p><p id="ctrlPhoneStatus" class="muted" role="status"></p></section>''' if CONTROLLER_ENABLED else ""
         pad_controls = [("dpad", "D-pad"), ("a", "A"), ("b", "B"), ("start", "Start"), ("select", "Select")]
         if game["system"] in {"gba", "nds", "3ds"}:
             pad_controls.extend([("l", "L"), ("r", "R")])
@@ -1580,12 +1626,13 @@ def player_page(game, lang, user, csrf):
         "romUrl": f"/game-file/{game['slug']}/{quote(browser_rom_name(game))}", "channel": SYSTEMS[game["system"]][1],
         "downloadName": game["rom_name"], "lang": lang, "ndsDebugAllowed": NDS_DEBUG_ALLOWED,
         "netplayServer": NETPLAY_ORIGIN, "netplayGameId": f"an3:{game['id']}:{game['system']}",
+        "controllerEnabled": CONTROLLER_ENABLED,
     }
     back_path = f"/game/{game['slug']}"
     body = f"""<main class="player-shell" data-player='{esc(json.dumps(config,ensure_ascii=False))}'>
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
-{slot_panel}{pad_panel}</main>
+{slot_panel}{pad_panel}{controller_panel}</main>
 <script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
@@ -1869,6 +1916,25 @@ class Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > maximum:
             raise ValueError("invalid request size")
         return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def read_optional_json(self, maximum=MAX_JSON_BYTES):
+        """Read a small JSON body when present, otherwise return ``{}``.
+
+        HTTP/1.1 keep-alive requires every request body to be consumed before
+        the next request on the same connection, even for endpoints that ignore
+        the payload; an unread body corrupts the next request line.
+        """
+
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        if length <= 0:
+            return {}
+        if length > maximum:
+            raise ValueError("invalid request size")
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {}
 
     def cookie_jar(self):
         return cookies.SimpleCookie(self.headers.get("Cookie", ""))
@@ -2161,6 +2227,8 @@ class Handler(BaseHTTPRequestHandler):
     def controller_create_session(self):
         if not CONTROLLER_ENABLED:
             return self.controller_unavailable()
+        # Drain the (ignored) body so keep-alive connections are not corrupted.
+        self.read_optional_json()
         CONTROLLER_LIMITER.check(self.client_address[0])
         controller_reap()
         with CONTROLLER_LOCK:
@@ -2254,6 +2322,27 @@ class Handler(BaseHTTPRequestHandler):
         if record:
             record["session"].disconnect()
         self.send_json({"ok": True})
+
+    def controller_qr(self):
+        """Serve the pairing QR as a self-contained SVG (strict-CSP safe)."""
+
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        code = netcode.normalize_code(query.get("code", [""])[0])
+        if not code:
+            return self.send_json({"error": "missing pairing code"}, 400)
+        scheme = self.headers.get("X-Forwarded-Proto", "https" if COOKIE_SECURE else "http")
+        if scheme not in {"http", "https"}:
+            scheme = "http"
+        join_url = controller_join_url(scheme, self.headers.get("Host", ""), code)
+        if not join_url:
+            return self.send_json({"error": "invalid host"}, 400)
+        try:
+            svg = controller_qr_svg(join_url)
+        except ValueError:
+            return self.send_json({"error": "invalid payload"}, 400)
+        self.send_bytes(200, svg.encode("utf-8"), "image/svg+xml; charset=utf-8", cache="no-store")
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -2481,6 +2570,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.multiplayer_room_status()
         elif path == "/api/controller/state":
             self.controller_host_state()
+        elif path == "/api/controller/qr.svg":
+            self.controller_qr()
         elif path == "/controller":
             if not CONTROLLER_ENABLED:
                 self.send_html(status_page(404, lang, user, csrf), 404)

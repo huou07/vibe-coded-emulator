@@ -226,6 +226,47 @@ class ControllerApiTests(unittest.TestCase):
         status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": []})
         self.assertEqual(status, 403)
 
+    def request_full(self, method, path):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        connection.request(method, path)
+        response = connection.getresponse()
+        status, headers, data = response.status, dict(response.getheaders()), response.read()
+        connection.close()
+        return status, headers, data
+
+    def test_qr_endpoint_serves_a_self_contained_svg(self):
+        session = self._session()
+        status, headers, body = self.request_full("GET", f"/api/controller/qr.svg?code={session['code']}")
+        self.assertEqual(status, 200)
+        self.assertIn("image/svg+xml", headers.get("Content-Type", ""))
+        text = body.decode("utf-8")
+        self.assertTrue(text.startswith("<svg "))
+        self.assertIn("<path d=\"", text)
+        self.assertNotIn("<script", text)
+
+    def test_qr_endpoint_requires_a_code_and_is_disabled_in_production(self):
+        status, _, _ = self.request_full("GET", "/api/controller/qr.svg")
+        self.assertEqual(status, 400)
+        with patch.object(app, "CONTROLLER_ENABLED", False):
+            status, _, _ = self.request_full("GET", "/api/controller/qr.svg?code=ABC123")
+            self.assertEqual(status, 404)
+
+    def test_session_create_consumes_its_body_on_a_keepalive_connection(self):
+        # An unread POST body corrupts the next request line on the same
+        # connection (the server sees the JSON as a bogus method).
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        body = json.dumps({"deviceId": "host"}).encode()
+        connection.request("POST", "/api/controller/session", body=body, headers={"Content-Type": "application/json"})
+        created = connection.getresponse()
+        created.read()
+        self.assertEqual(created.status, 201)
+        connection.request("GET", "/health")
+        health = connection.getresponse()
+        payload = health.read()
+        connection.close()
+        self.assertEqual(health.status, 200)
+        self.assertIn(b'"ok": true', payload)
+
 
 if __name__ == "__main__":
     unittest.main()

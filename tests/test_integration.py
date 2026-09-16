@@ -350,6 +350,11 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         player_config = json.loads(html.unescape(player_config_match.group(1).decode()))
         # The staging server is the environment where NDS diagnostics exist.
         self.assertEqual(player_config["ndsDebugAllowed"], True)
+        # The phone-controller host UI ships only where the staging-only
+        # controller endpoints exist, and the player page can host a session.
+        self.assertEqual(player_config["controllerEnabled"], True)
+        self.assertIn(b'id="ctrlPhonePanel"', player_body)
+        self.assertIn(b'id="phoneController"', player_body)
         status, _, debug_player_body = public.request("GET", f"/play/{zipped_nds['slug']}?ndsdebug=1")
         self.assertEqual(status, 200)
         debug_config_match = re.search(rb"data-player='([^']+)'", debug_player_body)

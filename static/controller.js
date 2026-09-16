@@ -48,6 +48,11 @@
         var link = byId("ctrlLink");
         link.href = data.joinPath;
         link.textContent = location.origin + data.joinPath;
+        var qr = byId("ctrlQr");
+        if (qr) {
+          qr.src = "/api/controller/qr.svg?code=" + encodeURIComponent(hostCode);
+          qr.hidden = false;
+        }
         status.textContent = "Waiting for a phone… " + data.ttlSeconds + "s";
         timer = setInterval(poll, 500);
       } catch (error) {

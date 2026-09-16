@@ -343,3 +343,37 @@ shut down, autostart disabled.
 `~/Documents/edit an3tocom apps&web` (branch `apps-web`) both hold the current
 source and can deploy. Android generated Kotlin under `native-offline/src-tauri/gen`
 remains untracked (pre-existing).
+
+## Update — 2026-09-16 (ninth session): 1.3.0 runtime verify + web controller real
+
+Workspace: `/Users/meomeo/Documents/edit an3tocom apps&web` (branch `apps-web`).
+
+**Step 1 — 1.3.0 runtime (Android VERIFIED, Linux PARTIAL).**
+- Android 1.3.0 APK installed on the `codex-nds-api35` AVD; NDS at
+  `FPS core=59 present=59`; Save menu → Quick Save/Load with **Slot 1…10**
+  (Slot 1 wrote a 19,498,039-byte `.slot1.state`); Layout chooser lists all 12
+  melonDS layouts; nine-tab Menu opens/closes; NDS touch reaches the core; FPS
+  badge node is `clickable=false focusable=false long-clickable=false` at runtime.
+- Linux 1.3.0 DEB ran under Xvfb for the full `timeout 25s` (EXIT=124) with the
+  1.3.0 UI strings present.
+- Full evidence: `reports/handoff/ANDROID_LINUX_1.3.0_RUNTIME_20260916.md`;
+  screenshots in `reports/android-regression/1.3.0/`.
+
+**Step 2 — phone controller made real (web player).**
+- Vendored `qrcodegen.py` (MIT, pinned sha256); server-side SVG QR at
+  `GET /api/controller/qr.svg?code=`; player page hosts the session, shows the QR,
+  polls `/api/controller/state`, and applies phone frames via the virtual-input
+  path only while gameplay runs and no menu is open.
+- Fixed a keep-alive bug: `controller_create_session` ignored its body, corrupting
+  the next request (`501 Unsupported method ('{"deviceId":"host"}GET')`).
+- **Runtime acceptance VERIFIED** (Chrome/Playwright, staging): host session
+  `EG9JFT`; phone paired, pressed Right; host observed
+  `simulateInput(0,7,1)` → `(0,7,0)`; `/controller` QR PNG decoded to the join URL.
+- Suite **237 tests, 0 failures**; deployed asset `51d627516e1a`, release
+  `/opt/an3-arcade-staging/releases/20260916-141246-51d627516e1a`.
+- New guards RG-082/083/084. Report:
+  `reports/handoff/WEB_CONTROLLER_BINDING_20260916.md`.
+
+**Still open:** native controller input injection; rooms → relay bridge with
+invite codes; LAN discovery/transfer; sync wiring in `app.py`; Switch companion;
+CodeGraph re-index; skills/agents.

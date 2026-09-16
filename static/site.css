@@ -2593,4 +2593,7 @@ body.reference-shell .site-header .brand{
 .ctrl-code{font-size:28px;font-weight:800;letter-spacing:.22em}
 .ctrl-pad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
 .ctrl-btn{min-height:56px;font-size:16px;touch-action:none;user-select:none;-webkit-user-select:none}
+.ctrl-qr{display:block;width:min(240px,60vw);height:auto;margin:12px 0;background:#fff;padding:8px;image-rendering:pixelated}
+.ctrl-qr[hidden]{display:none!important}
+.controller-panel .ctrl-code{font-size:22px}
 @media(max-width:520px){.ctrl-pad{grid-template-columns:repeat(3,minmax(0,1fr))}}

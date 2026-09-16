@@ -66,14 +66,19 @@ From the original spec plus later requests:
 - Multiplayer room **API** + `/multiplayer` page (staging-only).
 - Phone-controller **API** + `/controller`, `/controller/join` pages
   (staging-only).
+- Phone controller is **real on the web player**: a CSP-safe server-side SVG QR
+  (`/api/controller/qr.svg`) and a host poll loop that applies the phone's latest
+  frame through the player's virtual-input path. Verified end-to-end on staging
+  (phone press → `simulateInput(0,7,1)`/`(0,7,0)`); see
+  `reports/handoff/WEB_CONTROLLER_BINDING_20260916.md`.
 - Shared cores: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
 - Android 1.1.0 published; **1.2.0** published for all five platforms; **1.3.0**
   published for all five platforms (DMG/APK/DEB/Flatpak/EXE), catalog PASS.
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
 
 **Not done**
-- Controller **input actually driving the emulator** (host polling + applying to
-  EmulatorJS/native input) and a **QR renderer**.
+- Controller **native input injection** into the packaged apps (macOS/Android/
+  Linux/Windows). The web player host binding and QR are done.
 - Multiplayer rooms **bridged to the EmulatorJS-Netplay relay** with AN3 invite
   codes end-to-end in the game UI.
 - **LAN discovery + direct transfer** (transport only; `sync_engine` planning
@@ -94,7 +99,9 @@ From the original spec plus later requests:
   recorded.
 - macOS menu **click** interaction (GUI), and the new FPS/menu guards at runtime.
 - Web UI via Playwright for `/multiplayer` and `/controller`.
-- Controller on a real phone; rooms between two machines; live Google; LAN sync.
+- Controller on a real phone (the QR was decoded programmatically, not by a
+  phone camera); rooms between two machines; live Google; LAN sync.
+- Controller input injection into the packaged native apps.
 
 ## 5. Real blockers and how to resolve
 
@@ -168,6 +175,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    FPS tap-through, menu-first touch) and Linux under Xvfb; record evidence.
 2. **Make the controller real** — QR on `/controller` + host poll loop applying
    phone input to the emulator input path. This is the largest user-visible gap.
+   **Done on the web player** (staging-verified 2026-09-16); native injection
+   still open.
 3. **Bridge rooms to the relay** — compatibility check → relay handout → invite
    code surfaced in the game UI.
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
