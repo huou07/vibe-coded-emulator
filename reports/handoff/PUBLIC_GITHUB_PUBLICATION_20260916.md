@@ -81,3 +81,41 @@ documented allowlist for the `localStorage` key name in
   provenance") rather than fabricated history.
 - macOS staging artifacts remain ad-hoc signed and are not part of the public
   source release.
+
+## Update — reproducible builder + manual publish script (2026-09-16)
+
+Owner decisions applied:
+
+- **Publishing stays manual.** `AGENTS.md` now states: never publish to GitHub
+  automatically; only on an explicit request. `tools/publish-github.sh` refuses
+  to run without `--confirm`.
+- **No development history is published.** The public repository is created from
+  a clean snapshot as a **single fresh commit** with a GitHub `noreply` author
+  (`huou07 <huou07@users.noreply.github.com>` by default, overridable via
+  `AN3_PUBLIC_AUTHOR_NAME`/`AN3_PUBLIC_AUTHOR_EMAIL`). No history rewrite, no
+  force-push, and the private history stays private.
+- **Reproducible snapshot**: `tools/build-public-snapshot.sh` writes
+  `work/public-snapshot` (product source only; PII/infra replaced; no AI files,
+  reports, vendor binaries or releases).
+- **Gate**: `tools/publication-check.sh [--history]` — fail-closed, requires
+  gitleaks; currently `PUBLICATION_CHECK=PASS` including the history scan of the
+  fresh commit.
+- Public template files live in `tools/publication/` (README-adjacent docs,
+  `.env.example`, `.gitleaks.toml`, CI workflow, provenance).
+
+### Owner runbook (macOS)
+
+```bash
+brew install gh gitleaks
+gh auth login
+cd "<repo>"
+tools/build-public-snapshot.sh
+tools/publication-check.sh work/public-snapshot --history
+tools/publish-github.sh --confirm
+```
+
+`publish-github.sh` creates `huou07/vibe-coded-emulator` (public) if missing,
+pushes `main`, and applies secret scanning + push protection, Dependabot alerts
+and security updates, private vulnerability reporting and branch protection,
+reporting each result (settings that the plan or permissions reject are listed,
+not silently assumed).
