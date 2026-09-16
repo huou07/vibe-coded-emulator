@@ -28,7 +28,7 @@ trap cleanup EXIT
 
 [[ -r "$ARCHIVE" ]] || { echo "Production archive is not readable." >&2; exit 1; }
 tar -xzf "$ARCHIVE" -C "$TMP"
-[[ -f "$TMP/app.py" && -d "$TMP/static" && -f "$TMP/deploy/an3-arcade.service" && -f "$TMP/deploy/backup-production-current.sh" && -f "$TMP/deploy/rollback-production.sh" && -f "$TMP/deploy/seed-azahar-core.sh" && -f "$TMP/deploy/rollback-azahar-core.sh" && -f "$TMP/deploy/retire-production-rom-library.sh" && -f "$TMP/tools/verify-release-catalog.py" && -f "$TMP/native-offline/releases/catalog.json" ]] || {
+[[ -f "$TMP/app.py" && -d "$TMP/static" && -f "$TMP/deploy/an3-arcade.service" && -f "$TMP/deploy/backup-production-current.sh" && -f "$TMP/deploy/rollback-production.sh" && -f "$TMP/deploy/seed-azahar-core.sh" && -f "$TMP/deploy/rollback-azahar-core.sh" && -f "$TMP/deploy/retire-production-rom-library.sh" && -f "$TMP/tools/verify-release-catalog.py" && -f "$TMP/netcode.py" && -f "$TMP/sync_engine.py" && -f "$TMP/native-offline/releases/catalog.json" ]] || {
   echo "Production archive has an unexpected layout." >&2
   exit 1
 }
@@ -65,6 +65,8 @@ python3 "$TMP/tools/verify-release-catalog.py" >/dev/null
 
 install -d -m 0755 "$APP_ROOT" "$APP_ROOT/static" "$APP_ROOT/native-offline/releases"
 install -m 0755 "$TMP/app.py" "$APP_ROOT/app.py"
+install -m 0644 "$TMP/netcode.py" "$APP_ROOT/netcode.py"
+install -m 0644 "$TMP/sync_engine.py" "$APP_ROOT/sync_engine.py"
 cp -a "$TMP/static/." "$APP_ROOT/static/"
 # The consolidated release intentionally retires only the former offline-app
 # bundle. The application snapshot above retains these files for rollback; no
