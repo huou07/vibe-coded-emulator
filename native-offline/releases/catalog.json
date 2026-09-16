@@ -25,37 +25,37 @@
       "runtime_status": "New: a staging-only phone controller. The in-game General menu starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Existing branding, the shared Auto Save model, the 10-slot quick save, and the layout chooser are unchanged. Runtime acceptance still required before publication."
     },
     {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-1.3.0-linux-amd64.deb",
-      "size": 45484618,
-      "sha256": "d96f85650450740e064aec4c3b8c93072ac7c42992cda24f3170f61ea8acb31e",
+      "filename": "vibecodedemulator-1.4.0-linux-amd64.deb",
+      "size": 45513922,
+      "sha256": "82ffaca9d3fe491756b6a1f443c31a8d91d5082a2791cd5bbdea697cd21381a7",
       "signature_status": "Frozen Debian package; no additional installation check requested.",
-      "runtime_status": "Vibe Coded Emulator branding and icons plus the bundled native SDL/GTK player with pinned GBA/NDS/3DS cores (Azahar 2126.1.1). The toolbar Layout button opens every core-supported layout (shared generated header) and the toolbar Save button exposes the quick save/load actions. GTK Save States tab keeps the shared Off/On game exit/30/10/5 Auto Save mode."
+      "runtime_status": "New: a staging-only phone controller. Settings → Phone controller starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Branding, the shared Auto Save model, the 10-slot quick save, the layout chooser and Exit Game are unchanged. Native runtime acceptance on the Dell still required before publication."
     },
     {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-1.3.0-linux-amd64-staging.flatpak",
-      "size": 29090480,
-      "sha256": "5f68f8bde13dfa08365ffe59ef879cd677c488fc06610c330d8d83720e9f370a",
+      "filename": "an3-offline-1.4.0-linux-amd64-staging.flatpak",
+      "size": 29103144,
+      "sha256": "cc74f5a6ceed21fc4001059b37c837b0939a5525d2eaa3f082c1df7dad5ef6b9",
       "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
-      "runtime_status": "Vibe Coded Emulator desktop shell plus the bundled native player (GBA/NDS/3DS, Azahar 2126.1.1) with the shared layout chooser and toolbar Save control. Built from the 1.2.0 DEB."
+      "runtime_status": "Phone-controller desktop shell plus the bundled native player (GBA/NDS/3DS, Azahar 2126.1.1). Built from the 1.4.0 DEB."
     },
     {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "platform": "Windows",
       "architecture": "x64",
       "format": "EXE",
-      "filename": "vibecodedemulator-1.3.0-windows-x64-staging.exe",
-      "size": 46720549,
-      "sha256": "8474ab2f3440a43f0861bda76dda2a0c046065d860b53a00d6cd055787ec0d2c",
+      "filename": "vibecodedemulator-1.4.0-windows-x64-staging.exe",
+      "size": 46784588,
+      "sha256": "be5f84f9a65738ebbbab931e8c275c8e78fc1360f9c99571781269f658c53e66",
       "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
-      "runtime_status": "Vibe Coded Emulator NSIS shell with the bundled native player and mGBA, melonDS DS and Azahar libretro cores. The toolbar Layout button opens every core-supported layout (shared generated header) and the toolbar Save button exposes Quick Save / Quick Load / Auto Save now / Load Auto Save. Windows native runtime rebuilt from the 1.2.0 sources.",
+      "runtime_status": "New: a staging-only phone controller. Settings → Phone controller starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Branding, the shared Auto Save model, the 10-slot quick save, the layout chooser and Exit Game are unchanged. Windows runtime acceptance still required before publication.",
       "release_gate": "PASS"
     }
   ]

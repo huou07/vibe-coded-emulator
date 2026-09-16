@@ -55,6 +55,13 @@ class PhaseABrandingTests(unittest.TestCase):
         # Desktop and Android gained the native phone controller in 1.4.0.
         self.assertEqual(android["version"], "1.4.0")
 
+    def test_flatpak_sources_track_the_desktop_version(self):
+        tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+        manifest = (ROOT / "native-offline" / "flatpak" / "space.an3tocom.offline.yml").read_text(encoding="utf-8")
+        metainfo = (ROOT / "native-offline" / "flatpak" / "space.an3tocom.offline.metainfo.xml").read_text(encoding="utf-8")
+        self.assertIn(f"vibecodedemulator-{tauri['version']}-linux-amd64.deb", manifest)
+        self.assertIn(f'version="{tauri["version"]}"', metainfo)
+
 
 class PhaseAAutosaveExitTests(unittest.TestCase):
     def test_autosave_modes_match_the_required_set(self):

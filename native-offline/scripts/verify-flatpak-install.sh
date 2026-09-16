@@ -6,7 +6,8 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-bundle="${1:-$root/releases/an3-offline-1.3.0-linux-amd64-staging.flatpak}"
+version="$(node -p "require('$root/src-tauri/tauri.conf.json').version")"
+bundle="${1:-$root/releases/an3-offline-${version}-linux-amd64-staging.flatpak}"
 app_id="space.an3tocom.offline"
 
 [[ -f "$bundle" && ! -L "$bundle" ]] || { echo "Flatpak bundle is unavailable: $bundle" >&2; exit 2; }

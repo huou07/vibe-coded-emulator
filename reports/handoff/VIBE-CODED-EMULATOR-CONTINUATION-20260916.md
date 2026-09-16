@@ -555,3 +555,26 @@ routes/UI; Switch Phase 1; Windows interactive gameplay.
 
 **Still open:** live desktop pairing; LAN byte transfer; Google routes/UI;
 Switch Phase 1; Windows interactive gameplay.
+
+## Update — 2026-09-16 (thirteenth session): 1.4.0 across all five platforms
+
+**Every packaged app is now 1.4.0 and deployed to staging.**
+- Built with the controller: macOS DMG, Android APK, Linux DEB + Flatpak on the
+  Dell, Windows EXE on the VM (VM shut down gracefully, autostart disabled).
+- Sizes/hashes: DMG 44,810,277 `638d44ee…` · APK 49,587,834 `3c7518a2…` ·
+  DEB 45,513,922 `82ffaca9…` · Flatpak 29,103,144 `cc74f5a6…` ·
+  EXE 46,784,588 `be5f84f9…`.
+- `RELEASE_CATALOG=PASS`; all five URLs served 200 by staging; suite
+  **258 tests, 0 failures**; asset `e792e8578089`, release
+  `20260916-164416-e792e8578089`.
+- **Bug found + fixed (RG-091):** the Windows/Flatpak/Linux/macOS scripts
+  hardcoded the version in the artifact name; Windows would have copied a
+  leftover 1.3.0 installer. All now derive the name from the version field, and
+  the Flatpak manifest/metainfo are pinned by a test.
+- Report `reports/handoff/RELEASE_1.4.0_20260916.md`.
+
+**UNVERIFIED:** Linux 1.4.0 runtime, Windows 1.4.0 runtime, phone→running
+desktop game.
+
+**Still open:** live desktop pairing observation; LAN byte transfer; Google
+routes/UI; Switch Phase 1.
