@@ -1,0 +1,35 @@
+# Minimal CI: syntax/type checks and the test suite.
+#
+# Security notes for maintainers:
+#   - Permissions are read-only; no job needs more.
+#   - This workflow never deploys and never runs privileged code from forks.
+#   - Pin third-party actions to a verified full commit SHA before relying on
+#     them (tags can move). The SHA below is intentionally not guessed here.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Python syntax
+        run: |
+          python3 -m py_compile app.py netcode.py sync_engine.py google_sync.py qrcodegen.py
+      - name: Player syntax
+        run: node --check static/player.js
+      - name: Tests
+        run: python3 -m unittest discover -s tests

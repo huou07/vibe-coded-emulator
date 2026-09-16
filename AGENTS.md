@@ -72,3 +72,11 @@ Publishing rules for this repo:
   details. Do not push this history to a public remote; export a clean snapshot
   and add a truthful provenance note instead.
 - All source comments, documentation and public-facing text must be in English.
+
+## Never publish automatically
+
+Do **not** push to GitHub (or any public remote) on your own initiative. Publish
+only when the user explicitly asks for it in the current request. When asked,
+run `tools/build-public-snapshot.sh` then `tools/publication-check.sh`, and only
+then `tools/publish-github.sh --confirm` (a single fresh public commit — never
+the development history).

@@ -217,7 +217,7 @@ class SyncApiTests(unittest.TestCase):
         self.assertNotIn("stale-device", app.LAN_PEERS)
         self.assertIn("far-device", app.LAN_PEERS)
         self.assertTrue(app.sync_same_subnet("192.168.1.4", "192.168.1.200"))
-        self.assertFalse(app.sync_same_subnet("192.168.1.4", "192.168.2.200"))
+        self.assertFalse(app.sync_same_subnet("192.168.1.4", "198.51.100.200"))
         self.assertFalse(app.sync_same_subnet("::1", "192.168.1.4"))
 
     # -- LAN transfer ------------------------------------------------------
