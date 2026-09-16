@@ -126,3 +126,42 @@ PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m py_compile app.py
 node --check static/player.js
 cd native-offline && npm run check && npm run build:macos
 ```
+
+## Update — 2026-09-16 (second session)
+
+Read the other "Emulator handoff continuation" session from the opencode store
+(`~/.local/share/opencode/opencode.db`, session
+`ses_f57e99608ffeU9U60rUrZueDFW`). It had built and runtime-tested 1.1.0 on
+Android (AVD) and Linux (Dell Debian) but never published or deployed them.
+
+**Merged + published + staged (DONE):**
+- Collected `vibecodedemulator-1.1.0-linux-amd64.deb` from the Dell builder
+  (`/home/huou07/an3-verify/...`), sha256 `38a22ce2…4c5d`.
+- Rebuilt the macOS 1.1.0 DMG with the shared Auto Save model
+  (sha256 `9f137603…b75e`); Android APK `0376b237…dcc2`.
+- `catalog.json` now publishes macOS/Android/DEB at **1.1.0** (sizes + SHA-256 +
+  sidecars); Flatpak/Windows remain **1.0.1** until rebuilt.
+  `tools/verify-release-catalog.py` → `RELEASE_CATALOG=PASS (5 installers)`.
+- Updated the staging catalog guard test; full suite **209 tests, 0 failures**
+  (the previously failing catalog test is fixed).
+- Deployed staging: asset `31d2782287fa`, release
+  `/opt/an3-arcade-staging/releases/20260916-111105-31d2782287fa`,
+  rollback `/opt/an3-arcade-staging/releases/20260916-110252-31d2782287fa`.
+  `artifacts.json` and the three installer URLs return 200 with expected sizes.
+
+**Multiplayer rooms wired (staging-only) (DONE):**
+- `app.py` exposes `netcode.RoomService`: `POST /api/multiplayer/room|join|leave`
+  and `GET /api/multiplayer/room`, gated by `MULTIPLAYER_ENABLED`
+  (staging/development + `AN3_NETPLAY_ORIGIN`); production → 404. Verified live on
+  staging (create 201, join 200, status 200, incompatible 409 in tests).
+- Regression found and fixed: `netcode.py`/`sync_engine.py` were missing from the
+  app payloads, so the first redeploy failed health and rolled back. Added them to
+  `package-staging.sh`, `package-production.sh`, `update-production.sh`, plus
+  `tests/test_packaging_imports.py` which guards every local import transitively.
+
+**Still not done:**
+- Flatpak 1.1.0 (needs Flathub runtime on the Dell) and Windows 1.1.0 (Windows VM).
+- A multiplayer room **UI page** (API is live; the existing EmulatorJS host/join
+  flow is what consumes it today).
+- Remote-controller phone UI/QR/transport, LAN discovery/transfer, sync wiring
+  in `app.py`, Switch companion — unchanged, all still codeable.
