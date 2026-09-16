@@ -49,11 +49,23 @@ Flatpak manifest/metainfo are pinned by a new test.
 - Android controller end-to-end (AVD); desktop controller host logic + live
   staging probe (see the dedicated reports).
 
+## Runtime follow-up (same day)
+
+- **Linux 1.4.0 runtime VERIFIED** (Dell, Xvfb): DEB runtime ran the full 25 s
+  smoke; the app binary ships `nativeControllerCard`; the controller host tests
+  pass on Linux and the live staging probe passed; feeding the shell's `INPUT`
+  lines to `--control-stdin` advanced the GBA title. See
+  `reports/handoff/LINUX_1.4.0_RUNTIME_AND_CONTROLLER_20260916.md`.
+- **Windows 1.4.0 launch smoke VERIFIED**: the 1.4.0 EXE installed silently
+  (exit 0), the installed `an3-offline-native.exe` reports
+  FileVersion/ProductVersion **1.4.0**, and it launched (`responding=True`,
+  6 `msedgewebview2` children) on `an3-win11-build`; the VM was shut down
+  gracefully (`shut off`, `Autostart: disable`).
+
 ## UNVERIFIED
 
-- Linux/Windows **runtime** of 1.4.0: DEB/Flatpak built only (Linux launch smoke
-  was done for 1.3.0); the Windows 1.4.0 EXE was **not** launched on the VM
-  (1.3.0 had a launch smoke).
-- A phone driving a *running* desktop game (client verified live; the running
-  core was not observed on desktop).
+- Windows 1.4.0 **gameplay/rendering** (Session 0, no Vulkan ICD) — launch only.
+- The Tauri app autonomously writing controller `INPUT` while polling (the
+  runtime side and the client side are each verified separately).
+- A phone driving a *running* desktop game.
 - macOS remains ad-hoc signed / not notarized (no Apple credentials).

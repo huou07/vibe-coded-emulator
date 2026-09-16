@@ -595,3 +595,16 @@ routes/UI; Switch Phase 1.
 **Still UNVERIFIED:** the Tauri app writing INPUT while polling (runtime side and
 client side verified separately); Windows 1.4.0 runtime; a real phone driving a
 running desktop game.
+
+## Update — 2026-09-16 (fourteenth session, part 2): Windows 1.4.0 launch smoke
+
+- Started `an3-win11-build`, copied the 1.4.0 EXE, installed silently (`/S`,
+  exit 0). The installed `C:\AN3\app100\an3-offline-native.exe` reports
+  **FileVersion/ProductVersion 1.4.0** and launched (`responding=True`, 45.7 MB
+  RSS, 6 `msedgewebview2` children). No app process left; VM shut down
+  gracefully (`shut off`, `Autostart: disable`).
+- **Not claimed:** Windows 1.4.0 gameplay/rendering (Session 0, no Vulkan ICD).
+  1.4.0 is now a launch smoke on Windows, matching what 1.3.0 had.
+
+**Still UNVERIFIED:** the Tauri app autonomously writing controller INPUT while
+polling; a phone driving a running desktop game; Windows gameplay.
