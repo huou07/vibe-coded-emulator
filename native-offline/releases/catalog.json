@@ -14,37 +14,37 @@
       "runtime_status": "Vibe Coded Emulator branding and icons; bundled mGBA, melonDS DS and Azahar 2126.1.1 cores. The toolbar Layout control now opens every screen layout the active core supports (melonDS: 12 layouts; Azahar: 4) and the toolbar Save control exposes Quick Save / Quick Load / Auto Save now / Load Auto Save without opening the menu. Auto Save remains the shared Off/On game exit/30/10/5 mode and Exit Game is unchanged."
     },
     {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "platform": "Android",
       "architecture": "arm64",
       "format": "APK",
-      "filename": "vibecodedemulator-1.1.0-android-arm64-staging.apk",
-      "size": 49564512,
-      "sha256": "0376b23791bcb275203333638954236926430829bbe4599a536115db5284dcc2",
+      "filename": "vibecodedemulator-1.2.0-android-arm64-staging.apk",
+      "size": 49571059,
+      "sha256": "2c8773283158a1fb9f2ffc7c5ccf90bb9bfcdd7633e391733cb11de85e28c6ff",
       "signature_status": "Android Debug certificate (v2); same signer as the prior staging APK.",
-      "runtime_status": "Vibe Coded Emulator branding and icons. Auto Save is one shared Off/On game exit/30/10/5 mode (autosave-mode) via the shared player model; verified on an arm64 API 35 AVD (native mGBA 59 fps, periodic + on-exit autosave). Local GBA/NDS/3DS import and the native emulator pipeline are unchanged."
+      "runtime_status": "Vibe Coded Emulator branding and icons. The toolbar Layout control opens every layout the active core supports (read from the shared native-layout-schema.json) and the toolbar Save control exposes Quick Save / Quick Load / Auto Save now / Load Auto Save. Auto Save remains the shared Off/On game exit/30/10/5 mode; local GBA/NDS/3DS import and the native emulator pipeline are unchanged."
     },
     {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-1.1.0-linux-amd64.deb",
-      "size": 45473640,
-      "sha256": "38a22ce2020a0c367350cf8925de14698bf822e2138fc8e257c4c169445e4c5d",
+      "filename": "vibecodedemulator-1.2.0-linux-amd64.deb",
+      "size": 45483678,
+      "sha256": "ac89b46076a5859b171284e2ecf1990128c37dbd5e89b16e6c72d5ed2b6d14f1",
       "signature_status": "Frozen Debian package; no additional installation check requested.",
-      "runtime_status": "Vibe Coded Emulator branding and icons plus the bundled native SDL/GTK player with pinned GBA/NDS/3DS cores (Azahar 2126.1.1). GTK Save States tab uses the shared Off/On game exit/30/10/5 Auto Save mode; verified under Xvfb on the authorized Debian builder."
+      "runtime_status": "Vibe Coded Emulator branding and icons plus the bundled native SDL/GTK player with pinned GBA/NDS/3DS cores (Azahar 2126.1.1). The toolbar Layout button opens every core-supported layout (shared generated header) and the toolbar Save button exposes the quick save/load actions. GTK Save States tab keeps the shared Off/On game exit/30/10/5 Auto Save mode."
     },
     {
-      "version": "1.0.1",
+      "version": "1.2.0",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-1.0.1-linux-amd64-staging.flatpak",
-      "size": 27819624,
-      "sha256": "2b46b153c5e32bb044a281eca8aca597e6bac7dd5a7eb05d31fa24c07f9c18e5",
+      "filename": "an3-offline-1.2.0-linux-amd64-staging.flatpak",
+      "size": 29080072,
+      "sha256": "0aa9f5dbb8fefcce161e93384bd13ff7f3f36d1606b8ca30249ce5ac6e66b78c",
       "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
-      "runtime_status": "Redesigned Tauri desktop shell (Play, Library, Settings, Help, About) plus the bundled native player with Azahar 2126.1.1 and the shared Vulkan presenter color-space fix. Not yet rebuilt for 1.1.0 (needs the Flathub runtime)."
+      "runtime_status": "Vibe Coded Emulator desktop shell plus the bundled native player (GBA/NDS/3DS, Azahar 2126.1.1) with the shared layout chooser and toolbar Save control. Built from the 1.2.0 DEB."
     },
     {
       "version": "1.0.1",

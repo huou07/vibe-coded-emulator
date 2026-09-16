@@ -80,6 +80,10 @@ if [[ "$target" == "deb" ]]; then
   if [[ ! -d "$root/node_modules" ]]; then
     (cd "$root" && npm ci)
   fi
+  # Never let a historical bundle be mistaken for this build: Tauri writes a
+  # versioned filename and the previous release's DEB otherwise lingers here,
+  # which a `find -quit` would happily reuse.
+  rm -rf "$root/src-tauri/target/release/bundle/deb"
   (cd "$root" && npm run prepare-web && npm run tauri -- build --bundles deb)
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
