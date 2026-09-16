@@ -20,7 +20,8 @@ class SharedPlayerUiTests(unittest.TestCase):
         native = (ROOT / "native-offline/shared/generated/player_ui.h").read_text()
         android = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativePlayerUi.kt").read_text()
         web = (ROOT / "static/player-ui.js").read_text()
-        for label in (toolbar["menu"], toolbar["pad"], toolbar["nextLayout"], toolbar["cursorLock"], *toolbar["speed"]):
+        for label in (toolbar["menu"], toolbar["pad"], toolbar["layout"], toolbar["save"],
+                      toolbar["quickSave"], toolbar["quickLoad"], toolbar["cursorLock"], *toolbar["speed"]):
             self.assertIn(label, native)
             self.assertIn(label, android)
             self.assertIn(label, web)
@@ -77,6 +78,28 @@ class SharedPlayerUiTests(unittest.TestCase):
         self.assertNotIn("native_auto_save_mode_tokens", host)
         for title in ('@"Off"', '@"On game exit"', '@"Every 30 seconds"', '@"Every 10 seconds"', '@"Every 5 seconds"'):
             self.assertNotIn(title, host)
+
+    def test_shared_screen_layouts_are_generated_and_complete(self):
+        schema = json.loads((ROOT / "native-offline/shared/native-layout-schema.json").read_text())
+        self.assertEqual(schema["version"], 2)
+        generated = (ROOT / "native-offline/shared/generated/native_layouts.h").read_text()
+        for system in ("nds", "3ds"):
+            entries = schema["systems"][system]
+            # The point of the feature: more than the old two-option cycle.
+            self.assertGreater(len(entries), 2, system)
+            for item in entries:
+                for value in (item["id"], item["label"], item["coreValue"]):
+                    self.assertIn(value, generated)
+        # Persisted ids keep their meaning after the list grew.
+        self.assertEqual(schema["systems"]["nds"][0]["id"], "left-right")
+        self.assertEqual(schema["systems"]["3ds"][0]["coreValue"], "side_by_side")
+        self.assertEqual(schema["systems"]["3ds"][1]["coreValue"], "default")
+        # macOS and Linux consume the generated header instead of a private copy.
+        for path in ("native-offline/src-tauri/src/azahar_host.mm",
+                     "native-offline/native-runtime/platform/linux/linux_controls.cpp"):
+            source = (ROOT / path).read_text()
+            self.assertIn("shared/generated/native_layouts.h", source)
+            self.assertIn("native_layouts::nds", source)
 
     def test_circle_normalization_matches_cpp_and_keeps_thumb_inside_base(self):
         vectors = [[0, 0], [.1, .1], [1, 0], [0, -1], [1, 1], [-4, 3], [.3, -.4]]

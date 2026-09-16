@@ -73,7 +73,9 @@ class NativeRegressionGuardTests(unittest.TestCase):
     def test_10_nds_landscape_is_preserved_at_launch(self):
         self.assertIn('"melonds_screen_layout1"', HOST)
         self.assertIn('native_layout_core_value(system_, layout_)', HOST)
-        self.assertIn('{"left-right", "Side by Side"}', HOST)
+        # The layout list is generated from the one schema, not a private copy.
+        self.assertIn('shared/generated/native_layouts.h', HOST)
+        self.assertIn('native_layouts::nds', HOST)
         self.assertIn('core_options_.set("melonds_screen_layout1"', HOST)
         self.assertIn('launch(romId,game.system,"preserve",game.size)', OFFLINE)
 

@@ -79,7 +79,8 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn("host.set_screen_layout(value, detail)", RUNTIME)
         self.assertIn("std::ofstream output(layout_file, std::ios::trunc)", RUNTIME)
         self.assertIn("output << options.layout", RUNTIME)
-        self.assertIn('options.layout == "left-right" ? "top-bottom" : "left-right"', RUNTIME)
+        self.assertIn("next_supported_layout(options.system, options.layout)", RUNTIME)
+        self.assertIn("is_supported_layout(options.system, options.layout)", RUNTIME)
         self.assertIn("set_touch(host.input(), options.system, options.layout", RUNTIME)
 
     def test_linux_control_panel_reuses_native_state_and_matches_the_desktop_menu_surface(self):

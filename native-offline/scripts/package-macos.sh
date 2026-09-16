@@ -6,7 +6,7 @@ set -euo pipefail
 # to create the direct-download installer from that verified bundle.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/src-tauri/target/release/bundle/macos/VibeCodedEmulator.app"
-OUTPUT="${AN3_RELEASE_DIR:-$ROOT/releases}/vibecodedemulator-1.1.0-macos-aarch64.dmg"
+OUTPUT="${AN3_RELEASE_DIR:-$ROOT/releases}/vibecodedemulator-1.2.0-macos-aarch64.dmg"
 
 [[ -d "$APP" ]] || { echo "macOS app bundle is unavailable: $APP" >&2; exit 1; }
 mkdir -p "$(dirname "$OUTPUT")"

@@ -4,6 +4,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include "../../shared/generated/player_ui.h"
+#include "../../shared/generated/native_layouts.h"
 #include "../../native-runtime/core/auto_save_mode.h"
 
 #include <array>
@@ -249,7 +250,8 @@ AzaharHost* active_host();
     NSButton* _slow_speed_button;
     NSButton* _normal_speed_button;
     NSButton* _fast_speed_button;
-    NSButton* _next_layout_button;
+    NSButton* _layout_button;
+    NSButton* _save_button;
     NSPopUpButton* _screen_layout_popup;
     NSPopUpButton* _key_map_action;
     NSTextField* _key_map_status;
@@ -397,52 +399,64 @@ static void set_audio_resampler_quality(unsigned quality);
 struct NativeScreenLayout {
     const char* id;
     const char* label;
+    // The exact token the libretro core accepts for this layout.
+    const char* coreValue;
 };
 
-// Mirrors shared/native-layout-schema.json, which Android reads directly.
-// Settings and Next Layout both call native_screen_layouts, so their ordering
-// cannot drift inside the desktop host.
-static const std::vector<NativeScreenLayout> kNativeScreenLayouts{
-    {"left-right", "Side by Side"},
-    {"top-bottom", "Top / Bottom"},
-};
+// Built from shared/generated/native_layouts.h, which is generated from the one
+// layout schema (Android reads that JSON directly). `id` is the persisted
+// preference; `coreValue` is the token the core option expects.
+template <typename Source>
+static std::vector<NativeScreenLayout> build_native_layouts(const Source& source) {
+    std::vector<NativeScreenLayout> layouts;
+    layouts.reserve(source.size());
+    for (const auto& item : source) {
+        layouts.push_back({item.id.data(), item.label.data(), item.core_value.data()});
+    }
+    return layouts;
+}
 
 static const std::vector<NativeScreenLayout>& native_screen_layouts(const std::string& system) {
     static const std::vector<NativeScreenLayout> kNoLayouts;
-    return (system == "nds" || system == "3ds") ? kNativeScreenLayouts : kNoLayouts;
+    static const std::vector<NativeScreenLayout> kNdsLayouts = build_native_layouts(an3::native_layouts::nds);
+    static const std::vector<NativeScreenLayout> kThreeDsLayouts = build_native_layouts(an3::native_layouts::three_ds);
+    if (system == "nds") return kNdsLayouts;
+    if (system == "3ds") return kThreeDsLayouts;
+    return kNoLayouts;
 }
 
-static std::string canonical_native_layout(const std::string& layout) {
-    if (layout == "left-right" || layout == "side_by_side") return "left-right";
-    if (layout == "top-bottom" || layout == "top_bottom") return "top-bottom";
-    return {};
+static const NativeScreenLayout* find_native_layout(const std::string& system, const std::string& layout) {
+    for (const auto& candidate : native_screen_layouts(system)) {
+        if (layout == candidate.id) return &candidate;
+    }
+    return nullptr;
+}
+
+// Legacy canonical spellings map onto the schema ids so a preference stored by
+// an earlier build keeps working after the layout list grew.
+static std::string canonical_native_layout(const std::string& system, const std::string& layout) {
+    if (layout == "side_by_side") return find_native_layout(system, "left-right") ? "left-right" : std::string();
+    if (layout == "top_bottom") return find_native_layout(system, "top-bottom") ? "top-bottom" : std::string();
+    return find_native_layout(system, layout) ? layout : std::string();
 }
 
 static const char* native_layout_core_value(const std::string& system, const std::string& layout) {
-    if (system == "3ds") return layout == "left-right" ? "side_by_side" : "top_bottom";
-    return layout == "left-right" ? "left-right" : "top-bottom";
-}
-
-static std::string next_native_layout(const std::string& system, const std::string& current) {
+    if (const NativeScreenLayout* found = find_native_layout(system, layout)) return found->coreValue;
     const auto& layouts = native_screen_layouts(system);
-    if (layouts.empty()) return {};
-    for (size_t index = 0; index < layouts.size(); ++index) {
-        if (current == layouts[index].id) return layouts[(index + 1) % layouts.size()].id;
-    }
-    return layouts.front().id;
+    return layouts.empty() ? "" : layouts.front().coreValue;
 }
 
 static std::string native_layout_preference(const std::string& system, const char* requested_layout) {
     if (system != "nds" && system != "3ds") return "default";
     const std::string requested = requested_layout ? requested_layout : "preserve";
-    if (const std::string canonical = canonical_native_layout(requested); !canonical.empty()) return canonical;
+    if (const std::string canonical = canonical_native_layout(system, requested); !canonical.empty()) return canonical;
     // Reading a preference is deliberately side-effect free. In particular,
     // opening Settings or receiving an unspecified layout from the web shell
     // must never replace a valid landscape choice with a portrait default.
     NSString* key = [NSString stringWithFormat:@"an3.native-screen-layout.v1.%s", system.c_str()];
     NSString* stored = [[NSUserDefaults standardUserDefaults] stringForKey:key];
     if (stored) {
-        if (const std::string canonical = canonical_native_layout(stored.UTF8String ?: ""); !canonical.empty()) return canonical;
+        if (const std::string canonical = canonical_native_layout(system, stored.UTF8String ?: ""); !canonical.empty()) return canonical;
     }
     // The pre-regression native landscape default was side-by-side. Do not
     // infer the layout from transient window dimensions.
@@ -451,7 +465,7 @@ static std::string native_layout_preference(const std::string& system, const cha
 
 static void persist_native_layout_preference(NSString* system, NSString* layout) {
     if (!([system isEqualToString:@"nds"] || [system isEqualToString:@"3ds"])) return;
-    const std::string canonical = canonical_native_layout(layout.UTF8String ?: "");
+    const std::string canonical = canonical_native_layout(system.UTF8String ?: "", layout.UTF8String ?: "");
     if (canonical.empty()) return;
     NSString* key = [NSString stringWithFormat:@"an3.native-screen-layout.v1.%@", system];
     [[NSUserDefaults standardUserDefaults] setObject:[NSString stringWithUTF8String:canonical.c_str()] forKey:key];
@@ -679,7 +693,7 @@ class AzaharHost {
             error = "Screen layout is available only while an NDS or 3DS game is running.";
             return false;
         }
-        const std::string layout = canonical_native_layout(requested);
+        const std::string layout = canonical_native_layout(system_, requested);
         if (layout.empty()) {
             error = "Unknown screen layout.";
             return false;
@@ -1951,11 +1965,15 @@ static NSString* native_player_ui_text(std::string_view value) {
     [self addSubview:_menu_button];
     [self addSubview:_pad_button];
     if (is_nds || is_three_ds) {
-        _next_layout_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_next_layout) target:self action:@selector(advanceScreenLayout:)];
-        _next_layout_button.font = [NSFont boldSystemFontOfSize:13.0];
-        _next_layout_button.toolTip = @"Use the next Screen Layout and save it for this system.";
-        [self addSubview:_next_layout_button];
+        _layout_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_layout) target:self action:@selector(showLayoutChooser:)];
+        _layout_button.font = [NSFont boldSystemFontOfSize:13.0];
+        _layout_button.toolTip = @"Choose any screen layout this core supports.";
+        [self addSubview:_layout_button];
     }
+    _save_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_save) target:self action:@selector(showSaveMenu:)];
+    _save_button.font = [NSFont boldSystemFontOfSize:13.0];
+    _save_button.toolTip = @"Quick save, quick load, or Auto Save without opening the menu.";
+    [self addSubview:_save_button];
     _slow_speed_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_speed[0]) target:self action:@selector(setSlowSpeed:)];
     _normal_speed_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_speed[1]) target:self action:@selector(setNormalSpeed:)];
     _fast_speed_button = [NSButton buttonWithTitle:native_player_ui_text(an3::player_ui::toolbar_speed[2]) target:self action:@selector(cycleFastSpeed:)];
@@ -2313,7 +2331,8 @@ static NSString* native_player_ui_text(std::string_view value) {
     _menu_button.frame = NSMakeRect(18.0, height - 44.0, 64.0, 28.0);
     _cursor_lock_button.frame = NSMakeRect(90.0, height - 44.0, 102.0, 28.0);
     _pad_button.frame = NSMakeRect(width - 82.0, height - 44.0, 64.0, 28.0);
-    if (_next_layout_button) _next_layout_button.frame = NSMakeRect(std::max<CGFloat>(92.0, width - 194.0), height - 44.0, 104.0, 28.0);
+    if (_layout_button) _layout_button.frame = NSMakeRect(std::max<CGFloat>(92.0, width - 254.0), height - 44.0, 60.0, 28.0);
+    _save_button.frame = NSMakeRect(std::max<CGFloat>(92.0, width - 190.0), height - 44.0, 60.0, 28.0);
     const CGFloat speed_gap = 5.0;
     // At narrow widths the menu, cursor, and pad buttons must keep their
     // touch targets. Put the compact speed row above them instead of letting
@@ -2423,19 +2442,81 @@ static NSString* native_player_ui_text(std::string_view value) {
     [self updateQuickStateStatus:"Screen layout applied and saved for this system." success:YES];
 }
 
-- (void)advanceScreenLayout:(id)sender {
-    auto* host = an3::active_host();
-    if (!host) return;
-    const std::string next = an3::next_native_layout(_system.UTF8String ?: "", host->layout());
-    if (next.empty()) return;
-    NSString* selected = [NSString stringWithUTF8String:next.c_str()];
+- (void)syncScreenLayoutPopup:(const std::string&)layout {
+    if (!_screen_layout_popup) return;
+    NSString* selected = [NSString stringWithUTF8String:layout.c_str()];
     for (NSMenuItem* item in _screen_layout_popup.itemArray) {
         if ([item.representedObject isEqualToString:selected]) {
             [_screen_layout_popup selectItem:item];
             break;
         }
     }
-    [self changeScreenLayout:_screen_layout_popup];
+}
+
+// The toolbar Layout control exposes every layout the active core supports
+// instead of only cycling between two.
+- (void)showLayoutChooser:(NSButton*)sender {
+    auto* host = an3::active_host();
+    if (!host) return;
+    const std::string current = host->layout();
+    NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
+    for (const auto& layout : an3::native_screen_layouts(_system.UTF8String ?: "")) {
+        NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithUTF8String:layout.label]
+                                                      action:@selector(selectScreenLayout:)
+                                               keyEquivalent:@""];
+        item.representedObject = [NSString stringWithUTF8String:layout.id];
+        item.state = (current == layout.id) ? NSControlStateValueOn : NSControlStateValueOff;
+        item.target = self;
+        [menu addItem:item];
+    }
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, sender.bounds.size.height + 4.0) inView:sender];
+}
+
+- (void)selectScreenLayout:(NSMenuItem*)sender {
+    NSString* selected = sender.representedObject;
+    if (!selected.length) return;
+    std::string error;
+    auto* host = an3::active_host();
+    const bool changed = host && host->set_screen_layout(selected.UTF8String ?: "", error);
+    if (!changed) {
+        [self updateQuickStateStatus:error.empty() ? "Screen layout could not be applied." : error.c_str() success:NO];
+        return;
+    }
+    an3::persist_native_layout_preference(_system, selected);
+    [self syncScreenLayoutPopup:selected.UTF8String ?: ""];
+    [self updateQuickStateStatus:"Screen layout applied and saved for this system." success:YES];
+}
+
+// The toolbar Save control mirrors the Save States tab's quick actions so a
+// save/load does not require opening the menu.
+- (void)showSaveMenu:(NSButton*)sender {
+    NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
+    NSMenuItem* quickSave = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_save)
+                                                       action:@selector(saveQuickSlot:) keyEquivalent:@""];
+    quickSave.tag = 1;
+    quickSave.target = self;
+    [menu addItem:quickSave];
+    NSMenuItem* quickLoad = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_load)
+                                                       action:@selector(loadQuickSlot:) keyEquivalent:@""];
+    quickLoad.tag = 1;
+    quickLoad.target = self;
+    [menu addItem:quickLoad];
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem* saveAuto = [[NSMenuItem alloc] initWithTitle:@"Auto Save now" action:@selector(saveAutoNow:) keyEquivalent:@""];
+    saveAuto.target = self;
+    [menu addItem:saveAuto];
+    NSMenuItem* loadAuto = [[NSMenuItem alloc] initWithTitle:@"Load Auto Save" action:@selector(loadAutoSave:) keyEquivalent:@""];
+    loadAuto.target = self;
+    [menu addItem:loadAuto];
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0.0, sender.bounds.size.height + 4.0) inView:sender];
+}
+
+- (void)saveAutoNow:(id)sender {
+    std::string error;
+    auto* host = an3::active_host();
+    const bool saved = host && host->save_auto_state(error);
+    if (!saved && error.empty()) error = "The native player is not running.";
+    [self updateQuickStateStatus:saved ? "Auto Save saved." : error.c_str() success:saved];
 }
 
 - (void)changeVolume:(NSSlider*)sender {

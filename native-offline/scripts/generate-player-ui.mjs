@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const model = JSON.parse(await readFile(resolve(root, "shared/player-ui.json"), "utf8"));
 const j = model.joystick, p = model.panel, t = model.toolbar, a = model.autoSave;
 if (!(j.deadzone >= 0 && j.deadzone < 1 && j.travelRatio > 0 && j.travelRatio + j.thumbRadiusRatio < 1)) throw new Error("Invalid joystick geometry");
-if (!t || ![t.menu, t.pad, t.nextLayout, t.cursorLock].every(value => typeof value === "string" && value) || !Array.isArray(t.speed) || t.speed.length !== 3 || !t.speed.every(value => typeof value === "string" && value)) throw new Error("Invalid shared toolbar model");
+if (!t || ![t.menu, t.pad, t.layout, t.save, t.quickSave, t.quickLoad, t.cursorLock].every(value => typeof value === "string" && value) || !Array.isArray(t.speed) || t.speed.length !== 3 || !t.speed.every(value => typeof value === "string" && value)) throw new Error("Invalid shared toolbar model");
 if (!a || typeof a.label !== "string" || !a.label || !Array.isArray(a.titles) || !Array.isArray(a.tokens) || a.titles.length === 0 || a.titles.length !== a.tokens.length || !a.titles.every(value => typeof value === "string" && value) || !a.tokens.every(value => typeof value === "string" && value)) throw new Error("Invalid shared auto-save model");
 const signedColor = value => {
   const numeric = Number.parseInt(value.replace(/^#/, ""), 16);
@@ -22,7 +22,7 @@ const outputs = new Map([
 #include <string_view>
 namespace an3::player_ui {
 inline constexpr std::array<std::string_view, ${model.tabs.length}> tabs = {${model.tabs.map(JSON.stringify).join(", ")}};
-inline constexpr std::string_view toolbar_menu = ${JSON.stringify(t.menu)}, toolbar_pad = ${JSON.stringify(t.pad)}, toolbar_next_layout = ${JSON.stringify(t.nextLayout)}, toolbar_cursor_lock = ${JSON.stringify(t.cursorLock)};
+inline constexpr std::string_view toolbar_menu = ${JSON.stringify(t.menu)}, toolbar_pad = ${JSON.stringify(t.pad)}, toolbar_layout = ${JSON.stringify(t.layout)}, toolbar_save = ${JSON.stringify(t.save)}, toolbar_quick_save = ${JSON.stringify(t.quickSave)}, toolbar_quick_load = ${JSON.stringify(t.quickLoad)}, toolbar_cursor_lock = ${JSON.stringify(t.cursorLock)};
 inline constexpr std::array<std::string_view, ${t.speed.length}> toolbar_speed = {${t.speed.map(JSON.stringify).join(", ")}};
 inline constexpr std::string_view auto_save_label = ${JSON.stringify(a.label)};
 inline constexpr std::array<std::string_view, ${a.titles.length}> auto_save_titles = {${a.titles.map(JSON.stringify).join(", ")}};
@@ -46,7 +46,10 @@ object NativePlayerUi {
     val tabs = listOf(${model.tabs.map(JSON.stringify).join(", ")})
     const val MENU_LABEL = ${JSON.stringify(t.menu)}
     const val PAD_LABEL = ${JSON.stringify(t.pad)}
-    const val NEXT_LAYOUT_LABEL = ${JSON.stringify(t.nextLayout)}
+    const val LAYOUT_LABEL = ${JSON.stringify(t.layout)}
+    const val SAVE_LABEL = ${JSON.stringify(t.save)}
+    const val QUICK_SAVE_LABEL = ${JSON.stringify(t.quickSave)}
+    const val QUICK_LOAD_LABEL = ${JSON.stringify(t.quickLoad)}
     const val CURSOR_LOCK_LABEL = ${JSON.stringify(t.cursorLock)}
     val speedLabels = listOf(${t.speed.map(JSON.stringify).join(", ")})
     const val AUTO_SAVE_LABEL = ${JSON.stringify(a.label)}
@@ -86,6 +89,28 @@ object NativePlayerUi {
 })(typeof globalThis === "object" ? globalThis : this);
 `],
 ]);
+
+// The multi-screen layout list is generated from its own schema so the macOS and
+// Linux adapters share one source of truth with Android (which reads the JSON
+// directly). `id` is the persisted preference; `core_value` is the exact token
+// the libretro core accepts.
+const layouts = JSON.parse(await readFile(resolve(root, "shared/native-layout-schema.json"), "utf8"));
+if (layouts.version !== 2 || !layouts.systems?.nds?.length || !layouts.systems?.["3ds"]?.length) throw new Error("Invalid native layout schema");
+const layoutEntries = list => list.map(item => {
+  if (!item.id || !item.label || !item.coreOption || !item.coreValue) throw new Error(`Invalid native layout entry: ${JSON.stringify(item)}`);
+  return `{"${item.id}", "${item.label}", "${item.coreValue}"}`;
+});
+const layoutArray = (name, list) => `inline constexpr std::array<Layout, ${list.length}> ${name} = {{ ${layoutEntries(list).join(", ")} }};`;
+outputs.set(resolve(root, "shared/generated/native_layouts.h"), `// Generated from native-offline/shared/native-layout-schema.json; edit the shared schema.
+#pragma once
+#include <array>
+#include <string_view>
+namespace an3::native_layouts {
+struct Layout { std::string_view id; std::string_view label; std::string_view core_value; };
+${layoutArray("nds", layouts.systems.nds)}
+${layoutArray("three_ds", layouts.systems["3ds"])}
+}
+`);
 for (const [path, content] of outputs) {
   let existing; try { existing = await readFile(path, "utf8"); } catch {}
   if (existing === content) continue;

@@ -18,14 +18,14 @@ build="$root/work/linux-build"
 release="${AN3_RELEASE_DIR:-$root/releases}"
 binary="$build/an3-offline-native"
 core_dir="$root/vendor/libretro/linux-x86_64"
-deb_name="vibecodedemulator-1.1.0-linux-amd64.deb"
+deb_name="vibecodedemulator-1.2.0-linux-amd64.deb"
 deb_path="$release/$deb_name"
 # The Flatpak manifest intentionally consumes the DEB from this path inside
 # the source tree.  A coordinated release may publish candidates elsewhere,
 # so keep an exact, freshly built staging copy here for Flatpak's local source
 # contract instead of allowing it to see a historical release artifact.
 flatpak_deb_path="$root/releases/$deb_name"
-flatpak_name="an3-offline-1.1.0-linux-amd64-staging.flatpak"
+flatpak_name="an3-offline-1.2.0-linux-amd64-staging.flatpak"
 
 compiler="${CXX:-}"
 if [[ -z "$compiler" ]]; then

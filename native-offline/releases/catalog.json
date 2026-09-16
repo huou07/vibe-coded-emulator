@@ -3,15 +3,15 @@
   "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
   "artifacts": [
     {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "platform": "macOS",
       "architecture": "arm64",
       "format": "DMG",
-      "filename": "vibecodedemulator-1.1.0-macos-aarch64.dmg",
-      "size": 44696852,
-      "sha256": "9f137603006e7b3ad73b702af20309bc74f58f3243dd1a5e82189da99935b75e",
+      "filename": "vibecodedemulator-1.2.0-macos-aarch64.dmg",
+      "size": 44704838,
+      "sha256": "c22de7b78715810bf4db350c476cdcef46e03db2b45437af166abf8f1f406b41",
       "signature_status": "Ad-hoc native package from frozen source; unsigned/not notarized staging build.",
-      "runtime_status": "Vibe Coded Emulator branding and icons; bundled mGBA, melonDS DS and Azahar 2126.1.1 cores with native local-ROM playback unchanged. Auto Save is one shared Off/On game exit/30/10/5 mode (native-runtime/core/auto_save_mode.h) with an explicit Exit Game control."
+      "runtime_status": "Vibe Coded Emulator branding and icons; bundled mGBA, melonDS DS and Azahar 2126.1.1 cores. The toolbar Layout control now opens every screen layout the active core supports (melonDS: 12 layouts; Azahar: 4) and the toolbar Save control exposes Quick Save / Quick Load / Auto Save now / Load Auto Save without opening the menu. Auto Save remains the shared Off/On game exit/30/10/5 mode and Exit Game is unchanged."
     },
     {
       "version": "1.1.0",

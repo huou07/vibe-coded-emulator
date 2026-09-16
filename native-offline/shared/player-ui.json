@@ -32,7 +32,10 @@
   "toolbar": {
     "menu": "Menu",
     "pad": "Pad",
-    "nextLayout": "Next Layout",
+    "layout": "Layout",
+    "save": "Save",
+    "quickSave": "Quick Save",
+    "quickLoad": "Quick Load",
     "cursorLock": "Lock cursor",
     "speed": [
       "0.5x",

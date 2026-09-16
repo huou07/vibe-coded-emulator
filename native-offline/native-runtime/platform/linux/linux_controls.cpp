@@ -1,5 +1,6 @@
 #include "linux_controls.h"
 #include "../../../shared/generated/player_ui.h"
+#include "../../../shared/generated/native_layouts.h"
 
 #include <gtk/gtk.h>
 
@@ -185,11 +186,13 @@ class LinuxControlPanel::Impl {
         gtk_box_pack_start(GTK_BOX(toolbar), button(std::string(player_ui::toolbar_menu), [this] { hide(); }), false, false, 0);
         gtk_box_pack_start(GTK_BOX(toolbar), button(std::string(player_ui::toolbar_pad), [this] { show_pad(); }), false, false, 0);
         if (system_ == "nds" || system_ == "3ds") {
-            gtk_box_pack_start(GTK_BOX(toolbar), button(std::string(player_ui::toolbar_next_layout), [this] {
-                const auto current = snapshot().layout;
-                apply_layout(current == "left-right" ? "top-bottom" : "left-right");
+            gtk_box_pack_start(GTK_BOX(toolbar), button(std::string(player_ui::toolbar_layout), [this] {
+                show_layout_menu();
             }), false, false, 0);
         }
+        gtk_box_pack_start(GTK_BOX(toolbar), button(std::string(player_ui::toolbar_save), [this] {
+            show_save_menu();
+        }), false, false, 0);
         gtk_box_pack_start(GTK_BOX(root), toolbar, false, false, 0);
 
         notebook_ = gtk_notebook_new();
@@ -507,6 +510,66 @@ class LinuxControlPanel::Impl {
         return result;
     }
 
+    void show_layout_menu() {
+        if (system_ != "nds" && system_ != "3ds") return;
+        const std::string current = snapshot().layout;
+        GtkWidget* menu = gtk_menu_new();
+        menu_actions_.clear();
+        auto add = [&](const auto& layouts) {
+            for (const auto& layout : layouts) {
+                const std::string id(layout.id);
+                GtkWidget* item = gtk_menu_item_new_with_label(std::string(layout.label).c_str());
+                if (id == current) gtk_widget_set_sensitive(item, false);
+                menu_actions_.push_back(std::make_unique<ActionSignal>(ActionSignal{[this, id] {
+                    std::string error;
+                    if (callbacks_.set_layout && callbacks_.set_layout(id, error)) {
+                        status("Screen layout changed to " + id + ".");
+                    } else {
+                        status("Screen layout failed: " + (error.empty() ? std::string("native core rejected the request") : error));
+                    }
+                }}));
+                g_signal_connect(item, "activate", G_CALLBACK(action_clicked), menu_actions_.back().get());
+                gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+            }
+        };
+        if (system_ == "nds") add(native_layouts::nds);
+        else add(native_layouts::three_ds);
+        g_signal_connect(menu, "deactivate", G_CALLBACK(gtk_widget_destroy), nullptr);
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), nullptr);
+    }
+
+    // The toolbar Save control mirrors the Save States tab's quick actions.
+    void show_save_menu() {
+        GtkWidget* menu = gtk_menu_new();
+        menu_actions_.clear();
+        auto add_item = [&](const std::string& title, std::function<void()> run) {
+            GtkWidget* item = gtk_menu_item_new_with_label(title.c_str());
+            menu_actions_.push_back(std::make_unique<ActionSignal>(ActionSignal{std::move(run)}));
+            g_signal_connect(item, "activate", G_CALLBACK(action_clicked), menu_actions_.back().get());
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+        };
+        add_item(std::string(player_ui::toolbar_quick_save), [this] {
+            std::string error;
+            status(user_facing_error("Quick Save", host_.save_state(1, error), error));
+        });
+        add_item(std::string(player_ui::toolbar_quick_load), [this] {
+            std::string error;
+            status(user_facing_error("Quick Load", host_.load_state(1, error), error));
+        });
+        add_item("Auto Save now", [this] {
+            std::string error;
+            status(user_facing_error("Auto Save", host_.save_auto(error), error));
+        });
+        add_item("Load Auto Save", [this] {
+            std::string error;
+            status(user_facing_error("Load Auto Save", host_.load_auto(error), error));
+        });
+        g_signal_connect(menu, "deactivate", G_CALLBACK(gtk_widget_destroy), nullptr);
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), nullptr);
+    }
+
     void transfer_state(bool export_state) {
         const auto path = state_path(export_state);
         if (!path) return;
@@ -569,6 +632,7 @@ class LinuxControlPanel::Impl {
     std::string last_feedback_;
     std::chrono::steady_clock::time_point last_refresh_{};
     std::vector<std::unique_ptr<ActionSignal>> actions_;
+    std::vector<std::unique_ptr<ActionSignal>> menu_actions_;
     std::vector<std::unique_ptr<ToggleSignal>> toggles_;
     std::vector<std::unique_ptr<RangeSignal>> ranges_;
     std::vector<std::unique_ptr<ComboSignal>> combos_;

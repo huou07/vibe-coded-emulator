@@ -206,7 +206,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
     def test_android_menu_retains_dmg_controls_tabs_and_explicit_save_settings(self):
         overlay = source(GAME_ACTIVITY.with_name("NativeGameOverlay.kt"))
         shared = source(GAME_ACTIVITY.with_name("NativePlayerUi.kt"))
-        for constant in ("MENU_LABEL", "PAD_LABEL", "NEXT_LAYOUT_LABEL", "CURSOR_LOCK_LABEL"):
+        for constant in ("MENU_LABEL", "PAD_LABEL", "LAYOUT_LABEL", "SAVE_LABEL", "CURSOR_LOCK_LABEL"):
             self.assertIn(f"NativePlayerUi.{constant}", overlay)
         self.assertIn("NativePlayerUi.speedLabels[0]", overlay)
         self.assertIn("for(tab in NativePlayerUi.tabs)", overlay)
@@ -402,9 +402,12 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         overlay = source(GAME_ACTIVITY.with_name("NativeGameOverlay.kt"))
         activity = source(GAME_ACTIVITY)
         schema = (ROOT / "native-offline/shared/native-layout-schema.json").read_text(encoding="utf-8")
-        self.assertIn('button(NativePlayerUi.NEXT_LAYOUT_LABEL)', overlay)
+        self.assertIn('button(NativePlayerUi.LAYOUT_LABEL)', overlay)
+        self.assertIn('button(NativePlayerUi.SAVE_LABEL)', overlay)
+        self.assertIn("showLayoutChooser", overlay)
+        self.assertIn("showSaveMenu", overlay)
         self.assertIn("NativeLayoutModel.layouts", overlay)
-        self.assertIn("NativeLayoutModel.next", activity)
+        self.assertIn("NativeLayoutModel.normalize", activity)
         self.assertIn('commandWhenReady("layout", layout)', activity)
         self.assertIn('"Directional control"', overlay)
         self.assertIn('"Analog Joystick"', overlay)

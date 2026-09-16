@@ -4,6 +4,7 @@
 #include "sdl_window_surface.h"
 
 #include "../../core/auto_save_mode.h"
+#include "../../../shared/generated/native_layouts.h"
 #include "../../core/libretro_host.h"
 #include "../../video/vulkan/hardware_backend.h"
 #include "../../video/vulkan/software_backend.h"
@@ -53,7 +54,7 @@ void usage() {
     std::cout << "VibeCodedEmulator native player\n"
               << "Usage: an3-offline-native --rom PATH [--system gba|nds|3ds] [--renderer auto|vulkan|opengl] [--layout left-right|top-bottom]\n"
               << "       an3-offline-native --pick [--no-controls]\n"
-              << "F1: Next Layout · F2: Menu · F3: Pad · F4: fullscreen · Esc: close Menu/quit · F5/F9: save/load slot 1\n";
+              << "F1: Cycle layout · F2: Menu · F3: Pad · F4: fullscreen · Esc: close Menu/quit · F5/F9: save/load slot 1\n";
 }
 
 std::optional<std::string> choose_rom() {
@@ -191,6 +192,31 @@ uint32_t controller_button(Uint8 button) {
     }
 }
 
+bool is_supported_layout(const std::string& system, const std::string& layout) {
+    const auto contains = [&](const auto& layouts) {
+        for (const auto& item : layouts) if (layout == item.id) return true;
+        return false;
+    };
+    if (system == "nds") return contains(native_layouts::nds);
+    if (system == "3ds") return contains(native_layouts::three_ds);
+    return false;
+}
+
+// F1 cycles the same list the toolbar chooser exposes; the chooser itself is
+// the full picker.
+std::string next_supported_layout(const std::string& system, const std::string& current) {
+    const auto advance = [&](const auto& layouts) -> std::string {
+        if (layouts.empty()) return current;
+        for (size_t index = 0; index < layouts.size(); ++index) {
+            if (current == layouts[index].id) return std::string(layouts[(index + 1) % layouts.size()].id);
+        }
+        return std::string(layouts.front().id);
+    };
+    if (system == "nds") return advance(native_layouts::nds);
+    if (system == "3ds") return advance(native_layouts::three_ds);
+    return current;
+}
+
 void set_touch(NativeInput& input, const std::string& system, const std::string& layout,
                int mouse_x, int mouse_y, int width, int height, bool pressed) {
     if (!pressed || (system != "nds" && system != "3ds")) { input.cancel_pointer(); return; }
@@ -243,7 +269,7 @@ int main(int argc, char** argv) {
     if (options.layout == "preserve" && (options.system == "nds" || options.system == "3ds")) {
         std::ifstream stored(layout_file); std::getline(stored, options.layout);
     }
-    if (options.layout != "left-right" && options.layout != "top-bottom") options.layout = "left-right";
+    if ((options.system == "nds" || options.system == "3ds") && !is_supported_layout(options.system, options.layout)) options.layout = "left-right";
 
     std::string error;
     LinuxSdlWindowSurface surface;
@@ -407,8 +433,8 @@ int main(int argc, char** argv) {
                         break;
                     }
                     if (pressed && event.key.keysym.sym == SDLK_F1 && (options.system == "nds" || options.system == "3ds")) {
-                        const std::string next_layout = options.layout == "left-right" ? "top-bottom" : "left-right";
-                        if (!set_layout(next_layout, error)) runtime_message = "Next Layout failed: " + error;
+                        const std::string next_layout = next_supported_layout(options.system, options.layout);
+                        if (!set_layout(next_layout, error)) runtime_message = "Layout change failed: " + error;
                         continue;
                     }
                     if (pressed && event.key.keysym.sym == SDLK_F2 && controls) { controls->toggle(); continue; }

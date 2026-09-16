@@ -6,7 +6,7 @@
 #include <string_view>
 namespace an3::player_ui {
 inline constexpr std::array<std::string_view, 9> tabs = {"General", "Graphics", "Audio", "Keyboard", "Controller", "Emulation", "Save States", "Diagnostics", "About"};
-inline constexpr std::string_view toolbar_menu = "Menu", toolbar_pad = "Pad", toolbar_next_layout = "Next Layout", toolbar_cursor_lock = "Lock cursor";
+inline constexpr std::string_view toolbar_menu = "Menu", toolbar_pad = "Pad", toolbar_layout = "Layout", toolbar_save = "Save", toolbar_quick_save = "Quick Save", toolbar_quick_load = "Quick Load", toolbar_cursor_lock = "Lock cursor";
 inline constexpr std::array<std::string_view, 3> toolbar_speed = {"0.5x", "1x", "x2"};
 inline constexpr std::string_view auto_save_label = "Auto Save";
 inline constexpr std::array<std::string_view, 5> auto_save_titles = {"Off", "On game exit", "Every 30 seconds", "Every 10 seconds", "Every 5 seconds"};
