@@ -1,0 +1,83 @@
+# Public GitHub publication — audit, sanitization, and blockers (2026-09-16)
+
+Target: `https://github.com/huou07/vibe-coded-emulator`. **Publication was not
+performed**: mandatory gates pass on a sanitized candidate, but publishing is
+blocked by missing GitHub credentials/identity. Nothing was pushed.
+
+## Result
+
+| Item | Status |
+| --- | --- |
+| Security scan of tracked content | Implemented and tested (0 real secrets) |
+| PII/infra sanitization of product source | Implemented and tested |
+| Sanitized publication candidate | Implemented and tested (gate passes) |
+| Fail-closed pre-publication check + skill + AGENTS rule | Implemented and tested |
+| Push / repo creation / GitHub security settings | **Blocked** (no `gh`, no credentials) |
+| Public history decision | Clean snapshot chosen; **no history rewrite performed** |
+
+## Security findings (categories only; no values)
+
+| Category | Location (redacted) | In Git history? | Rotation |
+| --- | --- | --- | --- |
+| Personal email address (PII) | product source: default maintainer contact; deploy reverse-proxy config | Yes | Not a credential — sanitized in the snapshot |
+| Private LAN addresses (infra) | deploy scripts, compose files, docs, Android network-security config | Yes | Sanitized in the snapshot |
+| Personal filesystem paths | docs, scripts, native web assets | Yes | Sanitized in the snapshot |
+| Private-key marker | `app.py` | Yes | **False positive** — it is an upload-validation regex |
+| `generic-api-key` | `static/player-runtime.js` | Yes | **False positive** — a `localStorage` key name |
+| Real API keys / OAuth secrets / tokens / SSH keys / DB passwords | none found | — | None |
+
+No real credential value was found, printed, or committed. Full-history scan of
+the *original* development history was not run because that history is not
+selected for publication (clean snapshot instead).
+
+## Blockers requiring the owner
+
+1. **GitHub access.** `gh` is not installed and no GitHub credential/remote is
+   configured on this machine. Creating the repository, verifying
+   `huou07/vibe-coded-emulator`, pushing, and configuring repository security
+   settings all require it.
+2. **Public commit identity.** Existing commits carry a machine-hostname author
+   address, which must not be published. Provide the author name/email (or
+   approve a GitHub `noreply` address) for public commits.
+
+## Delivered
+
+- **Sanitized candidate** at `/tmp/an3-public/vibe-coded-emulator` (private,
+  outside the repo; 361 files, 8.9 MB) containing only product source:
+  `app.py` + shared modules, `static/`, `tests/`, `native/` (Eden bridge),
+  `native-offline/` source (no vendored core binaries, no releases), `rust-gateway/`,
+  sanitized `deploy/` and `tools/`, plus `LICENSE`, `THIRD_PARTY_NOTICES.md`,
+  `README.md` (real repo URL), `CONTRIBUTING.md`, `SECURITY.md`, `.env.example`,
+  `.gitleaks.toml`, `docs/` (building, architecture/rendering, licensing) and a
+  least-privilege CI workflow.
+- **Excluded**: `.opencode/`, `.codex/`, `AGENTS.md`, `reports/`, `work/`,
+  root handoff/status docs, `tools/ssh/`, `deploy/shadow/`, vendored core
+  binaries, release artifacts, caches and build outputs.
+- **Tooling**: `tools/publication-check.sh` (fail-closed; requires gitleaks),
+  `.opencode/skills/public-release-security/SKILL.md`, and the mandatory gate
+  rule in `AGENTS.md`.
+
+## Gate evidence
+
+```
+PUBLICATION_CHECK=PASS
+  gitleaks: 0 findings
+  personal-data and infra patterns: clean
+  no ROM/keys/firmware/database/binary content
+  required license/notice files present
+```
+
+The single gitleaks finding was suppressible only via a narrowly scoped,
+documented allowlist for the `localStorage` key name in
+`static/player-runtime.js`.
+
+## Notes for the continuation
+
+- The working tree keeps the real staging LAN host in the Android
+  network-security config so the staging app keeps working; the public snapshot
+  uses the RFC 5737 documentation address with instructions to replace it.
+- The candidate is a snapshot, so it must be committed with a truthful
+  provenance note ("exported from the private development history; see
+  provenance") rather than fabricated history.
+- macOS staging artifacts remain ad-hoc signed and are not part of the public
+  source release.
