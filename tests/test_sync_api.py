@@ -6,6 +6,8 @@ plan/conflict endpoints, and the subnet-scoped LAN peer registry.
 """
 
 import http.client
+import base64
+import hashlib
 import json
 import os
 import pathlib
@@ -38,6 +40,7 @@ class SyncApiTests(unittest.TestCase):
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
             patch.object(app, "LAN_PEERS", {}),
+            patch.object(app, "LAN_BLOBS", {}),
         ]
         for active in self.patches:
             active.start()
@@ -214,6 +217,80 @@ class SyncApiTests(unittest.TestCase):
         self.assertTrue(app.sync_same_subnet("192.168.1.4", "192.168.1.200"))
         self.assertFalse(app.sync_same_subnet("192.168.1.4", "192.168.2.200"))
         self.assertFalse(app.sync_same_subnet("::1", "192.168.1.4"))
+
+    # -- LAN transfer ------------------------------------------------------
+
+    @staticmethod
+    def blob(payload: bytes):
+        return {
+            "key": "gba/pokemon-emerald/slot1.state",
+            "contentHash": hashlib.sha256(payload).hexdigest(),
+            "data": base64.b64encode(payload).decode("ascii"),
+        }
+
+    def publish(self, payload: bytes, *, kind="state", device="device-aaaaaaaa", **overrides):
+        item = self.blob(payload)
+        item.update(overrides)
+        return self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": device, "kind": kind, "items": [item],
+        })
+
+    def test_lan_blob_publish_manifest_and_download_round_trip(self):
+        payload = b"save-state-bytes" * 100
+        status, body = self.publish(payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["stored"], 1)
+
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=state")
+        self.assertEqual(status, 200)
+        manifest = json.loads(body)
+        self.assertEqual(len(manifest["items"]), 1)
+        entry = manifest["items"][0]
+        self.assertEqual(entry["key"], "gba/pokemon-emerald/slot1.state")
+        self.assertEqual(entry["size"], len(payload))
+        self.assertEqual(entry["deviceId"], "device-aaaaaaaa")
+
+        status, downloaded = self.request(
+            "GET", f"/api/sync/lan/blob?kind=state&key={entry['key']}&hash={entry['contentHash']}"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, payload)
+        self.assertEqual(hashlib.sha256(downloaded).hexdigest(), entry["contentHash"])
+
+    def test_lan_blob_download_requires_the_exact_hash(self):
+        payload = b"state"
+        self.publish(payload)
+        status, _ = self.request(
+            "GET", "/api/sync/lan/blob?kind=state&key=gba/pokemon-emerald/slot1.state&hash=" + "0" * 64
+        )
+        self.assertEqual(status, 404)
+        status, _ = self.request("GET", "/api/sync/lan/blob?kind=state&key=missing&hash=" + "0" * 64)
+        self.assertEqual(status, 404)
+
+    def test_lan_publish_rejects_ineligible_kinds_and_bad_hashes(self):
+        payload = b"keys"
+        status, _ = self.publish(payload, kind="firmware")
+        self.assertEqual(status, 400)
+        status, _ = self.publish(payload, kind="keys")
+        self.assertEqual(status, 400)
+        status, _ = self.publish(payload, kind="nope")
+        self.assertEqual(status, 400)
+        status, _ = self.publish(payload, contentHash="a" * 64)  # hash does not match the bytes
+        self.assertEqual(status, 400)
+        # A fabricated short hash is also rejected.
+        status, _ = self.publish(payload, contentHash="ab")
+        self.assertEqual(status, 400)
+
+    def test_lan_publish_rejects_oversize_items(self):
+        with patch.object(app, "LAN_BLOB_MAX_BYTES", 1024):
+            status, _ = self.publish(b"x" * 2048)
+        self.assertEqual(status, 413)
+
+    def test_lan_transfer_is_disabled_in_production(self):
+        with patch.object(app, "SYNC_ENABLED", False):
+            self.assertEqual(self.request("POST", "/api/sync/lan/publish", {"deviceId": "device-aaaaaaaa", "kind": "state", "items": []})[0], 404)
+            self.assertEqual(self.request("GET", "/api/sync/lan/manifest?kind=state")[0], 404)
+            self.assertEqual(self.request("GET", "/api/sync/lan/blob?kind=state&key=k&hash=h")[0], 404)
 
     # -- gating ------------------------------------------------------------
 

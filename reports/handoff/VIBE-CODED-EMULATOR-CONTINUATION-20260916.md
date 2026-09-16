@@ -649,3 +649,16 @@ shut down). Report
 **Still UNVERIFIED:** macOS/Windows GUI pairing; a phone driving a running
 macOS/Windows game; LAN byte transfer; Google routes (needs credentials);
 Switch Phase 1 (needs sign-off).
+
+## Update — 2026-09-16 (seventeenth session): LAN save/state transfer
+
+- New `/api/sync/lan/publish|manifest|blob` (staging-gated): eligible kinds only,
+  SHA-256-verified items, 16 MiB/item + 512-item caps, in-memory with a 900 s TTL.
+- **Two-device VERIFIED**: MacBook published a 1041-byte state blob → the Debian
+  pulled it byte-exact (`d610c3a8…`); the Debian published a 780-byte save blob →
+  the Mac pulled it byte-exact (`ea48442b…`).
+- Suite **264 tests, 0 failures**; staging asset `e792e8578089`, release
+  `20260916-180157-e792e8578089`. Guard RG-095; report
+  `reports/handoff/LAN_TRANSFER_20260916.md`.
+- This is LAN-mediated through the staging server (the LAN rendezvous); true
+  peer-to-peer device listeners and client-store wiring remain.

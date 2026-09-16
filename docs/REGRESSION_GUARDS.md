@@ -1,5 +1,9 @@
 # AN3 Arcade regression guards
 
+## Current authority — LAN save/state transfer, 2026-09-16
+
+- RG-095: LAN transfer must accept only `sync_engine`-eligible kinds (never `firmware`/`keys`), verify every published item's SHA-256 prefix against its bytes, cap items (16 MiB) and the list (512), keep blobs **in memory only** with a 900 s TTL reaped on every LAN request, and serve a blob only when the caller's `hash` matches the stored one. All `/api/sync/lan/*` routes are `SYNC_ENABLED`-gated (production 404). Automated guard: `tests.test_sync_api`. Runtime validation (2026-09-16, two real devices): MacBook published a 1041-byte state blob and the Debian staging host pulled it byte-exact (sha256 `d610c3a8…`); the Debian published a 780-byte save blob and the Mac pulled it byte-exact (sha256 `ea48442b…`). Report `reports/handoff/LAN_TRANSFER_20260916.md`. **True peer-to-peer (device-hosted listener) and client wiring remain UNVERIFIED.**
+
 ## Current authority — desktop controller ACL fix + Linux GUI end-to-end, 2026-09-16
 
 - RG-093: Every Tauri command must be listed in `src-tauri/build.rs`'s `AppManifest::commands([...])` **and** have its `allow-<kebab>` permission in `src-tauri/capabilities/default.json`. Historical failure: 1.4.0 shipped the three `native_controller_*` commands in `lib.rs` and the capability file but omitted them from `build.rs`, so Tauri never generated the permissions and the WebView showed `Command native_controller_status not allowed by ACL` — the desktop controller panel was non-functional. Fixed in 1.4.1. Automated guard: `tests.test_offline_consolidation` derives every `#[tauri::command]` from `src/*.rs` and requires the build.rs list to match and each capability entry to exist. Runtime validation: after the fix, the Linux GUI flow works end to end (see RG-094).

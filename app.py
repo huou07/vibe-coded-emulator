@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import base64
+import binascii
 import hashlib
 import hmac
 import html
@@ -159,6 +160,26 @@ LAN_PEERS = {}
 LAN_PEERS_LOCK = threading.Lock()
 SYNC_LIMITER = netcode.SlidingRateLimiter(limit=60, window_seconds=60)
 SYNC_MANIFEST_LIMIT = 2000
+# LAN transfer: eligible save/state blobs kept in memory for a short window so a
+# peer on the same LAN can pull them. The staging app server is the LAN
+# rendezvous; nothing is persisted and nothing leaves the LAN. Only user data
+# kinds are accepted, and firmware/keys can never be published.
+LAN_BLOB_TTL_SECONDS = 900
+LAN_BLOB_MAX_BYTES = 16 * 1024 * 1024
+LAN_BLOB_MAX_ITEMS = 512
+LAN_BLOBS = {}
+LAN_BLOBS_LOCK = threading.Lock()
+
+
+def lan_blob_reap(now=None):
+    """Drop expired LAN blobs; call on every LAN transfer request."""
+
+    now = time.monotonic() if now is None else now
+    with LAN_BLOBS_LOCK:
+        expired = [key for key, record in LAN_BLOBS.items() if now - record["updated"] > LAN_BLOB_TTL_SECONDS]
+        for key in expired:
+            LAN_BLOBS.pop(key, None)
+    return len(expired)
 
 
 def sync_mode_catalog():
@@ -2512,6 +2533,94 @@ class Handler(BaseHTTPRequestHandler):
         request_ip = self.client_address[0]
         self.send_json({"peers": lan_peer_snapshot(request_ip)})
 
+    def sync_lan_publish(self):
+        """Accept eligible save/state blobs from a LAN device for peers to pull."""
+
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        SYNC_LIMITER.check(self.client_address[0])
+        data = self.read_json()
+        device = str(data.get("deviceId") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", device):
+            return self.send_json({"error": "invalid device id"}, 400)
+        try:
+            kind = sync_engine.ItemKind(str(data.get("kind") or ""))
+        except ValueError:
+            return self.send_json({"error": "invalid item kind"}, 400)
+        if not sync_engine.is_sync_eligible(kind):
+            return self.send_json({"error": "kind is not sync-eligible"}, 400)
+        items = data.get("items")
+        if not isinstance(items, list) or not items or len(items) > LAN_BLOB_MAX_ITEMS:
+            return self.send_json({"error": "invalid item list"}, 400)
+        now = time.monotonic()
+        lan_blob_reap(now)
+        stored = []
+        for item in items:
+            if not isinstance(item, dict):
+                return self.send_json({"error": "invalid item"}, 400)
+            key = str(item.get("key") or "")
+            if not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
+                return self.send_json({"error": "invalid item key"}, 400)
+            content_hash = str(item.get("contentHash") or "").strip().lower()
+            if not re.fullmatch(r"[a-f0-9]{16,64}", content_hash):
+                return self.send_json({"error": "invalid content hash"}, 400)
+            try:
+                blob = base64.b64decode(str(item.get("data") or ""), validate=True)
+            except (ValueError, binascii.Error):
+                return self.send_json({"error": "invalid item data"}, 400)
+            if len(blob) > LAN_BLOB_MAX_BYTES:
+                return self.send_json({"error": "item too large"}, 413)
+            digest = hashlib.sha256(blob).hexdigest()
+            if digest[: len(content_hash)] != content_hash:
+                return self.send_json({"error": "content hash does not match the data"}, 400)
+            with LAN_BLOBS_LOCK:
+                LAN_BLOBS[(kind.value, key)] = {"hash": content_hash, "device": device, "data": blob, "updated": now}
+            stored.append({"key": key, "contentHash": content_hash, "size": len(blob)})
+        self.send_json({"ok": True, "stored": len(stored), "items": stored})
+
+    def sync_lan_manifest(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        try:
+            kind = sync_engine.ItemKind(query.get("kind", ["save"])[0])
+        except ValueError:
+            return self.send_json({"error": "invalid item kind"}, 400)
+        now = time.monotonic()
+        lan_blob_reap(now)
+        items = []
+        with LAN_BLOBS_LOCK:
+            for (blob_kind, key), record in LAN_BLOBS.items():
+                if blob_kind != kind.value:
+                    continue
+                items.append({
+                    "key": key,
+                    "contentHash": record["hash"],
+                    "size": len(record["data"]),
+                    "deviceId": record["device"],
+                    "ageSeconds": int(now - record["updated"]),
+                })
+        items.sort(key=lambda item: item["key"])
+        self.send_json({"kind": kind.value, "items": items})
+
+    def sync_lan_blob(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        try:
+            kind = sync_engine.ItemKind(query.get("kind", ["save"])[0])
+        except ValueError:
+            return self.send_json({"error": "invalid item kind"}, 400)
+        key = query.get("key", [""])[0]
+        content_hash = query.get("hash", [""])[0].strip().lower()
+        lan_blob_reap()
+        with LAN_BLOBS_LOCK:
+            record = LAN_BLOBS.get((kind.value, key))
+            payload = record["data"] if record and record["hash"] == content_hash else None
+        if payload is None:
+            return self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+        self.send_bytes(200, payload, "application/octet-stream", cache="no-store")
+
     def controller_unavailable(self):
         self.send_json({"error": "not found"}, 404)
 
@@ -2877,6 +2986,10 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.sync_get_settings()
         elif path == "/api/sync/lan/peers":
             self.lan_peer_list()
+        elif path == "/api/sync/lan/manifest":
+            self.sync_lan_manifest()
+        elif path == "/api/sync/lan/blob":
+            self.sync_lan_blob()
         elif path == "/sync":
             if not SYNC_ENABLED:
                 self.send_html(status_page(404, lang, user, csrf), 404)
@@ -3214,6 +3327,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.sync_resolve()
             elif path == "/api/sync/lan/announce":
                 self.lan_peer_announce()
+            elif path == "/api/sync/lan/publish":
+                self.sync_lan_publish()
             else:
                 self.send_json({"error":"not found"},404)
         except RateLimited as exc:
