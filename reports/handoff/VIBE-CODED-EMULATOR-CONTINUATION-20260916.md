@@ -252,3 +252,36 @@ AVD, launches with no FATAL, and `classes2.dex` contains `Quick Save`,
 **Still not done:** Windows 1.2.0 (start `an3-win11-build`), Linux 1.2.0 runtime
 run on the Dell, LAN discovery/transfer, sync wiring, controller QR + input
 binding, Switch companion.
+
+## Update — 2026-09-16 (sixth session): 1.2.0 runtime verification
+
+**Android 1.2.0 — VERIFIED on the `codex-nds-api35` AVD (arm64 API 35):**
+- Pushed a legal GBA ROM and launched `NativeGameActivity`; NDS native core ran at
+  **`FPS core=59 present=59`**.
+- Toolbar shows **Layout** and **Save** (Layout only for nds/3ds, as designed).
+- Save → menu with **Quick Save / Quick Load / Auto Save now / Load Auto Save**;
+  Quick Save wrote
+  `files/native-states-v1/nds/<romId>/.../…slot1.state` on disk.
+- Layout → chooser listing all **12 melonDS layouts** (Left/Right, Right/Left,
+  Top/Bottom, Bottom/Top, Hybrid focus top/bottom, Flipped hybrid top/bottom,
+  Large screen top/bottom, Flipped large screen top/bottom). Selecting
+  "Hybrid (focus top)" persisted `screen-layout-nds=hybrid-top` and
+  `nds-layout=hybrid-top`; no crash, FPS unchanged.
+
+**Linux 1.2.0 — PARTIAL:** the runtime runs under Xvfb for the full timeout with
+`SDL_AUDIODRIVER=dummy AN3_OFFLINE_LIBDIR=<dir> LIBGL_ALWAYS_SOFTWARE=1`. The
+binary contains the new UI (`show_layout_menu` with the 12/4-layout arrays,
+"Quick Save", "Auto Save now", "Screen layout changed to"). GTK menu clicks were
+not automated headlessly.
+
+**Windows — VM started, probed, and shut down; build not done.** `an3-win11-build`
+has rustc 1.98.1, node 24, VulkanSDK, MSYS2. The build gate blocks because
+`vendor/runtime/windows-x64/manifest.json` hashes
+`native-runtime/platform/linux/linux_controls.cpp` / `linux_runtime.cpp` — the
+files changed for 1.2.0 — so **`scripts/build-windows-runtime.ps1` must be rerun
+on the VM before the NSIS build**. The VM was gracefully shut down afterwards
+(`virsh shutdown`, `shut off` in ~20 s, Autostart: disable).
+
+**Next for Windows:** sync source to `C:\AN3`, run `build-windows-runtime.ps1`
+(MSYS2 + cmake + SDL), then `build-windows-staging.ps1`, then publish 1.2.0 EXE
+and shut the VM down again.
