@@ -87,6 +87,10 @@ fi
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run 'gh auth login' first."
 
 step "4/7 create or reuse the repository"
+SCOPES="$(gh auth status 2>&1 | sed -n 's/.*Token scopes: //p' | head -1)"
+if [[ -d "$SNAPSHOT/.github/workflows" && "$SCOPES" != *"'workflow'"* ]]; then
+  die "your GitHub token lacks the 'workflow' scope, required to publish .github/workflows/. Fix it with:  gh auth refresh -h github.com -s workflow   (or remove .github/workflows/ from the snapshot)."
+fi
 if gh repo view "$REPO" >/dev/null 2>&1; then
   note "repository exists: $REPO"
 else
@@ -133,8 +137,12 @@ if git -C "$SNAPSHOT" fetch -q origin main 2>/dev/null; then
   fi
 fi
 
-if ! git -C "$SNAPSHOT" push -u origin main; then
-  die "push failed. Check 'gh auth status'; for SSH errors add a key to GitHub or re-run with AN3_PUBLIC_GIT_PROTOCOL=https."
+if ! git -C "$SNAPSHOT" push -u origin main 2>/tmp/an3-push.err; then
+  cat /tmp/an3-push.err >&2
+  if grep -q "workflow" /tmp/an3-push.err; then
+    die "GitHub rejected the workflow file. Grant the scope and re-run:  gh auth refresh -h github.com -s workflow  &&  tools/publish-github.sh --confirm --adopt-remote"
+  fi
+  die "push failed (see the message above). Check 'gh auth status'; for SSH errors add a key to GitHub or re-run with AN3_PUBLIC_GIT_PROTOCOL=https."
 fi
 
 step "6/7 security settings (best effort; reported individually)"
