@@ -122,7 +122,7 @@ From the original spec plus later requests:
 | `find … -quit` reused a stale DEB | Solved | script clears `bundle/deb` before building (done). |
 | PowerShell `ErrorActionPreference=Stop` treats native stderr as fatal | Solved | scripts use `Continue` + `$LASTEXITCODE` (done). |
 | Google sign-in needs OAuth client id/secret + redirect URIs | Yes, external | Owner must create credentials; code path exists (`google_sync.py`) and is tested against an injected transport. |
-| Switch: **no maintained libretro core**; GPLv3 accepted | Yes, architectural | Isolate behind a new companion-core abstraction; do not add Switch to `NativeSystem` until the companion design is agreed. |
+| Switch: **no maintained libretro core**; GPLv3 accepted | Yes, architectural | Isolate behind a new companion-core abstraction; do not add Switch to `NativeSystem` until the companion design is agreed. **Design note written:** `docs/vibe-coded-switch-companion.md` (Eden, launched as a separate process; Phase 1 pending sign-off). |
 | Android generated Kotlin under `native-offline/src-tauri/gen` is untracked | Yes, hygiene | Decide: track `gen/android/app/src/main/java` + assets, or move the custom Kotlin out of the generated tree. |
 | CodeGraph index is **stale** for `app.py`, `libretro_host.cpp`, `player-runtime.js`, etc. | Yes, tooling | Re-run `codegraph init`/sync for this project. |
 | QR display needs a generator; CSP forbids external scripts/CDNs | Minor | Vendor a tiny local QR encoder (or draw it server-side as an SVG). |
@@ -200,5 +200,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
 6. **Create the skills/agents** in §7 as the workflows stabilize.
 7. **Switch companion** last, behind its own abstraction and after a design sign-off.
+   **Design note written** (`docs/vibe-coded-switch-companion.md`: Eden, separate
+   process, GPL boundary, no keys/firmware, Phase 1 = one desktop platform).
+   Implementation awaits sign-off.
 
 Each step: build → focused tests → staging deploy → record UNVERIFIED vs GOOD.

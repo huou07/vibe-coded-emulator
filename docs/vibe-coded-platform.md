@@ -242,6 +242,13 @@ Recommendation: keep Switch behind a documented, isolated core abstraction and
 resolve licensing before writing integration code. Do not add a Switch core to
 `NativeSystem` until then.
 
+**Update 2026-09-16:** the owner accepted GPLv3 for the companion. The
+architecture and safety design is now in
+`docs/vibe-coded-switch-companion.md` (Eden as the first companion core, launched
+as a separate process — never linked; no keys/firmware/commercial ROMs; no
+`NativeSystem` change until sign-off). Phase 1 is a single desktop platform with
+a legal homebrew NRO and a launch/Exit/save smoke.
+
 ## 12. Platform limitations
 
 - The custom web player relies on browser codecs/canvas; server-side rendering

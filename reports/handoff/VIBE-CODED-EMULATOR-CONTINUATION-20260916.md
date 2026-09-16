@@ -443,3 +443,24 @@ transport (needs owner OAuth); real second LAN device.
 
 **Still open:** controller native injection; LAN byte transfer; Google routes/
 UI; Windows 1.3.0 runtime smoke; Switch companion.
+
+## Update — 2026-09-16 (tenth session, part 2): Switch companion design note
+
+**Step 7 (design only, no integration).** Wrote
+`docs/vibe-coded-switch-companion.md`:
+
+- Researched 2026-09-16: **Eden** is the maintained Switch core
+  (GPL-3.0-or-later; Windows/Linux/macOS/Android), chosen as the first companion;
+  Sudachi's canonical repo is a backup and Citron is a further fork (fallbacks);
+  still no libretro Switch core.
+- Owner already accepted GPLv3. The design isolates the companion as a
+  **separate process, never linked**, adds a `CompanionSystem` interface (not
+  `NativeSystem`, not libretro), and keeps the GPL boundary on the companion.
+- Safety: never bundle keys/firmware/commercial ROMs; `sync_engine` already
+  excludes firmware/keys; no compatibility or performance claims.
+- Phase 1 = one desktop platform + a legal homebrew NRO launch/Exit/save smoke,
+  pending owner sign-off (three open questions at the end of the note).
+- Updated `docs/vibe-coded-platform.md` §11 and the roadmap blocker/step 7.
+
+**Still open:** controller native injection; LAN byte transfer; Google routes/UI;
+Windows 1.3.0 runtime smoke; Switch Phase 1 (needs sign-off).
