@@ -401,3 +401,20 @@ CodeGraph re-index; skills/agents.
 
 **Still open:** controller native injection; LAN discovery/transfer; sync wiring
 in `app.py`; Switch companion; CodeGraph re-index; skills/agents.
+
+## Update — 2026-09-16 (ninth session, part 3): skills/agents + CodeGraph
+
+- Created project-local `.opencode/skills/an3-build`, `an3-staging-deploy`,
+  `an3-player-regression`, `an3-codegraph-first` and
+  `.opencode/agent/player-verifier`, `release-coordinator`,
+  `staging-browser-verify`. Frontmatter validated (name/description for skills;
+  description/mode for agents). They encode the version-bump rule, per-platform
+  build commands, staging deploy/smoke, the player guard list, the
+  CodeGraph-first workflow, and the AVD/Playwright verification flows.
+- `codegraph sync` in `apps-web` → "Already up to date" (the daemon kept the
+  index current during the session), so the previously-stale symbols are
+  indexed.
+- Restart opencode to load the new skills/agents.
+
+**Still open:** controller native injection; LAN discovery/transfer; sync wiring
+in `app.py`; Windows/Linux 1.3.0 runtime smokes; Switch companion.

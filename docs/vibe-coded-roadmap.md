@@ -142,6 +142,12 @@ From the original spec plus later requests:
 
 ## 7. Custom opencode agents/skills to create for this project
 
+**Created 2026-09-16** under `.opencode/skills/<name>/SKILL.md` and
+`.opencode/agent/<name>.md` (project-local so they travel with the repo):
+`an3-build`, `an3-staging-deploy`, `an3-player-regression`,
+`an3-codegraph-first`, `player-verifier`, `release-coordinator`,
+`staging-browser-verify`. The descriptions below are the original rationale.
+
 Suggested under `.opencode/skill/<name>/SKILL.md` and `.opencode/agent/<name>.md`
 (project-local so they travel with the repo):
 
