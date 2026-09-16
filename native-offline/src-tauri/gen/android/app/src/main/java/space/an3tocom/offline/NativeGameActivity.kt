@@ -125,6 +125,9 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
 
     private fun releasePointer(cancel: Boolean = true) { if (active) {if(cancel)nativeCancelPointer() else nativePointer(0,0,false)}; pointerId = -1 }
     private fun touch(event: MotionEvent): Boolean {
+        // The in-game menu owns pointer input while it is open; a menu tap must
+        // never leak into the emulated NDS/3DS touchscreen.
+        if (overlay.isMenuOpen()) { releasePointer(); return true }
         if (!active || system !in listOf("nds", "3ds")) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN) pointerId = event.getPointerId(event.actionIndex)
         if (pointerId < 0) return true

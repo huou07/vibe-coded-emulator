@@ -307,6 +307,12 @@ AzaharHost* active_host();
 @property(nonatomic, copy) NSString* optionKey;
 @end
 
+// Display-only labels must never take part in hit-testing. The FPS badge sits
+// over the game surface, so without this a click on it would be swallowed
+// instead of reaching the emulator or a control underneath.
+@interface AN3InertLabel : NSTextField
+@end
+
 namespace an3 {
 
 struct CoreApi {
@@ -2308,7 +2314,7 @@ static NSString* native_player_ui_text(std::string_view value) {
         [_settings_save_status.centerYAnchor constraintEqualToAnchor:_save_settings_button.centerYAnchor],
     ]];
     _settings_stack = _settings_tab_stacks[@"General"];
-    _fps_overlay = [NSTextField labelWithString:@""];
+    _fps_overlay = [AN3InertLabel labelWithString:@""];
     _fps_overlay.font = [NSFont monospacedDigitSystemFontOfSize:11.0 weight:NSFontWeightSemibold];
     _fps_overlay.textColor = NSColor.whiteColor;
     _fps_overlay.alignment = NSTextAlignmentCenter;
@@ -2383,6 +2389,9 @@ static NSString* native_player_ui_text(std::string_view value) {
         return;
     }
     _menu_panel.hidden = NO;
+    // Opening the menu releases any held NDS/3DS touch so a tap on a menu row
+    // can never leak into the emulated touchscreen.
+    if (auto* host = an3::active_host()) host->set_nds_touch_pressed(false);
     [self.window makeFirstResponder:self];
 }
 
@@ -2489,18 +2498,32 @@ static NSString* native_player_ui_text(std::string_view value) {
 
 // The toolbar Save control mirrors the Save States tab's quick actions so a
 // save/load does not require opening the menu.
+- (NSMenu*)quickSlotSubmenu:(SEL)action title:(NSString*)title {
+    NSMenu* submenu = [[NSMenu alloc] initWithTitle:title];
+    for (unsigned slot = 1; slot <= 10; ++slot) {
+        NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Slot %u", slot]
+                                                      action:action keyEquivalent:@""];
+        item.tag = static_cast<NSInteger>(slot);
+        item.target = self;
+        [submenu addItem:item];
+    }
+    return submenu;
+}
+
 - (void)showSaveMenu:(NSButton*)sender {
     NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
-    NSMenuItem* quickSave = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_save)
-                                                       action:@selector(saveQuickSlot:) keyEquivalent:@""];
-    quickSave.tag = 1;
-    quickSave.target = self;
-    [menu addItem:quickSave];
-    NSMenuItem* quickLoad = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_load)
-                                                       action:@selector(loadQuickSlot:) keyEquivalent:@""];
-    quickLoad.tag = 1;
-    quickLoad.target = self;
-    [menu addItem:quickLoad];
+    // Quick Save / Quick Load expose all ten quick slots, matching the Save
+    // States tab, so a save or load never needs the full menu.
+    NSMenuItem* saveRoot = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_save)
+                                                      action:nil keyEquivalent:@""];
+    saveRoot.submenu = [self quickSlotSubmenu:@selector(saveQuickSlot:)
+                                        title:native_player_ui_text(an3::player_ui::toolbar_quick_save)];
+    [menu addItem:saveRoot];
+    NSMenuItem* loadRoot = [[NSMenuItem alloc] initWithTitle:native_player_ui_text(an3::player_ui::toolbar_quick_load)
+                                                      action:nil keyEquivalent:@""];
+    loadRoot.submenu = [self quickSlotSubmenu:@selector(loadQuickSlot:)
+                                        title:native_player_ui_text(an3::player_ui::toolbar_quick_load)];
+    [menu addItem:loadRoot];
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem* saveAuto = [[NSMenuItem alloc] initWithTitle:@"Auto Save now" action:@selector(saveAutoNow:) keyEquivalent:@""];
     saveAuto.target = self;
@@ -3009,6 +3032,8 @@ static NSString* native_player_ui_text(std::string_view value) {
 }
 
 - (void)mouseMoved:(NSEvent*)event {
+    // An open menu owns pointer input; the game surface must not also react.
+    if (!_menu_panel.hidden) return;
     if ([self isNds] && _cursor_locked) {
         // AppKit's locked-event deltas enter the single platform transform
         // boundary here. The core receives physical right/down as positive.
@@ -3017,6 +3042,7 @@ static NSString* native_player_ui_text(std::string_view value) {
 }
 
 - (void)mouseDown:(NSEvent*)event {
+    if (!_menu_panel.hidden) return;
     if ([self isNds]) {
         [self lockCursor:nil];
         if (auto* host = an3::active_host()) host->set_nds_touch_pressed(_cursor_locked);
@@ -3026,6 +3052,7 @@ static NSString* native_player_ui_text(std::string_view value) {
 }
 
 - (void)mouseDragged:(NSEvent*)event {
+    if (!_menu_panel.hidden) return;
     if ([self isNds] && _cursor_locked) {
         if (auto* host = an3::active_host()) {
             host->move_nds_cursor(event.deltaX, event.deltaY);
@@ -3038,15 +3065,22 @@ static NSString* native_player_ui_text(std::string_view value) {
 
 - (void)mouseUp:(NSEvent*)event {
     if ([self isNds]) {
+        // Always clear a held touch, even if the menu opened mid-drag.
         if (auto* host = an3::active_host()) host->set_nds_touch_pressed(false);
+        if (!_menu_panel.hidden) return;
         return;
     }
+    if (!_menu_panel.hidden) return;
     if ([self isThreeDs]) [self updateTouch:event pressed:NO];
 }
 
 @end
 
 @implementation AN3CoreOptionPopup
+@end
+
+@implementation AN3InertLabel
+- (NSView*)hitTest:(NSPoint)point { return nil; }
 @end
 
 @implementation AN3InputButton

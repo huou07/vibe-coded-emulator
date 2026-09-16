@@ -231,6 +231,20 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn('previewLayout(NativeLayoutModel.normalize(activity, system,', overlay)
         self.assertNotIn("WebView", overlay)
 
+    def test_android_overlay_keeps_display_only_and_menu_precedence(self):
+        overlay = source(GAME_ACTIVITY.with_name("NativeGameOverlay.kt"))
+        activity = source(GAME_ACTIVITY)
+        # The FPS badge is display-only and must not intercept taps.
+        self.assertIn("fps.isClickable = false", overlay)
+        self.assertIn("fps.isFocusable = false", overlay)
+        self.assertIn("fps.setOnTouchListener { _, _ -> false }", overlay)
+        # The toolbar Save control exposes all ten quick slots.
+        self.assertIn("private fun chooseQuickSlot(", overlay)
+        self.assertIn('(1..10).map { "Slot $it" }', overlay)
+        # An open menu owns pointer input; the NDS/3DS touchscreen must not react.
+        self.assertIn("fun isMenuOpen()", overlay)
+        self.assertIn("if (overlay.isMenuOpen()) { releasePointer(); return true }", activity)
+
     def test_android_advertises_the_bundled_native_3ds_launch_path(self):
         bootstrap = source(ANDROID_BOOTSTRAP)
         activity = source(ANDROID_ACTIVITY)

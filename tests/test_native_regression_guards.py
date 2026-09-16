@@ -171,5 +171,30 @@ class NativeRegressionGuardTests(unittest.TestCase):
         self.assertIn("_settings_dirty", HOST)
 
 
+    def test_fps_overlay_is_pointer_inert(self):
+        # The FPS badge sits over the game surface and must never swallow a
+        # click meant for the emulator or a control beneath it.
+        self.assertIn("@interface AN3InertLabel : NSTextField", HOST)
+        self.assertIn("- (NSView*)hitTest:(NSPoint)point { return nil; }", HOST)
+        self.assertIn("_fps_overlay = [AN3InertLabel labelWithString", HOST)
+
+    def test_toolbar_save_exposes_all_ten_quick_slots(self):
+        self.assertIn("- (NSMenu*)quickSlotSubmenu:", HOST)
+        save_menu = HOST[HOST.index("- (void)showSaveMenu:"):HOST.index("- (void)saveAutoNow:")]
+        self.assertIn("@selector(saveQuickSlot:)", save_menu)
+        self.assertIn("@selector(loadQuickSlot:)", save_menu)
+        submenu = HOST[HOST.index("- (NSMenu*)quickSlotSubmenu:"):HOST.index("- (void)showSaveMenu:")]
+        self.assertIn("slot <= 10", submenu)
+
+    def test_open_menu_owns_pointer_input(self):
+        # Menu-first precedence: mouse input must not also drive NDS/3DS touch.
+        for handler in ("- (void)mouseMoved:", "- (void)mouseDown:", "- (void)mouseDragged:", "- (void)mouseUp:"):
+            body = HOST[HOST.index(handler):]
+            body = body[:body.index("\n}\n", body.index("{"))] if "\n}\n" in body else body
+            self.assertIn("_menu_panel.hidden", body, handler)
+        toggle = HOST.split("- (void)toggleMenu:(id)sender {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("set_nds_touch_pressed(false)", toggle)
+
+
 if __name__ == "__main__":
     unittest.main()

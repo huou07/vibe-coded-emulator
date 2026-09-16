@@ -104,6 +104,11 @@ class NativeGameOverlay(
         }
         pad.add(joystick); addView(joystick)
         fps.textSize = 11f; fps.setTextColor(Color.WHITE); fps.setBackgroundColor(0xb8000000.toInt())
+        // The FPS badge is display-only: it must never intercept a tap meant for
+        // the game surface or a control beneath it.
+        fps.isClickable = false; fps.isFocusable = false; fps.isLongClickable = false
+        fps.setOnTouchListener { _, _ -> false }
+        fps.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         fps.gravity = Gravity.CENTER; addView(fps); refreshPreferences()
     }
 
@@ -146,14 +151,25 @@ class NativeGameOverlay(
     }
 
     // The toolbar Save control mirrors the Save States tab's quick actions.
+    // Quick Save / Quick Load expose all ten quick slots, matching the Save
+    // States tab, so a save or load never needs the full menu.
+    private fun chooseQuickSlot(save: Boolean) {
+        val slots = (1..10).map { "Slot $it" }.toTypedArray()
+        AlertDialog.Builder(activity)
+            .setTitle(if (save) NativePlayerUi.QUICK_SAVE_LABEL else NativePlayerUi.QUICK_LOAD_LABEL)
+            .setItems(slots) { _, which -> send(if (save) "save" else "load", (which + 1).toString()) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun showSaveMenu() {
-        val items = arrayOf(NativePlayerUi.QUICK_SAVE_LABEL, NativePlayerUi.QUICK_LOAD_LABEL, "Auto Save now", "Load Auto Save")
+        val items = arrayOf(NativePlayerUi.QUICK_SAVE_LABEL + "…", NativePlayerUi.QUICK_LOAD_LABEL + "…", "Auto Save now", "Load Auto Save")
         AlertDialog.Builder(activity)
             .setTitle(NativePlayerUi.SAVE_LABEL)
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> send("save", "1")
-                    1 -> send("load", "1")
+                    0 -> chooseQuickSlot(true)
+                    1 -> chooseQuickSlot(false)
                     2 -> send("save", "auto")
                     else -> send("load", "auto")
                 }

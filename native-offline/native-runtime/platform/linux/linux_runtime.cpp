@@ -475,8 +475,15 @@ int main(int argc, char** argv) {
                 }
                 if (event.type == SDL_MOUSEMOTION) { mouse_x = event.motion.x; mouse_y = event.motion.y; }
                 if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP || event.type == SDL_MOUSEMOTION) {
-                    int width = 1, height = 1; SDL_GetWindowSize(surface.window(), &width, &height);
-                    set_touch(host.input(), options.system, options.layout, mouse_x, mouse_y, width, height, mouse_pressed);
+                    // An open controls panel owns pointer input; a tap on a menu
+                    // row must never also drive the emulated touchscreen.
+                    if (controls && controls->visible()) {
+                        if (mouse_pressed) host.input().cancel_pointer();
+                        mouse_pressed = false;
+                    } else {
+                        int width = 1, height = 1; SDL_GetWindowSize(surface.window(), &width, &height);
+                        set_touch(host.input(), options.system, options.layout, mouse_x, mouse_y, width, height, mouse_pressed);
+                    }
                 }
             }
             const auto now = std::chrono::steady_clock::now();

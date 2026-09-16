@@ -83,6 +83,15 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn("is_supported_layout(options.system, options.layout)", RUNTIME)
         self.assertIn("set_touch(host.input(), options.system, options.layout", RUNTIME)
 
+    def test_linux_toolbar_save_exposes_ten_slots_and_menu_owns_pointer(self):
+        self.assertIn("void show_save_menu()", CONTROLS)
+        self.assertIn("add_slots(std::string(player_ui::toolbar_quick_save), true)", CONTROLS)
+        self.assertIn("slot <= 10", CONTROLS)
+        # An open controls panel owns pointer input; a menu tap must not also
+        # drive the emulated touchscreen.
+        self.assertIn("controls && controls->visible()", RUNTIME)
+        self.assertIn("cancel_pointer()", RUNTIME)
+
     def test_linux_control_panel_reuses_native_state_and_matches_the_desktop_menu_surface(self):
         model = json.loads((ROOT / "native-offline/shared/player-ui.json").read_text())
         self.assertEqual(model["tabs"], ["General", "Graphics", "Audio", "Keyboard", "Controller", "Emulation", "Save States", "Diagnostics", "About"])

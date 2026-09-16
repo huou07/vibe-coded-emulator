@@ -71,13 +71,13 @@ try {
   if ($VerifyOnly) { Write-Output 'WINDOWS_BUILD_PATH=READY'; exit 0 }
   & npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  $installer = Join-Path $nativeRoot 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/VibeCodedEmulator_1.2.0_x64-setup.exe'
+  $installer = Join-Path $nativeRoot 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/VibeCodedEmulator_1.3.0_x64-setup.exe'
   if (!(Test-Path $installer)) { throw 'WINDOWS_EXE=FAILED: NSIS completed without its expected x64 installer.' }
   $releaseDir = if ($env:AN3_RELEASE_DIR) { $env:AN3_RELEASE_DIR } else { Join-Path $nativeRoot 'releases' }
   New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-  $candidate = Join-Path $releaseDir 'vibecodedemulator-1.2.0-windows-x64-staging.exe'
+  $candidate = Join-Path $releaseDir 'vibecodedemulator-1.3.0-windows-x64-staging.exe'
   Copy-Item -LiteralPath $installer -Destination $candidate -Force
-  ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant() + '  vibecodedemulator-1.2.0-windows-x64-staging.exe') | Set-Content -NoNewline -Encoding ascii "$candidate.sha256"
+  ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant() + '  vibecodedemulator-1.3.0-windows-x64-staging.exe') | Set-Content -NoNewline -Encoding ascii "$candidate.sha256"
   Write-Output "WINDOWS_STAGING_EXE=$candidate"
 } finally {
   Pop-Location

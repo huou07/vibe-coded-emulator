@@ -549,14 +549,27 @@ class LinuxControlPanel::Impl {
             g_signal_connect(item, "activate", G_CALLBACK(action_clicked), menu_actions_.back().get());
             gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
         };
-        add_item(std::string(player_ui::toolbar_quick_save), [this] {
-            std::string error;
-            status(user_facing_error("Quick Save", host_.save_state(1, error), error));
-        });
-        add_item(std::string(player_ui::toolbar_quick_load), [this] {
-            std::string error;
-            status(user_facing_error("Quick Load", host_.load_state(1, error), error));
-        });
+        // Quick Save / Quick Load expose all ten quick slots, matching the Save
+        // States tab, so a save or load never needs the full menu.
+        auto add_slots = [&](const std::string& title, bool save) {
+            GtkWidget* root = gtk_menu_item_new_with_label(title.c_str());
+            GtkWidget* submenu = gtk_menu_new();
+            for (unsigned slot = 1; slot <= 10; ++slot) {
+                GtkWidget* item = gtk_menu_item_new_with_label(("Slot " + std::to_string(slot)).c_str());
+                menu_actions_.push_back(std::make_unique<ActionSignal>(ActionSignal{[this, save, slot] {
+                    std::string error;
+                    const bool ok = save ? host_.save_state(slot, error) : host_.load_state(slot, error);
+                    status(user_facing_error((save ? "Quick Save " : "Quick Load ") + std::to_string(slot), ok, error));
+                }}));
+                g_signal_connect(item, "activate", G_CALLBACK(action_clicked), menu_actions_.back().get());
+                gtk_menu_shell_append(GTK_MENU_SHELL(submenu), item);
+            }
+            gtk_menu_item_set_submenu(GTK_MENU_ITEM(root), submenu);
+            gtk_menu_shell_append(GTK_MENU_SHELL(menu), root);
+        };
+        add_slots(std::string(player_ui::toolbar_quick_save), true);
+        add_slots(std::string(player_ui::toolbar_quick_load), false);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         add_item("Auto Save now", [this] {
             std::string error;
             status(user_facing_error("Auto Save", host_.save_auto(error), error));
