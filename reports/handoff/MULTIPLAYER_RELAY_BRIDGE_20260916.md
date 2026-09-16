@@ -63,11 +63,30 @@ So the AN3 invite code is the relay room name and both peers reached the relay
 room. Evidence screenshot:
 `/Users/meomeo/Documents/edit an3tocom apps&web/reports/staging/multiplayer-bridge-20260916.png`.
 
+## Update (same day): peer input sync verified
+
+Follow-up verification (staging, Chrome/Playwright, two pages, live relay):
+
+- The staged **web** EmulatorJS build has **no WebRTC** (0 `RTCPeerConnection`,
+  0 `createOffer`). Netplay here is relay-mediated **input lockstep**: each peer
+  runs its own core; local input is mirrored with
+  `socket.emit("data-message", {"sync-control":[{frame, connected_input}]})` and
+  state snapshots. It is gated upstream behind
+  `EJS_DEBUG_XX && EJS_EXPERIMENTAL_NETPLAY`; our bridge materializes the
+  netplay object by calling `openNetplayMenu()` directly.
+- `GameManager.simulateInput` already routes into `netplay.simulateInput` when
+  `isNetplay`, so the AN3 virtual pad and the phone controller participate.
+- Verified: guest `gameManager.simulateInput(0,7,1)` then `(0,7,0)` ×6
+  (Right press/release) appeared on the **host** as 12 remote
+  `gameManager.functions.simulateInput` calls (`[0,7,1]`/`[0,7,0]`), i.e. the
+  guest's input reached the host's core through the relay.
+- The Android asset build (a different bundle) does use WebRTC; that is not what
+  staging serves, so no peer-video claim is made for the web.
+
 ## UNVERIFIED
 
-- **WebRTC peer media/input sync** between the two peers (the host video stream
-  and remote input over the data channel). The relay bridge and socket handshake
-  are verified; the peer connection outcome was not asserted.
+- **Peer video** on the web (not implemented in this build — each peer renders
+  its own core).
 - Real second machine (both pages ran in one browser context).
 - GBA and NDS separately; only GBA (Pokemon Emerald) was exercised here.
 - 3DS netplay (no verified network-emulation path; must not be advertised).

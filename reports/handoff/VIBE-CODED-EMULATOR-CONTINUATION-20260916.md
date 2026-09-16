@@ -485,3 +485,22 @@ smokes done; step 7 Switch design note written (implementation needs sign-off).
 
 **Still open:** controller native injection; LAN byte transfer; Google routes/UI;
 Switch Phase 1; Windows interactive gameplay.
+
+## Update — 2026-09-16 (tenth session, part 4): multipeer input sync verified
+
+- Corrected the multiplayer model: the **staged web** EmulatorJS build has **no
+  WebRTC** — netplay is relay-mediated **input lockstep** (each peer runs its
+  own core; `sync-control` messages + state snapshots), gated upstream behind
+  `EJS_DEBUG_XX && EJS_EXPERIMENTAL_NETPLAY`. Our bridge calls
+  `openNetplayMenu()` directly.
+- `GameManager.simulateInput` already routes into `netplay.simulateInput` when
+  `isNetplay`, so the AN3 virtual pad and phone controller participate.
+- **VERIFIED** (Chrome/Playwright, two pages, live relay): guest
+  `simulateInput(0,7,1)/(0,7,0)` ×6 appeared on the host as 12 remote
+  `gameManager.functions.simulateInput` calls.
+- Updated RG-086, the bridge report, and the roadmap. Peer **video** is not a
+  thing in this build; the Android asset bundle (with WebRTC) is not what
+  staging serves.
+
+**Still open:** controller native injection; LAN byte transfer; Google routes/UI;
+Switch Phase 1; Windows interactive gameplay; real two-machine rooms.

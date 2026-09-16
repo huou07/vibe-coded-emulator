@@ -87,8 +87,8 @@ From the original spec plus later requests:
 **Not done**
 - Controller **native input injection** into the packaged apps (macOS/Android/
   Linux/Windows). The web player host binding and QR are done.
-- Multiplayer **peer media/input sync** was not asserted (relay room bridge and
-  Socket.IO handshake verified only).
+- Multiplayer **peer video** on the web (the staged EmulatorJS build has no
+  WebRTC; it is relay input lockstep, and peer input sync is verified).
 - **LAN direct transfer of save bytes** (the registry + plan/conflict API are
   done; moving bytes device-to-device is client/native work).
 - **Google sign-in + Drive transport** (owner skipped; needs OAuth
@@ -112,6 +112,8 @@ From the original spec plus later requests:
 - Controller on a real phone (the QR was decoded programmatically, not by a
   phone camera); rooms between two machines; live Google; LAN sync.
 - Controller input injection into the packaged native apps.
+- Web multiplayer **peer video** (not implemented in the staged build; input
+  lockstep is verified end-to-end).
 
 ## 5. Real blockers and how to resolve
 
