@@ -23,6 +23,7 @@ APP = os.path.join(ROOT, "app.py")
 # environment silently disabling the other.
 PRODUCTION_PORT = 18791
 LIBRARY_PORT = 18792
+MULTIPLAYER_PORT = 18793
 PORT = PRODUCTION_PORT
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -171,6 +172,7 @@ class SystemInferenceTests(unittest.TestCase):
 class ServerBackedTestCase(unittest.TestCase):
     ENVIRONMENT = "production"
     PORT = PRODUCTION_PORT
+    EXTRA_ENV = {}
 
     @classmethod
     def setUpClass(cls):
@@ -184,6 +186,7 @@ class ServerBackedTestCase(unittest.TestCase):
             "AN3_COOKIE_SECURE": "0",
             "AN3_ENVIRONMENT": cls.ENVIRONMENT,
         })
+        env.update(cls.EXTRA_ENV)
         cls.server = subprocess.Popen([sys.executable, APP], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         deadline = time.time() + 12
         while time.time() < deadline:
@@ -622,6 +625,46 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
                 self.assertEqual(status, 200)
                 self.assertEqual(headers.get("Content-Length"), str(item["size"]))
                 self.assertIn("no-store", headers.get("Cache-Control", ""))
+
+    def test_multiplayer_is_absent_in_production(self):
+        public = Client(PRODUCTION_PORT)
+        self.assertEqual(public.request("GET", "/multiplayer")[0], 404)
+        self.assertEqual(public.request("POST", "/api/multiplayer/room", {"system": "gba", "core": "mgba", "romHash": "sha256:" + "a" * 64})[0], 404)
+
+
+class MultiplayerIntegrationTests(ServerBackedTestCase):
+    """Staging multiplayer surface over real HTTP with a configured relay."""
+
+    ENVIRONMENT = "staging"
+    PORT = MULTIPLAYER_PORT
+    EXTRA_ENV = {"AN3_NETPLAY_ORIGIN": "http://127.0.0.1:8094"}
+
+    def test_room_page_renders_with_its_controls(self):
+        public = Client(MULTIPLAYER_PORT)
+        status, _, body = public.request("GET", "/multiplayer")
+        self.assertEqual(status, 200)
+        for marker in (b'id="mpCreateBtn"', b'id="mpJoinBtn"', b'id="mpCode"', b'/static/multiplayer.js'):
+            self.assertIn(marker, body)
+
+    def test_create_join_and_status_over_http(self):
+        public = Client(MULTIPLAYER_PORT)
+        signature = {"system": "gba", "core": "mgba", "romHash": "sha256:" + "a" * 64}
+        status, _, body = public.request("POST", "/api/multiplayer/room", {**signature, "deviceId": "tv"})
+        self.assertEqual(status, 201)
+        room = json.loads(body)
+        self.assertEqual(room["relay"], "http://127.0.0.1:8094")
+
+        # A mismatched game is rejected before the room fills.
+        status, _, _ = public.request("POST", "/api/multiplayer/join", {"system": "gba", "core": "mgba", "romHash": "sha256:" + "b" * 64, "code": room["code"]})
+        self.assertEqual(status, 409)
+
+        status, _, body = public.request("POST", "/api/multiplayer/join", {**signature, "code": room["code"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["role"], "guest")
+
+        status, _, body = public.request("GET", f"/api/multiplayer/room?code={room['code']}&token={room['token']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["state"], "full")
 
 
 if __name__ == "__main__":

@@ -347,6 +347,19 @@ SYSTEMS = {
     "html5": ("HTML5", "native"),
 }
 
+# Mirrors static/player.js `primaryCores`. tests/test_multiplayer_api.py asserts
+# the two stay in sync so a room signature cannot drift from the real core.
+PRIMARY_CORES = {
+    "gb": "gambatte", "gba": "mgba", "nds": "melonds", "3ds": "azahar",
+    "nes": "fceumm", "snes": "snes9x", "n64": "mupen64plus_next",
+    "psx": "pcsx_rearmed", "psp": "ppsspp",
+    "segaMD": "genesis_plus_gx", "segaMS": "smsplus", "segaGG": "genesis_plus_gx",
+    "sega32x": "picodrive", "segaCD": "genesis_plus_gx", "segaSaturn": "yabause",
+    "arcade": "fbneo", "3do": "opera", "atari2600": "stella2014",
+    "atari7800": "prosystem", "jaguar": "virtualjaguar", "lynx": "handy",
+    "pce": "mednafen_pce", "amiga": "puae", "c64": "vice_x64sc", "doom": "prboom",
+}
+
 # The game-only offline app deliberately has no server-side library, account,
 # or upload surface.  It may start only systems backed by the existing
 # EmulatorJS player contract.  In particular, Nintendo Switch is intentionally
@@ -479,6 +492,43 @@ def prepared_browser_rom(game):
             except OSError:
                 pass
         return target, inner_name
+
+
+_ROM_HASH_CACHE = {}
+_ROM_HASH_LOCK = threading.Lock()
+
+
+def game_rom_hash(game):
+    """Stable SHA-256 of a game's ROM bytes, cached by path/size/mtime.
+
+    This is the multiplayer room signature's ROM identity. It is computed
+    server-side so two clients cannot disagree about the same game, and it is
+    only ever a hash: the ROM itself is never sent to another player.
+    """
+
+    if not game or not game["rom_path"]:
+        return ""
+    path = safe_data_path(ROM_DIR, game["rom_path"])
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return ""
+    key = (path, stat.st_size, stat.st_mtime_ns)
+    with _ROM_HASH_LOCK:
+        cached = _ROM_HASH_CACHE.get(path)
+        if cached and cached[0] == key:
+            return cached[1]
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    value = "sha256:" + digest.hexdigest()
+    with _ROM_HASH_LOCK:
+        _ROM_HASH_CACHE[path] = (key, value)
+    return value
 
 
 def browser_rom_name(game):
@@ -1397,6 +1447,44 @@ def core_preload_page(system, lang):
     return layout("Core preload", body, lang, None, "", player=True)
 
 
+def multiplayer_page(lang, user, csrf, slug=""):
+    """Staging-only room surface for the AN3 multiplayer service.
+
+    Only routed when MULTIPLAYER_ENABLED is true, so it never appears in
+    production. A game slug prefills the exact room signature so two players
+    who open the same game generate an identical signature.
+    """
+    game = None
+    if slug:
+        with db() as conn:
+            game = conn.execute("SELECT * FROM games WHERE slug=?", (slug,)).fetchone()
+    system = (game["system"] if game else "") or "gba"
+    core = PRIMARY_CORES.get(system, system)
+    rom_hash = game_rom_hash(game) if game else ""
+    body = f'''<main class="page multiplayer-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · NHIỀU NGƯỜI","STAGING · MULTIPLAYER")}</p><h1>{tr(lang,"Phòng chơi chung","Multiplayer rooms")}</h1></div></section>
+<p class="muted">{tr(lang,"Phòng hết hạn sau 15 phút. Chỉ trao đổi chữ ký game (hệ máy, core, hash ROM); ROM không bao giờ được truyền.","Rooms expire after 15 minutes. Only the game signature (system, core, ROM hash) is exchanged; the ROM is never transferred.")}</p>
+<div class="admin-grid">
+<section class="admin-form"><h2>{tr(lang,"Tạo phòng","Create room")}</h2><div class="form-grid">
+<label>{tr(lang,"Hệ máy","System")}<input id="mpSystem" value="{esc(system)}"></label>
+<label>Core<input id="mpCore" value="{esc(core)}"></label>
+<label class="wide">{tr(lang,"Hash ROM (SHA-256)","ROM SHA-256")}<input id="mpHash" value="{esc(rom_hash)}"></label>
+<label class="wide">{tr(lang,"Tên thiết bị","Device name")}<input id="mpHost" value="host"></label>
+</div><div class="form-actions"><button id="mpCreateBtn" type="button" class="button primary">{tr(lang,"Tạo phòng","Create room")}</button></div><p id="mpCreateOut" class="muted" role="status"></p></section>
+<section class="admin-form"><h2>{tr(lang,"Vào phòng","Join room")}</h2><div class="form-grid">
+<label class="wide">{tr(lang,"Mã mời","Invite code")}<input id="mpCode" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+<label>{tr(lang,"Hệ máy","System")}<input id="mpJSystem" value="{esc(system)}"></label>
+<label>Core<input id="mpJCore" value="{esc(core)}"></label>
+<label class="wide">{tr(lang,"Hash ROM (SHA-256)","ROM SHA-256")}<input id="mpJHash" value="{esc(rom_hash)}"></label>
+<label class="wide">{tr(lang,"Tên thiết bị","Device name")}<input id="mpJDevice" value="phone"></label>
+</div><div class="form-actions"><button id="mpJoinBtn" type="button" class="button">{tr(lang,"Vào phòng","Join room")}</button></div><p id="mpJoinOut" class="muted" role="status"></p></section>
+</div>
+<p class="muted">{tr(lang,"Relay","Relay")}: <code>{esc(NETPLAY_ORIGIN)}</code></p>
+<script src="/static/multiplayer.js?v={ASSET_VERSION}" defer></script>
+</main>'''
+    return layout(tr(lang, "Phòng chơi chung", "Multiplayer"), body, lang, user, csrf)
+
+
 def player_page(game, lang, user, csrf):
     title = game_title(game, lang)
     icon = lambda name: f'<img src="/static/ui-{name}.svg?v={ASSET_VERSION}" alt="" width="24" height="24">'
@@ -2128,6 +2216,12 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
         elif path == "/offline":
             self.track_visit("/offline", user)
             self.send_html(offline_page(lang, user, csrf))
+        elif path == "/multiplayer":
+            if not MULTIPLAYER_ENABLED:
+                self.send_html(status_page(404, lang, user, csrf), 404)
+            else:
+                self.track_visit("/multiplayer", user)
+                self.send_html(multiplayer_page(lang, user, csrf, parse_qs(parsed.query).get("slug", [""])[0]))
         elif path == "/download-app":
             self.track_visit("/download-app", user)
             self.send_html(download_app_page(lang, user, csrf))

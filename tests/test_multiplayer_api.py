@@ -1,5 +1,7 @@
 import http.client
 import json
+import pathlib
+import re
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -7,6 +9,22 @@ from unittest.mock import patch
 
 import app
 import netcode
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+class PrimaryCoreMapTests(unittest.TestCase):
+    def test_python_core_map_matches_the_web_player(self):
+        source = (ROOT / "static/player.js").read_text(encoding="utf-8")
+        block = source[source.index("const primaryCores = {"):]
+        block = block[:block.index("};")]
+        player_map = {key: value for key, value in re.findall(r'["\']?([A-Za-z0-9_]+)["\']?\s*:\s*"([^"]+)"', block)}
+        self.assertEqual(player_map, app.PRIMARY_CORES)
+        # The room signature must not invent a core for a system the player
+        # cannot boot.
+        self.assertEqual(app.PRIMARY_CORES["nds"], "melonds")
+        self.assertEqual(app.PRIMARY_CORES["3ds"], "azahar")
 
 
 class MultiplayerRoomApiTests(unittest.TestCase):
