@@ -285,3 +285,31 @@ on the VM before the NSIS build**. The VM was gracefully shut down afterwards
 **Next for Windows:** sync source to `C:\AN3`, run `build-windows-runtime.ps1`
 (MSYS2 + cmake + SDL), then `build-windows-staging.ps1`, then publish 1.2.0 EXE
 and shut the VM down again.
+
+## Update — 2026-09-16 (seventh session): Windows 1.2.0 built and published
+
+**All five platforms are now 1.2.0 and deployed to staging.**
+
+Windows path:
+- Started `an3-win11-build`, synced source to `C:\AN3\unified-20260914` (node 24,
+  rustc 1.98.1, MSYS2 UCRT64, VulkanSDK present).
+- The Windows runtime **reuses the GTK/SDL sources** (`platform/linux/*`), so the
+  1.2.0 layout changes invalidated its manifest -> reran
+  `build-windows-runtime.ps1` (regenerated `NativePlayerUi.kt` on the VM first so
+  the generator `--check` passed; `WINDOWS_NATIVE_RUNTIME=VERIFIED 47 PE files`).
+- Fixed two script fragilities: `$ErrorActionPreference='Stop'` made PowerShell
+  treat native stderr (node/tauri/compiler progress) as terminating. Both
+  Windows scripts now use 'Continue' around native calls and rely on
+  `$LASTEXITCODE`.
+- `build-windows-staging.ps1` -> `vibecodedemulator-1.2.0-windows-x64-staging.exe`
+  (46,716,478 B, sha256 `233f4eb2…006e`), release gate PASS.
+- Catalog updated (EXE 1.0.1 -> 1.2.0), `RELEASE_CATALOG=PASS`, 220 tests pass,
+  staging deployed (asset `dea10670c1a7`); the EXE URL returns 200.
+- VM shut down gracefully (`shutdown /s` from inside Windows; ACPI `virsh
+  shutdown` alone did not complete). Verified `shut off`; Autostart: disable.
+
+**1.2.0 catalog:** DMG / APK / DEB / Flatpak / EXE all 1.2.0.
+
+**Still open (features, not release):** controller QR + emulator input binding,
+rooms wired to the relay, LAN discovery/transfer, sync wiring, Switch companion.
+Windows 1.2.0 was **not** runtime-tested (built only).

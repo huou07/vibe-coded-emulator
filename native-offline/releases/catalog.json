@@ -47,15 +47,15 @@
       "runtime_status": "Vibe Coded Emulator desktop shell plus the bundled native player (GBA/NDS/3DS, Azahar 2126.1.1) with the shared layout chooser and toolbar Save control. Built from the 1.2.0 DEB."
     },
     {
-      "version": "1.0.1",
+      "version": "1.2.0",
       "platform": "Windows",
       "architecture": "x64",
       "format": "EXE",
-      "filename": "vibecodedemulator-1.0.1-windows-x64-staging.exe",
-      "size": 42530728,
-      "sha256": "86ceef648d8f40c1b4bf0b417bc3b985a064f8e77c68fbee15673c9c0cda354e",
+      "filename": "vibecodedemulator-1.2.0-windows-x64-staging.exe",
+      "size": 46716478,
+      "sha256": "233f4eb2abeb9df6a754af46b0d224592ecda9e32ecfc7b3fa4201f4c0f8006e",
       "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
-      "runtime_status": "Redesigned Tauri NSIS shell (Play, Library, Settings, Help, About) on the violet theme with the bundled native player and mGBA, melonDS DS and Azahar libretro cores plus the shared Vulkan presenter color-space fix. Not yet rebuilt for 1.1.0.",
+      "runtime_status": "Vibe Coded Emulator NSIS shell with the bundled native player and mGBA, melonDS DS and Azahar libretro cores. The toolbar Layout button opens every core-supported layout (shared generated header) and the toolbar Save button exposes Quick Save / Quick Load / Auto Save now / Load Auto Save. Windows native runtime rebuilt from the 1.2.0 sources.",
       "release_gate": "PASS"
     }
   ]

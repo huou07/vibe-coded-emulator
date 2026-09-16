@@ -60,6 +60,10 @@ if ($launcher -notmatch 'target_os\s*=\s*"windows"' -or $nativeBuild -notmatch '
 }
 Write-Output 'WINDOWS_NATIVE_BUILD_INTEGRITY=PASS (gameplay acceptance is separate)'
 
+# Native tools (node, npm, cargo, tauri) write progress to stderr. PowerShell's
+# 'Stop' preference would treat that as a terminating error, so the build steps
+# below run with 'Continue' and are validated through $LASTEXITCODE instead.
+$ErrorActionPreference = 'Continue'
 Push-Location $nativeRoot
 try {
   & npm run prepare-web
