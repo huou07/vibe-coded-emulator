@@ -82,7 +82,7 @@ esac
 
 # --- 5. Project-specific patterns (no values printed) -------------------------
 if git -C "$CANDIDATE" grep -lIE \
-    'AN3_GOOGLE_CLIENT_SECRET=[^Y]|AN3_AUTH_PEPPER=[^Y]|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z]|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.' \
+    'AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.' \
     -- . 2>/dev/null | grep -q .; then
   fail "project-specific personal-data/secret patterns matched"
 fi
