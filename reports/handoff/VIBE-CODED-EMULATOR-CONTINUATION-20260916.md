@@ -578,3 +578,20 @@ desktop game.
 
 **Still open:** live desktop pairing observation; LAN byte transfer; Google
 routes/UI; Switch Phase 1.
+
+## Update — 2026-09-16 (fourteenth session): Linux 1.4.0 runtime + controller path
+
+- **Linux 1.4.0 runtime smoke VERIFIED** (Dell, Xvfb): extracted DEB ran the full
+  25 s (EXIT=124); the installed app binary contains `nativeControllerCard`.
+- **Controller client on Linux VERIFIED**: `cargo test --lib controller_host`
+  6/6 on the Dell, and the live staging probe passed (session `FY5554`).
+- **Runtime INPUT path VERIFIED headlessly**: feeding the shell's exact
+  `INPUT 8 …` (GBA `start`) lines to `--control-stdin` advanced the game from
+  the Game Freak logo to its menu; before/after in
+  `reports/staging/linux-1.4.0-input-*.png`.
+- Guard RG-092; report
+  `reports/handoff/LINUX_1.4.0_RUNTIME_AND_CONTROLLER_20260916.md`.
+
+**Still UNVERIFIED:** the Tauri app writing INPUT while polling (runtime side and
+client side verified separately); Windows 1.4.0 runtime; a real phone driving a
+running desktop game.
