@@ -45,6 +45,12 @@ Rust host for macOS/Linux/Windows. Android was already done (1.4.0).
   sha256 `638d44ee…`), `hdiutil verify` VALID. Mounted, `CFBundleShortVersionString`
   = **1.4.0**, the bundled UI contains `nativeControllerCard`, and the app
   launched and stayed alive (10 s, no stderr). Closed and detached.
+- **Live probe against staging** (ignored by default; run with
+  `AN3_CONTROLLER_TEST_BASE=http://192.168.1.8:8092 cargo test --lib live_staging -- --ignored --nocapture`):
+  the desktop client created a **real** session (code `X911XP`), paired as a
+  phone, submitted `right` frames, and the input sink received the press. This
+  exercises the real server's field names and the full poll/apply loop, not just
+  canned JSON.
 - **Staging**: `./deploy-stage.sh` → `STAGING_DEPLOY=PASS`, asset
   `e792e8578089`, release `/opt/an3-arcade-staging/releases/20260916-162332-e792e8578089`;
   the 1.4.0 DMG URL returns 200 with the catalog size.
@@ -52,9 +58,10 @@ Rust host for macOS/Linux/Windows. Android was already done (1.4.0).
 
 ## UNVERIFIED
 
-- **End-to-end desktop pairing/injection with a real phone** — not exercised.
-  The host logic is unit-tested against a real TCP server and the app builds and
-  launches, but no phone drove a running desktop game.
+- **A phone driving a *running desktop game*** — the client is verified live
+  against staging and the app builds/launches, but no phone was connected while
+  a macOS game was playing, so the final core-injection link is not observed
+  end-to-end on desktop (Android has that observation).
 - **Linux/Windows compile and run** — the module is platform-agnostic and macOS
   compiles it; the Linux/Windows builds were not run and their artifacts remain
   1.3.0.

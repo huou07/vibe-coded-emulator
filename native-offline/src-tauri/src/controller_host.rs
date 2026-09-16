@@ -480,4 +480,50 @@ mod tests {
         stop();
         assert!(!status().running);
     }
+
+    /// Live probe against a real controller server (staging). Ignored by default
+    /// because it needs the network; run with:
+    ///   AN3_CONTROLLER_TEST_BASE=http://192.168.1.8:8092 \
+    ///     cargo test --lib live_staging -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_staging_session_applies_a_phone_frame() {
+        let base = match std::env::var("AN3_CONTROLLER_TEST_BASE") {
+            Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
+            _ => return,
+        };
+        let seen: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: InputSink = Arc::new(move |input| {
+            collector.lock().unwrap().push(input.buttons);
+        });
+        let session = start_with(base.clone(), sink).expect("live session");
+        println!("live pairing code {}", session.code);
+        let pair_body = format!("{{\"code\":\"{}\",\"deviceId\":\"desktop-probe\"}}", session.code);
+        let (status, body) = http_request(&base, "POST", "/api/controller/pair", Some(&pair_body)).expect("pair");
+        assert_eq!(status, 200, "pairing failed: {body}");
+        let token = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|value| value.get("token").and_then(|item| item.as_str()).map(str::to_string))
+            .expect("phone token");
+        for sequence in 1..=4 {
+            let frame = format!(
+                "{{\"code\":\"{}\",\"token\":\"{}\",\"s\":{sequence},\"b\":[\"right\"],\"a\":[0,0,0,0]}}",
+                session.code, token
+            );
+            let (status, _) = http_request(&base, "POST", "/api/controller/state", Some(&frame)).expect("state");
+            assert_eq!(status, 200);
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        let mut applied = false;
+        for _ in 0..40 {
+            if seen.lock().unwrap().iter().any(|buttons| buttons & (1 << 7) != 0) {
+                applied = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        stop();
+        assert!(applied, "the live phone frame must reach the desktop input sink");
+    }
 }
