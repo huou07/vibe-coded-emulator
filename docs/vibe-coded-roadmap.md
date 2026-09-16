@@ -97,9 +97,9 @@ From the original spec plus later requests:
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
 
 **Not done**
-- Controller **native input injection** desktop end-to-end with a real phone
-  (host implemented and unit-tested; live pairing UNVERIFIED). Android is done
-  and verified (1.4.0). Linux/Windows artifacts are still 1.3.0.
+- Controller desktop **GUI glue** observed end to end (the client, the
+  shell→runtime `INPUT` write, and the runtime→core path are each verified; the
+  app's UI/WebView was not driven). Android is done and verified (1.4.0).
 - Multiplayer **peer video** on the web (the staged EmulatorJS build has no
   WebRTC; it is relay input lockstep, and peer input sync is verified).
 - **LAN direct transfer of save bytes** (the registry + plan/conflict API are
@@ -127,6 +127,9 @@ From the original spec plus later requests:
 - Controller input injection into the packaged native apps.
 - Web multiplayer **peer video** (not implemented in the staged build; input
   lockstep is verified end-to-end).
+- Desktop controller **GUI** run (no window manager on the Linux builder, so the
+  Tauri WebView could not be driven; macOS/Windows GUI runs would need a
+  desktop session). Every logic link is verified separately.
 
 ## 5. Real blockers and how to resolve
 

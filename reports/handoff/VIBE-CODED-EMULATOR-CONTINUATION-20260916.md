@@ -608,3 +608,19 @@ running desktop game.
 
 **Still UNVERIFIED:** the Tauri app autonomously writing controller INPUT while
 polling; a phone driving a running desktop game; Windows gameplay.
+
+## Update — 2026-09-16 (fifteenth session): controller chain fully unit-verified
+
+- Added `linux_runtime::tests::input_writes_the_control_stdin_protocol`: a fake
+  child receives exactly `INPUT 8 1234 -1234 7 9 1`; passes on the Dell.
+- Added `tests.test_native_input_contract` guard pinning the shared
+  Linux/Windows `INPUT` line format.
+- Attempted the Linux Tauri GUI end-to-end under Xvfb: the app runs but its
+  WebKitGTK surface renders nothing without a window manager (none installed);
+  no host packages were installed. Documented, not worked around.
+- Suite **259 tests, 0 failures**; catalog PASS; git clean.
+
+**Controller chain status:** client ↔ staging (live), client → `set_native_input`
+(live probe), Linux `input()` → `INPUT` line (unit test), runtime `INPUT` → core
+(headless screenshot). Remaining: the app's own GUI glue and a real phone
+driving a running desktop game.
