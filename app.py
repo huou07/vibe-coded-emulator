@@ -15,6 +15,7 @@ import secrets
 import shutil
 import sqlite3
 import subprocess
+import sync_engine
 import sys
 import threading
 import time
@@ -145,6 +146,75 @@ def controller_reap():
         for code in expired:
             CONTROLLERS.pop(code, None)
     return len(expired)
+
+
+# Cross-device sync is staging-only. The pure planning core lives in
+# sync_engine; this app owns the per-device mode, the plan/conflict surface, and
+# the LAN peer registry. Google Drive transport needs owner OAuth credentials
+# and stays unavailable (mode rejected, option unadvertised) until configured.
+SYNC_ENABLED = ENVIRONMENT in {"staging", "development"}
+GOOGLE_DRIVE_ENABLED = bool(os.environ.get("AN3_GOOGLE_CLIENT_ID", "").strip())
+LAN_PEER_TTL_SECONDS = 90
+LAN_PEERS = {}
+LAN_PEERS_LOCK = threading.Lock()
+SYNC_LIMITER = netcode.SlidingRateLimiter(limit=60, window_seconds=60)
+SYNC_MANIFEST_LIMIT = 2000
+
+
+def sync_mode_catalog():
+    """Selectable modes with availability, Drive gated on owner credentials."""
+
+    return [
+        {"id": sync_engine.SyncMode.OFF.value, "label": "Tắt / Off", "available": True},
+        {"id": sync_engine.SyncMode.LAN.value, "label": "LAN", "available": True},
+        {"id": sync_engine.SyncMode.DRIVE.value, "label": "Google Drive", "available": GOOGLE_DRIVE_ENABLED},
+        {"id": sync_engine.SyncMode.LAN_DRIVE.value, "label": "LAN + Drive", "available": GOOGLE_DRIVE_ENABLED},
+    ]
+
+
+def sync_mode_status(conn, device_key):
+    """Return ``(mode, updated_at)`` for a device, defaulting to OFF."""
+
+    row = conn.execute("SELECT mode, updated_at FROM sync_settings WHERE device_key=?", (device_key,)).fetchone()
+    if not row:
+        return sync_engine.SyncMode.OFF, 0
+    return sync_engine.parse_sync_mode(row["mode"]), int(row["updated_at"])
+
+
+def sync_same_subnet(first, second):
+    """True only for two IPv4 addresses in the same /24 (LAN discovery scope)."""
+
+    if not first or not second or ":" in first or ":" in second:
+        return False
+    return first.rsplit(".", 1)[0] == second.rsplit(".", 1)[0]
+
+
+def lan_peer_snapshot(request_ip, *, now=None):
+    """Live peers on the requester's subnet, with expired entries reaped.
+
+    Peers are held in memory only (never persisted) and their address is
+    disclosed only to a requester on the same /24.
+    """
+
+    now = time.monotonic() if now is None else now
+    peers = []
+    with LAN_PEERS_LOCK:
+        for device, record in list(LAN_PEERS.items()):
+            if now - record["seen"] > LAN_PEER_TTL_SECONDS:
+                LAN_PEERS.pop(device, None)
+                continue
+            same = sync_same_subnet(request_ip, record["ip"])
+            if not same:
+                continue
+            peers.append({
+                "deviceId": device,
+                "name": record["name"],
+                "address": record["ip"],
+                "port": record["port"],
+                "sameSubnet": True,
+            })
+    peers.sort(key=lambda item: item["deviceId"])
+    return peers
 
 
 def room_signature_from(data):
@@ -715,6 +785,9 @@ def init_db():
               kind TEXT NOT NULL, filename TEXT NOT NULL, expected_size INTEGER NOT NULL,
               received_size INTEGER NOT NULL DEFAULT 0, temp_name TEXT NOT NULL,
               created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sync_settings (
+              device_key TEXT PRIMARY KEY, mode TEXT NOT NULL, updated_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS comments_game_idx ON comments(game_id, created_at DESC);
             CREATE INDEX IF NOT EXISTS games_public_idx ON games(published, updated_at DESC);
@@ -1583,6 +1656,22 @@ def controller_join_page(lang, user, csrf, code=""):
     return layout(tr(lang, "Tay cầm", "Controller"), body, lang, user, csrf)
 
 
+def sync_page(lang, user, csrf):
+    body = f'''<main class="page sync-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · ĐỒNG BỘ","STAGING · SYNC")}</p><h1>{tr(lang,"Đồng bộ giữa các thiết bị","Cross-device sync")}</h1></div></section>
+<section class="admin-form" id="syncPanel">
+<p class="muted">{tr(lang,"Chỉ dữ liệu người dùng (save, state, metadata) được đồng bộ. ROM đi kèm, firmware và khóa không bao giờ được đồng bộ.","Only user data (saves, states, metadata) syncs. Bundled ROMs, firmware and keys never do.")}</p>
+<label><span>{tr(lang,"Chế độ đồng bộ","Sync mode")}</span><select id="syncMode"></select></label>
+<small id="syncAvailability" class="muted"></small>
+<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu chế độ","Save mode")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị LAN","Find LAN devices")}</button></div>
+<p id="syncStatus" class="muted" role="status"></p>
+<ul id="syncPeers" class="sync-peers"></ul>
+</section>
+<script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
+</main>'''
+    return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
+
+
 def player_page(game, lang, user, csrf):
     title = game_title(game, lang)
     icon = lambda name: f'<img src="/static/ui-{name}.svg?v={ASSET_VERSION}" alt="" width="24" height="24">'
@@ -2277,6 +2366,152 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid payload"}, 400)
         self.send_bytes(200, svg.encode("utf-8"), "image/svg+xml; charset=utf-8", cache="no-store")
 
+    def sync_unavailable(self):
+        self.send_json({"error": "not found"}, 404)
+
+    def sync_settings_payload(self, mode, updated_at):
+        return {
+            "mode": mode.value,
+            "modes": sync_mode_catalog(),
+            "driveConfigured": GOOGLE_DRIVE_ENABLED,
+            "lanEnabled": mode.lan_enabled,
+            "driveEnabled": mode.drive_enabled,
+            "updatedAt": updated_at,
+        }
+
+    def sync_get_settings(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        device = self.visitor_hash()
+        with db() as conn:
+            mode, updated_at = sync_mode_status(conn, device)
+        self.send_json(self.sync_settings_payload(mode, updated_at))
+
+    def sync_set_settings(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        SYNC_LIMITER.check(self.client_address[0])
+        data = self.read_json()
+        requested = str(data.get("mode") or "").strip().lower()
+        if requested not in {mode.value for mode in sync_engine.SyncMode}:
+            return self.send_json({"error": "invalid sync mode"}, 400)
+        mode = sync_engine.parse_sync_mode(requested)
+        if mode.drive_enabled and not GOOGLE_DRIVE_ENABLED:
+            return self.send_json({"error": "google drive sync is not configured", "reason": "drive-unavailable"}, 409)
+        device = self.visitor_hash()
+        now = int(time.time())
+        with db() as conn:
+            conn.execute(
+                "INSERT INTO sync_settings(device_key,mode,updated_at) VALUES(?,?,?) "
+                "ON CONFLICT(device_key) DO UPDATE SET mode=excluded.mode, updated_at=excluded.updated_at",
+                (device, mode.value, now),
+            )
+        self.send_json({"ok": True, **self.sync_settings_payload(mode, now)})
+
+    def sync_plan(self):
+        """Plan one pass through the pure sync engine.
+
+        The caller owns hashing and byte transfer; this returns the decision for
+        each logical file (direction + reason) plus conflict counts.
+        """
+
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        SYNC_LIMITER.check(self.client_address[0])
+        data = self.read_json()
+        device = self.visitor_hash()
+        with db() as conn:
+            configured, _ = sync_mode_status(conn, device)
+        mode = sync_engine.parse_sync_mode(data.get("mode", configured.value))
+        if mode.drive_enabled and not GOOGLE_DRIVE_ENABLED:
+            return self.send_json({"error": "google drive sync is not configured", "reason": "drive-unavailable"}, 409)
+        try:
+            kind = sync_engine.ItemKind(str(data.get("kind") or "save"))
+        except ValueError:
+            return self.send_json({"error": "invalid item kind"}, 400)
+        records = data.get("records")
+        if not isinstance(records, list) or len(records) > SYNC_MANIFEST_LIMIT:
+            return self.send_json({"error": "invalid manifest"}, 400)
+        try:
+            entries = sync_engine.entries_from_records(records, kind=kind)
+        except sync_engine.SyncError as error:
+            return self.send_json({"error": str(error)}, 400)
+        plan = sync_engine.build_plan(mode, entries, same_lan=bool(data.get("sameLan")))
+        self.send_json({
+            "mode": plan.mode.value,
+            "transport": plan.transport.value if plan.transport else None,
+            "clean": plan.clean,
+            "summary": sync_engine.summarize(plan),
+            "transfers": [
+                {
+                    "key": transfer.entry.key,
+                    "kind": transfer.entry.kind.value,
+                    "direction": transfer.direction.value,
+                    "reason": transfer.reason,
+                    "copyKey": transfer.copy_key,
+                }
+                for transfer in plan.transfers
+            ],
+        })
+
+    def sync_resolve(self):
+        """Turn one conflict into a concrete action (keep local/remote/both)."""
+
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        SYNC_LIMITER.check(self.client_address[0])
+        data = self.read_json()
+        resolution = str(data.get("resolution") or "").strip().lower()
+        try:
+            kind = sync_engine.ItemKind(str(data.get("kind") or "save"))
+        except ValueError:
+            return self.send_json({"error": "invalid item kind"}, 400)
+        key = str(data.get("key") or "").strip()
+        if not key or len(key) > 256:
+            return self.send_json({"error": "invalid entry key"}, 400)
+        entry = sync_engine.SyncEntry(kind=kind, key=key)
+        conflict = sync_engine.TransferPlan(entry, sync_engine.Direction.CONFLICT, reason="both-changed")
+        try:
+            resolved = sync_engine.resolve_conflict(
+                conflict, resolution,
+                local_hash=str(data.get("localHash") or ""),
+                remote_hash=str(data.get("remoteHash") or ""),
+            )
+        except sync_engine.SyncError as error:
+            return self.send_json({"error": str(error)}, 400)
+        self.send_json({
+            "key": key,
+            "direction": resolved.direction.value,
+            "reason": resolved.reason,
+            "copyKey": resolved.copy_key,
+        })
+
+    def lan_peer_announce(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        SYNC_LIMITER.check(self.client_address[0])
+        data = self.read_json()
+        device = str(data.get("deviceId") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", device):
+            return self.send_json({"error": "invalid device id"}, 400)
+        name = str(data.get("name") or "").strip()[:48]
+        try:
+            port = int(data.get("port") or 0)
+        except (TypeError, ValueError):
+            port = 0
+        if port < 0 or port > 65535:
+            return self.send_json({"error": "invalid port"}, 400)
+        request_ip = self.client_address[0]
+        with LAN_PEERS_LOCK:
+            LAN_PEERS[device] = {"name": name, "ip": request_ip, "port": port, "seen": time.monotonic()}
+        self.send_json({"peers": lan_peer_snapshot(request_ip)})
+
+    def lan_peer_list(self):
+        if not SYNC_ENABLED:
+            return self.sync_unavailable()
+        request_ip = self.client_address[0]
+        self.send_json({"peers": lan_peer_snapshot(request_ip)})
+
     def controller_unavailable(self):
         self.send_json({"error": "not found"}, 404)
 
@@ -2630,6 +2865,16 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.controller_host_state()
         elif path == "/api/controller/qr.svg":
             self.controller_qr()
+        elif path == "/api/sync/settings":
+            self.sync_get_settings()
+        elif path == "/api/sync/lan/peers":
+            self.lan_peer_list()
+        elif path == "/sync":
+            if not SYNC_ENABLED:
+                self.send_html(status_page(404, lang, user, csrf), 404)
+            else:
+                self.track_visit("/sync", user)
+                self.send_html(sync_page(lang, user, csrf))
         elif path == "/controller":
             if not CONTROLLER_ENABLED:
                 self.send_html(status_page(404, lang, user, csrf), 404)
@@ -2953,6 +3198,14 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.controller_submit_state()
             elif path == "/api/controller/disconnect":
                 self.controller_disconnect()
+            elif path == "/api/sync/settings":
+                self.sync_set_settings()
+            elif path == "/api/sync/plan":
+                self.sync_plan()
+            elif path == "/api/sync/resolve":
+                self.sync_resolve()
+            elif path == "/api/sync/lan/announce":
+                self.lan_peer_announce()
             else:
                 self.send_json({"error":"not found"},404)
         except RateLimited as exc:

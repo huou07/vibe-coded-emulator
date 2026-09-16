@@ -2598,4 +2598,6 @@ body.reference-shell .site-header .brand{
 .controller-panel .ctrl-code,.multiplayer-panel .ctrl-code{font-size:22px}
 .multiplayer-panel label{display:grid;gap:5px;margin:10px 0}
 .multiplayer-panel .form-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.sync-peers{margin:12px 0 0;padding:0;list-style:none}
+.sync-peers li{border-top:1px dotted var(--line);padding:8px 0;color:#d6ddd7}
 @media(max-width:520px){.ctrl-pad{grid-template-columns:repeat(3,minmax(0,1fr))}}

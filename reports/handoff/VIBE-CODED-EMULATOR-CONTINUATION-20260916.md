@@ -418,3 +418,28 @@ in `app.py`; Switch companion; CodeGraph re-index; skills/agents.
 
 **Still open:** controller native injection; LAN discovery/transfer; sync wiring
 in `app.py`; Windows/Linux 1.3.0 runtime smokes; Switch companion.
+
+## Update — 2026-09-16 (tenth session): cross-device sync wiring
+
+**Step 4 (partial) — sync modes + LAN discovery wired into `app.py`.**
+- `SYNC_ENABLED` (staging/development) + `GOOGLE_DRIVE_ENABLED`
+  (`AN3_GOOGLE_CLIENT_ID`). Off/LAN selectable; Drive/LAN+Drive advertised
+  **unavailable** and rejected with 409 until owner credentials exist.
+- Per-device mode (`sync_settings` keyed by the hashed visitor cookie);
+  `POST /api/sync/plan` runs the pure `sync_engine` (direction + reason per file,
+  transport, conflict counts); `POST /api/sync/resolve` keep local/remote/both;
+  in-memory subnet-scoped LAN registry (`announce`/`peers`, 90 s TTL, address
+  disclosed only to the same /24); `/sync` page + `static/sync.js`.
+- All `/api/sync/*` and `/sync` 404 in production. Guard RG-087; 12 new tests;
+  suite **254 tests, 0 failures**.
+- **Runtime VERIFIED** on staging (asset `e792e8578089`): settings default off →
+  set lan persisted; drive 409; plan returned `download`/`remote-changed`;
+  announce returned the peer at `192.168.1.6`; Playwright `/sync` saved `lan`
+  and listed the peer with no console errors.
+- Report: `reports/handoff/SYNC_WIRING_20260916.md`.
+
+**UNVERIFIED / not done:** byte-level LAN device-to-device transfer; Google Drive
+transport (needs owner OAuth); real second LAN device.
+
+**Still open:** controller native injection; LAN byte transfer; Google routes/
+UI; Windows 1.3.0 runtime smoke; Switch companion.

@@ -76,6 +76,10 @@ From the original spec plus later requests:
   (phone press → `simulateInput(0,7,1)`/`(0,7,0)`); see
   `reports/handoff/WEB_CONTROLLER_BINDING_20260916.md`.
 - Shared cores: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
+- **Sync mode wired into `app.py`** (staging-only): per-device Off/LAN/Drive/
+  LAN+Drive mode, a plan/conflict API over the pure `sync_engine`, and a
+  subnet-scoped LAN peer registry with a `/sync` page. Drive stays unavailable
+  until owner credentials exist. See `reports/handoff/SYNC_WIRING_20260916.md`.
 - Android 1.1.0 published; **1.2.0** published for all five platforms; **1.3.0**
   published for all five platforms (DMG/APK/DEB/Flatpak/EXE), catalog PASS.
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
@@ -85,10 +89,10 @@ From the original spec plus later requests:
   Linux/Windows). The web player host binding and QR are done.
 - Multiplayer **peer media/input sync** was not asserted (relay room bridge and
   Socket.IO handshake verified only).
-- **LAN discovery + direct transfer** (transport only; `sync_engine` planning
-  exists).
-- **Sync wiring in `app.py`** (Drive mode UI + routes). Google OAuth routes/UI
-  were explicitly skipped by the owner.
+- **LAN direct transfer of save bytes** (the registry + plan/conflict API are
+  done; moving bytes device-to-device is client/native work).
+- **Google sign-in + Drive transport** (owner skipped; needs OAuth
+  credentials). `google_sync.py` is tested against an injected transport only.
 - **Switch companion** integration.
 - Per-engine renderer work is unchanged (and should stay unchanged unless
   demanded).
@@ -191,6 +195,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    code surfaced in the game UI. **Done and staging-verified** (invite code ==
    relay room name; peer media sync still unverified).
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
+   **Sync wiring + LAN discovery done** (staging-verified 2026-09-16); actual
+   byte transfer between devices still open.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
 6. **Create the skills/agents** in §7 as the workflows stabilize.
 7. **Switch companion** last, behind its own abstraction and after a design sign-off.
