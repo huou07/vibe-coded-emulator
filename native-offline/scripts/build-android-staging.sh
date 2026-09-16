@@ -18,7 +18,10 @@ npm run prepare-web
 npm run tauri -- android build --target aarch64 --apk
 SOURCE_APK="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
 [[ -f "$SOURCE_APK" ]] || SOURCE_APK="src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk"
-RELEASE_APK="${AN3_RELEASE_DIR:-releases}/vibecodedemulator-1.3.0-android-arm64-staging.apk"
+# Derive the artefact name from the Android version field so a version bump can
+# never publish under a stale filename.
+VERSION="$(node -p "require('./src-tauri/tauri.android.conf.json').version")"
+RELEASE_APK="${AN3_RELEASE_DIR:-releases}/vibecodedemulator-${VERSION}-android-arm64-staging.apk"
 [[ -f "$SOURCE_APK" ]] || { echo "Android build completed without its expected APK: $SOURCE_APK" >&2; exit 1; }
 mkdir -p "$(dirname "$RELEASE_APK")"
 install -m 0644 "$SOURCE_APK" "$RELEASE_APK"

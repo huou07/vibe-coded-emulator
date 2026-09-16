@@ -75,6 +75,10 @@ From the original spec plus later requests:
   frame through the player's virtual-input path. Verified end-to-end on staging
   (phone press → `simulateInput(0,7,1)`/`(0,7,0)`); see
   `reports/handoff/WEB_CONTROLLER_BINDING_20260916.md`.
+- Phone controller is **real on Android** (1.4.0, staging): the in-game menu
+  hosts a session and injects native input through the pad path. Verified on the
+  AVD (a `start` press from the phone advanced the GBA title to its menu); see
+  `reports/handoff/ANDROID_NATIVE_CONTROLLER_20260916.md`.
 - Shared cores: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
 - **Sync mode wired into `app.py`** (staging-only): per-device Off/LAN/Drive/
   LAN+Drive mode, a plan/conflict API over the pure `sync_engine`, and a
@@ -85,8 +89,8 @@ From the original spec plus later requests:
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
 
 **Not done**
-- Controller **native input injection** into the packaged apps (macOS/Android/
-  Linux/Windows). The web player host binding and QR are done.
+- Controller **native input injection** for macOS/Linux/Windows (Android is
+  done, 1.4.0). The web player host binding and QR are done.
 - Multiplayer **peer video** on the web (the staged EmulatorJS build has no
   WebRTC; it is relay input lockstep, and peer input sync is verified).
 - **LAN direct transfer of save bytes** (the registry + plan/conflict API are
@@ -193,8 +197,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    FPS tap-through, menu-first touch) and Linux under Xvfb; record evidence.
 2. **Make the controller real** — QR on `/controller` + host poll loop applying
    phone input to the emulator input path. This is the largest user-visible gap.
-   **Done on the web player** (staging-verified 2026-09-16); native injection
-   still open.
+   **Done on the web player** (staging-verified 2026-09-16) and **on Android
+   1.4.0**; macOS/Linux/Windows injection still open.
 3. **Bridge rooms to the relay** — compatibility check → relay handout → invite
    code surfaced in the game UI. **Done and staging-verified** (invite code ==
    relay room name; peer media sync still unverified).

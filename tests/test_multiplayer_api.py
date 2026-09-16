@@ -273,6 +273,16 @@ class ControllerApiTests(unittest.TestCase):
             status, _, _ = self.request_full("GET", "/api/controller/qr.svg?code=ABC123")
             self.assertEqual(status, 404)
 
+    def test_session_lifetime_is_bounded_by_the_request(self):
+        for requested, expected in ((3600, 3600), (999999, 3600), (1, 60), (None, 120)):
+            with self.subTest(requested=requested):
+                payload = {"deviceId": "native"}
+                if requested is not None:
+                    payload["ttlSeconds"] = requested
+                status, body = self.request("POST", "/api/controller/session", payload)
+                self.assertEqual(status, 201)
+                self.assertEqual(json.loads(body)["ttlSeconds"], expected)
+
     def test_session_create_consumes_its_body_on_a_keepalive_connection(self):
         # An unread POST body corrupts the next request line on the same
         # connection (the server sees the JSON as a bogus method).
@@ -288,6 +298,27 @@ class ControllerApiTests(unittest.TestCase):
         connection.close()
         self.assertEqual(health.status, 200)
         self.assertIn(b'"ok": true', payload)
+
+
+class ControllerButtonParityTests(unittest.TestCase):
+    """The native phone-controller host must map the same libretro indices."""
+
+    def test_android_native_button_map_matches_the_web_controller(self):
+        player = (ROOT / "static/player.js").read_text(encoding="utf-8")
+        block = player[player.index("const controllerButtonIndex = {"):]
+        block = block[:block.index("};")]
+        web = {name: int(index) for name, index in re.findall(r"([a-z]+)\s*:\s*(\d+)", block)}
+        kotlin = (
+            ROOT
+            / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt"
+        ).read_text(encoding="utf-8")
+        native_block = kotlin[kotlin.index("val BUTTONS = mapOf("):]
+        native_block = native_block[:native_block.index(")")]
+        native = {name: int(index) for name, index in re.findall(r'"([a-z]+)"\s*to\s*(\d+)', native_block)}
+        self.assertEqual(native, web)
+        self.assertEqual(web["a"], 8)
+        self.assertEqual(web["right"], 7)
+        self.assertEqual(len(web), 12)
 
 
 class PlayerCspTests(unittest.TestCase):

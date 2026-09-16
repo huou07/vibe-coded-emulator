@@ -16,6 +16,11 @@ import android.widget.*
 import org.json.JSONArray
 import org.json.JSONObject
 
+// The Android app is offline-first and has no origin of its own, so the
+// staging-only phone-controller service is configured explicitly. The default
+// matches the isolated staging host.
+private const val DEFAULT_CONTROLLER_SERVER = "http://192.168.1.8:8092"
+
 /** Native counterpart of AN3NativeGameView's DMG controls and nine-tab menu. */
 class NativeGameOverlay(
     private val activity: Activity,
@@ -79,6 +84,10 @@ class NativeGameOverlay(
     private val cursor = button(NativePlayerUi.CURSOR_LOCK_LABEL) { lockCursor() }
     private val keys = mutableMapOf<Int, Button>()
     private val joystick = NativeAnalogStick(activity, directionalInput)
+    // Staging-only phone controller host. The raw host token stays in
+    // ControllerClient and is never shown or persisted.
+    private var controller: ControllerClient? = null
+    private var controllerStatus: TextView? = null
     private var directionalMode = prefs.getString("directional-control-$system", "dpad") ?: "dpad"
     private var controlScale = prefs.getInt("virtual-control-scale-$system", 100).coerceIn(70, 140)
     private var controlOpacity = prefs.getInt("virtual-control-opacity-$system", 85).coerceIn(30, 100)
@@ -176,6 +185,42 @@ class NativeGameOverlay(
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    // Phone controller (staging-only). The native app is the pairing host: it
+    // creates the session, shows the code, polls the host state and pushes the
+    // phone's frame through the same input path as the on-screen pad.
+    private fun controllerServer(): String =
+        (prefs.getString("controller-server", DEFAULT_CONTROLLER_SERVER) ?: DEFAULT_CONTROLLER_SERVER).trim()
+
+    private fun toggleController() {
+        val existing = controller
+        if (existing != null && existing.running) {
+            existing.stop()
+            controller = null
+            controllerStatus?.text = "Phone controller stopped."
+            return
+        }
+        val server = controllerServer()
+        if (!server.startsWith("http://") && !server.startsWith("https://")) {
+            controllerStatus?.text = "Set the controller server URL (http://…)."
+            return
+        }
+        val client = ControllerClient(
+            server,
+            onStatus = { message -> activity.runOnUiThread { controllerStatus?.text = message } },
+            shouldApply = { !isMenuOpen() },
+            onButton = { index, pressed -> input(index, pressed) },
+            onAnalog = { x, y -> directionalInput(x, y) },
+        )
+        controller = client
+        controllerStatus?.text = "Starting…"
+        client.start()
+    }
+
+    fun stopController() {
+        controller?.stop()
+        controller = null
     }
 
     private fun setSpeed(value: String) {
@@ -391,6 +436,19 @@ class NativeGameOverlay(
                     content.addView(text("VibeCodedEmulator · ${if(system=="gba") "mGBA" else if(system=="nds") "melonDS DS" else "Azahar 3DS"} native").apply { textSize=16f; typeface=Typeface.DEFAULT_BOLD })
                     content.addView(text("Keyboard: arrows, Z/X, A/S, L/J, Return and Space.\nMenu and Pad control native gameplay. Ten quick-save slots remain separate from Auto Save."))
                     checkbox("Start fullscreen on launch", "start-fullscreen"); action("Enter fullscreen now") { fullscreen() }
+                    content.addView(text("Phone controller · staging").apply { setPadding(0, 12.dp(), 0, 0) })
+                    content.addView(text("A phone on the same LAN pairs with a code and drives this game. The controller server is the isolated staging host.").apply { textSize=12f })
+                    val serverField = EditText(activity).apply {
+                        setText(controllerServer()); setTextColor(Color.WHITE); textSize = 13f
+                        setHint("Controller server URL"); setSingleLine(true)
+                    }
+                    content.addView(serverField, LinearLayout.LayoutParams(-1, -2))
+                    serverField.setOnFocusChangeListener { _, focused ->
+                        if (!focused) prefs.edit().putString("controller-server", serverField.text.toString().trim()).apply()
+                    }
+                    controllerStatus = text(if (controller?.running == true) "Running" else "Stopped")
+                    content.addView(controllerStatus)
+                    action(if (controller?.running == true) "Stop phone controller" else "Start phone controller") { toggleController() }
                 }
                 "Graphics" -> {
                     choice("Renderer · applies on next launch", "renderer", listOf("Auto", "Vulkan", "OpenGL ES"), listOf("auto", "vulkan", "opengl"))

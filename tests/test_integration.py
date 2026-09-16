@@ -111,7 +111,7 @@ class SystemInferenceTests(unittest.TestCase):
             [item["filename"] for item in available],
             [
                 "vibecodedemulator-1.3.0-macos-aarch64.dmg",
-                "vibecodedemulator-1.3.0-android-arm64-staging.apk",
+                "vibecodedemulator-1.4.0-android-arm64-staging.apk",
                 "vibecodedemulator-1.3.0-linux-amd64.deb",
                 "an3-offline-1.3.0-linux-amd64-staging.flatpak",
                 "vibecodedemulator-1.3.0-windows-x64-staging.exe",
@@ -119,7 +119,7 @@ class SystemInferenceTests(unittest.TestCase):
         )
         self.assertEqual(
             {item["format"]: item["version"] for item in available},
-            {"DMG": "1.3.0", "APK": "1.3.0", "DEB": "1.3.0", "Flatpak": "1.3.0", "EXE": "1.3.0"},
+            {"DMG": "1.3.0", "APK": "1.4.0", "DEB": "1.3.0", "Flatpak": "1.3.0", "EXE": "1.3.0"},
         )
         self.assertTrue(all(item["size"] and item["sha256"] for item in available))
 

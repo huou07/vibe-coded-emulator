@@ -121,7 +121,9 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         if (active && level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) commandWhenReady("save", "auto")
     }
     override fun onLowMemory() { super.onLowMemory(); if (active) commandWhenReady("save", "auto") }
-    override fun onDestroy() { handler.removeCallbacks(tick); if (active) nativeStop(false); active = false; super.onDestroy() }
+    override fun onDestroy() { handler.removeCallbacks(tick); stopController(); if (active) nativeStop(false); active = false; super.onDestroy() }
+
+    private fun stopController() { try { overlay.stopController() } catch (_: Exception) {} }
 
     private fun releasePointer(cancel: Boolean = true) { if (active) {if(cancel)nativeCancelPointer() else nativePointer(0,0,false)}; pointerId = -1 }
     private fun touch(event: MotionEvent): Boolean {

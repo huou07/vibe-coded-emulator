@@ -504,3 +504,29 @@ Switch Phase 1; Windows interactive gameplay.
 
 **Still open:** controller native injection; LAN byte transfer; Google routes/UI;
 Switch Phase 1; Windows interactive gameplay; real two-machine rooms.
+
+## Update — 2026-09-16 (eleventh session): Android native phone-controller host
+
+**Native injection (Android first).** The Android app is now a
+phone-controller **host**:
+- `ControllerClient.kt` creates a session on the configured staging controller
+  server, polls `/api/controller/state`, maps the phone frame to the same
+  libretro indices as the web (`tests.test_multiplayer_api.ControllerButtonParityTests`),
+  and injects through the same `input`/`directionalInput` path as the on-screen
+  pad. The raw host token never leaves the object.
+- General-tab "Phone controller · staging" section (server URL, live status,
+  Start/Stop); input applies only while the menu is closed and releases on
+  stop/destroy.
+- `network_security_config.xml` permits cleartext only for the staging host;
+  `POST /api/controller/session` accepts a bounded `ttlSeconds` (60–3600) so a
+  game session outlives the 2-minute web pairing window.
+- Version: **Android 1.3.0 → 1.4.0** (desktop stays 1.3.0). APK
+  `vibecodedemulator-1.4.0-android-arm64-staging.apk` (49,587,834 B,
+  `3c7518a2…`); catalog PASS; deployed asset `e792e8578089`.
+- **Runtime VERIFIED** (AVD): session `0M656E` (3594 s) → `Phone connected`,
+  and six `start` presses from the Mac advanced the GBA title to the
+  NEW GAME / OPTION menu. Guard RG-089; report
+  `reports/handoff/ANDROID_NATIVE_CONTROLLER_20260916.md`.
+
+**Still open:** macOS/Linux/Windows native injection; LAN byte transfer; Google
+routes/UI; Switch Phase 1; Windows interactive gameplay.

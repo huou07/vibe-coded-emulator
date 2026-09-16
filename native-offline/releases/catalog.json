@@ -14,15 +14,15 @@
       "runtime_status": "Vibe Coded Emulator branding and icons; bundled mGBA, melonDS DS and Azahar 2126.1.1 cores. The toolbar Layout control now opens every screen layout the active core supports (melonDS: 12 layouts; Azahar: 4) and the toolbar Save control exposes Quick Save / Quick Load / Auto Save now / Load Auto Save without opening the menu. Auto Save remains the shared Off/On game exit/30/10/5 mode and Exit Game is unchanged."
     },
     {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "platform": "Android",
       "architecture": "arm64",
       "format": "APK",
-      "filename": "vibecodedemulator-1.3.0-android-arm64-staging.apk",
-      "size": 49571879,
-      "sha256": "35d06084f3c6a785dd3fae8e931d4c81e691bc9361be918c017cf26bc3ff03d5",
+      "filename": "vibecodedemulator-1.4.0-android-arm64-staging.apk",
+      "size": 49587834,
+      "sha256": "3c7518a2809335c8687c153c08bb2c6e8d427ff0712924c167dff202af4397ba",
       "signature_status": "Android Debug certificate (v2); same signer as the prior staging APK.",
-      "runtime_status": "Vibe Coded Emulator branding and icons. The toolbar Layout control opens every layout the active core supports (read from the shared native-layout-schema.json) and the toolbar Save control exposes Quick Save / Quick Load / Auto Save now / Load Auto Save. Auto Save remains the shared Off/On game exit/30/10/5 mode; local GBA/NDS/3DS import and the native emulator pipeline are unchanged."
+      "runtime_status": "New: a staging-only phone controller. The in-game General menu starts a pairing session on the configured controller server, shows the code, and drives native input from a phone on the LAN (the raw host token never leaves the app). Existing branding, the shared Auto Save model, the 10-slot quick save, and the layout chooser are unchanged. Runtime acceptance still required before publication."
     },
     {
       "version": "1.3.0",

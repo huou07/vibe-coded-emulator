@@ -2518,8 +2518,16 @@ class Handler(BaseHTTPRequestHandler):
     def controller_create_session(self):
         if not CONTROLLER_ENABLED:
             return self.controller_unavailable()
-        # Drain the (ignored) body so keep-alive connections are not corrupted.
-        self.read_optional_json()
+        # Consume the body (keep-alive safety) and honour a bounded lifetime so a
+        # native game session can outlive the 2-minute web pairing window.
+        data = self.read_optional_json()
+        ttl_seconds = CONTROLLER_TTL_SECONDS
+        try:
+            requested = int(data.get("ttlSeconds"))
+        except (TypeError, ValueError):
+            requested = 0
+        if requested > 0:
+            ttl_seconds = max(60, min(3600, requested))
         CONTROLLER_LIMITER.check(self.client_address[0])
         controller_reap()
         with CONTROLLER_LOCK:
@@ -2530,14 +2538,14 @@ class Handler(BaseHTTPRequestHandler):
                 code=code,
                 host_device_id="host",
                 created_at=time.monotonic(),
-                ttl_seconds=CONTROLLER_TTL_SECONDS,
+                ttl_seconds=ttl_seconds,
             )
             host_token, host_digest = netcode.new_session_token()
             CONTROLLERS[code] = {"session": session, "host": host_digest}
         self.send_json({
             "code": code,
             "hostToken": host_token,
-            "ttlSeconds": CONTROLLER_TTL_SECONDS,
+            "ttlSeconds": ttl_seconds,
             "joinPath": f"/controller/join?code={code}",
         }, 201)
 
