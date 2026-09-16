@@ -216,3 +216,39 @@ new toolbar model). Commit `bcde87e`.
 **Not verified:** Android/Linux builds for 1.2.0 (Kotlin/C++ updated but not
 rebuilt here). Unchanged-from-before: Flatpak/Windows 1.2.0, LAN discovery,
 sync wiring, Switch companion.
+
+## Update — 2026-09-16 (fifth session)
+
+**Workspace:** `~/Documents/edit an3tocom apps&web` is now a usable git worktree
+of the project (branch `apps-web`, baseline `528e2b7`); it runs the full test
+suite. Checkpoint worktree remains `.../vibe-coded-emulator`.
+
+**Cross-platform 1.2.0 built and published** (macOS, Android, Linux DEB,
+Flatpak; Windows pending):
+
+| Platform | Artifact | Size | sha256 (short) |
+| --- | --- | --- | --- |
+| macOS | vibecodedemulator-1.2.0-macos-aarch64.dmg | 44,704,838 | c22de7b7… |
+| Android | vibecodedemulator-1.2.0-android-arm64-staging.apk | 49,571,059 | 2c877328… |
+| Linux DEB | vibecodedemulator-1.2.0-linux-amd64.deb | 45,483,678 | ac89b460… |
+| Linux Flatpak | an3-offline-1.2.0-linux-amd64-staging.flatpak | 29,080,072 | 0aa9f5db… |
+| Windows | (still 1.0.1, VM build pending) | — | — |
+
+`RELEASE_CATALOG=PASS (5 installers)`; suite 220 tests, 0 failures; staging
+deployed (asset `dea10670c1a7`) and all four 1.2.0 installer URLs return 200.
+
+**Bug found and fixed:** `build-linux-staging.sh` used
+`find .../bundle/deb -name '*.deb' -print -quit`, which picked a lingering
+1.1.0 DEB and renamed it to 1.2.0 (control version 1.1.0, byte-identical). The
+script now clears `bundle/deb` before building. The Dell also needed rustup
+(system rustc was 1.85; installed user-level stable 1.98). Flathub is available
+on the Dell, so Flatpak 1.2.0 was built from the fresh DEB.
+
+**Android 1.2.0 verification (partial):** APK installs on the `codex-nds-api35`
+AVD, launches with no FATAL, and `classes2.dex` contains `Quick Save`,
+`Quick Load`, `showLayoutChooser`, `showSaveMenu`. Full gameplay interaction
+(import ROM → native game → open the chooser) was **not** exercised.
+
+**Still not done:** Windows 1.2.0 (start `an3-win11-build`), Linux 1.2.0 runtime
+run on the Dell, LAN discovery/transfer, sync wiring, controller QR + input
+binding, Switch companion.
