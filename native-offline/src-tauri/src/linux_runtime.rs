@@ -173,3 +173,52 @@ pub(super) fn input(value: NativeInput) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shell must deliver controller input to the bundled player over the
+    /// documented `--control-stdin` protocol. A fake child (`cat`) stands in for
+    /// the native player so this runs without a GPU or a real game.
+    #[test]
+    fn input_writes_the_control_stdin_protocol() {
+        let mut child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn cat");
+        let stdout = child.stdout.take().expect("cat stdout");
+        *SESSION.lock().expect("session lock") = Some(child);
+
+        let frame = NativeInput {
+            buttons: 8, // GBA "start", the bit the phone controller sends
+            circle_x: 1234,
+            circle_y: -1234,
+            cstick_x: 0,
+            cstick_y: 0,
+            touch_x: 7,
+            touch_y: 9,
+            touch_pressed: true,
+        };
+        input(frame).expect("input");
+        // Close stdin so cat flushes and exits.
+        if let Ok(mut guard) = SESSION.lock() {
+            if let Some(child) = guard.as_mut() {
+                drop(child.stdin.take());
+            }
+        }
+
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("read echo");
+        assert_eq!(line.trim(), "INPUT 8 1234 -1234 7 9 1");
+
+        if let Ok(mut guard) = SESSION.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}

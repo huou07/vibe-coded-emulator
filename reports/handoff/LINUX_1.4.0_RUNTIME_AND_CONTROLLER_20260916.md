@@ -57,3 +57,21 @@ on-screen controls use.
   the runtime side and the client side are each verified separately.
 - Windows 1.4.0 runtime (built only; the 1.3.0 EXE had a launch smoke).
 - A real phone driving a running Linux/Windows/macOS game.
+
+## Addendum: shell → runtime write path unit-tested
+
+`linux_runtime::tests::input_writes_the_control_stdin_protocol` spawns a fake
+child (`cat`), installs it as the session, calls `input(NativeInput { buttons: 8,
+circle_x: 1234, circle_y: -1234, touch_x: 7, touch_y: 9, touch_pressed: true })`
+and asserts the child receives exactly `INPUT 8 1234 -1234 7 9 1`. Passes on the
+Dell. `tests.test_native_input_contract` pins the same line format for both the
+Linux and Windows adapters so they cannot drift.
+
+## GUI end-to-end attempt (not obtained)
+
+The Linux Tauri app was launched under bare Xvfb with its extracted 1.4.0
+resources; the process stayed alive but the WebKitGTK surface rendered nothing
+(blank screenshot), and no window manager is installed on the Dell, so the app
+could not be driven. This is why the app-level GUI glue remains UNVERIFIED:
+every logic link is verified, the UI automation is not available in this
+environment. No packages were installed on the staging host.
