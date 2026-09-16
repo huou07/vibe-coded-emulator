@@ -79,6 +79,11 @@ From the original spec plus later requests:
   hosts a session and injects native input through the pad path. Verified on the
   AVD (a `start` press from the phone advanced the GBA title to its menu); see
   `reports/handoff/ANDROID_NATIVE_CONTROLLER_20260916.md`.
+- Phone controller **desktop host** (macOS/Linux/Windows share one Rust module,
+  macOS 1.4.0 built): session + polling + injection unit-tested against a real
+  TCP server; Settings → Phone controller UI; macOS DMG 1.4.0 built, launched,
+  deployed. Live desktop pairing is UNVERIFIED; see
+  `reports/handoff/DESKTOP_NATIVE_CONTROLLER_20260916.md`.
 - Shared cores: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
 - **Sync mode wired into `app.py`** (staging-only): per-device Off/LAN/Drive/
   LAN+Drive mode, a plan/conflict API over the pure `sync_engine`, and a
@@ -89,8 +94,9 @@ From the original spec plus later requests:
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
 
 **Not done**
-- Controller **native input injection** for macOS/Linux/Windows (Android is
-  done, 1.4.0). The web player host binding and QR are done.
+- Controller **native input injection** desktop end-to-end with a real phone
+  (host implemented and unit-tested; live pairing UNVERIFIED). Android is done
+  and verified (1.4.0). Linux/Windows artifacts are still 1.3.0.
 - Multiplayer **peer video** on the web (the staged EmulatorJS build has no
   WebRTC; it is relay input lockstep, and peer input sync is verified).
 - **LAN direct transfer of save bytes** (the registry + plan/conflict API are
@@ -197,8 +203,8 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    FPS tap-through, menu-first touch) and Linux under Xvfb; record evidence.
 2. **Make the controller real** — QR on `/controller` + host poll loop applying
    phone input to the emulator input path. This is the largest user-visible gap.
-   **Done on the web player** (staging-verified 2026-09-16) and **on Android
-   1.4.0**; macOS/Linux/Windows injection still open.
+   **Done on the web player** (staging-verified 2026-09-16), **on Android
+   1.4.0**, and **desktop host built** (macOS 1.4.0; live pairing unverified).
 3. **Bridge rooms to the relay** — compatibility check → relay handout → invite
    code surfaced in the game UI. **Done and staging-verified** (invite code ==
    relay room name; peer media sync still unverified).

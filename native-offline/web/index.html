@@ -84,6 +84,16 @@
                 <div class="native-fact"><span>Network</span><strong id="offlineNetworkState">Checking</strong></div>
               </div>
             </div>
+            <div class="native-card" id="nativeControllerCard" hidden>
+              <h2>Phone controller</h2>
+              <p class="native-muted">Staging only. This device hosts a pairing session on the controller server; a phone on the same LAN then drives the running game. The host token never leaves this app.</p>
+              <label class="native-field"><span>Controller server</span><input id="nativeControllerServer" type="url" value="http://192.168.1.8:8092" spellcheck="false" autocomplete="off"></label>
+              <div class="native-facts">
+                <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
+              </div>
+              <p class="native-muted" id="nativeControllerStatus" role="status">Stopped</p>
+              <button id="nativeControllerStart" type="button" class="button primary">Start</button>
+            </div>
           </section>
 
           <section class="native-panel" data-panel="help" hidden>

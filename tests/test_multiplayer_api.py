@@ -320,6 +320,18 @@ class ControllerButtonParityTests(unittest.TestCase):
         self.assertEqual(web["right"], 7)
         self.assertEqual(len(web), 12)
 
+    def test_desktop_rust_button_map_matches_the_web_controller(self):
+        player = (ROOT / "static/player.js").read_text(encoding="utf-8")
+        block = player[player.index("const controllerButtonIndex = {"):]
+        block = block[:block.index("};")]
+        web = {name: int(index) for name, index in re.findall(r"([a-z]+)\s*:\s*(\d+)", block)}
+        rust = (ROOT / "native-offline/src-tauri/src/controller_host.rs").read_text(encoding="utf-8")
+        rust_block = rust[rust.index("const BUTTONS:"):]
+        rust_block = rust_block[:rust_block.index("];")]
+        native = {name: int(index) for name, index in re.findall(r'\("([a-z]+)",\s*(\d+)\)', rust_block)}
+        self.assertEqual(native, web)
+        self.assertEqual(len(native), 12)
+
 
 class PlayerCspTests(unittest.TestCase):
     def test_netplay_websocket_origin_is_allowed(self):

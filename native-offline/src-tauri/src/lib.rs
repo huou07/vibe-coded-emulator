@@ -1,6 +1,7 @@
 #[cfg(not(mobile))]
 use include_dir::{include_dir, Dir};
 mod azahar;
+mod controller_host;
 use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
 use serde::Serialize;
 use std::{
@@ -634,6 +635,23 @@ async fn pick_and_import_native_rom(
 }
 
 #[tauri::command]
+async fn native_controller_start(base_url: Option<String>) -> Result<controller_host::ControllerSession, String> {
+    tauri::async_runtime::spawn_blocking(move || controller_host::start(base_url.unwrap_or_default()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_controller_stop() {
+    controller_host::stop();
+}
+
+#[tauri::command]
+fn native_controller_status() -> controller_host::ControllerStatus {
+    controller_host::status()
+}
+
+#[tauri::command]
 async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String> {
     validate_rom_id(&rom_id)?;
     let directory = app
@@ -672,6 +690,9 @@ async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String>
 pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                controller_host::stop();
+            }
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
                 let _ = stop_native_game(window.app_handle().clone());
@@ -686,7 +707,10 @@ pub fn run() {
             native_capabilities,
             start_native_game,
             stop_native_game,
-            set_native_input
+            set_native_input,
+            native_controller_start,
+            native_controller_stop,
+            native_controller_status
         ])
         .setup(|_app| {
             // Desktop uses the Rust loopback server to stream private ROMs

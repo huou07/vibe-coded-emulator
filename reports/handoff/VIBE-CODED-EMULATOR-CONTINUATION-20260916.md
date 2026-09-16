@@ -530,3 +530,28 @@ phone-controller **host**:
 
 **Still open:** macOS/Linux/Windows native injection; LAN byte transfer; Google
 routes/UI; Switch Phase 1; Windows interactive gameplay.
+
+## Update — 2026-09-16 (twelfth session): desktop native phone-controller host
+
+**Shared Rust host for macOS/Linux/Windows.**
+- `src-tauri/src/controller_host.rs`: plain HTTP/1.1 over `TcpStream` (no new
+  HTTP dep), session create + poll, `frame_input()` → full `NativeInput`
+  snapshot, injection through the existing `set_native_input`; releases on
+  stop / 403-404 / window destroy. `serde_json` added.
+- Commands `native_controller_start/stop/status`; `window.AN3NativeController`
+  bridge; Settings → Phone controller card in `web/index.html` +
+  `web/native-app.js`.
+- `scripts/package-macos.sh` now derives the DMG name from `tauri.conf.json`
+  (same fix as the Android script). Desktop version **1.3.0 → 1.4.0**.
+- **Verified:** `cargo test --lib controller_host` 6/6 (incl. a real local TCP
+  session lifecycle where the phone's `right` press reaches the input sink);
+  Python parity guards for the web/Kotlin/Rust button maps; macOS DMG 1.4.0
+  (`638d44ee…`) built, mounted, `CFBundleShortVersionString=1.4.0`, ships
+  `nativeControllerCard`, app launches/stays alive; catalog PASS; staging asset
+  `e792e8578089` serves the DMG 200. Suite **257 tests, 0 failures**. Guard
+  RG-090; report `reports/handoff/DESKTOP_NATIVE_CONTROLLER_20260916.md`.
+- **UNVERIFIED:** live desktop pairing with a real phone; Linux/Windows build
+  and run (artifacts stay 1.3.0).
+
+**Still open:** live desktop pairing; LAN byte transfer; Google routes/UI;
+Switch Phase 1; Windows interactive gameplay.

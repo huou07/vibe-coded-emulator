@@ -6,7 +6,10 @@ set -euo pipefail
 # to create the direct-download installer from that verified bundle.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="$ROOT/src-tauri/target/release/bundle/macos/VibeCodedEmulator.app"
-OUTPUT="${AN3_RELEASE_DIR:-$ROOT/releases}/vibecodedemulator-1.3.0-macos-aarch64.dmg"
+# Derive the artefact name from the desktop version field so a version bump can
+# never publish under a stale filename.
+VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+OUTPUT="${AN3_RELEASE_DIR:-$ROOT/releases}/vibecodedemulator-${VERSION}-macos-aarch64.dmg"
 
 [[ -d "$APP" ]] || { echo "macOS app bundle is unavailable: $APP" >&2; exit 1; }
 mkdir -p "$(dirname "$OUTPUT")"

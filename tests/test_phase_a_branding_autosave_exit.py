@@ -50,10 +50,9 @@ class PhaseABrandingTests(unittest.TestCase):
         package = json.loads((ROOT / "native-offline" / "package.json").read_text(encoding="utf-8"))
         tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         android = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.android.conf.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["version"], "1.3.0")
-        self.assertEqual(tauri["version"], "1.3.0")
-        # The Android app gained the native phone controller, so only its
-        # version moved (1.3.0 -> 1.4.0); the desktop artifacts are unchanged.
+        self.assertEqual(package["version"], "1.4.0")
+        self.assertEqual(tauri["version"], "1.4.0")
+        # Desktop and Android gained the native phone controller in 1.4.0.
         self.assertEqual(android["version"], "1.4.0")
 
 

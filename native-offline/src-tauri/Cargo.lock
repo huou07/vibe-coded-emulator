@@ -39,6 +39,7 @@ dependencies = [
  "cc",
  "include_dir",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

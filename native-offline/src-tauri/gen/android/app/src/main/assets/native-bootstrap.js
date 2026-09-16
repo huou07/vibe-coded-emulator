@@ -41,6 +41,18 @@ window.AN3OfflineEmulatorOrigin = "";
     };
     // Keep old desktop library assets working during an app update.
     window.AN3NativeLaunchThreeDs = (romId, _title, layout) => window.AN3NativeLaunchGame(romId, "3ds", layout);
+    // Staging-only phone controller. The Rust host owns the session, the
+    // polling, and the input injection; this bridge only starts/stops it.
+    const controllerInvoke = name => payload => {
+      const invoke = nativeInvoke();
+      if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      return invoke(name, payload);
+    };
+    window.AN3NativeController = {
+      start: baseUrl => controllerInvoke("native_controller_start")({baseUrl: String(baseUrl || "")}),
+      stop: () => controllerInvoke("native_controller_stop")({}),
+      status: () => controllerInvoke("native_controller_status")({})
+    };
   }
   if (/Android/i.test(navigator.userAgent)) {
     window.AN3NativeLaunchGame = async (romId, system, _layout, size) => {
