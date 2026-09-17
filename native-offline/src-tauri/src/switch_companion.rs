@@ -47,7 +47,7 @@ struct CompanionProcess {
     lines: Receiver<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionInfo {
     pub available: bool,
@@ -55,7 +55,7 @@ pub struct CompanionInfo {
     pub detail: String,
 }
 
-#[derive(Clone, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionStatus {
     pub running: bool,
@@ -65,7 +65,7 @@ pub struct CompanionStatus {
     pub note: Option<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionAudio {
     pub available: bool,
@@ -93,29 +93,38 @@ fn existing_file(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Resolves the companion from the installed app layout, then the development
-/// vendor path. Never searches the machine for an unrelated emulator.
-pub(crate) fn resolve_companion(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    use tauri::Manager;
+/// Resolves the companion from an explicit resource directory. `allow_dev_fallback`
+/// is true only for development builds, so a packaged app never resolves a
+/// source-tree path.
+pub(crate) fn resolve_from(resource_dir: Option<&Path>, allow_dev_fallback: bool) -> Result<PathBuf, String> {
     if let Ok(explicit) = std::env::var("AN3_SWITCH_COMPANION") {
         if let Some(path) = existing_file(Path::new(&explicit)) {
             return Ok(path);
         }
     }
-    if let Ok(resources) = app.path().resource_dir() {
-        if let Some(path) = existing_file(&resources.join(COMPANION_RESOURCE_PATH)) {
+    if let Some(dir) = resource_dir {
+        if let Some(path) = existing_file(&dir.join(COMPANION_RESOURCE_PATH)) {
             return Ok(path);
         }
-        if let Some(path) = existing_file(&resources.join(COMPANION_BINARY)) {
+        if let Some(path) = existing_file(&dir.join(COMPANION_BINARY)) {
             return Ok(path);
         }
     }
-    if let Some(path) =
-        existing_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join(COMPANION_DEVELOPMENT_PATH))
-    {
-        return Ok(path);
+    if allow_dev_fallback {
+        if let Some(path) =
+            existing_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join(COMPANION_DEVELOPMENT_PATH))
+        {
+            return Ok(path);
+        }
     }
     Err("The Nintendo Switch companion is not installed in this build. Re-run the packaging step so `an3_switch_companion` is bundled.".to_string())
+}
+
+/// Resolves the companion from the installed app layout.
+pub(crate) fn resolve_companion(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().ok();
+    resolve_from(resource_dir.as_deref(), cfg!(debug_assertions))
 }
 
 /// Resolves the MoltenVK runtime the companion's Eden backend needs. Returns
@@ -252,6 +261,12 @@ pub(crate) fn launch_with(
     content: &str,
     visible: bool,
 ) -> Result<CompanionStatus, String> {
+    if !binary.is_file() {
+        return Err(format!(
+            "The Nintendo Switch companion is not installed at {}.",
+            binary.display()
+        ));
+    }
     if !Path::new(content).is_file() {
         return Err("The Switch content file does not exist".to_string());
     }
@@ -493,6 +508,36 @@ mod tests {
         assert!(audio().is_err());
     }
 
+    #[test]
+    fn launch_reports_a_missing_binary_instead_of_crashing() {
+        let content = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let result = launch_with(Path::new("/nonexistent/an3_switch_companion"), None, content, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not installed"));
+    }
+
+    #[test]
+    fn a_missing_companion_is_a_structured_error() {
+        // An isolated installation without the companion resolves to an error,
+        // never a panic; the dev fallback is off for packaged builds.
+        std::env::remove_var("AN3_SWITCH_COMPANION");
+        let empty = std::env::temp_dir().join("an3-switch-empty-resources");
+        std::fs::create_dir_all(&empty).unwrap();
+        let result = resolve_from(Some(&empty), false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not installed"));
+    }
+
+    #[test]
+    #[ignore = "set AN3_SWITCH_APP_RESOURCES to a built .app Resources dir"]
+    fn the_installed_layout_resolves_the_companion() {
+        std::env::remove_var("AN3_SWITCH_COMPANION");
+        let resources = std::env::var("AN3_SWITCH_APP_RESOURCES").expect("resource dir");
+        let resolved = resolve_from(Some(Path::new(&resources)), false).expect("resolve");
+        assert!(resolved.is_file());
+        assert!(resolved.to_string_lossy().ends_with("an3_switch_companion"));
+    }
+
     /// End-to-end CompanionSystem lifecycle against the real bundled companion.
     /// Ignored by default (it launches a process and needs a legal homebrew
     /// fixture); run with `--ignored` when both env vars are set.
@@ -537,6 +582,10 @@ mod tests {
         assert!(!status().running);
         let again = launch_with(&binary, moltenvk.as_deref(), &content, false).expect("relaunch");
         assert!(again.running);
+        assert_ne!(
+            again.pid, started.pid,
+            "relaunch must replace the previous companion, never duplicate it"
+        );
         stop();
         assert!(!status().running);
     }
