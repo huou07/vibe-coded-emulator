@@ -17,6 +17,7 @@
 #endif
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -24,6 +25,7 @@
 #include <string>
 #include <thread>
 
+#include "common/dynamic_library.h"
 #include "common/fs/path_util.h"
 
 #include "core/core.h"
@@ -52,6 +54,33 @@
 namespace {
 
 namespace Frontend = Core::Frontend;
+
+/*
+ * Mirrors Eden's Vulkan::OpenLibrary search so the bridge can report a missing
+ * renderer runtime instead of triggering Eden's uncatchable ErrorVideoCore
+ * terminate (RG-111). Only used as a pre-flight; Eden still opens the library.
+ */
+bool vulkan_library_available() {
+    const char* env = std::getenv("LIBVULKAN_PATH");
+    if (env != nullptr && env[0] != '\0') {
+        Common::DynamicLibrary library;
+        if (library.Open(env)) {
+            return true;
+        }
+    }
+#if defined(__APPLE__)
+    const char* fallbacks[] = {"libvulkan.1.dylib", "libMoltenVK.dylib", "libvulkan.dylib"};
+#else
+    const char* fallbacks[] = {"libvulkan.so.1", "libvulkan.so"};
+#endif
+    for (const char* name : fallbacks) {
+        Common::DynamicLibrary library;
+        if (library.Open(name)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /* Headless graphics context: Eden's Vulkan renderer owns the device; this only
  * satisfies the frontend contract. */
@@ -193,6 +222,13 @@ an3_eden_status eden_load(an3_eden_core* core, const char* content_path) {
     }
     if (state->kernel_initialized) {
         return fail(core, AN3_EDEN_ERR_BUSY, "Eden already has content loaded");
+    }
+    /* RG-111: Eden's ErrorVideoCore path terminates inside a noexcept destructor,
+     * so it cannot be caught at the ABI. Pre-flight the Vulkan runtime the
+     * renderer needs and report it honestly instead of entering that path. */
+    if (!vulkan_library_available()) {
+        return fail(core, AN3_EDEN_ERR_UNAVAILABLE,
+                    "Eden's Vulkan runtime (MoltenVK) is unavailable; the Switch renderer cannot start");
     }
     Service::AM::FrontendAppletParameters params{};
     /* System::Load() does not default to the application applet; without this

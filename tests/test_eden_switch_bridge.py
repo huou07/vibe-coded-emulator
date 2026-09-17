@@ -252,5 +252,30 @@ class SwitchCompanionContractTests(unittest.TestCase):
         self.assertIn("AN3_SWITCH_COMPANION", source)
 
 
+    def test_23_missing_vulkan_is_structured_not_a_crash(self):
+        """RG-111: Eden's ErrorVideoCore path terminates in a noexcept destructor.
+        The bridge pre-flights Vulkan, so a missing runtime must be a structured
+        UNAVAILABLE with exit 0, never SIGABRT."""
+        homebrew = _homebrew()
+        if homebrew is None:
+            self.skipTest("No legal homebrew fixture (set AN3_SWITCH_HOMEBREW to an .nro)")
+        harness = _first_existing(HARNESS_CANDIDATES)
+        if harness is None:
+            self.skipTest("Eden bridge harness is not built in this environment")
+        env = {key: value for key, value in os.environ.items() if key != "LIBVULKAN_PATH"}
+        result = subprocess.run(
+            [str(harness), "--json", "--frames", "1", str(homebrew)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=120,
+        )
+        status = _status(result)
+        self.assertIsNotNone(status, result.stderr[-400:])
+        self.assertEqual(result.returncode, 0, "a missing Vulkan runtime must not abort the process")
+        self.assertEqual(status["result"], "PASS")
+        self.assertFalse(status["loaded"])
+
+
 if __name__ == "__main__":
     unittest.main()
