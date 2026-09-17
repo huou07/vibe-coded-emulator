@@ -1,5 +1,28 @@
 # AN3 Arcade regression guards
 
+## Current authority — 2.2.0 all-platform rebuild, 2026-09-17
+
+- RG-112: Every packaged app moved from 2.1.0 to **2.2.0** together and was rebuilt
+  from the committed source on its own builder (macOS arm64 + Android arm64 on the
+  Mac, Linux amd64 DEB/Flatpak on the authorized Debian builder, Windows x64 on the
+  `an3-win11-build` VM), with the 2.1.0 bytes retained rather than overwritten.
+  Automated guard: `tests.test_phase_a_branding_autosave_exit`
+  (`test_native_shell_brand_uses_the_logo_and_version_is_bumped`,
+  `test_flatpak_sources_track_the_desktop_version`), `tests.test_integration`
+  (`test_current_staging_catalog_names_only_the_current_verified_installers`),
+  `tools/verify-release-catalog.py` → `RELEASE_CATALOG=PASS (5 installers)`.
+  Runtime evidence (this rebuild): macOS DMG mounts, `CFBundleShortVersionString=2.2.0`,
+  ad-hoc `codesign --verify --deep --strict` OK, launches; Android APK installs on AVD
+  `codex-nds-api35`, `versionName=2.2.0`/`versionCode=2002000`, MainActivity displays,
+  library UI renders, `liban3_offline_native.so` loads, no FATAL; Linux DEB extracts,
+  `ldd` clean, launches under Xvfb+openbox; Flatpak installs (`space.an3tocom.offline`
+  2.2.0) and runs under Xvfb; Windows EXE silently installs to `C:\AN3\app220`,
+  FileVersion/ProductVersion 2.2.0, launches with 6 WebView2 children. Interactive
+  gameplay/GUI click-through on Windows, Linux and macOS remains **UNVERIFIED**;
+  the Windows VM has no Vulkan ICD. Artifacts (gitignored; sidecars + catalog tracked):
+  DMG `9886088642cd…`, APK `0546c3438da0…`, DEB `deff093d9801…`, Flatpak
+  `3a4528dc5dd3…`, EXE `7af7d49a03fe…`.
+
 ## Current authority — Eden Switch bridge runtime, 2026-09-17
 
 The Eden bridge (`native/eden-bridge/`) is a **separate, out-of-tree build**; it is

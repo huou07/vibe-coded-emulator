@@ -6,7 +6,7 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 ## Resume state (verified 2026-09-17)
 
 - Branch `apps-web`; Eden pinned at `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`.
-- Version **2.1.0** on all five packaged platforms; GPL-3.0-or-later.
+- Version **2.2.0** on all five packaged platforms; GPL-3.0-or-later.
 - Test suite: **285 tests, OK** (`python3 -m unittest discover -s tests`).
 - Existing GBA/NDS/3DS libretro path untouched; per-platform renderers unchanged.
 - Staging: asset version unchanged. **Nothing Switch-related is deployed** and
