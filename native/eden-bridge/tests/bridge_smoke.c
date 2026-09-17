@@ -108,6 +108,9 @@ int main(int argc, char** argv) {
     CHECK(an3_eden_get_button(NULL, 0, 0, NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "get_button(NULL) is rejected");
     CHECK(an3_eden_get_analog(NULL, 0, 0, NULL, NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "get_analog(NULL) is rejected");
     CHECK(an3_eden_save_data(NULL, "x") == AN3_EDEN_ERR_INVALID_HANDLE, "save_data(NULL) is rejected");
+    char scratch[8] = {0};
+    CHECK(an3_eden_get_save_dir(NULL, scratch, sizeof(scratch)) == AN3_EDEN_ERR_INVALID_HANDLE,
+          "get_save_dir(NULL) is rejected");
     CHECK(an3_eden_stop(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "stop(NULL) is rejected");
     CHECK(an3_eden_shutdown(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "shutdown(NULL) is rejected");
     CHECK(strcmp(an3_eden_last_error(NULL), "") == 0, "last_error(NULL) is empty, not a crash");
@@ -245,6 +248,26 @@ int main(int argc, char** argv) {
               "invalid port is rejected");
         CHECK(an3_eden_submit_button(core, 0, 99, 1) == AN3_EDEN_ERR_INVALID_ARGUMENT,
               "invalid button is rejected");
+
+        /* Saves: query the save location and export the user save tree. */
+        char save_dir[1024] = {0};
+        an3_eden_status save_location =
+            an3_eden_get_save_dir(core, save_dir, (uint32_t)sizeof(save_dir));
+        CHECK(save_location == AN3_EDEN_OK || save_location == AN3_EDEN_ERR_UNSUPPORTED,
+              "get_save_dir reports a defined status");
+        if (save_location == AN3_EDEN_OK) {
+            CHECK(save_dir[0] != '\0', "save directory is not empty");
+            if (!json_mode) {
+                printf("an3-eden-bridge save dir: %s\n", save_dir);
+            }
+            an3_eden_status export_status = an3_eden_save_data(
+                core, "/tmp/an3-eden-save-export");
+            CHECK(export_status == AN3_EDEN_OK, "save export succeeds");
+        }
+        CHECK(an3_eden_get_save_dir(core, NULL, 16) == AN3_EDEN_ERR_INVALID_ARGUMENT,
+              "get_save_dir with a NULL buffer is rejected");
+        CHECK(an3_eden_save_data(core, NULL) == AN3_EDEN_ERR_INVALID_ARGUMENT,
+              "save_data with a NULL path is rejected");
         CHECK(an3_eden_stop(core) == AN3_EDEN_OK, "stop succeeds");
         CHECK(an3_eden_stop(core) == AN3_EDEN_OK, "stop is idempotent");
     }

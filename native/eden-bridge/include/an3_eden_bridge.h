@@ -160,6 +160,12 @@ an3_eden_status an3_eden_get_analog(an3_eden_core* core, uint32_t port,
  * Save states are not part of this ABI. */
 an3_eden_status an3_eden_save_data(an3_eden_core* core, const char* path);
 
+/* Copies the backend's save-data directory path into `out_path` (NUL
+ * terminated, truncated to `size`). Returns AN3_EDEN_ERR_UNSUPPORTED when the
+ * backend has no save store, and AN3_EDEN_ERR_INVALID_ARGUMENT for a null
+ * buffer or zero size. */
+an3_eden_status an3_eden_get_save_dir(an3_eden_core* core, char* out_path, uint32_t size);
+
 /* --- Shutdown ----------------------------------------------------------- */
 
 /* Stops emulation and releases per-session resources. Safe to call when not

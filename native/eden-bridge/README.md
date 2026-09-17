@@ -99,6 +99,13 @@ builds its devices). `an3_eden_get_button` / `an3_eden_get_analog` read Eden's
 emulated-controller state back, so a test proves the input reached the emulator.
 The analog ABI takes a stick selector (`AN3_EDEN_STICK_LEFT/RIGHT`).
 
+## Saves
+
+Eden owns writing save data. `an3_eden_get_save_dir` reports Eden's
+`EdenPath::SaveDir`, and `an3_eden_save_data(path)` exports that tree to `path`
+(a recursive copy) so AN3 can back it up or sync it without touching the live
+saves.
+
 ## Integration design
 
 ### Required Eden subsystems

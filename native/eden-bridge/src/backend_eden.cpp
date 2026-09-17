@@ -18,9 +18,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
+
+#include "common/fs/path_util.h"
 
 #include "core/core.h"
 #include "core/cpu_manager.h"
@@ -448,9 +452,60 @@ an3_eden_status eden_get_analog(an3_eden_core* core, uint32_t port, uint32_t sti
     return AN3_EDEN_OK;
 }
 
-an3_eden_status eden_save_data(an3_eden_core*, const char*) {
-    /* Save data is written by Eden's own save services. */
-    return AN3_EDEN_ERR_UNSUPPORTED;
+an3_eden_status eden_save_data(an3_eden_core* core, const char* path) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->system) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
+    }
+    if (path == nullptr || path[0] == '\0') {
+        return fail(core, AN3_EDEN_ERR_INVALID_ARGUMENT, "A destination path is required");
+    }
+    /* Eden writes saves itself; this exports its save tree to `path` so AN3 can
+     * back it up or sync it, and never touches the live save data. */
+    try {
+        namespace fs = std::filesystem;
+        const fs::path source{Common::FS::GetEdenPathString(Common::FS::EdenPath::SaveDir)};
+        if (source.empty()) {
+            return fail(core, AN3_EDEN_ERR_UNSUPPORTED, "Eden has no save directory on this platform");
+        }
+        const fs::path destination{path};
+        std::error_code error;
+        fs::create_directories(destination, error);
+        if (error) {
+            return fail(core, AN3_EDEN_ERR_IO, "Could not create the save export directory");
+        }
+        if (fs::exists(source, error)) {
+            fs::copy(source, destination,
+                     fs::copy_options::recursive | fs::copy_options::overwrite_existing, error);
+            if (error) {
+                return fail(core, AN3_EDEN_ERR_IO, "Could not export Eden's save data");
+            }
+        }
+        return AN3_EDEN_OK;
+    } catch (const std::exception& error) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
+    } catch (...) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden save export failed");
+    }
+}
+
+an3_eden_status eden_get_save_dir(an3_eden_core* core, char* out_path, uint32_t size) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->system) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
+    }
+    try {
+        const std::string dir = Common::FS::GetEdenPathString(Common::FS::EdenPath::SaveDir);
+        if (dir.empty()) {
+            return fail(core, AN3_EDEN_ERR_UNSUPPORTED, "Eden has no save directory on this platform");
+        }
+        std::snprintf(out_path, size, "%s", dir.c_str());
+        return AN3_EDEN_OK;
+    } catch (const std::exception& error) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
+    } catch (...) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden save directory lookup failed");
+    }
 }
 
 an3_eden_status eden_stop(an3_eden_core* core) {
@@ -493,10 +548,10 @@ an3_eden_status eden_shutdown(an3_eden_core* core) {
 }
 
 const an3::eden::Backend kEdenBackend{
-    "eden",        eden_initialize,    eden_load,          eden_start,
-    eden_pause,    eden_run_frame,     eden_submit_button, eden_submit_analog,
-    eden_get_button, eden_get_analog,  eden_save_data,     eden_stop,
-    eden_shutdown,
+    "eden",          eden_initialize,    eden_load,          eden_start,
+    eden_pause,      eden_run_frame,     eden_submit_button, eden_submit_analog,
+    eden_get_button, eden_get_analog,    eden_save_data,     eden_get_save_dir,
+    eden_stop,       eden_shutdown,
 };
 
 }  // namespace
