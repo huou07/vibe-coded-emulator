@@ -1,5 +1,9 @@
 # AN3 Arcade regression guards
 
+## Current authority — Switch/Eden bridge, 2026-09-17
+
+- RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **Known failing behaviour (documented, NOT fixed):** sustained framing through the macOS bridge aborts — measured `--frames 1|2|3|5` clean, `--frames 10` flaky (1 fail / 6 runs), `--frames 30|60|120|180|240|300` repeatably aborts (60/120/240 fail 3/3, 300 fails 5/5). Evidence: MoltenVK `kIOGPUCommandBufferCallbackErrorInvalidInput` then an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread (lldb: `thread #39 name='GPU' stop reason = signal SIGABRT`); the ABI cannot catch a foreign-thread throw (same class as RG-111). Likely cause: the offscreen `CAMetalLayer` in `src/cocoa_surface.mm` has no window/view host, so the swapchain degrades after a short run. Until a hosted-presentation fix lands, **sustained Switch rendering through the macOS bridge is UNVERIFIED**; do not cite load-only runs as gameplay evidence. Reproduce with `LIBVULKAN_PATH=<moltenvk dylib> an3_eden_bridge_smoke --json --frames 60 <hbmenu.nro>`.
+
 ## Current authority — Linux + macOS interactive gameplay, 2026-09-17
 
 - RG-114: The packaged 2.2.0 app must render and accept input on Linux and macOS,

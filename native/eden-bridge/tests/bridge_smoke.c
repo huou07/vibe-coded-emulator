@@ -5,14 +5,25 @@
  * Standalone smoke test for the Eden bridge C ABI. Runs with or without an Eden
  * backend: it validates the ABI, lifecycle, argument handling, error reporting
  * and idempotency. A pass here does NOT mean game emulation works.
+ *
+ * Agent/CI usage:
+ *   bridge_smoke [--json] [--frames N] [content.nro]
+ *     --json      emit one machine-readable summary line (AN3CTL_STATUS {...})
+ *     --frames N  run exactly N emulated frames after start (deterministic)
  */
 #include "an3_eden_bridge.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures = 0;
 static int checks = 0;
+static int json_mode = 0;
+static int frames_requested = 1;
+static int loaded_ok = 0;
+static int frame_callbacks = 0;
+static const char* result_mode = "error-path";
 
 #define CHECK(cond, message)                                    \
     do {                                                        \
@@ -23,6 +34,18 @@ static int checks = 0;
         }                                                       \
     } while (0)
 
+/* One line, stable key order, no spaces inside values. */
+static void emit_summary(void) {
+    if (json_mode) {
+        printf("AN3CTL_STATUS {\"target\":\"switch\",\"backend\":\"%s\",\"mode\":\"%s\","
+               "\"loaded\":%s,\"framesRequested\":%d,\"frameCallbacks\":%d,"
+               "\"checks\":%d,\"failures\":%d,\"result\":\"%s\"}\n",
+               an3_eden_backend_name(), result_mode, loaded_ok ? "true" : "false",
+               frames_requested, frame_callbacks, checks, failures,
+               failures == 0 ? "PASS" : "FAIL");
+    }
+}
+
 static void frames_seen(const an3_eden_frame* frame, void* user_data) {
     (void)frame;
     int* count = (int*)user_data;
@@ -32,9 +55,19 @@ static void frames_seen(const an3_eden_frame* frame, void* user_data) {
 }
 
 int main(int argc, char** argv) {
-    /* Optional argv[1]: a legal homebrew NRO (for example nx-hbmenu) to drive
-     * the happy path. Without it the test uses a path that cannot load. */
-    const char* content_path = argc > 1 ? argv[1] : "/nonexistent/an3-smoke.nro";
+    /* Optional flags: --json, --frames N. The first non-flag argument is a
+     * legal homebrew NRO (for example nx-hbmenu) to drive the happy path;
+     * without it the test uses a path that cannot load. */
+    const char* content_path = "/nonexistent/an3-smoke.nro";
+    for (int index = 1; index < argc; index++) {
+        if (strcmp(argv[index], "--json") == 0) { json_mode = 1; continue; }
+        if (strcmp(argv[index], "--frames") == 0 && index + 1 < argc) {
+            frames_requested = atoi(argv[++index]);
+            if (frames_requested < 1) frames_requested = 1;
+            continue;
+        }
+        content_path = argv[index];
+    }
 
     /* ABI identity */
     CHECK(an3_eden_bridge_abi_version() == AN3_EDEN_BRIDGE_ABI_VERSION, "abi version matches the header");
@@ -88,6 +121,8 @@ int main(int argc, char** argv) {
               "re-initialise after failure is still UNAVAILABLE");
         CHECK(an3_eden_shutdown(core) == AN3_EDEN_OK, "shutdown after a failed initialise succeeds");
         an3_eden_destroy(core);
+        result_mode = "unavailable";
+        emit_summary();
         printf("an3-eden-bridge smoke: %d checks, %d failures (backend unavailable; lifecycle verified)\n",
                checks, failures);
         return failures == 0 ? 0 : 1;
@@ -106,13 +141,23 @@ int main(int argc, char** argv) {
               load == AN3_EDEN_ERR_KEYS_REQUIRED || load == AN3_EDEN_ERR_UNAVAILABLE,
           "load reports a defined status");
     if (load == AN3_EDEN_OK) {
+        loaded_ok = 1;
+        result_mode = "loaded";
         printf("an3-eden-bridge loaded %s\n", content_path);
         CHECK(an3_eden_start(core) == AN3_EDEN_OK, "start succeeds after load");
         CHECK(an3_eden_pause(core, 1) == AN3_EDEN_OK, "pause succeeds while started");
         CHECK(an3_eden_pause(core, 0) == AN3_EDEN_OK, "resume succeeds while started");
+        /* Deterministic frame stepping: run exactly N frames and count callback
+         * deliveries. The callback count stays 0 until frame readback lands, so
+         * the assertion is on the run_frame status, not the pixel path. */
         int seen = 0;
-        CHECK(an3_eden_run_frame(core, frames_seen, &seen) == AN3_EDEN_OK, "run_frame succeeds");
-        printf("an3-eden-bridge run_frame: frame callbacks=%d\n", seen);
+        int frame_errors = 0;
+        for (int frame = 0; frame < frames_requested; frame++) {
+            if (an3_eden_run_frame(core, frames_seen, &seen) != AN3_EDEN_OK) frame_errors++;
+        }
+        frame_callbacks = seen;
+        CHECK(frame_errors == 0, "every run_frame in the bounded loop returns OK");
+        printf("an3-eden-bridge run_frame: requested=%d frame callbacks=%d\n", frames_requested, seen);
         /* Input and save bridges are later milestones: the ABI accepts them and
          * must report UNSUPPORTED rather than faking success. */
         an3_eden_status button = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 1);
@@ -137,6 +182,7 @@ int main(int argc, char** argv) {
     CHECK(an3_eden_shutdown(core) == AN3_EDEN_OK, "repeated shutdown is idempotent");
     an3_eden_destroy(core);
 
+    emit_summary();
     printf("an3-eden-bridge smoke: %d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

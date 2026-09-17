@@ -124,10 +124,31 @@ preserve its notices.
 
 ## Next step
 
-Milestone D: frame delivery. Decide between (a) a swapchain image copy/readback
-into a callback-owned buffer (simplest, no extra window) and (b) a hosted AN3
-window/CAMetalLayer shared with the bridge. Then Milestone E: HID input mapping
-from the libretro button ids already defined in the ABI.
+Milestone D: frame delivery (now also the fix for the RG-115 crash). Decide
+between (a) a swapchain image copy/readback into a callback-owned buffer
+(simplest, no extra window) and (b) a hosted AN3 window/CAMetalLayer shared with
+the bridge — (b) also stabilises the macOS swapchain. Then Milestone E: HID input.
+
+### Milestone E input research (recorded so it is not repeated)
+
+Eden's `HIDCore` (`src/hid_core/hid_core.h`) exposes
+`GetEmulatedController(NpadIdType)`; `EmulatedController::SetCallback` is only a
+**change notifier**, not an input source. Input arrives from bound
+`Common::Input::InputDevice`s. Eden already ships two synthetic engines a bridge
+can drive without a physical device:
+
+- `engine:tas` — `EmulatedController::LoadTASParams()` binds
+  `tas_button_params[Settings::NativeButton::*]` / `tas_stick_params` with
+  documented button indices (A=0,B=1,X=2,Y=3,LStick=4,RStick=5,L=6,R=7,ZL=8,
+  ZR=9,Plus=10,Minus=11,DLeft=12,DUp=13,DRight=14,DDown=15,…) and stick axes
+  (L x/y=0/1, R x/y=2/3), driven by `InputCommon::Tas::RecordInput(buttons,
+  left_axis, right_axis)` (`src/input_common/drivers/tas_input.h`).
+- `engine:virtual_gamepad` — `LoadVirtualGamepadParams()`.
+
+Implementing `an3_eden_submit_button/submit_analog` therefore means: initialise
+Eden's `InputCommon`, bind player 1's buttons/sticks to the `tas` (or
+`virtual_gamepad`) engine, and feed state from the ABI's existing libretro button
+ids. That is an Eden-internal integration with no ABI change.
 
 ## Test-content note
 
@@ -136,3 +157,50 @@ Legal verification content used: `nx-hbmenu` v3.6.1
 (`hbmenu.nro`, 2,455,539 bytes, SHA-256
 `6cf6d130515723ebe0041c2479420caf9726895087439ff7b2e528c2ed39c100`). It is not
 committed to this repository.
+
+## Phase 5 — deterministic Switch harness + a sustained-render crash (2026-09-17)
+
+`native/eden-bridge/tests/bridge_smoke.c` now takes `--json` and `--frames N`:
+
+```bash
+an3_eden_bridge_smoke --json                       # error path
+an3_eden_bridge_smoke --json --frames 1 hbmenu.nro # loaded
+```
+
+It emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line so
+the Switch path is machine-readable for an3ctl/CI. Backward compatible (no flags
+= 1 frame; the 39-check error path and 50-check loaded path are unchanged).
+
+**Finding (reproducible, not fixed): sustained emulation through the macOS bridge
+aborts.** Calling `an3_eden_run_frame` repeatedly terminates the process once the
+session runs long enough. Measured (each cell = pass/fail counts):
+
+| `--frames` | result |
+| --- | --- |
+| 1, 2, 3, 5 | 0 failures |
+| 10 | flaky — 1 failure in 6 runs |
+| 30, 60, 120, 180, 240 | repeatably fails (3/3 at 60/120/240) |
+| 300 | fails 5/5 |
+
+Reproduction:
+
+```bash
+export LIBVULKAN_PATH=/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib
+an3_eden_bridge_smoke --json --frames 60 hbmenu.nro   # aborts
+```
+
+Observed: repeated
+`Execution of the command buffer was aborted ... kIOGPUCommandBufferCallbackErrorInvalidInput`,
+then an **uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread** → SIGABRT
+(lldb: `thread #39 name='GPU' stop reason = signal SIGABRT`). The bridge cannot
+catch this: it is thrown on Eden's own thread, the same class as RG-111. This is
+why the earlier macOS verification only ever exercised one frame.
+
+Likely layer: the offscreen `CAMetalLayer` in `src/cocoa_surface.mm` is not
+attached to any window/view, so MoltenVK has no stable drawable source and the
+swapchain degrades after a short run. The fix belongs to the hosted-presentation
+milestone (Milestone D): host the layer on a real/hidden `NSWindow`/`NSView`, or
+handle swapchain recreation. Until then, **the macOS Eden bridge is verified only
+for load + a few frames**, and sustained Switch rendering via the bridge is
+`UNVERIFIED`.
+

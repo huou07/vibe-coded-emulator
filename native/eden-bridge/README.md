@@ -74,7 +74,15 @@ export LIBVULKAN_PATH="/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dyn
 /tmp/eden-build/bin/an3_eden_bridge_smoke
 # Real legal homebrew content (nx-hbmenu v3.6.1 is ISC-licensed):
 /tmp/eden-build/bin/an3_eden_bridge_smoke /path/to/hbmenu.nro
+# Machine-readable, deterministic (agent/CI):
+/tmp/eden-build/bin/an3_eden_bridge_smoke --json --frames 1 /path/to/hbmenu.nro
+#   -> AN3CTL_STATUS {"target":"switch",...,"result":"PASS"}
 ```
+
+`--frames N` runs exactly N emulated frames after start. **Known limitation:**
+more than a handful of frames aborts on macOS (MoltenVK drawable failure on the
+unhosted `CAMetalLayer`); see `docs/REGRESSION_GUARDS.md` RG-115. Load + a few
+frames are verified; sustained rendering is not.
 
 Without `LIBVULKAN_PATH`, initialise still succeeds but `load` reports
 `ErrorVideoCore` because the Vulkan library cannot be opened.
