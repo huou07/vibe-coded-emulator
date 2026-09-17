@@ -30,6 +30,9 @@ const COMPANION_BINARY: &str = "an3_switch_companion";
 const COMPANION_RESOURCE_PATH: &str = "switch/macos-arm64/an3_switch_companion";
 /// Development fallback next to the (gitignored) prepared vendor artifacts.
 const COMPANION_DEVELOPMENT_PATH: &str = "../vendor/switch/macos-arm64/an3_switch_companion";
+/// MoltenVK the companion's Eden backend loads on macOS.
+const MOLTENVK_RESOURCE_PATH: &str = "azahar/macos-arm64/libMoltenVK.dylib";
+const MOLTENVK_DEVELOPMENT_PATH: &str = "../vendor/moltenvk/macos-arm64/libMoltenVK.dylib";
 /// Default timeout for a single control-protocol round trip.
 const IPC_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a graceful stop may take before the process is killed.
@@ -115,6 +118,23 @@ pub(crate) fn resolve_companion(app: &tauri::AppHandle) -> Result<PathBuf, Strin
     Err("The Nintendo Switch companion is not installed in this build. Re-run the packaging step so `an3_switch_companion` is bundled.".to_string())
 }
 
+/// Resolves the MoltenVK runtime the companion's Eden backend needs. Returns
+/// None when the environment already provides one or none is bundled.
+fn resolve_moltenvk(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    if let Ok(explicit) = std::env::var("LIBVULKAN_PATH") {
+        if !explicit.is_empty() {
+            return None;
+        }
+    }
+    if let Ok(resources) = app.path().resource_dir() {
+        if let Some(path) = existing_file(&resources.join(MOLTENVK_RESOURCE_PATH)) {
+            return Some(path);
+        }
+    }
+    existing_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join(MOLTENVK_DEVELOPMENT_PATH))
+}
+
 /// Reports whether the companion can be launched on this machine.
 pub fn detect(app: &tauri::AppHandle) -> CompanionInfo {
     match resolve_companion(app) {
@@ -196,11 +216,16 @@ pub fn launch(app: &tauri::AppHandle, content: &str, visible: bool) -> Result<Co
         return Err("The Switch content file does not exist".to_string());
     }
     stop();
-    let mut child = Command::new(&path)
+    let mut command = Command::new(&path);
+    command
         .args(build_args(content, visible))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(moltenvk) = resolve_moltenvk(app) {
+        command.env("LIBVULKAN_PATH", moltenvk);
+    }
+    let mut child = command
         .spawn()
         .map_err(|error| format!("Could not start the Switch companion: {error}"))?;
     let stdin = child.stdin.take().ok_or("companion stdin was not available")?;

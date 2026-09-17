@@ -37,9 +37,23 @@ namespace {
 
 std::atomic<bool> g_quit{false};
 std::atomic<bool> g_running{false};
+std::atomic<bool> g_ready{false};
 std::atomic<unsigned long long> g_frames{0};
 an3_eden_core* g_core = nullptr;
 int g_status_every = 0;
+
+/* Eden's pinned revision can deadlock in ShutdownMainProcess() when the
+ * process is torn down before its GPU has settled (~1s after start). Lifecycle
+ * commands therefore wait briefly for readiness first; AN3 additionally kills
+ * the companion on timeout, so a stuck init can never hang the app. */
+constexpr int kReadySettleMs = 1200;
+
+void request_quit(void) {
+    for (int waited = 0; waited < kReadySettleMs && !g_ready.load(); waited += 50) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    g_quit.store(true);
+}
 
 void on_signal(int) {
     g_quit.store(true);
@@ -122,11 +136,16 @@ int button_from_name(const std::string& name) {
 }
 
 void frame_loop(void) {
+    const auto started = std::chrono::steady_clock::now();
     while (!g_quit.load()) {
         if (an3_eden_run_frame(g_core, nullptr, nullptr) != AN3_EDEN_OK) {
             break;
         }
         const unsigned long long frames = g_frames.fetch_add(1) + 1;
+        if (std::chrono::steady_clock::now() - started >=
+            std::chrono::milliseconds(kReadySettleMs)) {
+            g_ready.store(true);
+        }
         if (g_status_every > 0 && frames % static_cast<unsigned long long>(g_status_every) == 0) {
             emit_status("running", "PASS");
         }
@@ -146,7 +165,7 @@ void command_loop(void) {
             continue;
         }
         if (std::strcmp(verb, "quit") == 0 || std::strcmp(verb, "stop") == 0) {
-            g_quit.store(true);
+            request_quit();
             break;
         }
         if (std::strcmp(verb, "status") == 0) {
@@ -277,14 +296,14 @@ int main(int argc, char** argv) {
         while (g_frames.load() < static_cast<unsigned long long>(frames) && !g_quit.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        g_quit.store(true);
+        request_quit();
     } else if (seconds > 0) {
         std::thread watchdog([seconds] {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
             while (!g_quit.load() && std::chrono::steady_clock::now() < deadline) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
-            g_quit.store(true);
+            request_quit();
         });
         watchdog.detach();
     }

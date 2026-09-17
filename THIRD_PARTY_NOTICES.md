@@ -17,6 +17,21 @@ published, official source archives are listed here.
 | melonDS DS libretro (`melondsds_libretro.so`/`.dylib`/`.dll`) | 1.3.1 @ `bc4e4b67d2d470d7c682810a1e892cafd6f9082b` | GPL-3.0-or-later | melonDS DS contributors | https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b |
 | mGBA libretro (`mgba_libretro.so`/`.dylib`/`.dll`) | 0.11-219 @ `e31759b24e7a4e3899285ff720d7b573ac328ae7` | MPL-2.0 | mGBA contributors | https://github.com/mgba-emu/mgba/tree/e31759b24e7a4e3899285ff720d7b573ac328ae7 |
 
+### Nintendo Switch companion (macOS)
+
+| Component | Version / revision | License | Copyright | Corresponding source |
+| --- | --- | --- | --- | --- |
+| `an3_switch_companion` (Vibe Coded Emulator's own Eden bridge) | bridge ABI 3 | GPL-3.0-or-later | Vibe Coded Emulator contributors | This repository, `native/eden-bridge/` |
+| Eden | pinned `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c` | GPL-3.0-or-later (per-file GPL-2.0-or-later/GPL-3.0-or-later) | Eden Emulator Project | https://git.eden-emu.dev/eden-emu/eden at commit `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c` |
+
+The companion is **launched as a separate process**, never linked into the AN3
+application binary. Eden is built out-of-tree at the pinned commit and is not
+vendored. The bundled `an3_switch_companion`, its exact Eden pin, the SHA-256 of
+the executable and the list of bundled third-party libraries are recorded in
+`native-offline/vendor/switch/macos-arm64/manifest.json`; Eden's GPL text ships
+alongside it as `EDEN-GPL-3.0-or-later.txt`. No firmware, `prod.keys` or
+commercial ROM is bundled or required for the supported homebrew path.
+
 Core and archive SHA-256 pins, plus the bundled license texts
 (`native-core-licenses/`), are recorded in
 `native-offline/THIRD_PARTY_NOTICES.md`. `scripts/fetch-*.mjs` verify hashes

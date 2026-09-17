@@ -1,6 +1,7 @@
 {
   "bundle": {
     "resources": {
+      "../vendor/switch/macos-arm64/": "switch/macos-arm64/",
       "../vendor/azahar/macos-arm64/azahar_libretro.dylib": "azahar/macos-arm64/azahar_libretro.dylib",
       "../vendor/azahar/macos-arm64/manifest.json": "azahar/macos-arm64/manifest.json",
       "../vendor/azahar/macos-arm64/LICENSE": "azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt",

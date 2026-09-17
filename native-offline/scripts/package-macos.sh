@@ -20,6 +20,17 @@ codesign --force --sign - "$APP/Contents/Resources/azahar/macos-arm64/azahar_lib
 codesign --force --sign - "$APP/Contents/Resources/libretro/macos-arm64/mgba_libretro.dylib"
 codesign --force --sign - "$APP/Contents/Resources/libretro/macos-arm64/melondsds_libretro.dylib"
 codesign --force --sign - "$APP/Contents/Resources/azahar/macos-arm64/libMoltenVK.dylib"
+# The Switch companion is a self-contained subprocess: sign it and the dylibs
+# it bundles so the installed app can launch it without development paths.
+if [[ -d "$APP/Contents/Resources/switch/macos-arm64" ]]; then
+  for lib in "$APP/Contents/Resources/switch/macos-arm64/lib/"*.dylib; do
+    [[ -e "$lib" ]] && codesign --force --sign - "$lib"
+  done
+  codesign --force --sign - "$APP/Contents/Resources/switch/macos-arm64/an3_switch_companion"
+  chmod +x "$APP/Contents/Resources/switch/macos-arm64/an3_switch_companion"
+else
+  echo "WARNING: the Switch companion is not bundled; Switch will report unavailable." >&2
+fi
 codesign --force --deep --entitlements "$ROOT/src-tauri/native-staging.entitlements" --sign - "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 hdiutil create -volname "VibeCodedEmulator" -srcfolder "$APP" -ov -format UDZO "$OUTPUT"

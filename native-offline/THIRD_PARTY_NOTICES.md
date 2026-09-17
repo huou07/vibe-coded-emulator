@@ -97,3 +97,19 @@ It is bundled only for bounded, app-private inspection and streaming of the
 one selected archive entry. XZ for Java is in the public domain.
 
 - Upstream: https://tukaani.org/xz/java.html
+
+## Nintendo Switch companion (macOS) — Eden bridge
+
+`Resources/switch/macos-arm64/an3_switch_companion` is Vibe Coded Emulator's
+own Eden bridge (GPL-3.0-or-later), built inside Eden's tree and shipped as a
+**separate process**. It statically contains Eden at the pinned commit
+`7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c` (GPL-3.0-or-later; per-file
+GPL-2.0-or-later/GPL-3.0-or-later). Eden is not vendored in this repository.
+
+- Eden corresponding source: https://git.eden-emu.dev/eden-emu/eden at the pin above
+- Bridge source: this repository, `native/eden-bridge/`
+- GPL text shipped in the app: `Resources/switch/macos-arm64/EDEN-GPL-3.0-or-later.txt`
+- Exact binary hash and the bundled third-party dylibs: `Resources/switch/macos-arm64/manifest.json`
+
+No firmware, `prod.keys`/`title.keys` or commercial ROM is bundled; the verified
+path uses legal homebrew (`.nro`) only.

@@ -1,0 +1,40 @@
+{
+  "name": "an3_switch_companion",
+  "bridgeAbi": 3,
+  "source": "native/eden-bridge (compiled inside Eden's build tree)",
+  "eden": {
+    "upstream": "https://git.eden-emu.dev/eden-emu/eden",
+    "commit": "7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c"
+  },
+  "license": "GPL-3.0-or-later",
+  "licenseText": "EDEN-GPL-3.0-or-later.txt",
+  "sha256": "e91992a25f4084797d6cc3873ea8e4715fefa0c83578d92ae980ad01856a53ae",
+  "size": 21881048,
+  "bundledLibraries": [
+    "libSDL3.0.dylib",
+    "libSvtAv1Enc.4.dylib",
+    "libavcodec.63.dylib",
+    "libavdevice.63.dylib",
+    "libavfilter.12.dylib",
+    "libavformat.63.dylib",
+    "libavutil.61.dylib",
+    "libbrotlicommon.1.dylib",
+    "libbrotlidec.1.dylib",
+    "libbrotlienc.1.dylib",
+    "libcrypto.3.dylib",
+    "libdav1d.7.dylib",
+    "liblz4.1.dylib",
+    "liblzma.5.dylib",
+    "libmp3lame.0.dylib",
+    "libmpg123.0.dylib",
+    "libopus.0.dylib",
+    "libssl.3.dylib",
+    "libswresample.7.dylib",
+    "libswscale.10.dylib",
+    "libvmaf.3.dylib",
+    "libvpx.12.dylib",
+    "libx264.165.dylib",
+    "libx265.216.dylib",
+    "libzstd.1.dylib"
+  ]
+}
