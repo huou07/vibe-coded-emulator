@@ -108,3 +108,81 @@ deployment was performed from this worker.
   app-level E2E and the library source contracts.
 - Physical gamepad and real keyboard interaction are UNVERIFIED (no device).
 - macOS app is ad-hoc signed, not notarized.
+
+---
+
+## Phase 2 — real UI verification, audio path, failure coverage (2026-09-17)
+
+Branch `agent/switch`. Additional commits on top of `432ac13`:
+
+| SHA | Change |
+| --- | --- |
+| `b63b1c6` | Test-only UI automation bridge (`ui-control`) + real packaged UI E2E (RG-121) |
+| `e2a16d8` | Failure-path coverage (RG-122) + audio-path verification (RG-123) |
+
+### WKWebView automation (the previous gap)
+
+The macOS shell now exposes a **test-only** loopback bridge. It is compiled only
+with the cargo feature `ui-control`; a distribution build does not contain it
+(verified: `strings` finds **0** `AN3_UI_CONTROL_FILE` occurrences). It binds
+`127.0.0.1` on an ephemeral port, requires a random bearer token written to
+`AN3_UI_CONTROL_FILE`, accepts only a validated `data-testid` (never caller
+JavaScript), and dispatches real DOM events so a click runs the same frontend
+handler a user would. `AN3_UI_TEST_ROM` pre-answers the native picker so the
+real import path and library storage still run.
+
+`an3ctl` gained `app start|stop --target macos` and real
+`ui tree|query|click|text|wait --target macos`.
+
+### Packaged-app UI E2E (`tests/test_switch_ui_e2e.py`, RG-121)
+
+Runs against a freshly built bundle through `an3ctl ui --target macos`:
+
+start → detect → import (`choose-rom`) → Switch card → launch (`switch-launch`)
+→ `switch-status` state `running` + a live companion process → focus → stop →
+state `stopped` + no process → relaunch → running → stop → app close leaves no
+orphan. Verified passing in ~12 s, no screenshots, no coordinate clicks, no
+direct command calls. Isolated HOME and a throwaway install copy.
+
+### Audio (RG-123)
+
+A non-null backend (`auto|cubeb|sdl3`), a device with ≥1 channel and a valid
+0..1 volume, and a stable diagnostic during sustained rendering are verified.
+**Audible output remains UNVERIFIED** (no loopback capture; the homebrew fixture
+is not a reliable sound source). Eden owns audio; no redundant AN3 bridge exists.
+
+### Failure paths / RG-111 (RG-122)
+
+Invalid `.nro` and missing Vulkan both end as `AN3CTL_STATUS mode=load-failed
+result=FAIL` with a normal exit (never SIGABRT); the companion recovers after
+repeated failures; a failed launch leaves no process. **RG-111 stays CONTAINED**
+(the upstream destructor defect is not fixed; isolation + the Vulkan pre-flight
+keep the host safe).
+
+### Saves
+
+Unchanged from the prior report: service-level persistence verified (RG-120);
+**game-level save round-trip UNVERIFIED** (nx-hbmenu writes no game save; no
+legal homebrew fixture that writes one is available).
+
+### Regression
+
+Python suite **320 tests OK**; `web_nds_touch_behavior`, `web_renderer_behavior`
+and `native_android_library` node suites pass; `npm --prefix native-offline run
+check` OK. GBA/NDS/3DS library and native paths are unchanged; Android does not
+advertise or launch Switch.
+
+### Distribution artifact
+
+`VibeCodedEmulator.app` 2.3.0, ad-hoc signed, `codesign --verify --deep` OK,
+137 MB, companion + 25 libraries + Eden GPL text + manifest bundled, no
+`/opt/homebrew`/`/usr/local` references, no UI-control bridge. `tests/
+test_switch_packaged.py` passes against it.
+
+### Integration handoff
+
+The integration branch `integration/20260917-1326` still does **not** contain
+these commits (`git merge-base --is-ancestor 432ac13 integration/20260917-1326`
+= false). No programmatic OpenCode session channel is available from this
+worker, so the handoff is recorded here: integrate `c5784ac…e2a16d8` from
+`agent/switch` in order. Staging was not deployed from this worker.
