@@ -315,6 +315,12 @@
           "markdownDescription": "Enables the switch_companion_launch command without any pre-configured scope."
         },
         {
+          "description": "Enables the switch_companion_launch_rom command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-launch-rom",
+          "markdownDescription": "Enables the switch_companion_launch_rom command without any pre-configured scope."
+        },
+        {
           "description": "Enables the switch_companion_status command without any pre-configured scope.",
           "type": "string",
           "const": "allow-switch-companion-status",
@@ -463,6 +469,12 @@
           "type": "string",
           "const": "deny-switch-companion-launch",
           "markdownDescription": "Denies the switch_companion_launch command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_launch_rom command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-launch-rom",
+          "markdownDescription": "Denies the switch_companion_launch_rom command without any pre-configured scope."
         },
         {
           "description": "Denies the switch_companion_status command without any pre-configured scope.",

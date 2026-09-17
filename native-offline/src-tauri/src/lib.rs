@@ -85,6 +85,10 @@ pub(crate) fn native_system_from_extension(extension: &str) -> Option<&'static s
         Some("gba")
     } else if extension.eq_ignore_ascii_case("nds") {
         Some("nds")
+    } else if extension.eq_ignore_ascii_case("nro") {
+        // Nintendo Switch homebrew runs in the separate companion process, not
+        // through a libretro core.
+        Some("switch")
     } else if NATIVE_3DS_FILE_EXTENSIONS
         .iter()
         .any(|known| extension.eq_ignore_ascii_case(known))
@@ -100,6 +104,7 @@ fn canonical_extension_for_system(system: &str) -> Option<&'static str> {
         "gba" => Some("gba"),
         "nds" => Some("nds"),
         "3ds" => Some("3ds"),
+        "switch" => Some("nro"),
         _ => None,
     }
 }
@@ -110,6 +115,10 @@ fn native_system_from_header(source: &Path, file_size: u64) -> Option<&'static s
     input.read_exact(&mut header).ok()?;
     if &header[0x100..0x104] == b"NCSD" || &header[0x100..0x104] == b"NCCH" {
         return Some("3ds");
+    }
+    // Nintendo Switch homebrew (NRO) magic lives at offset 0x10.
+    if &header[0x10..0x14] == b"NRO0" {
+        return Some("switch");
     }
     if header[0xb2] == 0x96 {
         return Some("gba");
@@ -557,10 +566,10 @@ fn import_native_rom(
     }
     let source_extension = safe_extension(&source);
     if source_extension.eq_ignore_ascii_case("zip") || source_extension.eq_ignore_ascii_case("cia") {
-        return Err("Choose an extracted, decrypted GBA, NDS, or 3DS ROM. ZIP archives and CIA install packages are not playable in the in-app native player.".into());
+        return Err("Choose an extracted, decrypted GBA, NDS, or 3DS ROM, or a Switch .nro homebrew. ZIP archives and CIA install packages are not playable in the in-app native player.".into());
     }
     let system = detect_native_system(&source, &source_extension, metadata.len()).ok_or_else(|| {
-        "Choose a supported GBA, NDS, or decrypted 3DS ROM file for the in-app player.".to_string()
+        "Choose a supported GBA, NDS, or decrypted 3DS ROM, or a Switch .nro homebrew, for the in-app player.".to_string()
     })?;
     let directory = app
         .path()
@@ -694,6 +703,16 @@ fn switch_companion_launch(
     switch_companion::launch(&app, &content, visible.unwrap_or(true))
 }
 
+#[cfg(not(mobile))]
+#[tauri::command]
+fn switch_companion_launch_rom(
+    app: AppHandle,
+    rom_id: String,
+    visible: Option<bool>,
+) -> Result<switch_companion::CompanionStatus, String> {
+    switch_companion::launch_rom(&app, &rom_id, visible.unwrap_or(true))
+}
+
 #[tauri::command]
 fn switch_companion_status() -> switch_companion::CompanionStatus {
     switch_companion::status()
@@ -793,6 +812,7 @@ pub fn run() {
             native_controller_lan_refresh,
             switch_companion_detect,
             switch_companion_launch,
+            switch_companion_launch_rom,
             switch_companion_status,
             switch_companion_stop,
             switch_companion_focus,

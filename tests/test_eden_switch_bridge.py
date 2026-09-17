@@ -216,12 +216,40 @@ class SwitchCompanionContractTests(unittest.TestCase):
         self.assertIn("STOP_TIMEOUT", source)
         self.assertIn("try_wait", source)
 
-    def test_32_switch_is_not_advertised_as_a_native_system(self):
-        # Until the companion is packaged and wired into the library UI, .nro
-        # must not be mapped onto the libretro NativeSystem path.
-        self.assertNotIn('eq_ignore_ascii_case("nro")', self.lib)
-        self.assertNotIn('"switch" =>', self.lib)
+    def test_32_switch_is_routed_to_the_companion_not_the_libretro_host(self):
+        bootstrap = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
+        offline = (ROOT / "static/offline.js").read_text(encoding="utf-8")
+        # The library recognises .nro as Nintendo Switch.
+        self.assertIn('switch:{label:"Nintendo Switch"', offline)
+        self.assertIn('".nro":"switch"', offline)
+        # Launch routes Switch to the companion, never start_native_game.
+        self.assertIn('nativeSystem === "switch"', bootstrap)
+        self.assertIn('switch_companion_launch_rom', bootstrap)
+        # Capability is detected at runtime, not claimed statically.
+        self.assertIn("AN3NativeSwitch.detect()", bootstrap)
+        # The rom-id launcher enforces .nro only.
+        self.assertIn("Only Nintendo Switch .nro homebrew", self.companion.read_text(encoding="utf-8"))
+        self.assertIn("switch_companion_launch_rom", self.lib)
         self.assertIn("switch_companion::stop()", self.lib)
+
+    def test_35_nro_detection_is_wired_in_the_importer(self):
+        self.assertIn('eq_ignore_ascii_case("nro")', self.lib_source())
+
+    def lib_source(self):
+        return (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+
+    def test_36_switch_ui_has_focus_and_stop_controls(self):
+        offline = (ROOT / "static/offline.js").read_text(encoding="utf-8")
+        self.assertIn('dataset.switchControl="focus"', offline)
+        self.assertIn('dataset.switchControl="stop"', offline)
+        self.assertIn("AN3NativeSwitch", offline)
+        self.assertIn("AN3RerenderLibrary", offline)
+
+    def test_37_companion_e2e_test_is_present_and_gated(self):
+        source = self.companion.read_text(encoding="utf-8")
+        self.assertIn("e2e_launch_input_stop_relaunch", source)
+        self.assertIn("AN3_SWITCH_HOMEBREW", source)
+        self.assertIn("AN3_SWITCH_COMPANION", source)
 
 
 if __name__ == "__main__":

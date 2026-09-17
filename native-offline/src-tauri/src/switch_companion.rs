@@ -181,10 +181,10 @@ fn request(process: &mut CompanionProcess, command: &str, timeout: Duration) -> 
         }
         match process.lines.recv_timeout(remaining) {
             Ok(line) => {
-                let terminal = line.starts_with("AN3CTL_ACK")
-                    || line.starts_with("AN3CTL_STATUS")
-                    || line.starts_with("AN3CTL_AUDIO")
-                    || line.starts_with("AN3CTL_ERROR");
+                let terminal = line.contains("AN3CTL_ACK")
+                    || line.contains("AN3CTL_STATUS")
+                    || line.contains("AN3CTL_AUDIO")
+                    || line.contains("AN3CTL_ERROR");
                 lines.push(line);
                 if terminal {
                     return Ok(lines);
@@ -207,22 +207,62 @@ fn reap(process: &mut CompanionProcess) -> Option<i32> {
     }
 }
 
+/// Waits for an unsolicited line matching `predicate` (used for the ready
+/// signal) so later request/reply round trips stay aligned.
+fn wait_for(
+    process: &mut CompanionProcess,
+    predicate: impl Fn(&str) -> bool,
+    timeout: Duration,
+) -> Result<String, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("the companion did not become ready in time".to_string());
+        }
+        match process.lines.recv_timeout(remaining) {
+            Ok(line) => {
+                if predicate(&line) {
+                    return Ok(line);
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                return Err("the companion did not become ready in time".to_string())
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err("the companion closed its control channel".to_string())
+            }
+        }
+    }
+}
+
 /// Launches the companion for `content`. `visible` requests an on-screen
 /// window. An already-running companion is stopped first so a duplicate is
 /// never started.
 pub fn launch(app: &tauri::AppHandle, content: &str, visible: bool) -> Result<CompanionStatus, String> {
     let path = resolve_companion(app)?;
+    let moltenvk = resolve_moltenvk(app);
+    launch_with(&path, moltenvk.as_deref(), content, visible)
+}
+
+/// Core launch used by both the app and the automated E2E test.
+pub(crate) fn launch_with(
+    binary: &Path,
+    moltenvk: Option<&Path>,
+    content: &str,
+    visible: bool,
+) -> Result<CompanionStatus, String> {
     if !Path::new(content).is_file() {
         return Err("The Switch content file does not exist".to_string());
     }
     stop();
-    let mut command = Command::new(&path);
+    let mut command = Command::new(binary);
     command
         .args(build_args(content, visible))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    if let Some(moltenvk) = resolve_moltenvk(app) {
+    if let Some(moltenvk) = moltenvk {
         command.env("LIBVULKAN_PATH", moltenvk);
     }
     let mut child = command
@@ -246,10 +286,10 @@ pub fn launch(app: &tauri::AppHandle, content: &str, visible: bool) -> Result<Co
     });
     let pid = child.id();
     let mut process = CompanionProcess { child, stdin, lines: receiver };
-    // The companion prints AN3CTL_STATUS once it is running.
-    let startup = request(&mut process, "status", Duration::from_secs(20));
-    let note = match startup {
-        Ok(lines) => lines.into_iter().find(|line| line.contains("PASS")),
+    // The companion prints AN3CTL_STATUS once it is running. Drain that ready
+    // signal (it is not a reply) so request/reply stays aligned.
+    let note = match wait_for(&mut process, |line| line.contains("AN3CTL_STATUS"), Duration::from_secs(20)) {
+        Ok(line) => Some(line),
         Err(error) => {
             let _ = process.child.kill();
             let _ = process.child.wait();
@@ -264,6 +304,26 @@ pub fn launch(app: &tauri::AppHandle, content: &str, visible: bool) -> Result<Co
         frames: None,
         note,
     })
+}
+
+/// Launches the companion for an imported ROM id from the app's private
+/// storage. Only `.nro` homebrew is accepted.
+#[cfg(not(mobile))]
+pub fn launch_rom(app: &tauri::AppHandle, rom_id: &str, visible: bool) -> Result<CompanionStatus, String> {
+    use tauri::Manager;
+    crate::validate_rom_id(rom_id)?;
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot locate VibeCodedEmulator local storage: {error}"))?
+        .join("an3-roms");
+    let rom = crate::native_rom_path(&directory, rom_id, None)
+        .ok_or_else(|| "The imported Switch homebrew is unavailable.".to_string())?;
+    let extension = rom.extension().and_then(|value| value.to_str()).unwrap_or_default();
+    if !extension.eq_ignore_ascii_case("nro") {
+        return Err("Only Nintendo Switch .nro homebrew can run in the companion.".to_string());
+    }
+    launch(app, &rom.to_string_lossy(), visible)
 }
 
 /// Current companion state, reaping the child if it exited on its own.
@@ -348,7 +408,7 @@ pub fn audio() -> Result<CompanionAudio, String> {
     let lines = request(process, "audio", IPC_TIMEOUT)?;
     let line = lines
         .iter()
-        .find(|line| line.starts_with("AN3CTL_AUDIO"))
+        .find(|line| line.contains("AN3CTL_AUDIO"))
         .ok_or("the companion did not report audio state")?;
     // The companion emits compact JSON; parse the fields we need.
     let field = |name: &str| -> Option<String> {
@@ -431,5 +491,53 @@ mod tests {
         assert!(input_analog("L", 0.0, 0.0).is_err());
         assert!(focus().is_err());
         assert!(audio().is_err());
+    }
+
+    /// End-to-end CompanionSystem lifecycle against the real bundled companion.
+    /// Ignored by default (it launches a process and needs a legal homebrew
+    /// fixture); run with `--ignored` when both env vars are set.
+    #[test]
+    #[ignore = "requires AN3_SWITCH_COMPANION and AN3_SWITCH_HOMEBREW"]
+    fn e2e_launch_input_stop_relaunch() {
+        let binary = PathBuf::from(std::env::var("AN3_SWITCH_COMPANION").expect("binary"));
+        let content = std::env::var("AN3_SWITCH_HOMEBREW").expect("homebrew nro");
+        let moltenvk = std::env::var("AN3_SWITCH_MOLTENVK").ok().map(PathBuf::from);
+
+        let started = launch_with(&binary, moltenvk.as_deref(), &content, false).expect("launch");
+        assert!(started.running);
+        assert!(started.pid.is_some());
+
+        // Sustained rendering: frames advance.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut frames = 0;
+        while Instant::now() < deadline {
+            let status = status();
+            assert!(status.running, "the companion stopped unexpectedly");
+            frames = status.frames.unwrap_or(0);
+            if frames > 0 {
+                break;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        assert!(frames > 0, "the companion never rendered a frame");
+
+        // Input reaches Eden through the control channel.
+        input_button("A", true).expect("button down");
+        input_button("A", false).expect("button up");
+        input_analog("L", 0.5, -0.25).expect("analog");
+        input_analog("L", 0.0, 0.0).expect("analog reset");
+        input_button("ZR", true).expect("trigger");
+        input_button("ZR", false).expect("trigger release");
+        focus().expect("focus");
+        let audio = audio().expect("audio");
+        assert!(audio.available, "the companion reported no audio sink");
+
+        // Clean stop and relaunch.
+        stop();
+        assert!(!status().running);
+        let again = launch_with(&binary, moltenvk.as_deref(), &content, false).expect("relaunch");
+        assert!(again.running);
+        stop();
+        assert!(!status().running);
     }
 }

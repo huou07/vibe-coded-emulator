@@ -23,6 +23,7 @@
     "allow-native-controller-lan-refresh",
     "allow-switch-companion-detect",
     "allow-switch-companion-launch",
+    "allow-switch-companion-launch-rom",
     "allow-switch-companion-status",
     "allow-switch-companion-stop",
     "allow-switch-companion-focus",

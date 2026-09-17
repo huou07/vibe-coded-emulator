@@ -94,7 +94,7 @@ void key_handler(int key_code, int is_down) {
 
 void emit_status(const char* mode, const char* result) {
     std::printf(
-        "AN3CTL_STATUS {\"target\":\"switch\",\"backend\":\"%s\",\"mode\":\"%s\","
+        "\nAN3CTL_STATUS {\"target\":\"switch\",\"backend\":\"%s\",\"mode\":\"%s\","
         "\"frames\":%llu,\"result\":\"%s\"}\n",
         an3_eden_backend_name(), mode, g_frames.load(), result);
     std::fflush(stdout);
@@ -105,10 +105,10 @@ void emit_status(const char* mode, const char* result) {
 void emit_audio(void) {
     an3_eden_audio_info info;
     if (g_core == nullptr || an3_eden_get_audio_info(g_core, &info) != AN3_EDEN_OK) {
-        std::printf("AN3CTL_AUDIO {\"available\":false}\n");
+        std::printf("\nAN3CTL_AUDIO {\"available\":false}\n");
     } else {
         std::printf(
-            "AN3CTL_AUDIO {\"available\":true,\"backend\":\"%s\",\"device\":\"%s\","
+            "\nAN3CTL_AUDIO {\"available\":true,\"backend\":\"%s\",\"device\":\"%s\","
             "\"channels\":%u,\"volume\":%.3f}\n",
             info.backend, info.device, info.channels, static_cast<double>(info.volume));
     }
@@ -169,8 +169,9 @@ void command_loop(void) {
             break;
         }
         if (std::strcmp(verb, "status") == 0) {
+            /* Exactly one terminal line per command keeps the app's
+             * request/reply control channel aligned. */
             emit_status("running", "PASS");
-            emit_audio();
             continue;
         }
         if (std::strcmp(verb, "audio") == 0) {
@@ -181,7 +182,7 @@ void command_loop(void) {
 #if defined(__APPLE__)
             an3_eden_cocoa_focus();
 #endif
-            std::printf("AN3CTL_ACK {\"focus\":true}\n");
+            std::printf("\nAN3CTL_ACK {\"focus\":true}\n");
             std::fflush(stdout);
             continue;
         }
@@ -192,7 +193,7 @@ void command_loop(void) {
             } else {
                 const int down = std::strcmp(arg2, "down") == 0 ? 1 : 0;
                 an3_eden_submit_button(g_core, 0, static_cast<uint32_t>(button), down);
-                std::printf("AN3CTL_ACK {\"button\":\"%s\",\"state\":\"%s\"}\n", arg1, down ? "down" : "up");
+                std::printf("\nAN3CTL_ACK {\"button\":\"%s\",\"state\":\"%s\"}\n", arg1, down ? "down" : "up");
             }
             std::fflush(stdout);
             continue;
@@ -209,7 +210,7 @@ void command_loop(void) {
                     return static_cast<int16_t>(clamped * 32767.0f);
                 };
                 an3_eden_submit_analog(g_core, 0, stick, to_i16(x), to_i16(y));
-                std::printf("AN3CTL_ACK {\"analog\":\"%s\",\"x\":%.3f,\"y\":%.3f}\n", arg1, x, y);
+                std::printf("\nAN3CTL_ACK {\"analog\":\"%s\",\"x\":%.3f,\"y\":%.3f}\n", arg1, x, y);
             } else {
                 std::printf("AN3CTL_ERROR {\"code\":\"E_ANALOG\",\"message\":\"analog needs x y\"}\n");
             }

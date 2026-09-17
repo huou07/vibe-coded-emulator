@@ -8,7 +8,7 @@
   },
   "license": "GPL-3.0-or-later",
   "licenseText": "EDEN-GPL-3.0-or-later.txt",
-  "sha256": "e91992a25f4084797d6cc3873ea8e4715fefa0c83578d92ae980ad01856a53ae",
+  "sha256": "bdc6b978a557584bdad762942cc754726e13985cf76fd0c1ba8845b06cc8c10d",
   "size": 21881048,
   "bundledLibraries": [
     "libSDL3.0.dylib",

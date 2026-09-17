@@ -51,6 +51,7 @@ fn main() {
             "native_controller_lan_refresh",
             "switch_companion_detect",
             "switch_companion_launch",
+            "switch_companion_launch_rom",
             "switch_companion_status",
             "switch_companion_stop",
             "switch_companion_focus",

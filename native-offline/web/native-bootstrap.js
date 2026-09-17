@@ -36,13 +36,41 @@ window.AN3OfflineEmulatorOrigin = "";
   if (!an3MobileNativeShell) {
     window.AN3NativeLaunchGame = (romId, system, layout) => {
       const nativeSystem = String(system || "").toLowerCase();
-      if (!desktopSystems.has(nativeSystem)) return Promise.reject(new Error("Unsupported native system."));
       const invoke = nativeInvoke();
       if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      // Switch runs in the separate companion process, not the libretro host.
+      if (nativeSystem === "switch") return invoke("switch_companion_launch_rom", {romId, visible: true});
+      if (!desktopSystems.has(nativeSystem)) return Promise.reject(new Error("Unsupported native system."));
       return invoke("start_native_game", {romId, system: nativeSystem, layout: layout || "preserve"});
     };
     // Keep old desktop library assets working during an app update.
     window.AN3NativeLaunchThreeDs = (romId, _title, layout) => window.AN3NativeLaunchGame(romId, "3ds", layout);
+    // Switch companion control surface (launched-not-linked). Availability is
+    // resolved at runtime; nothing here claims support before detect() answers.
+    const switchInvoke = (name, payload) => {
+      const invoke = nativeInvoke();
+      if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      return invoke(name, payload);
+    };
+    window.AN3NativeSwitch = {
+      detect: () => switchInvoke("switch_companion_detect", {}),
+      launch: romId => switchInvoke("switch_companion_launch_rom", {romId}),
+      status: () => switchInvoke("switch_companion_status", {}),
+      stop: () => switchInvoke("switch_companion_stop", {}),
+      focus: () => switchInvoke("switch_companion_focus", {}),
+      input: (button, pressed) => switchInvoke("switch_companion_input", {button, pressed}),
+      analog: (stick, x, y) => switchInvoke("switch_companion_analog", {stick, x, y}),
+      audio: () => switchInvoke("switch_companion_audio", {})
+    };
+    // Advertise Switch only once the companion is actually present, then let
+    // the library re-render so the capability is not a static claim.
+    window.AN3NativeSwitch.detect().then(info => {
+      const systems = window.AN3NativeIntegratedSystems;
+      if (info?.available && Array.isArray(systems) && !systems.includes("switch")) {
+        window.AN3NativeIntegratedSystems = [...systems, "switch"];
+        if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
+      }
+    }).catch(() => {});
     // Staging-only phone controller. The Rust host owns the session, the
     // polling, and the input injection; this bridge only starts/stops it.
     const controllerInvoke = name => payload => {
