@@ -9,6 +9,7 @@
 #include <array>
 #include <cerrno>
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -24,6 +25,10 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
+
+#if defined(__ANDROID__)
+#include <android/log.h>
 #endif
 
 namespace an3 {
@@ -199,7 +204,32 @@ public:
     static std::size_t RETRO_CALLCONV audio_batch_cb(const int16_t* d, std::size_t n) { return active_ && active_->audio_ready_ ? active_->audio_->submit(d,n) : n; }
     static void RETRO_CALLCONV input_poll_cb() {}
     static int16_t RETRO_CALLCONV input_state_cb(unsigned p,unsigned d,unsigned i,unsigned id) { return active_ ? active_->input_state(p,d,i,id) : 0; }
-    static void RETRO_CALLCONV log_cb(enum retro_log_level, const char*, ...) {}
+    // The core's own diagnostics (unimplemented features, texture/shader
+    // errors) must not be discarded: on Android they are the only view into
+    // the vendored core's behaviour. Forward them to logcat (tag AzaharCore)
+    // and to stderr on the other platforms.
+    static void RETRO_CALLCONV log_cb(enum retro_log_level level, const char* format, ...) {
+        if (!format) return;
+        char message[1024] = {};
+        va_list args;
+        va_start(args, format);
+        std::vsnprintf(message, sizeof(message), format, args);
+        va_end(args);
+#if defined(__ANDROID__)
+        int priority = ANDROID_LOG_DEBUG;
+        switch (level) {
+        case RETRO_LOG_DEBUG: priority = ANDROID_LOG_DEBUG; break;
+        case RETRO_LOG_INFO: priority = ANDROID_LOG_INFO; break;
+        case RETRO_LOG_WARN: priority = ANDROID_LOG_WARN; break;
+        case RETRO_LOG_ERROR: priority = ANDROID_LOG_ERROR; break;
+        default: break;
+        }
+        __android_log_print(priority, "AzaharCore", "%s", message);
+#else
+        (void)level;
+        std::fprintf(stderr, "%s\n", message);
+#endif
+    }
     // Frontend callbacks the core uses when it negotiates an OpenGL ES context.
     // The core renders into the default framebuffer; entries resolve through
     // the platform GL loader owned by the video backend.
@@ -418,6 +448,20 @@ bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
         auto* variable = static_cast<retro_variable*>(data); if (!variable || !variable->key) return false;
         if (system_ == NativeSystem::ThreeDS && !std::strcmp(variable->key, "citra_graphics_api")) variable->value=graphics_api_.c_str();
         else if (system_ == NativeSystem::ThreeDS && !std::strcmp(variable->key, "citra_layout_option")) variable->value=nds_layout_ == "left-right" ? "side_by_side" : "top_bottom";
+#if defined(__ANDROID__)
+        // The Azahar core's OpenGL ES hardware-shader path renders 3D content
+        // black on Adreno GPUs. Verified on a Redmi 15 5G (Adreno 619) with
+        // Pokemon X Quick Save Slot 1: the identical draw calls render
+        // correctly through the software PICA shader interpreter, so the
+        // defect is in the GLES hardware-shader codegen/execution - not in the
+        // texture uploads, the PICA texture state, the core framebuffer, the
+        // shader disk cache (disabling it still renders black) or the frontend
+        // presentation. Android is the only platform that runs the core's
+        // OpenGL renderer (every desktop build uses its Vulkan renderer), so
+        // pin the PICA shader path to the faithful software implementation
+        // there until the upstream GLES generator is fixed.
+        else if (system_ == NativeSystem::ThreeDS && !std::strcmp(variable->key, "citra_use_hw_shader")) variable->value="disabled";
+#endif
         else if (!std::strcmp(variable->key,"melonds_render_mode")) variable->value="software";
 
         else if (!std::strcmp(variable->key,"melonds_touch_mode")) variable->value="touch";

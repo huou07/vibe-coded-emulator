@@ -405,6 +405,15 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn("hardware-frame: OpenGL ES fallback unsupported without a negotiated libretro GLES context", gles)
         self.assertRegex(gles, re.compile(r"receive_native_gpu_frame\([^)]*\).*?return false", re.DOTALL))
 
+    def test_android_3ds_pins_the_faithful_software_pica_shader_path(self):
+        host = source(HOST)
+        # RG-125: the Azahar OpenGL ES hardware-shader path renders 3D content
+        # black on Adreno GPUs, so the runtime must keep the software PICA
+        # shader interpreter for Android 3DS sessions.
+        self.assertIn(
+            '!std::strcmp(variable->key, "citra_use_hw_shader")) variable->value="disabled";', host
+        )
+
     def test_3ds_vulkan_negotiation_stays_in_the_shared_portable_contract(self):
         host = source(HOST)
         hardware = source(VULKAN_HARDWARE)
