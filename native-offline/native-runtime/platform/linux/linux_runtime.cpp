@@ -8,6 +8,8 @@
 #include "../../core/auto_save_mode.h"
 #include "../../../shared/generated/native_layouts.h"
 #include "../../core/libretro_host.h"
+#include "../../core/png_writer.h"
+#include "../../video/capture/capture_backend.h"
 #include "../../video/vulkan/hardware_backend.h"
 #include "../../video/vulkan/software_backend.h"
 
@@ -50,13 +52,89 @@ struct Options {
     bool control_stdin = false;
     bool pick = false;
     bool no_controls = false;
+    // Structured, agent-native test control plane (see docs/agent-control-plane.md).
+    bool headless = false;
+    bool no_audio = false;
+    bool status_json = false;
+    long frames = -1;                    // <0 = run until quit; >=0 = bounded run
+    std::filesystem::path capture;       // PNG written from the last headless frame
+    std::filesystem::path capture_raw;   // raw RGBA written from the last headless frame
+    std::filesystem::path load_state;    // import a save state before running
+    std::filesystem::path save_state;    // export a save state after running
+    std::string input_seq;               // e.g. "A@0-30;Start@40-45"
 };
 
 void usage() {
     std::cout << "VibeCodedEmulator native player\n"
               << "Usage: an3-offline-native --rom PATH [--system gba|nds|3ds] [--renderer auto|vulkan|opengl] [--layout left-right|top-bottom]\n"
               << "       an3-offline-native --pick [--no-controls]\n"
+              << "       an3-offline-native --rom PATH --system gba --headless --frames N [--capture out.png] [--capture-raw out.rgba] [--status-json]\n"
+              << "           [--load-state PATH] [--save-state PATH] [--input-seq \"A@0-30;Start@40-45\"] [--no-audio]\n"
               << "F1: Cycle layout · F2: Menu · F3: Pad · F4: fullscreen · Esc: close Menu/quit · F5/F9: save/load slot 1\n";
+}
+
+// Map a libretro joypad button name to its id (matches NativeInput /
+// keyboard_button ids used elsewhere in this file).
+int joypad_button_id(const std::string& name) {
+    static const char* names[] = {"B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
+                                  "A", "X", "L", "R", "L2", "R2", "L3", "R3"};
+    for (int index = 0; index < 16; ++index) if (name == names[index]) return index;
+    return -1;
+}
+
+struct InputWindow {
+    int button = -1;
+    long start = 0;
+    long end = 0;
+};
+
+// Parses "A@0-30;Start@40-45". Invalid clauses are ignored so a malformed
+// sequence degrades to no input rather than an unbounded hold.
+std::vector<InputWindow> parse_input_seq(const std::string& spec) {
+    std::vector<InputWindow> windows;
+    std::istringstream clauses(spec);
+    std::string clause;
+    while (std::getline(clauses, clause, ';')) {
+        if (clause.empty()) continue;
+        const auto at = clause.find('@');
+        const auto dash = clause.find('-', at == std::string::npos ? 0 : at);
+        if (at == std::string::npos || dash == std::string::npos) continue;
+        const int button = joypad_button_id(clause.substr(0, at));
+        if (button < 0) continue;
+        try {
+            const long start = std::stol(clause.substr(at + 1, dash - at - 1));
+            const long end = std::stol(clause.substr(dash + 1));
+            if (end < start) continue;
+            windows.push_back(InputWindow{button, start, end});
+        } catch (...) {
+            continue;
+        }
+    }
+    return windows;
+}
+
+void apply_input_window(NativeInput& input, const std::vector<InputWindow>& windows, long frame) {
+    for (const auto& window : windows) {
+        if (frame >= window.start && frame <= window.end) input.set_button(static_cast<unsigned>(window.button), true);
+    }
+}
+
+std::string json_escape(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() + 8);
+    for (char item : value) {
+        switch (item) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (static_cast<unsigned char>(item) < 0x20) out += ' ';
+            else out += item;
+        }
+    }
+    return out;
 }
 
 std::optional<std::string> choose_rom() {
@@ -101,6 +179,19 @@ std::optional<Options> parse_options(int argc, char** argv) {
         if (argument == "--pick") { options.pick = true; continue; }
         if (argument == "--no-controls") { options.no_controls = true; continue; }
         if (argument == "--control-stdin") { options.control_stdin = true; continue; }
+        if (argument == "--headless") { options.headless = true; continue; }
+        if (argument == "--no-audio") { options.no_audio = true; continue; }
+        if (argument == "--status-json") { options.status_json = true; continue; }
+        if (argument == "--frames") {
+            if (auto item = value()) { try { options.frames = std::stol(*item); } catch (...) { return std::nullopt; } } else return std::nullopt;
+            if (options.frames < 0) return std::nullopt;
+            continue;
+        }
+        if (argument == "--capture") { if (auto item = value()) options.capture = std::filesystem::u8path(*item); else return std::nullopt; continue; }
+        if (argument == "--capture-raw") { if (auto item = value()) options.capture_raw = std::filesystem::u8path(*item); else return std::nullopt; continue; }
+        if (argument == "--load-state") { if (auto item = value()) options.load_state = std::filesystem::u8path(*item); else return std::nullopt; continue; }
+        if (argument == "--save-state") { if (auto item = value()) options.save_state = std::filesystem::u8path(*item); else return std::nullopt; continue; }
+        if (argument == "--input-seq") { if (auto item = value()) options.input_seq = *item; else return std::nullopt; continue; }
         if (argument == "--storage") { if (auto item = value()) options.storage = std::filesystem::u8path(*item); else return std::nullopt; continue; }
         if (argument == "--rom") { if (auto item = value()) options.rom = std::filesystem::u8path(*item); else return std::nullopt; continue; }
         if (argument == "--system") { if (auto item = value()) options.system = *item; else return std::nullopt; continue; }
@@ -273,6 +364,82 @@ int main(int argc, char** argv) {
     }
     if ((options.system == "nds" || options.system == "3ds") && !is_supported_layout(options.system, options.layout)) options.layout = "left-right";
 
+    // Agent-native deterministic test path: no window, no GPU, no human.
+    // Capturing a frame implies headless because a GPU-backed window cannot
+    // produce CPU pixels without a readback this build deliberately avoids.
+    if (options.headless || !options.capture.empty() || !options.capture_raw.empty()) {
+        if (options.system == "3ds") {
+            std::cerr << "Headless capture is unavailable for hardware-rendered 3DS content.\n";
+            return 2;
+        }
+        HeadlessSurface capture_surface;
+        CaptureBackend capture_video;
+        NullAudioBackend capture_audio;
+        std::string error;
+        if (!capture_video.initialize(capture_surface, error)) { std::cerr << error << "\n"; return 1; }
+        NativeCoreHost host;
+        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout)) {
+            std::cerr << "Native core initialization failed: " << error << "\n";
+            return 1;
+        }
+        const bool requested_state_load = !options.load_state.empty();
+        bool state_loaded = true;
+        if (requested_state_load && !host.import_state(options.load_state.string(), error)) {
+            std::cerr << "Could not load save state: " << error << "\n";
+            host.shutdown();
+            return 6;
+        }
+        const auto windows = parse_input_seq(options.input_seq);
+        const long frames = options.frames >= 0 ? options.frames : 1;
+        bool state_ok = true;
+        long ran_frames = 0;
+        for (long frame = 0; frame < frames; ++frame) {
+            apply_input_window(host.input(), windows, frame);
+            if (!host.run_one(error, true)) { state_ok = false; break; }
+            host.input().clear();
+            ++ran_frames;
+        }
+        bool state_saved = false;
+        if (state_ok && !options.save_state.empty()) {
+            state_saved = host.export_state(options.save_state.string(), error);
+            if (!state_saved) std::cerr << "Could not save state: " << error << "\n";
+        }
+        const auto status = host.status();
+        std::string capture_error;
+        bool captured = false;
+        if (state_ok && !options.capture.empty() && capture_video.has_frame()) {
+            captured = write_png_rgba(options.capture.string(), capture_video.width(), capture_video.height(), capture_video.rgba(), capture_error);
+        }
+        if (state_ok && !options.capture_raw.empty() && capture_video.has_frame()) {
+            write_raw_rgba(options.capture_raw.string(), capture_video.rgba(), capture_error);
+        }
+        if (options.status_json) {
+            std::cout << "AN3CTL_STATUS {"
+                      << "\"system\":\"" << json_escape(options.system) << "\","
+                      << "\"rom\":\"" << json_escape(options.rom.filename().string()) << "\","
+                      << "\"renderer\":\"headless\","
+                      << "\"core\":\"" << json_escape(status.core_name) << "\","
+                      << "\"coreVersion\":\"" << json_escape(status.core_version) << "\","
+                      << "\"running\":" << (state_ok ? "true" : "false") << ","
+                      << "\"frames\":" << ran_frames << ","
+                      << "\"coreFrames\":" << status.core_frames << ","
+                      << "\"requestedFrames\":" << frames << ","
+                      << "\"fps\":" << status.core_fps << ","
+                      << "\"width\":" << capture_video.width() << ","
+                      << "\"height\":" << capture_video.height() << ","
+                      << "\"capture\":\"" << json_escape(options.capture.string()) << "\","
+                      << "\"captureRaw\":\"" << json_escape(options.capture_raw.string()) << "\","
+                      << "\"captured\":" << (captured ? "true" : "false") << ","
+                      << "\"stateLoaded\":" << (requested_state_load && state_loaded ? "true" : "false") << ","
+                      << "\"stateSaved\":" << (state_saved ? "true" : "false") << ","
+                      << "\"message\":\"" << json_escape(status.last_message) << "\""
+                      << "}" << std::endl;
+        }
+        host.shutdown();
+        if (!capture_error.empty()) { std::cerr << capture_error << "\n"; return 6; }
+        return state_ok ? 0 : 1;
+    }
+
     std::string error;
     LinuxSdlWindowSurface surface;
     if (!surface.initialize("VibeCodedEmulator", 1280, 720, error)) { std::cerr << error << "\n"; return 1; }
@@ -293,6 +460,10 @@ int main(int argc, char** argv) {
     if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *video, audio, error, options.layout)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
         video->shutdown(); SDL_Quit(); return 1;
+    }
+    if (!options.load_state.empty() && !host.import_state(options.load_state.string(), error)) {
+        std::cerr << "Could not load save state: " << error << "\n";
+        video->shutdown(); SDL_Quit(); return 6;
     }
 
     SDL_GameController* controller = nullptr;
@@ -493,6 +664,9 @@ int main(int argc, char** argv) {
                 const unsigned present_stride = speed > 1.0 ? static_cast<unsigned>(speed) : 1u;
                 if (!host.run_one(error, scheduled_frames % present_stride == 0)) { std::cerr << "Native core stopped: " << error << "\n"; break; }
                 ++scheduled_frames;
+                // A bounded run (`--frames N`) exits after N emulated frames so a
+                // test can drive the player deterministically from the CLI.
+                if (options.frames >= 0 && scheduled_frames >= static_cast<uint64_t>(options.frames)) running = false;
                 // The owned parent pipe has no network listener. Emit a
                 // bounded, path-free heartbeat for package/runtime testing
                 // and for the Windows shell to distinguish an initialized
@@ -522,6 +696,7 @@ int main(int argc, char** argv) {
     // A save-on-exit mode writes one final atomic snapshot as the session
     // stops. Periodic modes already saved on their own timer.
     if (auto_save.on_exit) host.save_auto(error);
+    if (!options.save_state.empty()) host.export_state(options.save_state.string(), error);
     host.shutdown(); video->shutdown(); if (controller) SDL_GameControllerClose(controller); SDL_Quit();
     return 0;
 }

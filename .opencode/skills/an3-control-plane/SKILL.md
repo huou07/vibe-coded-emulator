@@ -1,0 +1,109 @@
+---
+name: an3-control-plane
+description: Use for any AN3/Vibe Coded Emulator app interaction, UI automation, runtime control, or rendering/regression verification. Drives the project-local an3ctl CLI first — structured JSON over screenshots/coordinates — across web, Android, and the native emulator. Triggers on "click the UI", "check the screen", "start the app", "load a ROM", "run frames", "renderer regression", "capture a frame", "is the app running".
+---
+
+# an3-control-plane
+
+`an3ctl` is the project-local, agent-native control plane. Use it **first** for
+any app interaction. Never begin with screenshot, coordinate, xdotool, CGEvent,
+`PostMessage`, OCR, or native file-dialog automation.
+
+Launcher: `tools/an3ctl/bin/an3ctl` (repo root). All commands accept `--json`.
+
+## The loop
+
+1. **Read state** — `an3ctl ui tree --target <t> --json` (compact semantic tree).
+2. **Act** — `ui click|fill|press|select|check --target <t> --testid <id>`.
+3. **Assert** — `ui value|text|query`, `app state`, `emulator status`; check the
+   process exit code (0 ok, 2 usage, 3 unavailable, 4 not found, 5 timeout,
+   6 action failed, 7 state).
+4. **Diagnose** — `logs --target <t>`; use a screenshot only for a
+   rendering-specific problem.
+
+## Targets
+
+```bash
+an3ctl targets --json                       # availability + reasons per target
+```
+
+- `web` — the Python server. `app start --target web` boots it and records state.
+- `android` — adb + WebView CDP (emulator now; physical device when a test build
+  exposes the devtools socket).
+- `emulator` — the native player's deterministic test mode.
+- `macos` / `linux` / `windows` — desktop Tauri shells; structured bridge not
+  enabled yet, so `ui` returns `E_TARGET_UNAVAILABLE` with the exact requirement.
+
+## Web
+
+```bash
+an3ctl app start --target web [--port 8099]
+an3ctl app state --target web
+an3ctl ui tree  --target web --path /games --limit 60
+an3ctl ui query --target web --path /games --id gameSearch
+an3ctl ui fill  --target web --path /games --id gameSearch --value emerald
+an3ctl ui value --target web --path /games --id gameSearch
+an3ctl ui click --target web --path /games --role link --name Games
+an3ctl ui wait  --target web --path /games --testid open-rom --timeout 8000
+an3ctl logs --target web --tail 50
+an3ctl app stop --target web
+```
+
+Navigation happens only when the requested page differs from the current one, so
+multi-step flows keep form state. Pass `--path`/`--url` on every command that
+needs a specific page.
+
+## Android
+
+```bash
+an3ctl app start --target android          # launches MainActivity
+an3ctl app state --target android
+an3ctl ui tree  --target android --limit 40
+an3ctl ui click --target android --role button --name Settings
+an3ctl ui fill  --target android --id nativeSearch --value emerald
+an3ctl ui value --target android --id nativeSearch
+an3ctl logs --target android --tail 100
+an3ctl rom load /abs/path/fixture.3ds --target android --system 3ds
+an3ctl app stop --target android
+```
+
+The adapter resolves the PID, finds `webview_devtools_remote_<pid>`, forwards it,
+talks CDP, and removes the forward. Do not reproduce that by hand. A release APK
+only exposes the socket when WebView debugging is enabled; the error message says
+so.
+
+## Emulator control plane (deterministic, no screenshots)
+
+```bash
+an3ctl emulator status --rom fixture.gba --system gba --frames 120
+an3ctl emulator snapshot --rom fixture.gba --frames 120          # png + raw + hashes
+an3ctl emulator baseline --name gba-boot --rom fixture.gba --frames 120
+an3ctl emulator diff --name gba-boot --rom fixture.gba --frames 120
+an3ctl emulator state --rom fixture.gba --path s.state --save|--load
+an3ctl emulator input --rom fixture.gba --seq 'A@0-30;Start@40-45' --frames 60
+```
+
+Player selection: `AN3_PLAYER` (local path) or
+`--player-target linux|windows [--player PATH] [--libdir DIR]`. The verdict is
+JSON, e.g. `{"match":false,"differentPixels":37327,"differentPercent":97.2057,"maxChannelError":255}`.
+
+Hardware-rendered 3DS content is **not** headless-capturable yet; run bounded
+windowed runs under Xvfb/SwiftShader, or wait for the GPU readback.
+
+## Tests
+
+```bash
+an3ctl test smoke --target web|android|emulator
+node --test tests/an3ctl.test.mjs
+```
+
+## Rules
+
+- Structured selectors only: `--testid` > `--id` > `--role`+`--name` > `--name` >
+  `--text` > `--css`. Never use layout paths or coordinates.
+- Screenshots are a diagnostic fallback, never the PASS/FAIL path.
+- Never automate Finder/Open dialogs. Use `an3ctl rom load` / the emulator CLI.
+- Debug bridges are test-only and loopback/SSH-forwarded; never expose them.
+- Report `UNVERIFIED` rather than `GOOD` when a runtime was not actually run.
+
+See `docs/agent-control-plane.md` for the full contract.
