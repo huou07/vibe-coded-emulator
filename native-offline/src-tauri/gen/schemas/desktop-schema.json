@@ -333,6 +333,12 @@
           "markdownDescription": "Enables the switch_companion_stop command without any pre-configured scope."
         },
         {
+          "description": "Enables the ui_control_result command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ui-control-result",
+          "markdownDescription": "Enables the ui_control_result command without any pre-configured scope."
+        },
+        {
           "description": "Denies the native_3ds_capabilities command without any pre-configured scope.",
           "type": "string",
           "const": "deny-native-3ds-capabilities",
@@ -487,6 +493,12 @@
           "type": "string",
           "const": "deny-switch-companion-stop",
           "markdownDescription": "Denies the switch_companion_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ui_control_result command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ui-control-result",
+          "markdownDescription": "Denies the ui_control_result command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

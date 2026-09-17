@@ -29,7 +29,8 @@
     "allow-switch-companion-focus",
     "allow-switch-companion-input",
     "allow-switch-companion-analog",
-    "allow-switch-companion-audio"
+    "allow-switch-companion-audio",
+    "allow-ui-control-result"
   ],
   "remote": {
     "urls": [

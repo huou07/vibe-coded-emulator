@@ -129,6 +129,29 @@ Spawns the packaged/local player in deterministic mode (local or over SSH),
 fetches the capture, hashes it, and diffs against a stored baseline. PASS/FAIL is
 a machine verdict, never an image a human must read.
 
+### Adapter: desktop (macOS / Windows)
+
+The macOS shell exposes a test-only, token-gated loopback bridge: a cargo
+feature `ui-control` adds a `127.0.0.1` HTTP endpoint that dispatches real DOM
+events on `data-testid` elements, so a UI click runs the frontend handler a user
+would. Distribution builds do not compile it. The bridge writes `{port, token}`
+to the file named by `AN3_UI_CONTROL_FILE`; its `ui_control_result` receiver
+command is inert without an active bridge.
+
+```bash
+an3ctl app start --target macos --app build/.../VibeCodedEmulator.app \
+  --rom legal.nro --home "$TMPDIR/home" --control-file "$TMPDIR/ui.json"
+an3ctl ui tree   --target macos --control-file "$TMPDIR/ui.json" --json
+an3ctl ui click  --target macos --testid choose-rom   --control-file ...
+an3ctl ui wait   --target macos --testid switch-status --state running ...
+an3ctl ui click  --target macos --testid switch-launch --control-file ...
+an3ctl ui click  --target macos --testid switch-stop   --control-file ...
+an3ctl app stop  --target macos --app build/.../VibeCodedEmulator.app
+```
+
+`tests/test_switch_ui_e2e.py` runs the whole packaged workflow this way.
+Windows remains WebView2-CDP based (`ui tree --target windows`).
+
 ### Adapter: switch
 
 Drives the Eden bridge's deterministic harness

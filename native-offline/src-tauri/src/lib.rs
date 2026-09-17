@@ -6,6 +6,8 @@ mod azahar;
 mod controller_host;
 mod lan_host;
 mod switch_companion;
+// Test-only structured UI bridge; inert unless the `ui-control` feature is on.
+mod ui_control;
 use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
 use serde::Serialize;
 use std::{
@@ -535,9 +537,13 @@ fn start_runtime_server(app: &AppHandle) -> Result<Url, String> {
         .app_data_dir()
         .map_err(|error| format!("Cannot find native app storage: {error}"))?
         .join("an3-roms");
-    let listener = TcpListener::bind(("127.0.0.1", NATIVE_RUNTIME_PORT)).map_err(|error| {
-        format!("Cannot start the local game runtime on port {NATIVE_RUNTIME_PORT}: {error}")
+    let listener = TcpListener::bind(("127.0.0.1", requested_runtime_port())).map_err(|error| {
+        format!("Cannot start the local game runtime on port {}: {error}", requested_runtime_port())
     })?;
+    let bound_port = listener
+        .local_addr()
+        .map_err(|error| format!("Cannot inspect the local game runtime: {error}"))?
+        .port();
     thread::Builder::new()
         .name("an3-local-runtime".into())
         .spawn(move || {
@@ -546,8 +552,19 @@ fn start_runtime_server(app: &AppHandle) -> Result<Url, String> {
             }
         })
         .map_err(|error| format!("Cannot run the local game runtime: {error}"))?;
-    Url::parse(&format!("http://127.0.0.1:{NATIVE_RUNTIME_PORT}/"))
+    Url::parse(&format!("http://127.0.0.1:{bound_port}/"))
         .map_err(|error| format!("Cannot prepare the local game runtime: {error}"))
+}
+
+/// The loopback port the WebView is navigated to. Defaults to the fixed port;
+/// `AN3_NATIVE_RUNTIME_PORT=0` binds an ephemeral port so an isolated test
+/// instance can run alongside a normal one.
+#[cfg(not(mobile))]
+fn requested_runtime_port() -> u16 {
+    std::env::var("AN3_NATIVE_RUNTIME_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(NATIVE_RUNTIME_PORT)
 }
 
 fn import_native_rom(
@@ -622,6 +639,20 @@ async fn pick_and_import_native_rom(
     rom_id: String,
 ) -> Result<Option<ImportedNativeRom>, String> {
     validate_rom_id(&rom_id)?;
+    // Automation E2E builds may pre-answer the picker with a fixture path, so
+    // the real import path and frontend handler run without a native dialog.
+    #[cfg(feature = "ui-control")]
+    if let Ok(path) = std::env::var("AN3_UI_TEST_ROM") {
+        if !path.is_empty() {
+            let import_app = app.clone();
+            let imported = tauri::async_runtime::spawn_blocking(move || {
+                import_native_rom(&import_app, &rom_id, PathBuf::from(path))
+            })
+            .await
+            .map_err(|error| format!("Native ROM import failed: {error}"))?;
+            return Ok(Some(imported?));
+        }
+    }
     let dialog_app = app.clone();
     let selected = tauri::async_runtime::spawn_blocking(move || {
         dialog_app
@@ -818,7 +849,8 @@ pub fn run() {
             switch_companion_focus,
             switch_companion_input,
             switch_companion_analog,
-            switch_companion_audio
+            switch_companion_audio,
+            ui_control::ui_control_result
         ])
         .setup(|_app| {
             // Desktop uses the Rust loopback server to stream private ROMs
@@ -826,6 +858,15 @@ pub fn run() {
             // browser storage.
             #[cfg(not(mobile))]
             {
+                #[cfg(feature = "ui-control")]
+                {
+                    if let Ok(control_file) = std::env::var("AN3_UI_CONTROL_FILE") {
+                        match ui_control::start(&_app.handle()) {
+                            Ok(port) => eprintln!("an3-ui-control listening on 127.0.0.1:{port} ({control_file})"),
+                            Err(error) => eprintln!("an3-ui-control failed: {error}"),
+                        }
+                    }
+                }
                 let runtime =
                     start_runtime_server(&_app.handle()).map_err(std::io::Error::other)?;
                 _app.get_webview_window("main")

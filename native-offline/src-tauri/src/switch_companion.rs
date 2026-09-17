@@ -146,17 +146,25 @@ fn resolve_moltenvk(app: &tauri::AppHandle) -> Option<PathBuf> {
 
 /// Reports whether the companion can be launched on this machine.
 pub fn detect(app: &tauri::AppHandle) -> CompanionInfo {
+    use tauri::Manager;
     match resolve_companion(app) {
         Ok(path) => CompanionInfo {
             available: true,
             path: Some(path.to_string_lossy().into_owned()),
             detail: "Switch companion is available".to_string(),
         },
-        Err(detail) => CompanionInfo {
-            available: false,
-            path: None,
-            detail,
-        },
+        Err(detail) => {
+            let resources = app
+                .path()
+                .resource_dir()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|error| format!("<resource_dir error: {error}>"));
+            CompanionInfo {
+                available: false,
+                path: None,
+                detail: format!("{detail} resources={resources}"),
+            }
+        }
     }
 }
 
@@ -333,7 +341,7 @@ pub fn launch_rom(app: &tauri::AppHandle, rom_id: &str, visible: bool) -> Result
         .map_err(|error| format!("Cannot locate VibeCodedEmulator local storage: {error}"))?
         .join("an3-roms");
     let rom = crate::native_rom_path(&directory, rom_id, None)
-        .ok_or_else(|| "The imported Switch homebrew is unavailable.".to_string())?;
+        .ok_or_else(|| format!("The imported Switch homebrew is unavailable in {}.", directory.display()))?;
     let extension = rom.extension().and_then(|value| value.to_str()).unwrap_or_default();
     if !extension.eq_ignore_ascii_case("nro") {
         return Err("Only Nintendo Switch .nro homebrew can run in the companion.".to_string());

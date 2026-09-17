@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ui-control-result"
+description = "Enables the ui_control_result command without any pre-configured scope."
+commands.allow = ["ui_control_result"]
+
+[[permission]]
+identifier = "deny-ui-control-result"
+description = "Denies the ui_control_result command without any pre-configured scope."
+commands.deny = ["ui_control_result"]

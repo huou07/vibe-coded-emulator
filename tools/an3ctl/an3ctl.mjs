@@ -133,6 +133,13 @@ async function appCommand(adapters, action, flags) {
     if (action === "state") return adapters.android.appState({ serial: flags.serial });
     throw new An3Error("E_USAGE", `Unknown app action for android: ${action}`);
   }
+  if (target === "macos") {
+    const opts = { app: flags.app, testRom: flags.rom, home: flags.home, controlFile: flags["control-file"] };
+    if (action === "start") return adapters.desktop.appStart(opts);
+    if (action === "stop") return adapters.desktop.appStop(opts);
+    if (action === "state") return adapters.desktop.available(opts);
+    throw new An3Error("E_USAGE", `Unknown app action for macos: ${action}`);
+  }
   throw new An3Error("E_TARGET_UNAVAILABLE", `app ${action} is not supported for ${target}. Desktop shells are launched by their platform tooling; see docs/agent-control-plane.md.`);
 }
 
@@ -154,6 +161,8 @@ async function uiCommand(adapters, action, flags) {
     limit: flags.limit !== undefined ? Number(flags.limit) : undefined,
     value: flags.value,
     key: flags.key,
+    testid: flags.testid,
+    controlFile: flags["control-file"],
     timeout: flags.timeout !== undefined ? Number(flags.timeout) : undefined,
     serial: flags.serial,
     target,
@@ -348,6 +357,10 @@ function usage() {
     "  an3ctl ui query  --target android --testid open-rom",
     "  an3ctl ui query  --target web --role button --name 'Open ROM'",
     "  an3ctl ui click  --target web --testid open-rom",
+    "  an3ctl app start  --target macos   # automation build (ui-control)",
+    "  an3ctl ui tree   --target macos --json",
+    "  an3ctl ui click  --target macos --testid switch-launch",
+    "  an3ctl ui wait   --target macos --testid switch-status --state running",
     "  an3ctl ui fill   --target web --id nativeSearch --value emerald",
     "  an3ctl ui wait   --target android --testid offlineGameGrid --timeout 8000",
     "  an3ctl ui text|value --target <t> --testid <id>",

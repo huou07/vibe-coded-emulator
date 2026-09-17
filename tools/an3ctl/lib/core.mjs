@@ -204,9 +204,9 @@ export function stateDir(root) {
 // CDP (Chrome DevTools Protocol) over the native WebSocket.
 // ---------------------------------------------------------------------------
 
-export function httpJson(port, path) {
+export function httpJson(port, path, options = {}) {
   return new Promise((resolve, reject) => {
-    const request = http.get({ host: "127.0.0.1", port, path, timeout: 5000 }, (response) => {
+    const request = http.get({ host: "127.0.0.1", port, path, timeout: options.timeout ?? 5000, headers: options.headers }, (response) => {
       let body = "";
       response.on("data", (chunk) => (body += chunk));
       response.on("end", () => {

@@ -63,14 +63,33 @@ window.AN3OfflineEmulatorOrigin = "";
       audio: () => switchInvoke("switch_companion_audio", {})
     };
     // Advertise Switch only once the companion is actually present, then let
-    // the library re-render so the capability is not a static claim.
-    window.AN3NativeSwitch.detect().then(info => {
-      const systems = window.AN3NativeIntegratedSystems;
-      if (info?.available && Array.isArray(systems) && !systems.includes("switch")) {
-        window.AN3NativeIntegratedSystems = [...systems, "switch"];
-        if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
+    // the library re-render so the capability is not a static claim. Tauri
+    // injects its bridge after this script evaluates, so retry until it exists.
+    // The scheduler lookup keeps this file evaluable in a bare sandbox.
+    const schedule = (fn, ms) => {
+      const timer = (typeof window !== "undefined" && window.setTimeout) || (typeof setTimeout === "function" ? setTimeout : null);
+      if (timer) timer(fn, ms);
+    };
+    const advertiseSwitch = (attempt = 0) => {
+      if (typeof nativeInvoke() !== "function") {
+        if (attempt < 40) schedule(() => advertiseSwitch(attempt + 1), 250);
+        return;
       }
-    }).catch(() => {});
+      window.AN3NativeSwitch.detect().then(info => {
+        window.AN3SwitchDetect = { ok: true, available: info?.available === true, detail: info?.detail, path: info?.path };
+        if (info?.available) {
+          const systems = window.AN3NativeIntegratedSystems;
+          if (Array.isArray(systems) && !systems.includes("switch")) {
+            window.AN3NativeIntegratedSystems = [...systems, "switch"];
+          }
+          if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
+        }
+      }).catch(error => {
+        window.AN3SwitchDetect = { ok: false, error: String(error) };
+        if (attempt < 40) schedule(() => advertiseSwitch(attempt + 1), 250);
+      });
+    };
+    advertiseSwitch();
     // Staging-only phone controller. The Rust host owns the session, the
     // polling, and the input injection; this bridge only starts/stops it.
     const controllerInvoke = name => payload => {
