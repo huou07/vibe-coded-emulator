@@ -6,8 +6,10 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 ## Resume state (verified 2026-09-17)
 
 - Branch `apps-web`; Eden pinned at `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`.
-- Version **2.2.0** on all five packaged platforms; GPL-3.0-or-later.
-- Test suite: **285 tests, OK** (`python3 -m unittest discover -s tests`).
+- Version **2.3.0** source (2.2.0 remains the last packaged/staging release);
+  GPL-3.0-or-later.
+- Test suite: **299 tests, OK** (`python3 -m unittest discover -s tests`); Rust
+  `cargo test --lib` 22 passed.
 - Existing GBA/NDS/3DS libretro path untouched; per-platform renderers unchanged.
 - Staging: asset version unchanged. **Nothing Switch-related is deployed** and
   no Switch feature is advertised.
@@ -56,9 +58,12 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 
 ### Still open (not claimed)
 
-- **Tauri `CompanionSystem`**: `native-offline` has no Switch system, `.nro`
-  detection, companion packaging, or UI. Switch is deliberately **not**
-  advertised in the app, because doing so without this wiring would overclaim.
+- **Tauri `CompanionSystem`**: implemented as `native-offline/src-tauri/src/switch_companion.rs`
+  (detect/launch/status/stop) with the four `switch_companion_*` commands wired
+  and tested. **Still open:** bundling `an3_switch_companion` into the packaged
+  app resources, `.nro` library/import detection, and the UI surface. Switch is
+  deliberately **not** advertised in the app until those exist; a contract test
+  enforces that. The app version is now **2.3.0** (feature bump).
 - **Frame readback into AN3**: the companion presents its own window; AN3 does
   not receive Eden frames (the documented architecture does not require it).
 - **Gamepad/keyboard play**: the companion's keyboard map exists but a real
