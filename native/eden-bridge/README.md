@@ -106,6 +106,28 @@ Eden owns writing save data. `an3_eden_get_save_dir` reports Eden's
 (a recursive copy) so AN3 can back it up or sync it without touching the live
 saves.
 
+## Companion (production boundary)
+
+`an3_switch_companion` is the separate-process Switch component. AN3 **launches**
+it (it never links Eden into the AN3 binary), so the GPL boundary stays on the
+companion.
+
+```bash
+# Windowed play (visible AppKit window; keyboard input):
+AN3_EDEN_WINDOW_VISIBLE=1 \
+  LIBVULKAN_PATH=<moltenvk dylib> \
+  an3_switch_companion /path/to/hbmenu.nro --visible
+
+# Automation / CI (hidden, line protocol on stdin):
+printf 'button A down\nbutton A up\nanalog L 0.5 -0.25\nstatus\nquit\n' | \
+  an3_switch_companion /path/to/hbmenu.nro --seconds 5
+```
+
+Windowed keyboard map: A/S→Y/X, Z/X→B/A, Q/W→L/R, E/R→ZL/ZR, Return→Plus,
+Delete→Minus, arrows→d-pad, Space→A. Stdin protocol: `button <name> <down|up>`,
+`analog <L|R> <x> <y>`, `status`, `quit`; it emits `AN3CTL_ACK` per command and
+`AN3CTL_STATUS {"target":"switch",…}` on start/stop.
+
 ## Integration design
 
 ### Required Eden subsystems

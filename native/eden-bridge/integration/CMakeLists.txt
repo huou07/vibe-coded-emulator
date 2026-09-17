@@ -71,3 +71,9 @@ endforeach()
 
 add_executable(an3_eden_bridge_smoke "${AN3_EDEN_BRIDGE_DIR}/tests/bridge_smoke.c")
 target_link_libraries(an3_eden_bridge_smoke PRIVATE an3_eden_bridge)
+
+# Separate-process companion that ships Switch support: it owns its own window,
+# input and lifecycle; AN3 launches it (never links Eden into the AN3 binary).
+add_executable(an3_switch_companion "${AN3_EDEN_BRIDGE_DIR}/companion/main.cpp")
+target_link_libraries(an3_switch_companion PRIVATE an3_eden_bridge)
+target_include_directories(an3_switch_companion PRIVATE "${AN3_EDEN_BRIDGE_DIR}/src")
