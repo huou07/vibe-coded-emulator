@@ -24,7 +24,11 @@
     "allow-switch-companion-detect",
     "allow-switch-companion-launch",
     "allow-switch-companion-status",
-    "allow-switch-companion-stop"
+    "allow-switch-companion-stop",
+    "allow-switch-companion-focus",
+    "allow-switch-companion-input",
+    "allow-switch-companion-analog",
+    "allow-switch-companion-audio"
   ],
   "remote": {
     "urls": [

@@ -53,6 +53,10 @@ fn main() {
             "switch_companion_launch",
             "switch_companion_status",
             "switch_companion_stop",
+            "switch_companion_focus",
+            "switch_companion_input",
+            "switch_companion_analog",
+            "switch_companion_audio",
         ]),
     ))
     .expect("failed to generate Tauri capabilities");

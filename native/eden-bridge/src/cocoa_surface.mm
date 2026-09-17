@@ -72,8 +72,31 @@ bool window_visible_requested() {
 @implementation An3EdenCocoaHost
 @end
 
+/* The companion owns a single window; keep it reachable for focus requests. */
+static An3EdenCocoaHost* g_host = nil;
+
 extern "C" void an3_eden_cocoa_set_key_handler(an3_eden_key_handler handler) {
     g_key_handler = handler;
+}
+
+extern "C" void an3_eden_cocoa_focus(void) {
+    const auto activate = ^{
+        [NSApp activateIgnoringOtherApps:YES];
+        if (g_host != nil && g_host.window != nil) {
+            [g_host.window makeKeyAndOrderFront:nil];
+        }
+    };
+    if ([NSThread isMainThread]) {
+        @autoreleasepool {
+            activate();
+        }
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @autoreleasepool {
+            activate();
+        }
+    });
 }
 
 extern "C" void an3_eden_cocoa_run(int (*should_stop)(void)) {
@@ -166,6 +189,7 @@ extern "C" void* an3_eden_cocoa_create_layer(uint32_t width, uint32_t height) {
                 host.view = view;
                 objc_setAssociatedObject(layer, kAn3EdenCocoaHostKey, host,
                                          OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                g_host = host;
             } @catch (NSException* exception) {
                 (void)exception;
             }
@@ -190,6 +214,9 @@ extern "C" void an3_eden_cocoa_destroy_layer(void* layer) {
             host.view = nil;
             objc_setAssociatedObject(metal_layer, kAn3EdenCocoaHostKey, nil,
                                      OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (g_host == host) {
+                g_host = nil;
+            }
         }
     }
 }

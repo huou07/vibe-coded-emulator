@@ -38,6 +38,7 @@ struct Backend {
                                   int16_t* out_y);
     an3_eden_status (*save_data)(an3_eden_core*, const char* path);
     an3_eden_status (*get_save_dir)(an3_eden_core*, char* out_path, uint32_t size);
+    an3_eden_status (*get_audio_info)(an3_eden_core*, an3_eden_audio_info* out_info);
     an3_eden_status (*stop)(an3_eden_core*);
     an3_eden_status (*shutdown)(an3_eden_core*);
 };

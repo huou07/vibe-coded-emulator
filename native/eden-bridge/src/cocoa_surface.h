@@ -40,6 +40,10 @@ void an3_eden_cocoa_set_key_handler(an3_eden_key_handler handler);
  * Must be called on the main thread. */
 void an3_eden_cocoa_run(int (*should_stop)(void));
 
+/* Brings the companion window to the front and makes it key. No-op when the
+ * window is not visible. Must be called on the main thread. */
+void an3_eden_cocoa_focus(void);
+
 #ifdef __cplusplus
 }
 #endif

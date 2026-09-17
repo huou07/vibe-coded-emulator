@@ -681,16 +681,17 @@ fn native_controller_lan_refresh() -> lan_host::LanStatus {
 // binary); these commands are its CompanionSystem lifecycle surface.
 
 #[tauri::command]
-fn switch_companion_detect() -> switch_companion::CompanionInfo {
-    switch_companion::detect()
+fn switch_companion_detect(app: AppHandle) -> switch_companion::CompanionInfo {
+    switch_companion::detect(&app)
 }
 
 #[tauri::command]
 fn switch_companion_launch(
+    app: AppHandle,
     content: String,
     visible: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
-    switch_companion::launch(&content, visible.unwrap_or(true))
+    switch_companion::launch(&app, &content, visible.unwrap_or(true))
 }
 
 #[tauri::command]
@@ -702,6 +703,26 @@ fn switch_companion_status() -> switch_companion::CompanionStatus {
 fn switch_companion_stop() -> switch_companion::CompanionStatus {
     switch_companion::stop();
     switch_companion::status()
+}
+
+#[tauri::command]
+fn switch_companion_focus() -> Result<String, String> {
+    switch_companion::focus()
+}
+
+#[tauri::command]
+fn switch_companion_input(button: String, pressed: bool) -> Result<String, String> {
+    switch_companion::input_button(&button, pressed)
+}
+
+#[tauri::command]
+fn switch_companion_analog(stick: String, x: f64, y: f64) -> Result<String, String> {
+    switch_companion::input_analog(&stick, x, y)
+}
+
+#[tauri::command]
+fn switch_companion_audio() -> Result<switch_companion::CompanionAudio, String> {
+    switch_companion::audio()
 }
 
 #[tauri::command]
@@ -773,7 +794,11 @@ pub fn run() {
             switch_companion_detect,
             switch_companion_launch,
             switch_companion_status,
-            switch_companion_stop
+            switch_companion_stop,
+            switch_companion_focus,
+            switch_companion_input,
+            switch_companion_analog,
+            switch_companion_audio
         ])
         .setup(|_app| {
             // Desktop uses the Rust loopback server to stream private ROMs

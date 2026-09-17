@@ -40,6 +40,10 @@
 #include "input_common/drivers/virtual_gamepad.h"
 #include "input_common/main.h"
 
+#include "audio_core/audio_core.h"
+#include "audio_core/sink/sink.h"
+#include "common/settings.h"
+
 #include "hid_core/frontend/emulated_controller.h"
 #include "hid_core/hid_core.h"
 
@@ -508,6 +512,34 @@ an3_eden_status eden_get_save_dir(an3_eden_core* core, char* out_path, uint32_t 
     }
 }
 
+an3_eden_status eden_get_audio_info(an3_eden_core* core, an3_eden_audio_info* out_info) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->system) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
+    }
+    try {
+        const char* backend = "auto";
+        switch (Settings::values.sink_id.GetValue()) {
+            case Settings::AudioEngine::Cubeb: backend = "cubeb"; break;
+            case Settings::AudioEngine::Sdl3: backend = "sdl3"; break;
+            case Settings::AudioEngine::Null: backend = "null"; break;
+            case Settings::AudioEngine::Auto:
+            default: backend = "auto"; break;
+        }
+        std::snprintf(out_info->backend, sizeof(out_info->backend), "%s", backend);
+        const std::string device = Settings::values.audio_output_device_id.GetValue();
+        std::snprintf(out_info->device, sizeof(out_info->device), "%s", device.c_str());
+        AudioCore::Sink::Sink& sink = state->system->AudioCore().GetOutputSink();
+        out_info->channels = sink.GetDeviceChannels();
+        out_info->volume = sink.GetDeviceVolume();
+        return AN3_EDEN_OK;
+    } catch (const std::exception& error) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
+    } catch (...) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden audio lookup failed");
+    }
+}
+
 an3_eden_status eden_stop(an3_eden_core* core) {
     EdenState* state = state_of(core);
     if (state == nullptr || !state->system) {
@@ -548,10 +580,10 @@ an3_eden_status eden_shutdown(an3_eden_core* core) {
 }
 
 const an3::eden::Backend kEdenBackend{
-    "eden",          eden_initialize,    eden_load,          eden_start,
-    eden_pause,      eden_run_frame,     eden_submit_button, eden_submit_analog,
-    eden_get_button, eden_get_analog,    eden_save_data,     eden_get_save_dir,
-    eden_stop,       eden_shutdown,
+    "eden",           eden_initialize,    eden_load,         eden_start,
+    eden_pause,       eden_run_frame,     eden_submit_button, eden_submit_analog,
+    eden_get_button,  eden_get_analog,    eden_save_data,    eden_get_save_dir,
+    eden_get_audio_info, eden_stop,       eden_shutdown,
 };
 
 }  // namespace

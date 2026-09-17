@@ -279,10 +279,34 @@
           "markdownDescription": "Enables the stop_native_game command without any pre-configured scope."
         },
         {
+          "description": "Enables the switch_companion_analog command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-analog",
+          "markdownDescription": "Enables the switch_companion_analog command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_audio command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-audio",
+          "markdownDescription": "Enables the switch_companion_audio command without any pre-configured scope."
+        },
+        {
           "description": "Enables the switch_companion_detect command without any pre-configured scope.",
           "type": "string",
           "const": "allow-switch-companion-detect",
           "markdownDescription": "Enables the switch_companion_detect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_focus command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-focus",
+          "markdownDescription": "Enables the switch_companion_focus command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-input",
+          "markdownDescription": "Enables the switch_companion_input command without any pre-configured scope."
         },
         {
           "description": "Enables the switch_companion_launch command without any pre-configured scope.",
@@ -405,10 +429,34 @@
           "markdownDescription": "Denies the stop_native_game command without any pre-configured scope."
         },
         {
+          "description": "Denies the switch_companion_analog command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-analog",
+          "markdownDescription": "Denies the switch_companion_analog command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_audio command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-audio",
+          "markdownDescription": "Denies the switch_companion_audio command without any pre-configured scope."
+        },
+        {
           "description": "Denies the switch_companion_detect command without any pre-configured scope.",
           "type": "string",
           "const": "deny-switch-companion-detect",
           "markdownDescription": "Denies the switch_companion_detect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_focus command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-focus",
+          "markdownDescription": "Denies the switch_companion_focus command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-input",
+          "markdownDescription": "Denies the switch_companion_input command without any pre-configured scope."
         },
         {
           "description": "Denies the switch_companion_launch command without any pre-configured scope.",

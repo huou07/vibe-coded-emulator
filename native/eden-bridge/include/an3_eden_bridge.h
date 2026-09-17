@@ -166,6 +166,20 @@ an3_eden_status an3_eden_save_data(an3_eden_core* core, const char* path);
  * buffer or zero size. */
 an3_eden_status an3_eden_get_save_dir(an3_eden_core* core, char* out_path, uint32_t size);
 
+/* --- Audio diagnostics -------------------------------------------------- */
+
+/* Machine-readable audio state. Fixed-size buffers keep the ABI stable. */
+typedef struct an3_eden_audio_info {
+    char backend[16];   /* configured engine: auto | cubeb | sdl3 | null */
+    char device[256];   /* configured output device id (may be empty) */
+    uint32_t channels;  /* device channel count reported by the sink */
+    float volume;       /* current device volume (0.0 - 1.0) */
+} an3_eden_audio_info;
+
+/* Fills `out_info`. Eden owns audio output directly; this reports the sink it
+ * selected, not a claim that audible sound was produced. */
+an3_eden_status an3_eden_get_audio_info(an3_eden_core* core, an3_eden_audio_info* out_info);
+
 /* --- Shutdown ----------------------------------------------------------- */
 
 /* Stops emulation and releases per-session resources. Safe to call when not

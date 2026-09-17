@@ -111,6 +111,9 @@ int main(int argc, char** argv) {
     char scratch[8] = {0};
     CHECK(an3_eden_get_save_dir(NULL, scratch, sizeof(scratch)) == AN3_EDEN_ERR_INVALID_HANDLE,
           "get_save_dir(NULL) is rejected");
+    an3_eden_audio_info audio_probe;
+    CHECK(an3_eden_get_audio_info(NULL, &audio_probe) == AN3_EDEN_ERR_INVALID_HANDLE,
+          "get_audio_info(NULL) is rejected");
     CHECK(an3_eden_stop(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "stop(NULL) is rejected");
     CHECK(an3_eden_shutdown(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "shutdown(NULL) is rejected");
     CHECK(strcmp(an3_eden_last_error(NULL), "") == 0, "last_error(NULL) is empty, not a crash");
@@ -268,6 +271,22 @@ int main(int argc, char** argv) {
               "get_save_dir with a NULL buffer is rejected");
         CHECK(an3_eden_save_data(core, NULL) == AN3_EDEN_ERR_INVALID_ARGUMENT,
               "save_data with a NULL path is rejected");
+
+        /* Audio: Eden owns output directly; report the sink it selected. */
+        an3_eden_audio_info audio;
+        an3_eden_status audio_status = an3_eden_get_audio_info(core, &audio);
+        CHECK(audio_status == AN3_EDEN_OK || audio_status == AN3_EDEN_ERR_UNSUPPORTED,
+              "get_audio_info reports a defined status");
+        if (audio_status == AN3_EDEN_OK) {
+            CHECK(audio.backend[0] != '\0', "audio backend is reported");
+            CHECK(audio.channels > 0, "audio device reports channels");
+            if (!json_mode) {
+                printf("an3-eden-bridge audio: backend=%s device=%s channels=%u volume=%.3f\n",
+                       audio.backend, audio.device, audio.channels, (double)audio.volume);
+            }
+        }
+        CHECK(an3_eden_get_audio_info(core, NULL) == AN3_EDEN_ERR_INVALID_ARGUMENT,
+              "get_audio_info with a NULL output is rejected");
         CHECK(an3_eden_stop(core) == AN3_EDEN_OK, "stop succeeds");
         CHECK(an3_eden_stop(core) == AN3_EDEN_OK, "stop is idempotent");
     }

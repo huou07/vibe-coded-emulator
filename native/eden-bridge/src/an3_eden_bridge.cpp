@@ -270,6 +270,20 @@ an3_eden_status an3_eden_get_save_dir(an3_eden_core* core, char* out_path, uint3
     return guard(core, [&] { return an3::eden::active_backend().get_save_dir(core, out_path, size); });
 }
 
+an3_eden_status an3_eden_get_audio_info(an3_eden_core* core, an3_eden_audio_info* out_info) {
+    if (!valid(core)) {
+        return AN3_EDEN_ERR_INVALID_HANDLE;
+    }
+    if (out_info == nullptr) {
+        return AN3_EDEN_ERR_INVALID_ARGUMENT;
+    }
+    *out_info = {};
+    if (core->state == State::Created) {
+        return AN3_EDEN_ERR_NOT_INITIALIZED;
+    }
+    return guard(core, [&] { return an3::eden::active_backend().get_audio_info(core, out_info); });
+}
+
 an3_eden_status an3_eden_stop(an3_eden_core* core) {
     if (!valid(core)) {
         return AN3_EDEN_ERR_INVALID_HANDLE;

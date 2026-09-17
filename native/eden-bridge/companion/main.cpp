@@ -86,6 +86,21 @@ void emit_status(const char* mode, const char* result) {
     std::fflush(stdout);
 }
 
+/* Eden owns audio output directly; report the sink it selected. This is
+ * introspection, not a claim that audible sound was produced. */
+void emit_audio(void) {
+    an3_eden_audio_info info;
+    if (g_core == nullptr || an3_eden_get_audio_info(g_core, &info) != AN3_EDEN_OK) {
+        std::printf("AN3CTL_AUDIO {\"available\":false}\n");
+    } else {
+        std::printf(
+            "AN3CTL_AUDIO {\"available\":true,\"backend\":\"%s\",\"device\":\"%s\","
+            "\"channels\":%u,\"volume\":%.3f}\n",
+            info.backend, info.device, info.channels, static_cast<double>(info.volume));
+    }
+    std::fflush(stdout);
+}
+
 int button_from_name(const std::string& name) {
     if (name == "A") return AN3_EDEN_BUTTON_A;
     if (name == "B") return AN3_EDEN_BUTTON_B;
@@ -136,6 +151,19 @@ void command_loop(void) {
         }
         if (std::strcmp(verb, "status") == 0) {
             emit_status("running", "PASS");
+            emit_audio();
+            continue;
+        }
+        if (std::strcmp(verb, "audio") == 0) {
+            emit_audio();
+            continue;
+        }
+        if (std::strcmp(verb, "focus") == 0) {
+#if defined(__APPLE__)
+            an3_eden_cocoa_focus();
+#endif
+            std::printf("AN3CTL_ACK {\"focus\":true}\n");
+            std::fflush(stdout);
             continue;
         }
         if (std::strcmp(verb, "button") == 0 && fields >= 3) {
@@ -237,7 +265,7 @@ int main(int argc, char** argv) {
     g_running.store(true);
     std::thread frames_thread(frame_loop);
     std::thread commands_thread;
-    if (use_stdin && !visible) {
+    if (use_stdin) {
         commands_thread = std::thread(command_loop);
     }
 

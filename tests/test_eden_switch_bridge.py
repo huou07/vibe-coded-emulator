@@ -194,8 +194,27 @@ class SwitchCompanionContractTests(unittest.TestCase):
     def test_31_app_registers_the_companion_commands(self):
         self.assertIn("mod switch_companion;", self.lib)
         for command in ("switch_companion_detect", "switch_companion_launch",
-                        "switch_companion_status", "switch_companion_stop"):
+                        "switch_companion_status", "switch_companion_stop",
+                        "switch_companion_focus", "switch_companion_input",
+                        "switch_companion_analog", "switch_companion_audio"):
             self.assertIn(command, self.lib)
+
+    def test_33_companion_resolves_from_the_installed_layout(self):
+        source = self.companion.read_text(encoding="utf-8")
+        # Bundled resource path first, development vendor path second; no
+        # machine-specific absolute path.
+        self.assertIn("switch/macos-arm64/an3_switch_companion", source)
+        self.assertIn("resource_dir", source)
+        self.assertIn("AN3_SWITCH_COMPANION", source)
+        self.assertNotIn("/tmp/eden-build", source)
+        self.assertNotIn("/Users/", source)
+
+    def test_34_companion_control_channel_is_bounded(self):
+        source = self.companion.read_text(encoding="utf-8")
+        self.assertIn("recv_timeout", source)
+        self.assertIn("IPC_TIMEOUT", source)
+        self.assertIn("STOP_TIMEOUT", source)
+        self.assertIn("try_wait", source)
 
     def test_32_switch_is_not_advertised_as_a_native_system(self):
         # Until the companion is packaged and wired into the library UI, .nro
