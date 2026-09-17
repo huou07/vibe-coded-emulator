@@ -147,32 +147,28 @@ an3_eden_status an3_eden_load(an3_eden_core* core, const char* content_path) {
     if (core->state == State::Started) {
         return AN3_EDEN_ERR_BUSY;
     }
-    return guard(core, [&] { return an3::eden::active_backend().load(core, content_path); });
+    an3_eden_status status =
+        guard(core, [&] { return an3::eden::active_backend().load(core, content_path); });
+    if (status == AN3_EDEN_OK) {
+        core->state = State::Loaded;
+    }
+    return status;
 }
 
 an3_eden_status an3_eden_start(an3_eden_core* core) {
     if (!valid(core)) {
         return AN3_EDEN_ERR_INVALID_HANDLE;
     }
-    if (core->state == State::Created) {
+    /* Content must be loaded: a stopped core has released its kernel and needs
+     * a fresh load before it can start again. */
+    if (core->state != State::Loaded) {
         return AN3_EDEN_ERR_NOT_INITIALIZED;
     }
-    if (core->state == State::Loaded) {
-        an3_eden_status status = guard(core, [&] { return an3::eden::active_backend().start(core); });
-        if (status == AN3_EDEN_OK) {
-            core->state = State::Started;
-        }
-        return status;
+    an3_eden_status status = guard(core, [&] { return an3::eden::active_backend().start(core); });
+    if (status == AN3_EDEN_OK) {
+        core->state = State::Started;
     }
-    if (core->state == State::Stopped) {
-        /* Restart after stop: the backend re-runs from loaded content. */
-        an3_eden_status status = guard(core, [&] { return an3::eden::active_backend().start(core); });
-        if (status == AN3_EDEN_OK) {
-            core->state = State::Started;
-        }
-        return status;
-    }
-    return AN3_EDEN_ERR_BUSY;
+    return status;
 }
 
 an3_eden_status an3_eden_pause(an3_eden_core* core, int paused) {
@@ -235,8 +231,10 @@ an3_eden_status an3_eden_stop(an3_eden_core* core) {
     if (!valid(core)) {
         return AN3_EDEN_ERR_INVALID_HANDLE;
     }
-    if (core->state != State::Started) {
-        return AN3_EDEN_OK; /* idempotent */
+    /* Idempotent when there is nothing to stop; a loaded-but-not-started core
+     * still needs the backend to release its kernel. */
+    if (core->state != State::Started && core->state != State::Loaded) {
+        return AN3_EDEN_OK;
     }
     an3_eden_status status = guard(core, [&] { return an3::eden::active_backend().stop(core); });
     if (status == AN3_EDEN_OK) {
@@ -252,7 +250,7 @@ an3_eden_status an3_eden_shutdown(an3_eden_core* core) {
     if (core->state == State::Created) {
         return AN3_EDEN_OK; /* nothing to release; idempotent */
     }
-    if (core->state == State::Started) {
+    if (core->state == State::Started || core->state == State::Loaded) {
         (void)guard(core, [&] { return an3::eden::active_backend().stop(core); });
     }
     an3_eden_status status = guard(core, [&] { return an3::eden::active_backend().shutdown(core); });

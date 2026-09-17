@@ -12,6 +12,10 @@
  */
 #include "an3_eden_internal.h"
 
+#if defined(__APPLE__)
+#include "cocoa_surface.h"
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -19,9 +23,17 @@
 #include <thread>
 
 #include "core/core.h"
+#include "core/cpu_manager.h"
+#include "core/file_sys/registered_cache.h"
+#include "core/file_sys/vfs/vfs_real.h"
 #include "core/frontend/emu_window.h"
 #include "core/frontend/graphics_context.h"
+#include "core/hle/service/am/am_types.h"
 #include "core/hle/service/am/applet_manager.h"
+#include "core/hle/service/filesystem/filesystem.h"
+#include "video_core/gpu.h"
+
+#include "common/logging.h"
 
 namespace {
 
@@ -36,15 +48,35 @@ public:
     void DoneCurrent() override {}
 };
 
-class HeadlessWindow final : public Frontend::EmuWindow {
+/*
+ * Presentation host. Eden's Vulkan renderer has no headless surface path in the
+ * pinned revision: on macOS it requires a Cocoa CAMetalLayer, elsewhere a real
+ * Win32/X11/Wayland surface. On macOS the bridge supplies an offscreen
+ * CAMetalLayer so the core can initialise without a window.
+ */
+class HostWindow final : public Frontend::EmuWindow {
 public:
-    explicit HeadlessWindow(std::atomic<bool>& frame_flag) : frame_flag_(frame_flag) {
+    explicit HostWindow(std::atomic<bool>& frame_flag) : frame_flag_(frame_flag) {
+#if defined(__APPLE__)
+        window_info.type = Frontend::WindowSystemType::Cocoa;
+        render_surface_ = an3_eden_cocoa_create_layer(width_, height_);
+#else
         window_info.type = Frontend::WindowSystemType::Headless;
-        window_info.render_surface = nullptr;
+        render_surface_ = nullptr;
+#endif
+        window_info.render_surface = render_surface_;
         window_info.render_surface_scale = 1.0f;
         UpdateCurrentFramebufferLayout(width_, height_);
         NotifyClientAreaSizeChanged({width_, height_});
     }
+
+    ~HostWindow() override {
+#if defined(__APPLE__)
+        an3_eden_cocoa_destroy_layer(render_surface_);
+#endif
+    }
+
+    [[nodiscard]] bool HasRenderSurface() const { return render_surface_ != nullptr; }
 
     [[nodiscard]] std::unique_ptr<Frontend::GraphicsContext> CreateSharedContext() const override {
         return std::make_unique<HeadlessContext>();
@@ -63,17 +95,23 @@ public:
 
 private:
     std::atomic<bool>& frame_flag_;
+    void* render_surface_ = nullptr;
     u32 width_ = 1280;
     u32 height_ = 720;
 };
 
 struct EdenState {
     std::unique_ptr<Core::System> system;
-    std::unique_ptr<HeadlessWindow> window;
+    std::unique_ptr<HostWindow> window;
     std::string content_path;
-    std::thread run_thread;
     std::atomic<bool> running{false};
     std::atomic<bool> frame_displayed{false};
+    /* True between a Load that left Eden's kernel initialised and the matching
+     * ShutdownMainProcess. Eden calls KernelCore::Initialize() inside
+     * System::Load(), so a Load can leave kernel state behind even when it
+     * reports failure; destroying Core::System without shutting that kernel
+     * down crashes in ~KernelCore::Impl. */
+    bool kernel_initialized{false};
 };
 
 EdenState* state_of(an3_eden_core* core) {
@@ -88,9 +126,27 @@ an3_eden_status fail(an3_eden_core* core, an3_eden_status status, const char* me
 an3_eden_status eden_initialize(an3_eden_core* core, const char* keys_dir, const char* firmware_dir) {
     auto state = std::make_unique<EdenState>();
     try {
-        state->window = std::make_unique<HeadlessWindow>(state->frame_displayed);
+        /* Diagnostics: Eden's own frontends initialise logging before touching
+         * the core; without it load failures are silent. */
+        Common::Log::Initialize();
+        Common::Log::SetColorConsoleBackendEnabled(true);
+    } catch (...) {
+        /* Logging is optional; never fail initialise because of it. */
+    }
+    try {
+        state->window = std::make_unique<HostWindow>(state->frame_displayed);
+        if (!state->window->HasRenderSurface()) {
+            return fail(core, AN3_EDEN_ERR_UNAVAILABLE,
+                        "No presentation surface is available for Eden's renderer");
+        }
         state->system = std::make_unique<Core::System>();
         state->system->Initialize();
+        /* Mirror Eden's frontends: set up the content provider and filesystem
+         * factories before Load so NRO/NCA resolution has valid paths. */
+        state->system->SetContentProvider(std::make_unique<FileSys::ContentProviderUnion>());
+        state->system->SetFilesystem(std::make_shared<FileSys::RealVfsFilesystem>());
+        state->system->GetFileSystemController().CreateFactories(*state->system->GetFilesystem());
+        state->system->GetUserChannel().clear();
     } catch (const std::exception& error) {
         return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
     } catch (...) {
@@ -112,31 +168,63 @@ an3_eden_status eden_load(an3_eden_core* core, const char* content_path) {
     if (state->running.load(std::memory_order_acquire)) {
         return fail(core, AN3_EDEN_ERR_BUSY, "Eden core is already running");
     }
+    if (state->kernel_initialized) {
+        return fail(core, AN3_EDEN_ERR_BUSY, "Eden already has content loaded");
+    }
     Service::AM::FrontendAppletParameters params{};
+    /* System::Load() does not default to the application applet; without this
+     * Eden creates no application process and the load cannot succeed. */
+    params.applet_id = Service::AM::AppletId::Application;
     Core::SystemResultStatus result = Core::SystemResultStatus::ErrorUnknown;
+    /* System::Load() calls KernelCore::Initialize() before it validates the
+     * content, so from here the kernel must be shut down exactly once. */
+    state->kernel_initialized = true;
     try {
         result = state->system->Load(*state->window, std::string(content_path), params);
     } catch (const std::exception& error) {
+        state->system->ShutdownMainProcess();
+        state->kernel_initialized = false;
         return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
     } catch (...) {
+        state->system->ShutdownMainProcess();
+        state->kernel_initialized = false;
         return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden content load failed");
     }
     switch (result) {
         case Core::SystemResultStatus::Success:
             state->content_path = content_path;
             return AN3_EDEN_OK;
-        case Core::SystemResultStatus::ErrorNotInitialized:
-            return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden is not initialized");
         case Core::SystemResultStatus::ErrorGetLoader:
-        case Core::SystemResultStatus::ErrorLoader:
+            /* This revision returns ErrorGetLoader before its cleanup and
+             * leaves the kernel initialised; shut it down here. */
+            state->system->ShutdownMainProcess();
+            state->kernel_initialized = false;
             return fail(core, AN3_EDEN_ERR_UNSUPPORTED, "Eden has no loader for this content");
+        case Core::SystemResultStatus::ErrorNotInitialized:
+            /* Every other Load failure path runs ShutdownMainProcess itself. */
+            state->kernel_initialized = false;
+            return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden is not initialized");
+        case Core::SystemResultStatus::ErrorLoader: {
+            /* Load() encodes a loader-specific error as ErrorLoader + status. */
+            const auto loader_status =
+                static_cast<uint32_t>(result) - static_cast<uint32_t>(Core::SystemResultStatus::ErrorLoader);
+            std::string message = "Eden could not load this content (loader error " +
+                                  std::to_string(loader_status) + ")";
+            state->kernel_initialized = false;
+            return fail(core, AN3_EDEN_ERR_UNSUPPORTED, message.c_str());
+        }
         case Core::SystemResultStatus::ErrorSystemFiles:
         case Core::SystemResultStatus::ErrorSharedFont:
-            return fail(core, AN3_EDEN_ERR_KEYS_REQUIRED, "Eden needs system files or firmware for this content");
+            state->kernel_initialized = false;
+            return fail(core, AN3_EDEN_ERR_KEYS_REQUIRED,
+                        "Eden needs system files or firmware for this content");
         case Core::SystemResultStatus::ErrorVideoCore:
-            return fail(core, AN3_EDEN_ERR_UNAVAILABLE, "Eden's video core could not start on this device");
+            state->kernel_initialized = false;
+            return fail(core, AN3_EDEN_ERR_UNAVAILABLE,
+                        "Eden's video core could not start on this device");
         case Core::SystemResultStatus::ErrorUnknown:
         default:
+            state->kernel_initialized = false;
             return fail(core, AN3_EDEN_ERR_IO, "Eden could not load the content");
     }
 }
@@ -149,19 +237,22 @@ an3_eden_status eden_start(an3_eden_core* core) {
     if (state->running.load(std::memory_order_acquire)) {
         return AN3_EDEN_OK;
     }
-    if (state->content_path.empty()) {
+    if (!state->kernel_initialized || state->content_path.empty()) {
         return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "No content is loaded");
     }
+    /* Mirror Eden's own frontend startup: bring up the GPU, tell the CPU
+     * manager the GPU is ready, then resume. System::Run() only resumes
+     * emulation; it does not block, so no host thread is owned here. */
+    try {
+        state->system->GPU().Start();
+        state->system->GetCpuManager().OnGpuReady();
+        state->system->Run();
+    } catch (const std::exception& error) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
+    } catch (...) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden could not start the GPU");
+    }
     state->running.store(true, std::memory_order_release);
-    Core::System* system = state->system.get();
-    state->run_thread = std::thread([system, state] {
-        try {
-            system->Run();
-        } catch (...) {
-            /* The dispatcher cannot see this thread; record and stop cleanly. */
-        }
-        state->running.store(false, std::memory_order_release);
-    });
     return AN3_EDEN_OK;
 }
 
@@ -170,11 +261,21 @@ an3_eden_status eden_pause(an3_eden_core* core, int paused) {
     if (state == nullptr || !state->system) {
         return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
     }
-    if (!paused) {
-        /* Eden exposes Pause() but no matching resume entry point on System. */
-        return fail(core, AN3_EDEN_ERR_UNSUPPORTED, "Resuming is not supported by this Eden revision");
+    if (!state->running.load(std::memory_order_acquire)) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not running");
     }
-    state->system->Pause();
+    try {
+        if (paused) {
+            state->system->Pause();
+        } else {
+            /* System::Run() is Eden's resume entry point. */
+            state->system->Run();
+        }
+    } catch (const std::exception& error) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, error.what());
+    } catch (...) {
+        return fail(core, AN3_EDEN_ERR_INTERNAL, "Eden could not change the pause state");
+    }
     return AN3_EDEN_OK;
 }
 
@@ -219,15 +320,15 @@ an3_eden_status eden_stop(an3_eden_core* core) {
     if (state == nullptr || !state->system) {
         return AN3_EDEN_OK;
     }
-    if (state->running.load(std::memory_order_acquire)) {
+    /* Shut the kernel down exactly once, whether the core was started or only
+     * had content loaded. Eden's Load() leaves the kernel initialised. */
+    if (state->running.load(std::memory_order_acquire) || state->kernel_initialized) {
         try {
             state->system->ShutdownMainProcess();
         } catch (...) {
         }
-        if (state->run_thread.joinable()) {
-            state->run_thread.join();
-        }
         state->running.store(false, std::memory_order_release);
+        state->kernel_initialized = false;
     }
     state->content_path.clear();
     return AN3_EDEN_OK;
@@ -238,9 +339,6 @@ an3_eden_status eden_shutdown(an3_eden_core* core) {
     EdenState* state = state_of(core);
     if (state == nullptr) {
         return AN3_EDEN_OK;
-    }
-    if (state->run_thread.joinable()) {
-        state->run_thread.join();
     }
     /* Core::System's destructor releases the subsystems; this revision exposes
      * no separate System::Shutdown(). */

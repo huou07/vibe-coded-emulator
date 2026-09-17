@@ -31,7 +31,11 @@ static void frames_seen(const an3_eden_frame* frame, void* user_data) {
     }
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+    /* Optional argv[1]: a legal homebrew NRO (for example nx-hbmenu) to drive
+     * the happy path. Without it the test uses a path that cannot load. */
+    const char* content_path = argc > 1 ? argv[1] : "/nonexistent/an3-smoke.nro";
+
     /* ABI identity */
     CHECK(an3_eden_bridge_abi_version() == AN3_EDEN_BRIDGE_ABI_VERSION, "abi version matches the header");
     CHECK(an3_eden_backend_name() != NULL, "backend name is never NULL");
@@ -93,19 +97,33 @@ int main(void) {
      * may or may not exist. An IO error here is acceptable and must surface. */
     CHECK(an3_eden_initialize(core, NULL, NULL) == AN3_EDEN_ERR_ALREADY_INITIALIZED,
           "second initialize is rejected");
-    an3_eden_status load = an3_eden_load(core, "/nonexistent/an3-smoke.nro");
+    an3_eden_status load = an3_eden_load(core, content_path);
+    if (load != AN3_EDEN_OK) {
+        printf("an3-eden-bridge load(%s) -> %s (%s)\n", content_path,
+               an3_eden_status_message(load), an3_eden_last_error(core));
+    }
     CHECK(load == AN3_EDEN_OK || load == AN3_EDEN_ERR_IO || load == AN3_EDEN_ERR_UNSUPPORTED ||
               load == AN3_EDEN_ERR_KEYS_REQUIRED || load == AN3_EDEN_ERR_UNAVAILABLE,
           "load reports a defined status");
     if (load == AN3_EDEN_OK) {
+        printf("an3-eden-bridge loaded %s\n", content_path);
         CHECK(an3_eden_start(core) == AN3_EDEN_OK, "start succeeds after load");
         CHECK(an3_eden_pause(core, 1) == AN3_EDEN_OK, "pause succeeds while started");
         CHECK(an3_eden_pause(core, 0) == AN3_EDEN_OK, "resume succeeds while started");
         int seen = 0;
         CHECK(an3_eden_run_frame(core, frames_seen, &seen) == AN3_EDEN_OK, "run_frame succeeds");
-        CHECK(an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 1) == AN3_EDEN_OK, "submit_button succeeds");
-        CHECK(an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 0) == AN3_EDEN_OK, "release succeeds");
-        CHECK(an3_eden_submit_analog(core, 0, 0, 0) == AN3_EDEN_OK, "submit_analog succeeds");
+        printf("an3-eden-bridge run_frame: frame callbacks=%d\n", seen);
+        /* Input and save bridges are later milestones: the ABI accepts them and
+         * must report UNSUPPORTED rather than faking success. */
+        an3_eden_status button = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 1);
+        CHECK(button == AN3_EDEN_OK || button == AN3_EDEN_ERR_UNSUPPORTED,
+              "submit_button succeeds or reports UNSUPPORTED");
+        an3_eden_status release = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 0);
+        CHECK(release == AN3_EDEN_OK || release == AN3_EDEN_ERR_UNSUPPORTED,
+              "release succeeds or reports UNSUPPORTED");
+        an3_eden_status analog = an3_eden_submit_analog(core, 0, 0, 0);
+        CHECK(analog == AN3_EDEN_OK || analog == AN3_EDEN_ERR_UNSUPPORTED,
+              "submit_analog succeeds or reports UNSUPPORTED");
         CHECK(an3_eden_submit_button(core, 99, AN3_EDEN_BUTTON_A, 1) == AN3_EDEN_ERR_INVALID_ARGUMENT,
               "invalid port is rejected");
         CHECK(an3_eden_submit_button(core, 0, 99, 1) == AN3_EDEN_ERR_INVALID_ARGUMENT,
