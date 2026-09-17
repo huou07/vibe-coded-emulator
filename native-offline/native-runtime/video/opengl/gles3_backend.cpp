@@ -12,6 +12,24 @@
 #include <limits>
 #include <mutex>
 #include <string>
+#include <vector>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <sys/system_properties.h>
+#define AN3_GL_LOG(...) __android_log_print(ANDROID_LOG_INFO, "AN3GL", __VA_ARGS__)
+// Opt-in physical-device diagnostic. `adb shell setprop debug.an3.gl_saturation 1`
+// makes the backend log, once per second, the average saturation of both the
+// core's 3DS framebuffer and the presented window so a desaturated frame can be
+// attributed to the core or to the presentation blit. Off by default.
+static bool gl_saturation_diagnostic_enabled() {
+    char value[PROP_VALUE_MAX] = {};
+    return __system_property_get("debug.an3.gl_saturation", value) > 0 && value[0] == '1';
+}
+#else
+#define AN3_GL_LOG(...) ((void)0)
+static bool gl_saturation_diagnostic_enabled() { return false; }
+#endif
 
 namespace an3 {
 namespace {
@@ -70,6 +88,7 @@ struct AndroidGles3Backend::Impl {
     bool frame_begun = false;
     size_t active_slot = kRingSize;
     size_t next_slot = 0;
+    uint64_t present_count = 0;
     NativeVideoStatus status{};
 
     struct Slot {
@@ -447,6 +466,27 @@ bool AndroidGles3Backend::present_gl_frame(unsigned width, unsigned height) {
     glBlitFramebuffer(0, 0, static_cast<GLint>(width), static_cast<GLint>(height),
                       target_x, target_y, target_x + target_width, target_y + target_height,
                       GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    ++impl_->present_count;
+    if (gl_saturation_diagnostic_enabled() && (impl_->present_count % 60u) == 1u) {
+        const auto sample_saturation = [](GLint x, GLint y, GLsizei w, GLsizei h) {
+            if (w <= 0 || h <= 0) return 0.0;
+            std::vector<std::uint8_t> pixels(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4u);
+            glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            double sum = 0.0;
+            const std::size_t count = pixels.size() / 4u;
+            for (std::size_t i = 0; i < count; ++i) {
+                const int r = pixels[i * 4 + 0], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2];
+                sum += std::max({r, g, b}) - std::min({r, g, b});
+            }
+            return count ? sum / static_cast<double>(count) : 0.0;
+        };
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, impl_->present_fbo);
+        const double core = sample_saturation(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height));
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        const double window = sample_saturation(0, 0, static_cast<GLsizei>(window_width), static_cast<GLsizei>(window_height));
+        AN3_GL_LOG("sat core=%.2f window=%.2f core_size=%ux%u win=%ux%u", core, window, width, height, window_width, window_height);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, impl_->present_fbo);
+    }
     eglSwapBuffers(impl_->display, impl_->surface);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     impl_->present_times.add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(

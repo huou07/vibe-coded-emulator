@@ -379,8 +379,15 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             for forbidden in ("vkQueueWaitIdle", "vkDeviceWaitIdle", "queue_wait_idle(", "device_wait_idle("):
                 self.assertNotIn(forbidden, hot_path)
 
-        self.assertNotIn("glReadPixels", gles)
+        # The GL backend must not read back the GPU in the per-frame path. The
+        # only permitted exception is the explicitly opt-in, rate-limited
+        # physical-device saturation diagnostic (debug.an3.gl_saturation): it
+        # must be gated so an ordinary frame never triggers a readback.
         self.assertNotIn("glFinish", gles)
+        present_gl = between(gles, "bool AndroidGles3Backend::present_gl_frame", "NativeVideoStatus AndroidGles3Backend::metrics")
+        if "glReadPixels" in present_gl:
+            self.assertIn("gl_saturation_diagnostic_enabled()", present_gl)
+            self.assertIn("present_count % 60u", present_gl)
         self.assertIn("constexpr size_t kRingSize = 2", gles)
         self.assertIn("std::array<Slot, kRingSize>", gles)
         self.assertIn("glClientWaitSync(slot.fence, 0, 0)", gles)
