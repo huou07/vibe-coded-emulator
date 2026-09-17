@@ -10,6 +10,7 @@
 // locally built Eden bridge and (over SSH) for a remote builder.
 
 import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { An3Error, run } from "../lib/core.mjs";
 
 const HARNESS_CANDIDATES = [
@@ -140,6 +141,98 @@ export class SwitchAdapter {
       throw new An3Error("E_ACTION_FAILED", "The Switch harness produced no AN3CTL_STATUS line.");
     }
     return { harness, status };
+  }
+
+  // Launch a companion and drive it over the control channel. Used by the
+  // packaged-app lifecycle E2E (detect -> launch -> render -> input -> stop ->
+  // relaunch), so verification needs no window, screenshots or manual input.
+  async e2e(opts = {}) {
+    const companion = this.resolveCompanion(opts);
+    if (!companion) {
+      throw new An3Error("E_TARGET_UNAVAILABLE", "No Switch companion built. Set AN3_SWITCH_COMPANION.");
+    }
+    if (!opts.rom) throw new An3Error("E_USAGE", "switch e2e requires --rom <legal-homebrew.nro>");
+    if (!existsSync(opts.rom)) throw new An3Error("E_USAGE", `no such homebrew fixture: ${opts.rom}`);
+    const env = { ...process.env };
+    const moltenvk = this.resolveMoltenVk();
+    if (moltenvk) env.LIBVULKAN_PATH = moltenvk;
+    const steps = [];
+    const record = (step, ok, detail) => steps.push({ step, ok, detail });
+
+    const start = () => {
+      const child = spawn(companion, [opts.rom], { env, stdio: ["pipe", "pipe", "ignore"] });
+      const queue = [];
+      let buffer = "";
+      child.stdout.on("data", chunk => {
+        buffer += chunk.toString("utf8");
+        let index;
+        while ((index = buffer.indexOf("\n")) >= 0) {
+          queue.push(buffer.slice(0, index));
+          buffer = buffer.slice(index + 1);
+        }
+      });
+      const readUntil = (predicate, timeoutMs) => new Promise((resolve, reject) => {
+        const deadline = Date.now() + timeoutMs;
+        const poll = () => {
+          const found = queue.findIndex(line => predicate(line));
+          if (found >= 0) return resolve(queue.splice(found, 1)[0]);
+          if (Date.now() > deadline) return reject(new Error("the companion did not answer in time"));
+          setTimeout(poll, 50);
+        };
+        poll();
+      });
+      const send = line => child.stdin.write(`${line}\n`);
+      const wait = (timeoutMs = 15000) => new Promise(resolve => {
+        const timer = setTimeout(() => { child.kill("SIGKILL"); resolve(null); }, timeoutMs);
+        child.on("exit", code => { clearTimeout(timer); resolve(code); });
+      });
+      return { child, readUntil, send, wait };
+    };
+
+    const lifecycle = async detail => {
+      const session = start();
+      const ready = await session.readUntil(line => line.includes("AN3CTL_STATUS"), 25000);
+      record("launch", Boolean(ready), detail);
+
+      // Sustained rendering: wait for the frame counter to advance.
+      session.send("status");
+      await session.readUntil(line => line.includes("AN3CTL_STATUS"), 10000);
+      let frames = 0;
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && frames === 0) {
+        session.send("status");
+        const status = await session.readUntil(line => line.includes("AN3CTL_STATUS"), 10000);
+        frames = this.parseStatus(status)?.frames ?? 0;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      record("render", frames > 0, `frames=${frames}`);
+
+      const input = async (command, label) => {
+        session.send(command);
+        const ack = await session.readUntil(line => line.includes("AN3CTL_ACK"), 5000);
+        record(label, Boolean(ack), ack.trim());
+      };
+      await input("button A down", "input button A down");
+      await input("button A up", "input button A up");
+      await input("analog L 0.5 -0.25", "input analog move");
+      await input("analog L 0 0", "input analog reset");
+      await input("focus", "focus");
+
+      session.send("audio");
+      const audioLine = await session.readUntil(line => line.includes("AN3CTL_AUDIO"), 5000);
+      record("audio", audioLine.includes('"available":true'), audioLine.trim());
+
+      session.send("quit");
+      const code = await session.wait(15000);
+      record("stop", code !== null, `exit=${code}`);
+      return code;
+    };
+
+    await lifecycle("first launch");
+    await lifecycle("relaunch");
+
+    const passed = steps.every(step => step.ok);
+    return { companion, rom: opts.rom, passed, steps };
   }
 
   // The harness performs the input acceptance test as part of a loaded run:

@@ -143,7 +143,15 @@ an3ctl switch status --rom hbmenu.nro --frames 5  # load + N frames + input test
 an3ctl switch run    --rom hbmenu.nro --seconds 60
 an3ctl switch input  --rom hbmenu.nro             # input verdict (reaches Eden)
 an3ctl switch sustained --rom hbmenu.nro --seconds 60
+an3ctl switch companion --rom hbmenu.nro --seconds 10 [--visible]
+an3ctl switch e2e --rom hbmenu.nro                # full lifecycle: launch →
+                                                  # render → input → focus →
+                                                  # audio → stop → relaunch
 ```
+
+`switch e2e` drives the real separate-process companion over its control channel
+and returns one structured step per action, so the packaged-app lifecycle is
+machine-verifiable with no window, screenshot or manual input.
 
 The harness is the same binary the runtime guards use
 (`tests/test_eden_switch_bridge.py`). Set `AN3_SWITCH_HARNESS` (and

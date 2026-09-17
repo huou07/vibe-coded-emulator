@@ -292,6 +292,9 @@ async function switchCommand(adapters, action, flags) {
     case "companion":
       requireRom("switch companion");
       return adapters.switch.companion({ ...opts, visible: flags.visible === true, seconds: opts.seconds ?? 10 });
+    case "e2e":
+      requireRom("switch e2e");
+      return adapters.switch.e2e(opts);
     default:
       throw new An3Error("E_USAGE", `Unknown switch action: ${action}`);
   }
@@ -371,6 +374,7 @@ function usage() {
     "  an3ctl switch input  --rom hbmenu.nro",
     "  an3ctl switch sustained --rom hbmenu.nro --seconds 60",
     "  an3ctl switch companion --rom hbmenu.nro --seconds 10 [--visible]",
+    "  an3ctl switch e2e --rom hbmenu.nro   # full lifecycle with input",
     "",
     "Tests:",
     "  an3ctl test smoke --target web|android|emulator",
