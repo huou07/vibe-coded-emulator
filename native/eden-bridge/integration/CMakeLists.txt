@@ -39,7 +39,14 @@ target_compile_options(an3_eden_bridge PRIVATE
 # Link Eden's `core` properly so its PRIVATE dependencies (video_core, audio_core,
 # hid_core, network, dynarmic, ...) are pulled in transitively. `video_core`
 # PUBLIC-links the Vulkan headers and GPUOpen::VulkanMemoryAllocator.
+# input_common/hid_core are linked explicitly because the bridge drives the
+# virtual_gamepad engine through the ABI.
 target_link_libraries(an3_eden_bridge PRIVATE core frontend_common)
+foreach(_an3_eden_target IN ITEMS input_common hid_core)
+    if(TARGET ${_an3_eden_target})
+        target_link_libraries(an3_eden_bridge PRIVATE ${_an3_eden_target})
+    endif()
+endforeach()
 target_compile_features(an3_eden_bridge PUBLIC cxx_std_20)
 
 # libcommon's power-status code needs IOKit on macOS.

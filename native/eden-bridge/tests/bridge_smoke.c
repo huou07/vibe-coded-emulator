@@ -24,6 +24,7 @@ static int json_mode = 0;
 static int frames_requested = 1;
 static int seconds_requested = 0;
 static int loaded_ok = 0;
+static int input_supported = 0;
 static int frame_callbacks = 0;
 static int frames_run = 0;
 static long elapsed_ms = 0;
@@ -49,9 +50,9 @@ static void emit_summary(void) {
     if (json_mode) {
         printf("AN3CTL_STATUS {\"target\":\"switch\",\"backend\":\"%s\",\"mode\":\"%s\","
                "\"loaded\":%s,\"framesRequested\":%d,\"framesRun\":%d,\"frameCallbacks\":%d,"
-               "\"elapsedMs\":%ld,\"checks\":%d,\"failures\":%d,\"result\":\"%s\"}\n",
+               "\"inputSupported\":%s,\"elapsedMs\":%ld,\"checks\":%d,\"failures\":%d,\"result\":\"%s\"}\n",
                an3_eden_backend_name(), result_mode, loaded_ok ? "true" : "false",
-               frames_requested, frames_run, frame_callbacks, elapsed_ms, checks, failures,
+               frames_requested, frames_run, frame_callbacks, input_supported ? "true" : "false", elapsed_ms, checks, failures,
                failures == 0 ? "PASS" : "FAIL");
     }
 }
@@ -103,7 +104,9 @@ int main(int argc, char** argv) {
     CHECK(an3_eden_pause(NULL, 1) == AN3_EDEN_ERR_INVALID_HANDLE, "pause(NULL) is rejected");
     CHECK(an3_eden_run_frame(NULL, NULL, NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "run_frame(NULL) is rejected");
     CHECK(an3_eden_submit_button(NULL, 0, 0, 1) == AN3_EDEN_ERR_INVALID_HANDLE, "submit_button(NULL) is rejected");
-    CHECK(an3_eden_submit_analog(NULL, 0, 0, 0) == AN3_EDEN_ERR_INVALID_HANDLE, "submit_analog(NULL) is rejected");
+    CHECK(an3_eden_submit_analog(NULL, 0, 0, 0, 0) == AN3_EDEN_ERR_INVALID_HANDLE, "submit_analog(NULL) is rejected");
+    CHECK(an3_eden_get_button(NULL, 0, 0, NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "get_button(NULL) is rejected");
+    CHECK(an3_eden_get_analog(NULL, 0, 0, NULL, NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "get_analog(NULL) is rejected");
     CHECK(an3_eden_save_data(NULL, "x") == AN3_EDEN_ERR_INVALID_HANDLE, "save_data(NULL) is rejected");
     CHECK(an3_eden_stop(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "stop(NULL) is rejected");
     CHECK(an3_eden_shutdown(NULL) == AN3_EDEN_ERR_INVALID_HANDLE, "shutdown(NULL) is rejected");
@@ -186,17 +189,58 @@ int main(int argc, char** argv) {
         CHECK(frame_errors == 0, "every run_frame in the bounded loop returns OK");
         printf("an3-eden-bridge run_frame: requested=%d seconds=%d framesRun=%d frameCallbacks=%d elapsed=%ldms\n",
                frames_requested, seconds_requested, frames_run, seen, elapsed_ms);
-        /* Input and save bridges are later milestones: the ABI accepts them and
-         * must report UNSUPPORTED rather than faking success. */
+        /* Input and save bridges: the ABI must report a defined status and
+         * never fake success. When input is supported, prove the emulated
+         * controller state actually changed (not just that the call returned). */
         an3_eden_status button = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 1);
-        CHECK(button == AN3_EDEN_OK || button == AN3_EDEN_ERR_UNSUPPORTED,
+        CHECK(button == AN3_EDEN_OK || button == AN3_EDEN_ERR_UNSUPPORTED ||
+                  button == AN3_EDEN_ERR_UNAVAILABLE,
               "submit_button succeeds or reports UNSUPPORTED");
-        an3_eden_status release = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 0);
-        CHECK(release == AN3_EDEN_OK || release == AN3_EDEN_ERR_UNSUPPORTED,
-              "release succeeds or reports UNSUPPORTED");
-        an3_eden_status analog = an3_eden_submit_analog(core, 0, 0, 0);
-        CHECK(analog == AN3_EDEN_OK || analog == AN3_EDEN_ERR_UNSUPPORTED,
-              "submit_analog succeeds or reports UNSUPPORTED");
+        if (button == AN3_EDEN_OK) {
+            input_supported = 1;
+            int pressed = -1;
+            CHECK(an3_eden_get_button(core, 0, AN3_EDEN_BUTTON_A, &pressed) == AN3_EDEN_OK,
+                  "get_button succeeds when input is supported");
+            CHECK(pressed == 1, "Eden's controller sees button A pressed");
+            CHECK(an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 0) == AN3_EDEN_OK,
+                  "release succeeds");
+            CHECK(an3_eden_get_button(core, 0, AN3_EDEN_BUTTON_A, &pressed) == AN3_EDEN_OK,
+                  "get_button succeeds after release");
+            CHECK(pressed == 0, "Eden's controller sees button A released");
+
+            int16_t ax = 0;
+            int16_t ay = 0;
+            CHECK(an3_eden_submit_analog(core, 0, AN3_EDEN_STICK_LEFT, 16384, -16384) == AN3_EDEN_OK,
+                  "left stick move succeeds");
+            CHECK(an3_eden_get_analog(core, 0, AN3_EDEN_STICK_LEFT, &ax, &ay) == AN3_EDEN_OK,
+                  "get_analog succeeds");
+            CHECK(ax > 15000 && ax < 18000, "Eden sees left stick x");
+            CHECK(ay < -15000 && ay > -18000, "Eden sees left stick y");
+            CHECK(an3_eden_submit_analog(core, 0, AN3_EDEN_STICK_LEFT, 0, 0) == AN3_EDEN_OK,
+                  "left stick reset succeeds");
+            CHECK(an3_eden_get_analog(core, 0, AN3_EDEN_STICK_LEFT, &ax, &ay) == AN3_EDEN_OK,
+                  "get_analog succeeds after reset");
+            CHECK(ax == 0 && ay == 0, "Eden sees left stick neutral after reset");
+
+            CHECK(an3_eden_submit_analog(core, 0, AN3_EDEN_STICK_RIGHT, -32768, 32767) == AN3_EDEN_OK,
+                  "right stick move succeeds");
+            CHECK(an3_eden_get_analog(core, 0, AN3_EDEN_STICK_RIGHT, &ax, &ay) == AN3_EDEN_OK,
+                  "get_analog right succeeds");
+            if (!json_mode) {
+                printf("an3-eden-bridge input: right stick read back %d,%d\n", (int)ax, (int)ay);
+            }
+            /* A full-scale diagonal is normalized by Eden's circular gate, so
+             * the magnitude stays 1.0 while each axis is ~0.7071 (-23169). */
+            CHECK(ax < -20000 && ax >= -32768, "Eden sees right stick clamped x");
+            CHECK(ay > 20000 && ay <= 32767, "Eden sees right stick clamped y");
+            CHECK(an3_eden_submit_analog(core, 0, AN3_EDEN_STICK_RIGHT, 0, 0) == AN3_EDEN_OK,
+                  "right stick reset succeeds");
+        }
+        CHECK(an3_eden_submit_analog(core, 0, 99, 0, 0) == AN3_EDEN_ERR_INVALID_ARGUMENT,
+              "invalid stick id is rejected");
+        CHECK(an3_eden_get_analog(core, 0, AN3_EDEN_STICK_LEFT, NULL, NULL) ==
+                  AN3_EDEN_ERR_INVALID_ARGUMENT,
+              "get_analog with NULL outputs is rejected");
         CHECK(an3_eden_submit_button(core, 99, AN3_EDEN_BUTTON_A, 1) == AN3_EDEN_ERR_INVALID_ARGUMENT,
               "invalid port is rejected");
         CHECK(an3_eden_submit_button(core, 0, 99, 1) == AN3_EDEN_ERR_INVALID_ARGUMENT,

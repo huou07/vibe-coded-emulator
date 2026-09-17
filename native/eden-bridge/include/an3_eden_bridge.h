@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 /* Bump when the ABI changes incompatibly. */
-#define AN3_EDEN_BRIDGE_ABI_VERSION 1u
+#define AN3_EDEN_BRIDGE_ABI_VERSION 2u
 
 typedef enum an3_eden_status {
     AN3_EDEN_OK = 0,
@@ -83,6 +83,12 @@ enum {
     AN3_EDEN_BUTTON_R3 = 15
 };
 
+/* Analog stick selector for an3_eden_submit_analog. */
+enum {
+    AN3_EDEN_STICK_LEFT = 0,
+    AN3_EDEN_STICK_RIGHT = 1
+};
+
 /* --- Version and diagnostics ------------------------------------------- */
 
 /* Returns AN3_EDEN_BRIDGE_ABI_VERSION. */
@@ -130,9 +136,23 @@ an3_eden_status an3_eden_run_frame(an3_eden_core* core,
 an3_eden_status an3_eden_submit_button(an3_eden_core* core, uint32_t port,
                                        uint32_t button, int pressed);
 
-/* Analogue stick, -32768..32767, +y is down. */
+/* Analogue stick, -32768..32767, +y is down. `stick` is AN3_EDEN_STICK_*.
+ * Values are clamped; (0, 0) is neutral. */
 an3_eden_status an3_eden_submit_analog(an3_eden_core* core, uint32_t port,
-                                       int16_t x, int16_t y);
+                                       uint32_t stick, int16_t x, int16_t y);
+
+/* --- Input diagnostics -------------------------------------------------- */
+
+/* Reads back the emulated controller's own button state, proving that input
+ * reached the emulator rather than only being accepted by the bridge.
+ * `out_pressed` receives 1 when pressed, 0 when released. */
+an3_eden_status an3_eden_get_button(an3_eden_core* core, uint32_t port,
+                                    uint32_t button, int* out_pressed);
+
+/* Reads back the emulated controller's own analog state as the raw emulated
+ * range (-32767..32767), which is what the emulated game receives. */
+an3_eden_status an3_eden_get_analog(an3_eden_core* core, uint32_t port,
+                                    uint32_t stick, int16_t* out_x, int16_t* out_y);
 
 /* --- Saves -------------------------------------------------------------- */
 

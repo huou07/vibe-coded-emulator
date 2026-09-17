@@ -2,9 +2,11 @@
 
 Status: **bridge ABI implemented and tested; the Eden-backed implementation links
 and runs on macOS.** A legal homebrew NRO (nx-hbmenu v3.6.1) loads, the GPU
-initialises, and the lifecycle passes its smoke test (50 checks, 0 failures).
-Frame readback and input are later milestones. See
-`docs/checkpoints/eden-native-integration.md`.
+initialises, and the lifecycle passes its smoke test (69 checks, 0 failures with
+input). Sustained rendering is stable (RG-115 fixed: the layer is hosted on a
+hidden window) and **buttons/analog work** through Eden's virtual_gamepad engine
+(RG-116). Frame readback into the caller's callback is the remaining milestone.
+See `docs/checkpoints/eden-native-integration.md`.
 
 ## Layout
 
@@ -86,6 +88,16 @@ frames are verified; sustained rendering is not.
 
 Without `LIBVULKAN_PATH`, initialise still succeeds but `load` reports
 `ErrorVideoCore` because the Vulkan library cannot be opened.
+
+## Input
+
+`an3_eden_submit_button` / `an3_eden_submit_analog` write into Eden's
+`virtual_gamepad` engine, which Eden's `EmulatedController` already binds for
+player 1 (`LoadVirtualGamepadParams`). The bridge owns one `InputSubsystem`
+(created before `Core::System` so the engine factory is registered when HIDCore
+builds its devices). `an3_eden_get_button` / `an3_eden_get_analog` read Eden's
+emulated-controller state back, so a test proves the input reached the emulator.
+The analog ABI takes a stick selector (`AN3_EDEN_STICK_LEFT/RIGHT`).
 
 ## Integration design
 

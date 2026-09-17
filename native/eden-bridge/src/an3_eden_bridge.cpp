@@ -204,17 +204,46 @@ an3_eden_status an3_eden_submit_button(an3_eden_core* core, uint32_t port, uint3
     return guard(core, [&] { return an3::eden::active_backend().submit_button(core, port, button, pressed); });
 }
 
-an3_eden_status an3_eden_submit_analog(an3_eden_core* core, uint32_t port, int16_t x, int16_t y) {
+an3_eden_status an3_eden_submit_analog(an3_eden_core* core, uint32_t port, uint32_t stick, int16_t x, int16_t y) {
     if (!valid(core)) {
         return AN3_EDEN_ERR_INVALID_HANDLE;
     }
-    if (port > 7) {
+    if (port > 7 || stick > AN3_EDEN_STICK_RIGHT) {
         return AN3_EDEN_ERR_INVALID_ARGUMENT;
     }
     if (core->state != State::Started) {
         return AN3_EDEN_ERR_NOT_INITIALIZED;
     }
-    return guard(core, [&] { return an3::eden::active_backend().submit_analog(core, port, x, y); });
+    return guard(core, [&] { return an3::eden::active_backend().submit_analog(core, port, stick, x, y); });
+}
+
+an3_eden_status an3_eden_get_button(an3_eden_core* core, uint32_t port, uint32_t button, int* out_pressed) {
+    if (!valid(core)) {
+        return AN3_EDEN_ERR_INVALID_HANDLE;
+    }
+    if (out_pressed == nullptr || port > 7 || button > AN3_EDEN_BUTTON_R3) {
+        return AN3_EDEN_ERR_INVALID_ARGUMENT;
+    }
+    *out_pressed = 0;
+    if (core->state == State::Created) {
+        return AN3_EDEN_ERR_NOT_INITIALIZED;
+    }
+    return guard(core, [&] { return an3::eden::active_backend().get_button(core, port, button, out_pressed); });
+}
+
+an3_eden_status an3_eden_get_analog(an3_eden_core* core, uint32_t port, uint32_t stick, int16_t* out_x, int16_t* out_y) {
+    if (!valid(core)) {
+        return AN3_EDEN_ERR_INVALID_HANDLE;
+    }
+    if (out_x == nullptr || out_y == nullptr || port > 7 || stick > AN3_EDEN_STICK_RIGHT) {
+        return AN3_EDEN_ERR_INVALID_ARGUMENT;
+    }
+    *out_x = 0;
+    *out_y = 0;
+    if (core->state == State::Created) {
+        return AN3_EDEN_ERR_NOT_INITIALIZED;
+    }
+    return guard(core, [&] { return an3::eden::active_backend().get_analog(core, port, stick, out_x, out_y); });
 }
 
 an3_eden_status an3_eden_save_data(an3_eden_core* core, const char* path) {

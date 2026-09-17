@@ -33,6 +33,12 @@
 #include "core/hle/service/filesystem/filesystem.h"
 #include "video_core/gpu.h"
 
+#include "input_common/drivers/virtual_gamepad.h"
+#include "input_common/main.h"
+
+#include "hid_core/frontend/emulated_controller.h"
+#include "hid_core/hid_core.h"
+
 #include "common/logging.h"
 
 namespace {
@@ -103,6 +109,10 @@ private:
 struct EdenState {
     std::unique_ptr<Core::System> system;
     std::unique_ptr<HostWindow> window;
+    /* Owns Eden's input engines. Created before Core::System so the
+     * `virtual_gamepad` factory is registered when HIDCore builds its
+     * controllers' devices (the ABI injects input through that engine). */
+    std::unique_ptr<InputCommon::InputSubsystem> input;
     std::string content_path;
     std::atomic<bool> running{false};
     std::atomic<bool> frame_displayed{false};
@@ -139,6 +149,11 @@ an3_eden_status eden_initialize(an3_eden_core* core, const char* keys_dir, const
             return fail(core, AN3_EDEN_ERR_UNAVAILABLE,
                         "No presentation surface is available for Eden's renderer");
         }
+        /* Register the input engines before the system builds controller
+         * devices, so the virtual_gamepad backend is available to inject
+         * input through the C ABI. */
+        state->input = std::make_unique<InputCommon::InputSubsystem>();
+        state->input->Initialize();
         state->system = std::make_unique<Core::System>();
         state->system->Initialize();
         /* Mirror Eden's frontends: set up the content provider and filesystem
@@ -301,13 +316,136 @@ an3_eden_status eden_run_frame(an3_eden_core* core, an3_eden_frame_callback call
     return AN3_EDEN_OK;
 }
 
-an3_eden_status eden_submit_button(an3_eden_core*, uint32_t, uint32_t, int) {
-    /* Input wiring is a later milestone (HID service); report honestly. */
-    return AN3_EDEN_ERR_UNSUPPORTED;
+/* Maps an AN3/libretro button id onto Eden's virtual gamepad button. */
+bool map_virtual_button(uint32_t button, InputCommon::VirtualGamepad::VirtualButton& out) {
+    using VB = InputCommon::VirtualGamepad::VirtualButton;
+    switch (button) {
+        case AN3_EDEN_BUTTON_B: out = VB::ButtonB; return true;
+        case AN3_EDEN_BUTTON_Y: out = VB::ButtonY; return true;
+        case AN3_EDEN_BUTTON_SELECT: out = VB::ButtonMinus; return true;
+        case AN3_EDEN_BUTTON_START: out = VB::ButtonPlus; return true;
+        case AN3_EDEN_BUTTON_UP: out = VB::ButtonUp; return true;
+        case AN3_EDEN_BUTTON_DOWN: out = VB::ButtonDown; return true;
+        case AN3_EDEN_BUTTON_LEFT: out = VB::ButtonLeft; return true;
+        case AN3_EDEN_BUTTON_RIGHT: out = VB::ButtonRight; return true;
+        case AN3_EDEN_BUTTON_A: out = VB::ButtonA; return true;
+        case AN3_EDEN_BUTTON_X: out = VB::ButtonX; return true;
+        case AN3_EDEN_BUTTON_L: out = VB::TriggerL; return true;
+        case AN3_EDEN_BUTTON_R: out = VB::TriggerR; return true;
+        case AN3_EDEN_BUTTON_L2: out = VB::TriggerZL; return true;
+        case AN3_EDEN_BUTTON_R2: out = VB::TriggerZR; return true;
+        case AN3_EDEN_BUTTON_L3: out = VB::StickL; return true;
+        case AN3_EDEN_BUTTON_R3: out = VB::StickR; return true;
+        default: return false;
+    }
 }
 
-an3_eden_status eden_submit_analog(an3_eden_core*, uint32_t, int16_t, int16_t) {
-    return AN3_EDEN_ERR_UNSUPPORTED;
+an3_eden_status eden_submit_button(an3_eden_core* core, uint32_t port, uint32_t button, int pressed) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->input) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden input is not initialized");
+    }
+    if (!state->running.load(std::memory_order_acquire)) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not running");
+    }
+    InputCommon::VirtualGamepad::VirtualButton mapped{};
+    if (!map_virtual_button(button, mapped)) {
+        return fail(core, AN3_EDEN_ERR_INVALID_ARGUMENT, "Unknown button id");
+    }
+    InputCommon::VirtualGamepad* pad = state->input->GetVirtualGamepad();
+    if (pad == nullptr) {
+        return fail(core, AN3_EDEN_ERR_UNAVAILABLE, "Eden has no virtual gamepad engine");
+    }
+    pad->SetButtonState(static_cast<std::size_t>(port), mapped, pressed != 0);
+    return AN3_EDEN_OK;
+}
+
+an3_eden_status eden_submit_analog(an3_eden_core* core, uint32_t port, uint32_t stick, int16_t x, int16_t y) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->input) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden input is not initialized");
+    }
+    if (!state->running.load(std::memory_order_acquire)) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not running");
+    }
+    InputCommon::VirtualGamepad* pad = state->input->GetVirtualGamepad();
+    if (pad == nullptr) {
+        return fail(core, AN3_EDEN_ERR_UNAVAILABLE, "Eden has no virtual gamepad engine");
+    }
+    const auto clamp_unit = [](int16_t value) {
+        const float unit = static_cast<float>(value) / 32767.0f;
+        return unit < -1.0f ? -1.0f : (unit > 1.0f ? 1.0f : unit);
+    };
+    const auto axis = stick == AN3_EDEN_STICK_RIGHT
+                          ? InputCommon::VirtualGamepad::VirtualStick::Right
+                          : InputCommon::VirtualGamepad::VirtualStick::Left;
+    pad->SetStickPosition(static_cast<std::size_t>(port), axis, clamp_unit(x), clamp_unit(y));
+    return AN3_EDEN_OK;
+}
+
+/* Bit positions in Eden's NpadButtonState.raw (hid_core/hid_types.h). */
+bool npad_bit_for_button(uint32_t button, u64& mask) {
+    switch (button) {
+        case AN3_EDEN_BUTTON_A: mask = u64{1} << 0; return true;
+        case AN3_EDEN_BUTTON_B: mask = u64{1} << 1; return true;
+        case AN3_EDEN_BUTTON_X: mask = u64{1} << 2; return true;
+        case AN3_EDEN_BUTTON_Y: mask = u64{1} << 3; return true;
+        case AN3_EDEN_BUTTON_L3: mask = u64{1} << 4; return true;
+        case AN3_EDEN_BUTTON_R3: mask = u64{1} << 5; return true;
+        case AN3_EDEN_BUTTON_L: mask = u64{1} << 6; return true;
+        case AN3_EDEN_BUTTON_R: mask = u64{1} << 7; return true;
+        case AN3_EDEN_BUTTON_L2: mask = u64{1} << 8; return true;
+        case AN3_EDEN_BUTTON_R2: mask = u64{1} << 9; return true;
+        case AN3_EDEN_BUTTON_START: mask = u64{1} << 10; return true;
+        case AN3_EDEN_BUTTON_SELECT: mask = u64{1} << 11; return true;
+        case AN3_EDEN_BUTTON_LEFT: mask = u64{1} << 12; return true;
+        case AN3_EDEN_BUTTON_UP: mask = u64{1} << 13; return true;
+        case AN3_EDEN_BUTTON_RIGHT: mask = u64{1} << 14; return true;
+        case AN3_EDEN_BUTTON_DOWN: mask = u64{1} << 15; return true;
+        default: return false;
+    }
+}
+
+an3_eden_status eden_get_button(an3_eden_core* core, uint32_t port, uint32_t button, int* out_pressed) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->system) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
+    }
+    Core::HID::EmulatedController* controller =
+        state->system->HIDCore().GetEmulatedControllerByIndex(port);
+    if (controller == nullptr) {
+        return fail(core, AN3_EDEN_ERR_INVALID_ARGUMENT, "No emulated controller for this port");
+    }
+    u64 mask = 0;
+    if (!npad_bit_for_button(button, mask)) {
+        return fail(core, AN3_EDEN_ERR_INVALID_ARGUMENT, "Unknown button id");
+    }
+    const u64 raw = static_cast<u64>(controller->GetNpadButtons().raw);
+    *out_pressed = (raw & mask) != 0 ? 1 : 0;
+    return AN3_EDEN_OK;
+}
+
+an3_eden_status eden_get_analog(an3_eden_core* core, uint32_t port, uint32_t stick, int16_t* out_x, int16_t* out_y) {
+    EdenState* state = state_of(core);
+    if (state == nullptr || !state->system) {
+        return fail(core, AN3_EDEN_ERR_NOT_INITIALIZED, "Eden core is not initialized");
+    }
+    Core::HID::EmulatedController* controller =
+        state->system->HIDCore().GetEmulatedControllerByIndex(port);
+    if (controller == nullptr) {
+        return fail(core, AN3_EDEN_ERR_INVALID_ARGUMENT, "No emulated controller for this port");
+    }
+    const auto sticks = controller->GetSticks();
+    const Core::HID::AnalogStickState& axis =
+        stick == AN3_EDEN_STICK_RIGHT ? sticks.right : sticks.left;
+    const auto clamp_to_i16 = [](s32 value) {
+        if (value > 32767) return static_cast<int16_t>(32767);
+        if (value < -32768) return static_cast<int16_t>(-32768);
+        return static_cast<int16_t>(value);
+    };
+    *out_x = clamp_to_i16(axis.x);
+    *out_y = clamp_to_i16(axis.y);
+    return AN3_EDEN_OK;
 }
 
 an3_eden_status eden_save_data(an3_eden_core*, const char*) {
@@ -341,9 +479,14 @@ an3_eden_status eden_shutdown(an3_eden_core* core) {
         return AN3_EDEN_OK;
     }
     /* Core::System's destructor releases the subsystems; this revision exposes
-     * no separate System::Shutdown(). */
+     * no separate System::Shutdown(). Release the controllers before
+     * unregistering the input engines they are bound to. */
     state->window.reset();
     state->system.reset();
+    if (state->input) {
+        state->input->Shutdown();
+        state->input.reset();
+    }
     delete state;
     core->backend_state = nullptr;
     return AN3_EDEN_OK;
@@ -352,7 +495,8 @@ an3_eden_status eden_shutdown(an3_eden_core* core) {
 const an3::eden::Backend kEdenBackend{
     "eden",        eden_initialize,    eden_load,          eden_start,
     eden_pause,    eden_run_frame,     eden_submit_button, eden_submit_analog,
-    eden_save_data, eden_stop,         eden_shutdown,
+    eden_get_button, eden_get_analog,  eden_save_data,     eden_stop,
+    eden_shutdown,
 };
 
 }  // namespace

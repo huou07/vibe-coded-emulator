@@ -31,7 +31,11 @@ struct Backend {
     an3_eden_status (*pause)(an3_eden_core*, int paused);
     an3_eden_status (*run_frame)(an3_eden_core*, an3_eden_frame_callback, void* user_data);
     an3_eden_status (*submit_button)(an3_eden_core*, uint32_t port, uint32_t button, int pressed);
-    an3_eden_status (*submit_analog)(an3_eden_core*, uint32_t port, int16_t x, int16_t y);
+    an3_eden_status (*submit_analog)(an3_eden_core*, uint32_t port, uint32_t stick, int16_t x,
+                                     int16_t y);
+    an3_eden_status (*get_button)(an3_eden_core*, uint32_t port, uint32_t button, int* out_pressed);
+    an3_eden_status (*get_analog)(an3_eden_core*, uint32_t port, uint32_t stick, int16_t* out_x,
+                                  int16_t* out_y);
     an3_eden_status (*save_data)(an3_eden_core*, const char* path);
     an3_eden_status (*stop)(an3_eden_core*);
     an3_eden_status (*shutdown)(an3_eden_core*);

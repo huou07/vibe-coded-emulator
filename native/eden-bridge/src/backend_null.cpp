@@ -34,7 +34,13 @@ an3_eden_status null_run_frame(an3_eden_core* core, an3_eden_frame_callback, voi
 an3_eden_status null_submit_button(an3_eden_core* core, uint32_t, uint32_t, int) {
     return null_unavailable(core);
 }
-an3_eden_status null_submit_analog(an3_eden_core* core, uint32_t, int16_t, int16_t) {
+an3_eden_status null_submit_analog(an3_eden_core* core, uint32_t, uint32_t, int16_t, int16_t) {
+    return null_unavailable(core);
+}
+an3_eden_status null_get_button(an3_eden_core* core, uint32_t, uint32_t, int*) {
+    return null_unavailable(core);
+}
+an3_eden_status null_get_analog(an3_eden_core* core, uint32_t, uint32_t, int16_t*, int16_t*) {
     return null_unavailable(core);
 }
 an3_eden_status null_save_data(an3_eden_core* core, const char*) { return null_unavailable(core); }
@@ -42,9 +48,10 @@ an3_eden_status null_stop(an3_eden_core*) { return AN3_EDEN_OK; }
 an3_eden_status null_shutdown(an3_eden_core*) { return AN3_EDEN_OK; }
 
 const Backend kNullBackend{
-    "null",       null_initialize,     null_load,          null_start,
-    null_pause,   null_run_frame,      null_submit_button, null_submit_analog,
-    null_save_data, null_stop,         null_shutdown,
+    "null",         null_initialize,  null_load,          null_start,
+    null_pause,     null_run_frame,   null_submit_button, null_submit_analog,
+    null_get_button, null_get_analog, null_save_data,     null_stop,
+    null_shutdown,
 };
 
 }  // namespace
