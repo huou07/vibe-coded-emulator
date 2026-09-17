@@ -45,9 +45,10 @@ target_compile_features(an3_eden_bridge PUBLIC cxx_std_20)
 # libcommon's power-status code needs IOKit on macOS.
 if(APPLE)
     target_link_libraries(an3_eden_bridge PRIVATE "-framework IOKit")
-    # Offscreen CAMetalLayer host (cocoa_surface.mm).
+    # Hosted CAMetalLayer surface (cocoa_surface.mm): AppKit hosts the hidden
+    # window/view that gives the layer a real size and recycles drawables.
     target_link_libraries(an3_eden_bridge PRIVATE
-        "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+        "-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework Foundation")
 endif()
 
 # Eden's own GPU dependencies (FetchContent external projects). Link them
