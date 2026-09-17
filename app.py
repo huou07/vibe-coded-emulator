@@ -153,6 +153,28 @@ ROOMS = netcode.RoomService(
     join_limiter=netcode.SlidingRateLimiter(limit=20, window_seconds=60),
 )
 
+# Capability is per core, not global. The staged web EmulatorJS build has no
+# WebRTC: netplay is relay-mediated input lockstep (each peer runs its own core).
+# Only GBA is runtime-verified (RG-086), so every other system advertises
+# "Not available" rather than a dead Create Room button.
+MULTIPLAYER_CORE_CAPABILITY = {
+    "gba": {"available": True, "transport": "relay", "verified": True},
+    "gbc": {"available": False, "transport": "relay", "verified": False},
+    "nds": {"available": False, "transport": "relay", "verified": False},
+    "3ds": {"available": False, "transport": "relay", "verified": False},
+    "switch": {"available": False, "transport": "none", "verified": False},
+    "html5": {"available": False, "transport": "none", "verified": False},
+}
+
+
+def multiplayer_capability(system):
+    entry = MULTIPLAYER_CORE_CAPABILITY.get(str(system or "").lower())
+    if entry and entry.get("available"):
+        return {"available": True, "transport": entry.get("transport", "relay"), "verified": bool(entry.get("verified"))}
+    return {"available": False, "transport": "relay", "verified": False,
+            "reason": "Not available for this system"}
+
+
 # The remote controller is staging-only too. A host creates a short-lived
 # pairing session, the phone pairs with the code, and both sides use
 # role-scoped tokens. No controller endpoint exists in production.
@@ -161,6 +183,16 @@ CONTROLLERS = {}
 CONTROLLER_LOCK = threading.Lock()
 CONTROLLER_LIMITER = netcode.SlidingRateLimiter(limit=30, window_seconds=60)
 CONTROLLER_TTL_SECONDS = 120
+# Systems a host may advertise so the phone can pick the right pad layout.
+CONTROLLER_SYSTEMS = frozenset({"auto", "gba", "gbc", "nds", "3ds", "switch", "html5"})
+
+
+def clean_controller_name(value, fallback):
+    """A short printable device label. It is never an address or a token."""
+
+    text = re.sub(r"[^\w .:'()\-]", "", str(value or "")).strip()
+    text = re.sub(r"\s+", " ", text)[:32]
+    return text or fallback
 
 
 def controller_reap():
@@ -207,23 +239,64 @@ def lan_blob_reap(now=None):
 
 
 def sync_mode_catalog():
-    """Selectable modes with availability, Drive gated on owner credentials."""
+    """Selectable modes with availability, Drive gated on owner credentials.
+
+    The normal UI shows the plain-language labels; ``detail`` carries the short
+    qualifier ("Recommended") and ``advanced`` marks the modes that only appear
+    once the user opens Advanced Settings.
+    """
 
     return [
-        {"id": sync_engine.SyncMode.OFF.value, "label": "Tắt / Off", "available": True},
-        {"id": sync_engine.SyncMode.LAN.value, "label": "LAN", "available": True},
-        {"id": sync_engine.SyncMode.DRIVE.value, "label": "Google Drive", "available": GOOGLE_DRIVE_ENABLED},
-        {"id": sync_engine.SyncMode.LAN_DRIVE.value, "label": "LAN + Drive", "available": GOOGLE_DRIVE_ENABLED},
+        {"id": sync_engine.SyncMode.AUTO.value, "label": "Automatic", "detail": "Recommended",
+         "available": True, "advanced": False},
+        {"id": sync_engine.SyncMode.LAN.value, "label": "Local network only",
+         "detail": "", "available": True, "advanced": True},
+        {"id": sync_engine.SyncMode.DRIVE.value, "label": "Google Drive only",
+         "detail": "", "available": GOOGLE_DRIVE_ENABLED, "advanced": True},
+        {"id": sync_engine.SyncMode.OFF.value, "label": "Off", "detail": "",
+         "available": True, "advanced": False},
     ]
 
 
-def sync_mode_status(conn, device_key):
-    """Return ``(mode, updated_at)`` for a device, defaulting to OFF."""
+DEFAULT_SYNC_CONTENT = {
+    "save": True,
+    "state": True,
+    "library": True,
+    "rom": False,
+}
 
-    row = conn.execute("SELECT mode, updated_at FROM sync_settings WHERE device_key=?", (device_key,)).fetchone()
+
+def parse_sync_content(raw):
+    """Coerce a stored/requested content map into the four known booleans."""
+
+    content = dict(DEFAULT_SYNC_CONTENT)
+    if isinstance(raw, dict):
+        for key in DEFAULT_SYNC_CONTENT:
+            if key in raw:
+                content[key] = bool(raw[key])
+    if content["rom"]:
+        content["rom"] = True
+    return content
+
+
+def sync_content_from_row(value):
+    if not value:
+        return dict(DEFAULT_SYNC_CONTENT)
+    try:
+        return parse_sync_content(json.loads(value))
+    except (TypeError, ValueError):
+        return dict(DEFAULT_SYNC_CONTENT)
+
+
+def sync_mode_status(conn, device_key):
+    """Return ``(mode, updated_at, content)`` for a device, defaulting to OFF."""
+
+    row = conn.execute("SELECT mode, updated_at, content FROM sync_settings WHERE device_key=?", (device_key,)).fetchone()
     if not row:
-        return sync_engine.SyncMode.OFF, 0
-    return sync_engine.parse_sync_mode(row["mode"]), int(row["updated_at"])
+        return sync_engine.SyncMode.OFF, 0, dict(DEFAULT_SYNC_CONTENT)
+    return (sync_engine.parse_sync_mode(row["mode"]), int(row["updated_at"]),
+            sync_content_from_row(row["content"]))
+
 
 
 def sync_same_subnet(first, second):
@@ -854,6 +927,9 @@ def init_db():
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(games)")}
         if "system_auto" not in columns:
             conn.execute("ALTER TABLE games ADD COLUMN system_auto INTEGER NOT NULL DEFAULT 0")
+        sync_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sync_settings)")}
+        if "content" not in sync_columns:
+            conn.execute("ALTER TABLE sync_settings ADD COLUMN content TEXT NOT NULL DEFAULT ''")
         defaults = {
             "maintainer_email": os.environ.get("AN3_MAINTAINER_EMAIL", ""),
             "maintainer_facebook": "",
@@ -1587,41 +1663,100 @@ def core_preload_page(system, lang):
 
 
 def multiplayer_page(lang, user, csrf, slug=""):
-    """Staging-only room surface for the AN3 multiplayer service.
+    """Room surface for the AN3 multiplayer service.
 
     Only routed when MULTIPLAYER_ENABLED is true, so it never appears in
     production. A game slug prefills the exact room signature so two players
-    who open the same game generate an identical signature.
+    who open the same game generate an identical signature. Opening the page
+    without a game shows a library picker, so the flow stays game-centered.
+    Normal UI shows only user concepts; relay internals live under Advanced
+    Diagnostics.
     """
+
     game = None
     if slug:
         with db() as conn:
             game = conn.execute("SELECT * FROM games WHERE slug=?", (slug,)).fetchone()
-    system = (game["system"] if game else "") or "gba"
-    core = PRIMARY_CORES.get(system, system)
+    games = []
+    if game is None:
+        with db() as conn:
+            games = conn.execute("SELECT * FROM games WHERE published=1 ORDER BY title_en LIMIT 50").fetchall()
+
+    system = (game["system"] if game else "")
+    core = PRIMARY_CORES.get(system, system) if game else ""
     rom_hash = game_rom_hash(game) if game else ""
-    body = f'''<main class="page multiplayer-page">
-<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · NHIỀU NGƯỜI","STAGING · MULTIPLAYER")}</p><h1>{tr(lang,"Phòng chơi chung","Multiplayer rooms")}</h1></div></section>
-<p class="muted">{tr(lang,"Phòng hết hạn sau 15 phút. Chỉ trao đổi chữ ký game (hệ máy, core, hash ROM); ROM không bao giờ được truyền.","Rooms expire after 15 minutes. Only the game signature (system, core, ROM hash) is exchanged; the ROM is never transferred.")}</p>
-<div class="admin-grid">
-<section class="admin-form"><h2>{tr(lang,"Tạo phòng","Create room")}</h2><div class="form-grid">
-<label>{tr(lang,"Hệ máy","System")}<input id="mpSystem" value="{esc(system)}"></label>
-<label>Core<input id="mpCore" value="{esc(core)}"></label>
-<label class="wide">{tr(lang,"Hash ROM (SHA-256)","ROM SHA-256")}<input id="mpHash" value="{esc(rom_hash)}"></label>
-<label class="wide">{tr(lang,"Tên thiết bị","Device name")}<input id="mpHost" value="host"></label>
-</div><div class="form-actions"><button id="mpCreateBtn" type="button" class="button primary">{tr(lang,"Tạo phòng","Create room")}</button></div><p id="mpCreateOut" class="muted" role="status"></p></section>
-<section class="admin-form"><h2>{tr(lang,"Vào phòng","Join room")}</h2><div class="form-grid">
-<label class="wide">{tr(lang,"Mã mời","Invite code")}<input id="mpCode" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
-<label>{tr(lang,"Hệ máy","System")}<input id="mpJSystem" value="{esc(system)}"></label>
-<label>Core<input id="mpJCore" value="{esc(core)}"></label>
-<label class="wide">{tr(lang,"Hash ROM (SHA-256)","ROM SHA-256")}<input id="mpJHash" value="{esc(rom_hash)}"></label>
-<label class="wide">{tr(lang,"Tên thiết bị","Device name")}<input id="mpJDevice" value="phone"></label>
-</div><div class="form-actions"><button id="mpJoinBtn" type="button" class="button">{tr(lang,"Vào phòng","Join room")}</button></div><p id="mpJoinOut" class="muted" role="status"></p></section>
+    selected_title = game_title(game, lang) if game else ""
+    capability = multiplayer_capability(system)
+
+    available_panel = f'''<section class="mp-grid" id="mpPanel" hidden>
+<div class="mp-card">
+<h2>{tr(lang,"Tạo phòng","Create Room")}</h2>
+<p class="muted">{tr(lang,"Bắt đầu phòng và chia sẻ mã phòng.","Start a room and share the room code.")}</p>
+<button id="mpCreateBtn" type="button" class="button primary">{tr(lang,"Tạo phòng","Create Room")}</button>
+<div id="mpRoomBox" class="mp-room" hidden>
+<p class="mp-room-label">{tr(lang,"Mã phòng","Room Code")}</p>
+<p id="mpRoomCode" class="ctrl-code">—</p>
+<div class="form-actions"><button id="mpCopyCode" type="button" class="button">{tr(lang,"Sao chép mã","Copy Code")}</button><button id="mpShowQr" type="button" class="button">{tr(lang,"Hiện mã QR","Show QR")}</button><button id="mpCancelRoom" type="button" class="button danger">{tr(lang,"Hủy","Cancel")}</button></div>
+<img id="mpRoomQr" class="ctrl-qr" alt="{tr(lang,"Mã QR phòng chơi","Room QR code")}" hidden>
+<p id="mpWaitState" class="muted" role="status">{tr(lang,"Đang chờ người chơi…","Waiting for player…")}</p>
 </div>
-<p class="muted">{tr(lang,"Relay","Relay")}: <code>{esc(NETPLAY_ORIGIN)}</code></p>
+<p id="mpCreateOut" class="muted" role="status"></p>
+</div>
+<div class="mp-card">
+<h2>{tr(lang,"Vào phòng","Join Room")}</h2>
+<label>{tr(lang,"Mã phòng","Room code")}<input id="mpCode" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="H7K4PF"></label>
+<button id="mpJoinBtn" type="button" class="button primary">{tr(lang,"Vào phòng","Join")}</button>
+<p id="mpJoinOut" class="muted" role="status"></p>
+</div>
+</section>
+<details class="tech-details"><summary>{tr(lang,"Chi tiết kỹ thuật","Technical details")}</summary><div class="tech-body">
+<p>{tr(lang,"Hệ máy","System")}: <code id="mpSystemView">{esc(system)}</code> · Core: <code id="mpCoreView">{esc(core)}</code></p>
+<p>ROM SHA-256: <code id="mpHashView">{esc(rom_hash[7:23] if rom_hash.startswith("sha256:") else rom_hash[:16])}</code></p>
+<p id="mpTransportView">Transport: {esc(capability["transport"])}</p>
+</div></details>
+<input type="hidden" id="mpSystem" value="{esc(system)}"><input type="hidden" id="mpCore" value="{esc(core)}"><input type="hidden" id="mpHash" value="{esc(rom_hash)}">
+<input type="hidden" id="mpJSystem" value="{esc(system)}"><input type="hidden" id="mpJCore" value="{esc(core)}"><input type="hidden" id="mpJHash" value="{esc(rom_hash)}">
+<input type="hidden" id="mpHost" value="host"><input type="hidden" id="mpJDevice" value="phone"><input type="hidden" id="mpSlug" value="{esc(slug)}">'''
+
+    unavailable_panel = f'''<section class="admin-form mp-unavailable" id="mpUnavailable" hidden>
+<h2>{tr(lang,"Không khả dụng","Not available")}</h2>
+<p class="muted">{tr(lang,"Hệ máy này chưa được kiểm chứng cho chơi chung.","Not available for this system.")}</p>
+<p class="muted">{tr(lang,"Chơi chung hiện chỉ hoạt động với các hệ máy đã được kiểm chứng.","Multiplayer is currently offered only for verified systems.")}</p>
+</section>'''
+
+    if game is not None:
+        # A direct game link reveals the decision immediately; the picker case
+        # leaves both panels hidden and lets the script choose on selection.
+        if capability["available"]:
+            available_panel = available_panel.replace('id="mpPanel" hidden', 'id="mpPanel"', 1)
+        else:
+            unavailable_panel = unavailable_panel.replace('id="mpUnavailable" hidden', 'id="mpUnavailable"', 1)
+        picker = ""
+        lead = esc(selected_title)
+    else:
+        options = "".join(
+            f'<option value="{esc(row["slug"])}" data-system="{esc(row["system"])}" '
+            f'data-core="{esc(PRIMARY_CORES.get(row["system"], row["system"]))}" '
+            f'data-hash="{esc(game_rom_hash(row))}" data-title="{esc(game_title(row, lang))}" '
+            f'data-available="{1 if multiplayer_capability(row["system"])["available"] else 0}">{esc(game_title(row, lang))}</option>'
+            for row in games
+        )
+        picker = (
+            f'<label>{tr(lang,"Trò chơi","Game")}<select id="mpGameSelect"><option value="">'
+            f'{tr(lang,"Chọn một game…","Select a game…")}</option>{options}</select></label>'
+            if games else
+            f'<p class="muted">{tr(lang,"Hãy thêm game vào thư viện trước.","Add a game to your library first.")}</p>'
+        )
+        lead = tr(lang, "Chọn một game để chơi chung.", "Select a game to play together.")
+
+    body = f'''<main class="page multiplayer-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"Chơi chung","Multiplayer")}</p><h1>{tr(lang,"Chơi chung","Multiplayer")}</h1></div></section>
+<section class="mp-setup" id="mpSetup">{picker}<p class="muted" id="mpLead">{lead}</p></section>
+{available_panel}
+{unavailable_panel}
 <script src="/static/multiplayer.js?v={ASSET_VERSION}" defer></script>
 </main>'''
-    return layout(tr(lang, "Phòng chơi chung", "Multiplayer"), body, lang, user, csrf)
+    return layout(tr(lang, "Chơi chung", "Multiplayer"), body, lang, user, csrf)
 
 
 CONTROLLER_QR_MAX_TEXT = 512
@@ -1668,13 +1803,19 @@ def controller_qr_svg(text, border=4):
 
 def controller_host_page(lang, user, csrf):
     body = f'''<main class="page controller-page">
-<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · ĐIỀU KHIỂN","STAGING · CONTROLLER")}</p><h1>{tr(lang,"Điện thoại làm tay cầm","Phone as controller")}</h1></div></section>
-<section class="admin-form" id="ctrlHostPanel">
-<p class="muted">{tr(lang,"Phiên ghép đôi kéo dài 2 phút. Mở liên kết trên điện thoại cùng mạng LAN.","Pairing lasts 2 minutes. Open the link on a phone on the same LAN.")}</p>
-<p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlCode" class="ctrl-code">—</span></p>
-<p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlLink" href="#">—</a></p>
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"Điều khiển","Controller")}</p><h1>{tr(lang,"Tay cầm điện thoại","Phone Controller")}</h1></div></section>
+<section class="ctrl-panel" id="ctrlHostPanel">
+<p class="ctrl-state" id="ctrlState">{tr(lang,"Tắt","Off")}</p>
+<p class="muted" id="ctrlHint">{tr(lang,"Bắt đầu phiên trên thiết bị này, sau đó kết nối từ điện thoại.","Start a session on this device, then connect from the phone.")}</p>
+<div class="form-actions"><button id="ctrlStart" type="button" class="button primary">{tr(lang,"Bắt đầu phiên tay cầm","Start Controller Session")}</button><button id="ctrlStop" type="button" class="button danger" hidden>{tr(lang,"Dừng","Stop")}</button></div>
+<div id="ctrlActive" hidden>
+<div class="ctrl-code-box"><span class="muted">{tr(lang,"Mã ghép đôi","Pairing code")}</span><span id="ctrlCode" class="ctrl-code">—</span></div>
+<p class="muted">{tr(lang,"Trên điện thoại: Vibe Coded Emulator → Tay cầm → chọn thiết bị này. Hoặc quét mã QR / nhập mã.","On the phone: Vibe Coded Emulator → Controller → pick this device. Or scan the QR / enter the code.")}</p>
 <img id="ctrlQr" class="ctrl-qr" alt="{tr(lang,"Mã QR ghép đôi","Pairing QR code")}" hidden>
-<p id="ctrlStatus" class="muted" role="status">{tr(lang,"Đang tạo phiên…","Creating session…")}</p>
+<p><a id="ctrlLink" href="#">{tr(lang,"Mở liên kết ghép đôi","Open pairing link")}</a></p>
+</div>
+<p id="ctrlStatus" class="muted" role="status"></p>
+<p class="muted"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 </section>
 <script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
 </main>'''
@@ -1682,20 +1823,49 @@ def controller_host_page(lang, user, csrf):
 
 
 def controller_join_page(lang, user, csrf, code=""):
-    labels = (
-        ("up", "↑"), ("down", "↓"), ("left", "←"), ("right", "→"),
-        ("a", "A"), ("b", "B"), ("x", "X"), ("y", "Y"),
-        ("l", "L"), ("r", "R"), ("start", "Start"), ("select", "Select"),
-    )
-    pad = "".join(f'<button type="button" class="button ctrl-btn" data-btn="{name}">{label}</button>' for name, label in labels)
-    body = f'''<main class="page controller-page">
-<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · TAY CẦM","STAGING · CONTROLLER")}</p><h1>{tr(lang,"Tay cầm điện thoại","Phone controller")}</h1></div></section>
-<section class="admin-form" id="ctrlJoinPanel">
-<label>{tr(lang,"Mã ghép đôi","Pairing code")}<input id="ctrlCode" value="{esc(code)}" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
-<div class="form-actions"><button id="ctrlConnect" type="button" class="button primary">{tr(lang,"Kết nối","Connect")}</button></div>
-<p id="ctrlStatus" class="muted" role="status"></p>
-<div id="ctrlPad" class="ctrl-pad" hidden>{pad}</div>
+    body = f'''<main class="page ctrl-phone-page">
+<section class="ctrl-phone-head">
+<div><p class="eyebrow">{tr(lang,"Điều khiển","Controller")}</p><h1 id="ctrlTitle">{tr(lang,"Chế độ tay cầm","Controller Mode")}</h1></div>
+<label class="ctrl-layout-picker">{tr(lang,"Bố cục","Layout")}<select id="ctrlLayout">
+<option value="auto">{tr(lang,"Tự động","Automatic")}</option>
+<option value="gba">GBA</option>
+<option value="nds">NDS</option>
+<option value="3ds">3DS</option>
+<option value="custom">{tr(lang,"Tùy chỉnh","Custom")}</option>
+</select></label>
 </section>
+<section id="ctrlJoinPanel" class="ctrl-connect">
+<h2>{tr(lang,"Kết nối tới thiết bị","Connect to a device")}</h2>
+<ul id="ctrlHosts" class="ctrl-hosts" hidden></ul>
+<label>{tr(lang,"Mã ghép đôi","Pairing code")}<input id="ctrlCode" value="{esc(code)}" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="H7K4PF"></label>
+<div class="form-actions"><button id="ctrlConnect" type="button" class="button primary">{tr(lang,"Kết nối","Connect")}</button></div>
+<p id="ctrlStatus" class="muted" role="status">{tr(lang,"Tắt","Off")}</p>
+</section>
+<section id="ctrlPad" class="ctrl-pad" hidden>
+<div class="ctrl-padbar"><span id="ctrlPadState" class="ctrl-state">{tr(lang,"Đã kết nối","Connected")}</span><button id="ctrlDisconnect" type="button">{tr(lang,"Ngắt","Disconnect")}</button></div>
+<div class="ctrl-touchscreen" id="ctrlTouchscreen" data-role="touchscreen" hidden>{tr(lang,"Màn hình cảm ứng","Touch Screen")}</div>
+<div class="ctrl-shoulders"><button type="button" class="ctrl-key ctrl-shoulder" data-btn="l">L</button><button type="button" class="ctrl-key ctrl-shoulder" data-btn="r">R</button></div>
+<div class="ctrl-main">
+<div class="ctrl-dpad" data-role="dpad">
+<button type="button" class="ctrl-key dpad-up" data-btn="up" aria-label="Up">▲</button>
+<button type="button" class="ctrl-key dpad-left" data-btn="left" aria-label="Left">◀</button>
+<button type="button" class="ctrl-key dpad-right" data-btn="right" aria-label="Right">▶</button>
+<button type="button" class="ctrl-key dpad-down" data-btn="down" aria-label="Down">▼</button>
+</div>
+<div class="ctrl-sticks" data-role="sticks">
+<span class="ctrl-stick" data-stick="left" role="slider" aria-label="{tr(lang,"Cần gạt trái","Left stick")}" tabindex="0"></span>
+<span class="ctrl-stick" data-stick="right" role="slider" aria-label="{tr(lang,"Cần gạt phải","Right stick")}" tabindex="0"></span>
+</div>
+<div class="ctrl-face">
+<button type="button" class="ctrl-key face-x" data-btn="x">X</button>
+<button type="button" class="ctrl-key face-y" data-btn="y">Y</button>
+<button type="button" class="ctrl-key face-a" data-btn="a">A</button>
+<button type="button" class="ctrl-key face-b" data-btn="b">B</button>
+</div>
+</div>
+<div class="ctrl-system"><button type="button" class="ctrl-key" data-btn="select">Select</button><button type="button" class="ctrl-key" data-btn="start">Start</button></div>
+</section>
+<p class="muted ctrl-phone-foot"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 <script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Tay cầm", "Controller"), body, lang, user, csrf)
@@ -1703,18 +1873,51 @@ def controller_join_page(lang, user, csrf, code=""):
 
 def sync_page(lang, user, csrf):
     body = f'''<main class="page sync-page">
-<section class="library-head"><div><p class="eyebrow">{tr(lang,"STAGING · ĐỒNG BỘ","STAGING · SYNC")}</p><h1>{tr(lang,"Đồng bộ giữa các thiết bị","Cross-device sync")}</h1></div></section>
-<section class="admin-form" id="syncPanel">
-<p class="muted">{tr(lang,"Chỉ dữ liệu người dùng (save, state, metadata) được đồng bộ. ROM đi kèm, firmware và khóa không bao giờ được đồng bộ.","Only user data (saves, states, metadata) syncs. Bundled ROMs, firmware and keys never do.")}</p>
-<label><span>{tr(lang,"Chế độ đồng bộ","Sync mode")}</span><select id="syncMode"></select></label>
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"Đồng bộ","Sync")}</p><h1>{tr(lang,"Đồng bộ","Sync")}</h1></div></section>
+<section class="sync-panel" id="syncPanel">
+<div class="sync-mode">
+<label for="syncMode">{tr(lang,"Chế độ","Mode")}</label>
+<select id="syncMode"></select>
+<p id="syncModeDetail" class="muted"></p>
+</div>
+<fieldset class="sync-content">
+<legend>{tr(lang,"Nội dung đồng bộ","Sync content")}</legend>
+<label class="check"><input type="checkbox" id="syncContentSave"> {tr(lang,"Tệp save","Save files")}</label>
+<label class="check"><input type="checkbox" id="syncContentState"> {tr(lang,"Save state","Save states")}</label>
+<label class="check"><input type="checkbox" id="syncContentLibrary"> {tr(lang,"Thư viện game","Game library")}</label>
+<label class="check"><input type="checkbox" id="syncContentRom"> {tr(lang,"Tệp ROM","ROM files")}</label>
+<p id="syncRomWarning" class="sync-warning" hidden>{tr(lang,"Thư viện ROM có thể tốn nhiều dung lượng và băng thông.","ROM libraries may use significant storage and network bandwidth.")}</p>
+</fieldset>
+<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu","Save")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị","Find devices")}</button></div>
+<p id="syncStatus" class="muted" role="status" aria-live="polite"></p>
 <small id="syncAvailability" class="muted"></small>
-<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu chế độ","Save mode")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị LAN","Find LAN devices")}</button></div>
-<p id="syncStatus" class="muted" role="status"></p>
-<ul id="syncPeers" class="sync-peers"></ul>
+<h2 class="sync-devices-title">{tr(lang,"Thiết bị","Devices")}</h2>
+<ul id="syncPeers" class="sync-devices"></ul>
+<div id="syncConflicts" class="sync-conflicts" hidden></div>
+<p class="muted"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 </section>
 <script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
+
+
+def diagnostics_page(lang, user, csrf):
+    """Advanced Diagnostics: technical detail that normal UI deliberately hides.
+
+    Nothing here is a secret: the page reads the environment/capability snapshot
+    endpoint and shows the same fields the normal surfaces keep out of the way.
+    """
+
+    body = f'''<main class="page diagnostics-page">
+<section class="library-head"><div><p class="eyebrow">{tr(lang,"Nâng cao","Advanced")}</p><h1>{tr(lang,"Chẩn đoán","Diagnostics")}</h1></div></section>
+<section class="diag-panel">
+<p class="muted">{tr(lang,"Số liệu vận hành và giao thức. Không chứa mã token hay địa chỉ thiết bị.","Operational and protocol detail. Never contains session tokens or device addresses.")}</p>
+<pre id="diagOutput" class="diag-output" role="status">{tr(lang,"Đang tải…","Loading…")}</pre>
+<div class="form-actions"><button id="diagRefresh" type="button" class="button">{tr(lang,"Làm mới","Refresh")}</button><button id="diagCopy" type="button" class="button">{tr(lang,"Sao chép","Copy")}</button></div>
+</section>
+<script src="/static/diagnostics.js?v={ASSET_VERSION}" defer></script>
+</main>'''
+    return layout(tr(lang, "Chẩn đoán", "Diagnostics"), body, lang, user, csrf)
 
 
 def licenses_page(lang, user, csrf):
@@ -1769,7 +1972,7 @@ def player_page(game, lang, user, csrf):
         auto_slot_row = f'<div class="save-slot save-slot-auto" data-auto-slot><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trống","Empty")}</small><button data-save-auto>{tr(lang,"Lưu","Save")}</button><button data-load-auto disabled>{tr(lang,"Nạp","Load")}</button></div>'
         slot_panel = f'<section id="slotPanel" class="slot-panel" hidden role="dialog" aria-label="{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}"><header><strong>{tr(lang,"Save slot trên thiết bị này","Save slots on this device")}</strong><button id="closeSlots" type="button">{tr(lang,"Đóng","Close")}</button></header>{auto_slot_row}{slot_rows}</section>'
         controller_panel = f'''<section id="ctrlPhonePanel" class="slot-panel controller-panel" hidden role="dialog" aria-label="{tr(lang,"Điện thoại làm tay cầm","Phone controller")}"><header><strong>{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</strong><button id="closeCtrlPhone" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Quét mã QR bằng điện thoại cùng mạng LAN. Tay cầm chỉ được điều khiển khi game đang chạy.","Scan the QR with a phone on the same LAN. The phone only drives the game while it is running.")}</p><img id="ctrlPhoneQr" class="ctrl-qr" alt="{tr(lang,"Mã QR ghép đôi","Pairing QR code")}" hidden><p><strong>{tr(lang,"Mã ghép đôi","Pairing code")}:</strong> <span id="ctrlPhoneCode" class="ctrl-code">—</span></p><p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="ctrlPhoneLink" href="#">—</a></p><p id="ctrlPhoneStatus" class="muted" role="status"></p></section>''' if CONTROLLER_ENABLED else ""
-        multiplayer_panel = f'''<section id="mpPlayerPanel" class="slot-panel multiplayer-panel" hidden role="dialog" aria-label="{tr(lang,"Chơi chung","Multiplayer")}"><header><strong>{tr(lang,"Chơi chung","Multiplayer")}</strong><button id="closeMpPanel" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Phòng chỉ trao đổi chữ ký game (hệ máy, core, hash ROM). Mã mời dùng làm tên phòng trên relay.","A room only exchanges the game signature (system, core, ROM hash). The invite code is the relay room name.")}</p><div class="form-actions"><button id="mpPlayerCreate" type="button" class="button">{tr(lang,"Tạo phòng","Create room")}</button><button id="mpPlayerHost" type="button" class="button primary">{tr(lang,"Mở phòng trên relay","Host on relay")}</button></div><p><strong>{tr(lang,"Mã mời","Invite code")}:</strong> <span id="mpPlayerCode" class="ctrl-code">—</span></p><img id="mpPlayerQr" class="ctrl-qr" alt="{tr(lang,"Mã QR phòng chơi","Room QR code")}" hidden><p><strong>{tr(lang,"Liên kết","Link")}:</strong> <a id="mpPlayerLink" href="#">—</a></p><label>{tr(lang,"Nhập mã mời để vào","Enter an invite code to join")}<input id="mpPlayerJoinCode" autocomplete="off" spellcheck="false" autocapitalize="characters"></label><div class="form-actions"><button id="mpPlayerJoin" type="button" class="button">{tr(lang,"Vào phòng relay","Join relay room")}</button><button id="mpPlayerLeave" type="button" class="button">{tr(lang,"Rời relay","Leave relay")}</button></div><p id="mpPlayerStatus" class="muted" role="status"></p></section>''' if MULTIPLAYER_ENABLED else ""
+        multiplayer_panel = f'''<section id="mpPlayerPanel" class="slot-panel multiplayer-panel" hidden role="dialog" aria-label="{tr(lang,"Chơi chung","Multiplayer")}"><header><strong>{tr(lang,"Chơi chung","Multiplayer")}</strong><button id="closeMpPanel" type="button">{tr(lang,"Đóng","Close")}</button></header><p class="muted">{tr(lang,"Chơi cùng một game trên cả hai thiết bị.","Play the same game on both devices.")}</p><div class="form-actions"><button id="mpPlayerCreate" type="button" class="button">{tr(lang,"Tạo phòng","Create Room")}</button><button id="mpPlayerHost" type="button" class="button primary">{tr(lang,"Bắt đầu","Start Hosting")}</button></div><p><strong>{tr(lang,"Mã phòng","Room Code")}:</strong> <span id="mpPlayerCode" class="ctrl-code">—</span></p><img id="mpPlayerQr" class="ctrl-qr" alt="{tr(lang,"Mã QR phòng chơi","Room QR code")}" hidden><p><a id="mpPlayerLink" href="#">{tr(lang,"Liên kết phòng","Room link")}</a></p><label>{tr(lang,"Nhập mã phòng","Enter a room code")}<input id="mpPlayerJoinCode" autocomplete="off" spellcheck="false" autocapitalize="characters"></label><div class="form-actions"><button id="mpPlayerJoin" type="button" class="button">{tr(lang,"Vào phòng","Join Room")}</button><button id="mpPlayerLeave" type="button" class="button">{tr(lang,"Rời phòng","Leave Room")}</button></div><p id="mpPlayerStatus" class="muted" role="status"></p></section>''' if MULTIPLAYER_ENABLED else ""
         pad_controls = [("dpad", "D-pad"), ("a", "A"), ("b", "B"), ("start", "Start"), ("select", "Select")]
         if game["system"] in {"gba", "nds", "3ds"}:
             pad_controls.extend([("l", "L"), ("r", "R")])
@@ -2442,10 +2645,17 @@ class Handler(BaseHTTPRequestHandler):
     def sync_unavailable(self):
         self.send_json({"error": "not found"}, 404)
 
-    def sync_settings_payload(self, mode, updated_at):
+    def sync_settings_payload(self, mode, updated_at, content):
         return {
             "mode": mode.value,
             "modes": sync_mode_catalog(),
+            "content": content,
+            "contentOptions": [
+                {"id": "save", "label": "Save files"},
+                {"id": "state", "label": "Save states"},
+                {"id": "library", "label": "Game library"},
+                {"id": "rom", "label": "ROM files", "warning": "ROM libraries may use significant storage and network bandwidth."},
+            ],
             "driveConfigured": GOOGLE_DRIVE_ENABLED,
             "lanEnabled": mode.lan_enabled,
             "driveEnabled": mode.drive_enabled,
@@ -2457,8 +2667,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.sync_unavailable()
         device = self.visitor_hash()
         with db() as conn:
-            mode, updated_at = sync_mode_status(conn, device)
-        self.send_json(self.sync_settings_payload(mode, updated_at))
+            mode, updated_at, content = sync_mode_status(conn, device)
+        self.send_json(self.sync_settings_payload(mode, updated_at, content))
 
     def sync_set_settings(self):
         if not SYNC_ENABLED:
@@ -2466,20 +2676,22 @@ class Handler(BaseHTTPRequestHandler):
         SYNC_LIMITER.check(self.client_address[0])
         data = self.read_json()
         requested = str(data.get("mode") or "").strip().lower()
-        if requested not in {mode.value for mode in sync_engine.SyncMode}:
+        if requested not in {mode.value for mode in sync_engine.SyncMode} and requested not in {"automatic", "recommended", "local"}:
             return self.send_json({"error": "invalid sync mode"}, 400)
         mode = sync_engine.parse_sync_mode(requested)
-        if mode.drive_enabled and not GOOGLE_DRIVE_ENABLED:
+        if mode.requires_drive and not GOOGLE_DRIVE_ENABLED:
             return self.send_json({"error": "google drive sync is not configured", "reason": "drive-unavailable"}, 409)
         device = self.visitor_hash()
         now = int(time.time())
         with db() as conn:
+            _, _, existing = sync_mode_status(conn, device)
+            content = parse_sync_content(data.get("content")) if "content" in data else existing
             conn.execute(
-                "INSERT INTO sync_settings(device_key,mode,updated_at) VALUES(?,?,?) "
-                "ON CONFLICT(device_key) DO UPDATE SET mode=excluded.mode, updated_at=excluded.updated_at",
-                (device, mode.value, now),
+                "INSERT INTO sync_settings(device_key,mode,updated_at,content) VALUES(?,?,?,?) "
+                "ON CONFLICT(device_key) DO UPDATE SET mode=excluded.mode, updated_at=excluded.updated_at, content=excluded.content",
+                (device, mode.value, now, json.dumps(content, sort_keys=True)),
             )
-        self.send_json({"ok": True, **self.sync_settings_payload(mode, now)})
+        self.send_json({"ok": True, **self.sync_settings_payload(mode, now, content)})
 
     def sync_plan(self):
         """Plan one pass through the pure sync engine.
@@ -2494,9 +2706,9 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         device = self.visitor_hash()
         with db() as conn:
-            configured, _ = sync_mode_status(conn, device)
+            configured, _, content = sync_mode_status(conn, device)
         mode = sync_engine.parse_sync_mode(data.get("mode", configured.value))
-        if mode.drive_enabled and not GOOGLE_DRIVE_ENABLED:
+        if mode.requires_drive and not GOOGLE_DRIVE_ENABLED:
             return self.send_json({"error": "google drive sync is not configured", "reason": "drive-unavailable"}, 409)
         try:
             kind = sync_engine.ItemKind(str(data.get("kind") or "save"))
@@ -2509,9 +2721,11 @@ class Handler(BaseHTTPRequestHandler):
             entries = sync_engine.entries_from_records(records, kind=kind)
         except sync_engine.SyncError as error:
             return self.send_json({"error": str(error)}, 400)
-        plan = sync_engine.build_plan(mode, entries, same_lan=bool(data.get("sameLan")))
+        plan = sync_engine.build_plan(mode, entries, same_lan=bool(data.get("sameLan")),
+                                      drive_available=GOOGLE_DRIVE_ENABLED)
         self.send_json({
             "mode": plan.mode.value,
+            "content": content,
             "transport": plan.transport.value if plan.transport else None,
             "clean": plan.clean,
             "summary": sync_engine.summarize(plan),
@@ -2689,6 +2903,10 @@ class Handler(BaseHTTPRequestHandler):
             requested = 0
         if requested > 0:
             ttl_seconds = max(60, min(3600, requested))
+        system = str(data.get("system") or "auto").strip().lower()
+        if system not in CONTROLLER_SYSTEMS:
+            system = "auto"
+        name = clean_controller_name(data.get("name"), "Vibe Coded Emulator")
         CONTROLLER_LIMITER.check(self.client_address[0])
         controller_reap()
         with CONTROLLER_LOCK:
@@ -2702,11 +2920,20 @@ class Handler(BaseHTTPRequestHandler):
                 ttl_seconds=ttl_seconds,
             )
             host_token, host_digest = netcode.new_session_token()
-            CONTROLLERS[code] = {"session": session, "host": host_digest}
+            CONTROLLERS[code] = {
+                "session": session,
+                "host": host_digest,
+                "ip": self.client_address[0],
+                "name": name,
+                "system": system,
+                "started": time.monotonic(),
+            }
         self.send_json({
             "code": code,
             "hostToken": host_token,
             "ttlSeconds": ttl_seconds,
+            "system": system,
+            "name": name,
             "joinPath": f"/controller/join?code={code}",
         }, 201)
 
@@ -2768,9 +2995,146 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({
             "paired": session.paired,
             "needsResync": session.needs_resync(),
+            "lastSequence": session.last_sequence(),
+            "ackSequence": session.ack_sequence(),
+            "inputActive": session.input_active(),
+            "system": record.get("system") or "auto",
+            "name": record.get("name") or "",
             "expiresInSeconds": max(0, int(session.ttl_seconds - (session.clock() - session.created_at))),
             "state": latest.to_wire() if latest else None,
         })
+
+    def controller_ack(self):
+        """Host reports the newest frame it has pushed into the emulator."""
+
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        data = self.read_json()
+        code = netcode.normalize_code(str(data.get("code") or ""))
+        host_token = str(data.get("hostToken") or "")
+        with CONTROLLER_LOCK:
+            record = CONTROLLERS.get(code)
+        if record is None:
+            return self.send_json({"error": "session not found"}, 404)
+        if not host_token or not hmac.compare_digest(record["host"], netcode.token_digest(host_token)):
+            return self.send_json({"error": "host token rejected"}, 403)
+        session = record["session"]
+        applied = session.ack(data.get("sequence"))
+        # The host tells us which system is running so the phone can pick the
+        # matching pad layout without the user choosing one.
+        system = str(data.get("system") or "").strip().lower()
+        if system in CONTROLLER_SYSTEMS:
+            with CONTROLLER_LOCK:
+                if code in CONTROLLERS:
+                    CONTROLLERS[code]["system"] = system
+        self.send_json({"ok": True, "ackSequence": applied, "inputActive": session.input_active()})
+
+    def controller_link_status(self):
+        """Phone-facing status: is the transport paired and is input applied?
+
+        The phone holds only its own guest token, so it cannot read the host
+        state. This endpoint tells it the truth without exposing host details.
+        """
+
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        code = netcode.normalize_code(query.get("code", [""])[0])
+        token = query.get("token", [""])[0]
+        controller_reap()
+        with CONTROLLER_LOCK:
+            record = CONTROLLERS.get(code)
+        if record is None:
+            return self.send_json({"error": "session not found"}, 404)
+        session = record["session"]
+        if not session.authenticate(token):
+            return self.send_json({"error": "session token rejected"}, 403)
+        self.send_json({
+            "paired": session.paired,
+            "inputActive": session.input_active(),
+            "lastSequence": session.last_sequence(),
+            "ackSequence": session.ack_sequence(),
+            "system": record.get("system") or "auto",
+            "name": record.get("name") or "",
+            "expiresInSeconds": max(0, int(session.ttl_seconds - (session.clock() - session.created_at))),
+        })
+
+    def controller_nearby_hosts(self):
+        """Active controller hosts on the caller's own subnet.
+
+        This is the LAN rendezvous the phone uses to offer "nearby hosts"
+        instead of forcing a code; addresses are never disclosed, only the code
+        the user would otherwise type and a short label.
+        """
+
+        if not CONTROLLER_ENABLED:
+            return self.controller_unavailable()
+        request_ip = self.client_address[0]
+        controller_reap()
+        hosts = []
+        with CONTROLLER_LOCK:
+            for code, record in CONTROLLERS.items():
+                if not sync_same_subnet(request_ip, record.get("ip", "")):
+                    continue
+                session = record["session"]
+                hosts.append({
+                    "code": code,
+                    "name": record.get("name") or "Vibe Coded Emulator",
+                    "system": record.get("system") or "auto",
+                    "paired": session.paired,
+                })
+        hosts.sort(key=lambda item: (item["paired"], item["name"]))
+        self.send_json({"hosts": hosts})
+
+    def diagnostics_snapshot(self):
+        """Technical snapshot for Advanced Diagnostics.
+
+        Deliberately excludes tokens, addresses and any per-device identity.
+        """
+
+        if not (CONTROLLER_ENABLED or SYNC_ENABLED or MULTIPLAYER_ENABLED):
+            return self.send_json({"error": "not found"}, 404)
+        controller_reap()
+        lan_blob_reap()
+        with CONTROLLER_LOCK:
+            sessions = len(CONTROLLERS)
+            paired = sum(1 for record in CONTROLLERS.values() if record["session"].paired)
+        with LAN_PEERS_LOCK:
+            peers = len(LAN_PEERS)
+        with LAN_BLOBS_LOCK:
+            blobs = len(LAN_BLOBS)
+        self.send_json({
+            "environment": ENVIRONMENT,
+            "assetVersion": ASSET_VERSION,
+            "controller": {
+                "enabled": CONTROLLER_ENABLED,
+                "sessions": sessions,
+                "pairedSessions": paired,
+                "defaultTtlSeconds": CONTROLLER_TTL_SECONDS,
+                "systems": sorted(CONTROLLER_SYSTEMS),
+                "ackRequiredForInput": True,
+            },
+            "sync": {
+                "enabled": SYNC_ENABLED,
+                "driveConfigured": GOOGLE_DRIVE_ENABLED,
+                "defaultContent": dict(DEFAULT_SYNC_CONTENT),
+                "peerTtlSeconds": LAN_PEER_TTL_SECONDS,
+                "peerCount": peers,
+                "blobCount": blobs,
+                "blobTtlSeconds": LAN_BLOB_TTL_SECONDS,
+                "manifestLimit": SYNC_MANIFEST_LIMIT,
+                "transports": [transport.value for transport in sync_engine.Transport],
+            },
+            "multiplayer": {
+                "enabled": MULTIPLAYER_ENABLED,
+                "relay": NETPLAY_ORIGIN,
+                "transport": "relay",
+                "roomTtlSeconds": 900,
+                "capability": MULTIPLAYER_CORE_CAPABILITY,
+            },
+            "updatedAt": int(time.time()),
+        })
+
 
     def controller_disconnect(self):
         if not CONTROLLER_ENABLED:
@@ -3032,8 +3396,14 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             self.multiplayer_qr()
         elif path == "/api/controller/state":
             self.controller_host_state()
+        elif path == "/api/controller/link":
+            self.controller_link_status()
+        elif path == "/api/controller/hosts":
+            self.controller_nearby_hosts()
         elif path == "/api/controller/qr.svg":
             self.controller_qr()
+        elif path == "/api/diagnostics":
+            self.diagnostics_snapshot()
         elif path == "/api/sync/settings":
             self.sync_get_settings()
         elif path == "/api/sync/lan/peers":
@@ -3068,6 +3438,12 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_html(status_page(404, lang, user, csrf), 404)
             else:
                 self.send_html(controller_join_page(lang, user, csrf, parse_qs(parsed.query).get("code", [""])[0]))
+        elif path == "/diagnostics":
+            if not (CONTROLLER_ENABLED or SYNC_ENABLED or MULTIPLAYER_ENABLED):
+                self.send_html(status_page(404, lang, user, csrf), 404)
+            else:
+                self.track_visit("/diagnostics", user)
+                self.send_html(diagnostics_page(lang, user, csrf))
         else:
             if path.startswith("/api/") or path.startswith("/admin/api/"):
                 self.send_json({"error": "not found"}, 404)
@@ -3378,6 +3754,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.controller_pair()
             elif path == "/api/controller/state":
                 self.controller_submit_state()
+            elif path == "/api/controller/ack":
+                self.controller_ack()
             elif path == "/api/controller/disconnect":
                 self.controller_disconnect()
             elif path == "/api/sync/settings":

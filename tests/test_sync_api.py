@@ -89,7 +89,10 @@ class SyncApiTests(unittest.TestCase):
         settings = json.loads(body)
         self.assertEqual(settings["mode"], "off")
         self.assertFalse(settings["driveConfigured"])
-        self.assertEqual([mode["id"] for mode in settings["modes"]], ["off", "lan", "drive", "lan_drive"])
+        self.assertEqual([mode["id"] for mode in settings["modes"]], ["auto", "lan", "drive", "off"])
+        self.assertEqual([mode["label"] for mode in settings["modes"]][0], "Automatic")
+        # ROM sync is off by default; every other content class is on.
+        self.assertEqual(settings["content"], {"save": True, "state": True, "library": True, "rom": False})
 
         status, body = self.request("POST", "/api/sync/settings", {"mode": "lan"})
         self.assertEqual(status, 200)
@@ -97,6 +100,22 @@ class SyncApiTests(unittest.TestCase):
 
         status, body = self.request("GET", "/api/sync/settings")
         self.assertEqual(json.loads(body)["mode"], "lan")
+
+    def test_automatic_mode_is_available_without_drive_credentials(self):
+        status, body = self.request("POST", "/api/sync/settings", {"mode": "auto"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["mode"], "auto")
+
+    def test_content_toggles_persist_and_rom_warns(self):
+        status, body = self.request("POST", "/api/sync/settings", {
+            "mode": "auto",
+            "content": {"save": True, "state": False, "library": True, "rom": True},
+        })
+        self.assertEqual(status, 200)
+        settings = json.loads(body)
+        self.assertEqual(settings["content"], {"save": True, "state": False, "library": True, "rom": True})
+        rom_option = [option for option in settings["contentOptions"] if option["id"] == "rom"][0]
+        self.assertIn("bandwidth", rom_option["warning"])
 
     def test_invalid_and_unconfigured_modes_are_rejected(self):
         status, _ = self.request("POST", "/api/sync/settings", {"mode": "bogus"})

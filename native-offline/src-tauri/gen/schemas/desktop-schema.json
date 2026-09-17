@@ -189,6 +189,30 @@
           "markdownDescription": "Enables the native_capabilities command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_controller_lan_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-refresh",
+          "markdownDescription": "Enables the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-start",
+          "markdownDescription": "Enables the native_controller_lan_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-status",
+          "markdownDescription": "Enables the native_controller_lan_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-stop",
+          "markdownDescription": "Enables the native_controller_lan_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the native_controller_start command without any pre-configured scope.",
           "type": "string",
           "const": "allow-native-controller-start",
@@ -265,6 +289,30 @@
           "type": "string",
           "const": "deny-native-capabilities",
           "markdownDescription": "Denies the native_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-refresh",
+          "markdownDescription": "Denies the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-start",
+          "markdownDescription": "Denies the native_controller_lan_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-status",
+          "markdownDescription": "Denies the native_controller_lan_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-stop",
+          "markdownDescription": "Denies the native_controller_lan_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the native_controller_start command without any pre-configured scope.",

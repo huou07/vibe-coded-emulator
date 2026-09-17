@@ -57,6 +57,17 @@ window.AN3OfflineEmulatorOrigin = "";
     };
   }
   if (/Android/i.test(navigator.userAgent)) {
+    // Library Settings -> Phone Controller uses the same app-scoped host the
+    // in-game menu uses, so a session started before a game keeps working.
+    const androidController = window.AN3AndroidNativeController;
+    if (androidController?.start && androidController?.status) {
+      const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
+      window.AN3NativeController = {
+        start: baseUrl => Promise.resolve(parse(androidController.start(String(baseUrl || "")))),
+        stop: () => { const result = parse(androidController.stop()); return Promise.resolve(result); },
+        status: () => Promise.resolve(parse(androidController.status()))
+      };
+    }
     window.AN3NativeLaunchGame = async (romId, system, _layout, size) => {
       if (!["gba", "nds", "3ds"].includes(system)) throw new Error("Native hardware core unavailable.");
       const bridge = window.AN3AndroidNative;

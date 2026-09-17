@@ -45,6 +45,10 @@ fn main() {
             "native_controller_start",
             "native_controller_stop",
             "native_controller_status",
+            "native_controller_lan_start",
+            "native_controller_lan_stop",
+            "native_controller_lan_status",
+            "native_controller_lan_refresh",
         ]),
     ))
     .expect("failed to generate Tauri capabilities");

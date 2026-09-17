@@ -163,6 +163,17 @@ class MultiplayerRoomApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["state"], "waiting")
 
+    def test_multiplayer_capability_is_per_core_and_conservative(self):
+        # Only GBA is runtime-verified; everything else must not advertise a
+        # Create Room button.
+        self.assertTrue(app.multiplayer_capability("gba")["available"])
+        self.assertEqual(app.multiplayer_capability("gba")["transport"], "relay")
+        for system in ("gbc", "nds", "3ds", "switch", "html5", "unknown", ""):
+            with self.subTest(system=system):
+                capability = app.multiplayer_capability(system)
+                self.assertFalse(capability["available"])
+                self.assertEqual(capability["reason"], "Not available for this system")
+
 
 class ControllerApiTests(unittest.TestCase):
     def setUp(self):
@@ -249,6 +260,99 @@ class ControllerApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": []})
         self.assertEqual(status, 403)
+
+    # -- truthful connection state -----------------------------------------
+
+    def _paired(self, **session_payload):
+        payload = {"deviceId": "host"}
+        payload.update(session_payload)
+        status, body = self.request("POST", "/api/controller/session", payload)
+        self.assertEqual(status, 201)
+        session = json.loads(body)
+        status, body = self.request("POST", "/api/controller/pair", {"code": session["code"], "deviceId": "phone"})
+        self.assertEqual(status, 200)
+        return session, json.loads(body)
+
+    def test_input_active_requires_an_acknowledged_frame(self):
+        session, phone = self._paired(system="nds", name="MacBook Air")
+        self.assertEqual(session["system"], "nds")
+        self.assertEqual(session["name"], "MacBook Air")
+
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": ["start"]})
+        self.assertEqual(status, 200)
+        status, body = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        state = json.loads(body)
+        self.assertTrue(state["paired"])
+        self.assertFalse(state["inputActive"])
+        self.assertEqual(state["lastSequence"], 1)
+        self.assertEqual(state["ackSequence"], 0)
+
+        status, body = self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": session["hostToken"], "sequence": 1})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["inputActive"])
+
+        status, body = self.request("GET", f"/api/controller/link?code={session['code']}&token={phone['token']}")
+        link = json.loads(body)
+        self.assertTrue(link["inputActive"])
+        self.assertEqual(link["system"], "nds")
+        self.assertEqual(link["ackSequence"], 1)
+
+    def test_ack_requires_the_host_token_and_link_requires_the_phone_token(self):
+        session, phone = self._paired()
+        status, _ = self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": "wrong", "sequence": 1})
+        self.assertEqual(status, 403)
+        status, _ = self.request("GET", f"/api/controller/link?code={session['code']}&token=wrong")
+        self.assertEqual(status, 403)
+
+    def test_the_host_can_report_the_running_system_for_the_layout(self):
+        session, phone = self._paired()  # created with the "auto" default
+        status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": []})
+        self.assertEqual(status, 200)
+        status, body = self.request("GET", f"/api/controller/link?code={session['code']}&token={phone['token']}")
+        self.assertEqual(json.loads(body)["system"], "auto")
+        status, _ = self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": session["hostToken"], "sequence": 1, "system": "gba"})
+        self.assertEqual(status, 200)
+        _, body = self.request("GET", f"/api/controller/link?code={session['code']}&token={phone['token']}")
+        self.assertEqual(json.loads(body)["system"], "gba")
+        # An unknown system value must not overwrite the stored one.
+        self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": session["hostToken"], "sequence": 1, "system": "bogus"})
+        _, body = self.request("GET", f"/api/controller/link?code={session['code']}&token={phone['token']}")
+        self.assertEqual(json.loads(body)["system"], "gba")
+
+    def test_touch_frame_reaches_the_host_state_and_clears_on_release(self):
+        session, phone = self._paired(system="nds")
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "t": [0.25, 0.75]})
+        self.assertEqual(status, 200)
+        _, body = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        self.assertEqual(json.loads(body)["state"]["t"], [0.25, 0.75])
+        # A frame without a touch tuple is a complete snapshot with touch released.
+        status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 2, "b": []})
+        self.assertEqual(status, 200)
+        _, body = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        self.assertNotIn("t", json.loads(body)["state"])
+
+    def test_nearby_hosts_lists_the_session_without_an_address(self):
+        session, _ = self._paired(name="Living Room PC")
+        status, body = self.request("GET", "/api/controller/hosts")
+        self.assertEqual(status, 200)
+        hosts = json.loads(body)["hosts"]
+        match = [host for host in hosts if host["code"] == session["code"]]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0]["name"], "Living Room PC")
+        self.assertEqual(match[0]["system"], "auto")
+        self.assertNotIn("ip", match[0])
+        self.assertNotIn("address", match[0])
+
+    def test_diagnostics_snapshot_excludes_secrets(self):
+        self._paired()
+        status, body = self.request("GET", "/api/diagnostics")
+        self.assertEqual(status, 200)
+        snapshot = json.loads(body)
+        self.assertTrue(snapshot["controller"]["enabled"])
+        self.assertTrue(snapshot["controller"]["ackRequiredForInput"])
+        text = body.decode("utf-8")
+        self.assertNotIn("hostToken", text)
+        self.assertNotIn("token", text)
 
     def request_full(self, method, path):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)

@@ -86,9 +86,22 @@ class NativeGameOverlay(
     private val cursor = button(NativePlayerUi.CURSOR_LOCK_LABEL) { lockCursor() }
     private val keys = mutableMapOf<Int, Button>()
     private val joystick = NativeAnalogStick(activity, directionalInput)
-    // Staging-only phone controller host. The raw host token stays in
-    // ControllerClient and is never shown or persisted.
-    private var controller: ControllerClient? = null
+    // The controller host lives in the main process (library Settings). This
+    // game process binds to it through a Messenger bridge; the raw host token
+    // never crosses the boundary. The bridge is set by NativeGameActivity.
+    interface ControllerBridge {
+        fun isRunning(): Boolean
+        fun start(server: String)
+        fun stop()
+        fun statusText(): String
+    }
+    var controllerBridge: ControllerBridge? = null
+    private val controllerStatusTick = object : Runnable {
+        override fun run() {
+            controllerStatus?.text = controllerStatusText()
+            postDelayed(this, 700)
+        }
+    }
     private var controllerStatus: TextView? = null
     private var directionalMode = prefs.getString("directional-control-$system", "dpad") ?: "dpad"
     private var controlScale = prefs.getInt("virtual-control-scale-$system", 100).coerceIn(70, 140)
@@ -189,18 +202,25 @@ class NativeGameOverlay(
             .show()
     }
 
-    // Phone controller (staging-only). The native app is the pairing host: it
-    // creates the session, shows the code, polls the host state and pushes the
-    // phone's frame through the same input path as the on-screen pad.
+    // Phone controller. The native app is the pairing host: it creates the
+    // session, shows the code, polls the host state and pushes the phone's
+    // frame through the same input path as the on-screen pad.
     private fun controllerServer(): String =
         (prefs.getString("controller-server", DEFAULT_CONTROLLER_SERVER) ?: DEFAULT_CONTROLLER_SERVER).trim()
 
+    private fun controllerStatusText(): String = controllerBridge?.statusText() ?: "Off"
+
+    private fun controllerRunning(): Boolean = controllerBridge?.isRunning() == true
+
     private fun toggleController() {
-        val existing = controller
-        if (existing != null && existing.running) {
-            existing.stop()
-            controller = null
-            controllerStatus?.text = "Phone controller stopped."
+        val bridge = controllerBridge
+        if (bridge == null) {
+            controllerStatus?.text = "Controller unavailable"
+            return
+        }
+        if (bridge.isRunning()) {
+            bridge.stop()
+            controllerStatus?.text = "Off"
             return
         }
         val server = controllerServer()
@@ -208,21 +228,33 @@ class NativeGameOverlay(
             controllerStatus?.text = "Set the controller server URL (http://…)."
             return
         }
-        val client = ControllerClient(
-            server,
-            onStatus = { message -> activity.runOnUiThread { controllerStatus?.text = message } },
-            shouldApply = { !isMenuOpen() },
-            onButton = { index, pressed -> input(index, pressed) },
-            onAnalog = { x, y -> directionalInput(x, y) },
-        )
-        controller = client
+        bridge.start(server)
         controllerStatus?.text = "Starting…"
-        client.start()
+        removeCallbacks(controllerStatusTick)
+        post(controllerStatusTick)
     }
 
+    /** Apply one remote (phone) button through the same path as the on-screen pad. */
+    fun applyRemoteButton(index: Int, pressed: Boolean) {
+        if (isMenuOpen() && pressed) return
+        input(index, pressed)
+    }
+
+    fun applyRemoteAnalog(x: Float, y: Float) {
+        if (isMenuOpen()) { directionalInput(0f, 0f); return }
+        directionalInput(x, y)
+    }
+
+    /** Release every remote-held control; used when the menu opens or the game ends. */
+    fun releaseRemoteInput() {
+        for (index in 0..11) input(index, false)
+        directionalInput(0f, 0f)
+    }
+
+    /** Detach this game from the controller bridge. The pairing session stays alive. */
     fun stopController() {
-        controller?.stop()
-        controller = null
+        releaseRemoteInput()
+        removeCallbacks(controllerStatusTick)
     }
 
     private fun setSpeed(value: String) {
@@ -438,8 +470,8 @@ class NativeGameOverlay(
                     content.addView(text("VibeCodedEmulator · ${if(system=="gba") "mGBA" else if(system=="nds") "melonDS DS" else "Azahar 3DS"} native").apply { textSize=16f; typeface=Typeface.DEFAULT_BOLD })
                     content.addView(text("Keyboard: arrows, Z/X, A/S, L/J, Return and Space.\nMenu and Pad control native gameplay. Ten quick-save slots remain separate from Auto Save."))
                     checkbox("Start fullscreen on launch", "start-fullscreen"); action("Enter fullscreen now") { fullscreen() }
-                    content.addView(text("Phone controller · staging").apply { setPadding(0, 12.dp(), 0, 0) })
-                    content.addView(text("A phone on the same LAN pairs with a code and drives this game. The controller server is the isolated staging host.").apply { textSize=12f })
+                    content.addView(text("Phone Controller").apply { setPadding(0, 12.dp(), 0, 0) })
+                    content.addView(text("Use a phone on the same network as a controller for this game. The phone never receives the game or its saves.").apply { textSize=12f })
                     val serverField = EditText(activity).apply {
                         setText(controllerServer()); setTextColor(Color.WHITE); textSize = 13f
                         setHint("Controller server URL"); setSingleLine(true)
@@ -448,9 +480,9 @@ class NativeGameOverlay(
                     serverField.setOnFocusChangeListener { _, focused ->
                         if (!focused) prefs.edit().putString("controller-server", serverField.text.toString().trim()).apply()
                     }
-                    controllerStatus = text(if (controller?.running == true) "Running" else "Stopped")
+                    controllerStatus = text(controllerStatusText())
                     content.addView(controllerStatus)
-                    action(if (controller?.running == true) "Stop phone controller" else "Start phone controller") { toggleController() }
+                    action(if (controllerRunning()) "Stop controller session" else "Start controller session") { toggleController() }
                 }
                 "Graphics" -> {
                     choice("Renderer · applies on next launch", "renderer", listOf("Auto", "Vulkan", "OpenGL ES"), listOf("auto", "vulkan", "opengl"))

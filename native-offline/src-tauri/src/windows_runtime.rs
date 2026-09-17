@@ -9,6 +9,7 @@ use std::{fs, io::{BufRead, BufReader, Write}, os::windows::process::CommandExt,
 use tauri::{AppHandle, Manager};
 
 static SESSION: Mutex<Option<Child>> = Mutex::new(None);
+static ACTIVE_SYSTEM: Mutex<Option<String>> = Mutex::new(None);
 
 fn runtime_path(app: &AppHandle) -> Result<PathBuf, String> {
     let bundled = app.path().resource_dir().map_err(|e| e.to_string())?
@@ -39,6 +40,7 @@ pub(super) fn capabilities(app: &AppHandle) -> Result<NativeCapabilities, String
 }
 
 pub(super) fn stop() -> Result<(), String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = None; }
     let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
     if let Some(mut child) = session.take() {
         if let Some(mut input) = child.stdin.take() { let _ = writeln!(input, "QUIT"); }
@@ -56,6 +58,7 @@ pub(super) fn stop() -> Result<(), String> {
 }
 
 pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>) -> Result<NativeStart, String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = Some(system.to_string()); }
     validate_rom_id(rom_id)?;
     let core = super::native_core(system)?;
     let runtime = runtime_path(app)?;
@@ -107,4 +110,18 @@ pub(super) fn input(value: NativeInput) -> Result<(), String> {
             value.touch_x, value.touch_y, u8::from(value.touch_pressed)).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// True while the native player child process is still alive.
+/// The system the active native game is running, if any.
+pub(super) fn active_system() -> Option<String> {
+    ACTIVE_SYSTEM.lock().ok().and_then(|value| value.clone())
+}
+
+pub(super) fn running() -> bool {
+    let Ok(mut session) = SESSION.lock() else { return false };
+    match session.as_mut() {
+        Some(child) => matches!(child.try_wait(), Ok(None)),
+        None => false,
+    }
 }

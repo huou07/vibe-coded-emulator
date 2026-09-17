@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Offline local-ROM player window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "dialog:default",
@@ -14,9 +16,15 @@
     "allow-set-native-input",
     "allow-native-controller-start",
     "allow-native-controller-stop",
-    "allow-native-controller-status"
+    "allow-native-controller-status",
+    "allow-native-controller-lan-start",
+    "allow-native-controller-lan-stop",
+    "allow-native-controller-lan-status",
+    "allow-native-controller-lan-refresh"
   ],
   "remote": {
-    "urls": ["http://127.0.0.1:38471/*"]
+    "urls": [
+      "http://127.0.0.1:38471/*"
+    ]
   }
 }

@@ -67,7 +67,23 @@ def _generate_code(length: int, *, randbelow: Callable[[int], int] = secrets.ran
 
 
 def generate_pairing_code(length: int = 6, *, randbelow: Callable[[int], int] = secrets.randbelow) -> str:
-    return _generate_code(length, randbelow=randbelow)
+    """A numeric pairing code (default six digits, leading zeroes allowed).
+
+    Drawn one decimal digit at a time from a cryptographically secure source so
+    every code in ``10**length`` is equally likely. The code is a short-lived
+    user confirmation factor, never the session credential.
+    """
+
+    if length <= 0:
+        raise NetcodeError("code length must be positive")
+    return "".join(str(randbelow(10)) for _ in range(length))
+
+
+def is_pairing_code(code: object) -> bool:
+    """True only for exactly six decimal digits (a leading zero is valid)."""
+
+    text = str(code or "")
+    return len(text) == 6 and text.isascii() and text.isdigit()
 
 
 def generate_room_code(length: int = 6, *, randbelow: Callable[[int], int] = secrets.randbelow) -> str:
@@ -146,7 +162,13 @@ class PadButton(str, Enum):
 
 @dataclass(frozen=True)
 class ControllerState:
-    """One controller snapshot. Analogue axes are -1.0..1.0."""
+    """One controller snapshot.
+
+    Analogue axes are -1.0..1.0. ``touch_*`` is the normalized 0..1 position of
+    the single stylus finger on the host's touch screen (NDS/3DS). A frame that
+    omits the touch tuple means "released", because every frame is a complete
+    snapshot rather than a delta.
+    """
 
     sequence: int
     buttons: frozenset
@@ -156,9 +178,12 @@ class ControllerState:
     right_y: float = 0.0
     sent_at: float = 0.0
     received_at: float = 0.0
+    touch_active: bool = False
+    touch_x: float = 0.0
+    touch_y: float = 0.0
 
     def to_wire(self) -> dict:
-        """Compact payload: short keys, omitted zero axes, bit-packed buttons."""
+        """Compact payload: short keys, omitted zero axes, touch when pressed."""
 
         payload = {"s": self.sequence, "b": sorted(self.buttons)}
         axes = []
@@ -166,6 +191,8 @@ class ControllerState:
             axes.append(round(value, 3) if value else 0)
         if any(axes):
             payload["a"] = axes
+        if self.touch_active:
+            payload["t"] = [round(self.touch_x, 4), round(self.touch_y, 4)]
         return payload
 
     @classmethod
@@ -177,12 +204,25 @@ class ControllerState:
         axes = payload.get("a") or [0, 0, 0, 0]
         if len(axes) != 4:
             raise NetcodeError("controller frame has an invalid axis tuple")
+        touch = payload.get("t")
+        touch_active = False
+        touch_x = touch_y = 0.0
+        if touch is not None:
+            if not isinstance(touch, (list, tuple)) or len(touch) != 2:
+                raise NetcodeError("controller frame has an invalid touch tuple")
+            try:
+                touch_x = min(1.0, max(0.0, float(touch[0])))
+                touch_y = min(1.0, max(0.0, float(touch[1])))
+            except (TypeError, ValueError) as error:
+                raise NetcodeError("controller frame has a non-numeric touch tuple") from error
+            touch_active = True
         return cls(
             sequence=sequence,
             buttons=frozenset(str(name) for name in payload.get("b") or []),
             left_x=float(axes[0]), left_y=float(axes[1]),
             right_x=float(axes[2]), right_y=float(axes[3]),
             received_at=received_at,
+            touch_active=touch_active, touch_x=touch_x, touch_y=touch_y,
         )
 
 
@@ -202,6 +242,7 @@ class ControllerSession:
     paired_device_id: str = ""
     _token_digest: str = ""
     _last: Optional[ControllerState] = None
+    _ack_sequence: int = 0
     clock: Callable[[], float] = time.monotonic
 
     # -- lifecycle ---------------------------------------------------------
@@ -222,6 +263,7 @@ class ControllerSession:
         self._token_digest = digest
         # A paired session is no longer valid for a second guest.
         self._last = None
+        self._ack_sequence = 0
         return token
 
     def authenticate(self, token: str) -> bool:
@@ -233,6 +275,43 @@ class ControllerSession:
         self.paired_device_id = ""
         self._token_digest = ""
         self._last = None
+        self._ack_sequence = 0
+
+    # -- acknowledgement ---------------------------------------------------
+    def ack(self, sequence: object) -> int:
+        """Record the newest frame the host's input path has applied.
+
+        The host reports this after it has pushed the frame into the emulator,
+        which is what lets the phone tell "transport connected" apart from
+        "input actually reaching the game".
+        """
+
+        try:
+            applied = int(sequence)
+        except (TypeError, ValueError):
+            return self._ack_sequence
+        self._ack_sequence = max(self._ack_sequence, applied)
+        return self._ack_sequence
+
+    def ack_sequence(self) -> int:
+        return self._ack_sequence
+
+    def last_sequence(self) -> int:
+        return self._last.sequence if self._last else 0
+
+    def input_active(self) -> bool:
+        """True when the host's input path is keeping up with the phone.
+
+        A live host always has the newest frame in flight while it polls, so
+        requiring an exact match would report "input unavailable" forever.
+        Input is considered applied when the host has acknowledged frames and
+        is no more than a couple of frames behind the phone's latest snapshot;
+        a host whose input path stops advancing falls out of this window.
+        """
+
+        if not self.paired or self._last is None or self._ack_sequence <= 0:
+            return False
+        return self._last.sequence - self._ack_sequence <= 2
 
     # -- input path --------------------------------------------------------
     def accept_state(self, frame: dict, *, token: str) -> Optional[ControllerState]:

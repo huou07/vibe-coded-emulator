@@ -71,8 +71,9 @@
     const envLabel = document.getElementById("nativeEnvLabel");
     if (envLabel && /Android/i.test(navigator.userAgent)) envLabel.textContent = "Android";
 
-    // Desktop-only phone controller: the Rust host owns the session and the
-    // input injection; this panel only starts/stops it and shows the code.
+    // Phone controller: the platform host (Rust on desktop, Kotlin on Android)
+    // owns the session and the input injection; this panel only starts/stops it
+    // and reports the truthful state. No token, countdown, or address is shown.
     const controllerCard = document.getElementById("nativeControllerCard");
     const controllerButton = document.getElementById("nativeControllerStart");
     const controllerServer = document.getElementById("nativeControllerServer");
@@ -82,16 +83,20 @@
       controllerCard.hidden = false;
       let timer = 0;
       const setStatus = text => { if (controllerStatus) controllerStatus.textContent = text; };
+      const words = status => {
+        if (!status.running) return "Off";
+        if (!status.paired) return "Waiting for device";
+        return status.inputActive ? "Connected" : "Connected — input unavailable";
+      };
       const refresh = async () => {
         try {
           const status = await window.AN3NativeController.status();
-          controllerButton.textContent = status.running ? "Stop" : "Start";
-          if (!status.running) { setStatus("Stopped"); return; }
-          if (controllerCode) controllerCode.textContent = status.code || "\u2014";
-          const state = status.paired ? "Phone connected" : "Waiting for a phone";
-          setStatus(state + (status.input ? " \u00b7 " + status.input : "") + " \u00b7 " + status.expiresInSeconds + "s");
+          controllerButton.textContent = status.running ? "Stop" : "Start Controller Session";
+          if (controllerCode) controllerCode.textContent = status.running && status.code ? status.code : "\u2014";
+          setStatus(status.error ? status.error : words(status));
         } catch (error) {
-          setStatus(String(error?.message || error));
+          setStatus("Error");
+          if (controllerCode) controllerCode.textContent = "\u2014";
         }
       };
       const poll = () => { clearInterval(timer); timer = setInterval(refresh, 1000); refresh(); };
@@ -102,16 +107,17 @@
             await window.AN3NativeController.stop();
             clearInterval(timer);
             if (controllerCode) controllerCode.textContent = "\u2014";
-            setStatus("Stopped");
+            setStatus("Off");
             return;
           }
           const session = await window.AN3NativeController.start(controllerServer.value.trim());
           if (controllerCode) controllerCode.textContent = session.code || "\u2014";
           try { localStorage.setItem("vibe-controller-server-v1", controllerServer.value.trim()); } catch (_) {}
-          setStatus("Waiting for a phone \u00b7 " + session.ttlSeconds + "s");
+          setStatus("Waiting for device");
           poll();
         } catch (error) {
-          setStatus(String(error?.message || error));
+          setStatus("Error");
+          if (controllerCode) controllerCode.textContent = "\u2014";
         }
       });
       try {

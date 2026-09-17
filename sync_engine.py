@@ -30,20 +30,32 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 
 class SyncMode(str, enum.Enum):
-    """User-selectable sync mode."""
+    """User-selectable sync mode.
+
+    ``AUTO`` is the recommended default: prefer a direct local-network transfer
+    and fall back to the cloud only when no peer is reachable. The explicit
+    ``LAN``/``DRIVE``/``LAN_DRIVE`` modes stay available for advanced users.
+    """
 
     OFF = "off"
+    AUTO = "auto"
     LAN = "lan"
     DRIVE = "drive"
     LAN_DRIVE = "lan_drive"
 
     @property
     def drive_enabled(self) -> bool:
-        return self in (SyncMode.DRIVE, SyncMode.LAN_DRIVE)
+        return self in (SyncMode.AUTO, SyncMode.DRIVE, SyncMode.LAN_DRIVE)
 
     @property
     def lan_enabled(self) -> bool:
-        return self in (SyncMode.LAN, SyncMode.LAN_DRIVE)
+        return self in (SyncMode.AUTO, SyncMode.LAN, SyncMode.LAN_DRIVE)
+
+    @property
+    def requires_drive(self) -> bool:
+        """Modes that cannot run at all without Drive credentials."""
+
+        return self in (SyncMode.DRIVE, SyncMode.LAN_DRIVE)
 
 
 class Transport(str, enum.Enum):
@@ -57,30 +69,34 @@ def parse_sync_mode(value: object) -> SyncMode:
     if isinstance(value, SyncMode):
         return value
     token = str(value or "").strip().lower()
+    aliases = {"automatic": "auto", "recommended": "auto", "local": "lan"}
+    token = aliases.get(token, token)
     for mode in SyncMode:
         if mode.value == token:
             return mode
     return SyncMode.OFF
 
 
-def select_transport(mode: SyncMode, *, same_lan: bool) -> Optional[Transport]:
+def select_transport(mode: SyncMode, *, same_lan: bool,
+                     drive_available: bool = True) -> Optional[Transport]:
     """Choose the preferred transport for this mode and network context.
 
     A directly reachable peer on the same LAN is preferred so device-to-device
     transfer does not detour through the cloud. Cloud is used only when LAN is
-    unavailable or disabled.
+    unavailable or disabled, and never when it has no credentials.
     """
 
     if mode is SyncMode.OFF:
         return None
     if mode.lan_enabled and same_lan:
         return Transport.LAN
-    if mode.drive_enabled:
-        return Transport.DRIVE
-    if mode.lan_enabled:
-        # LAN is requested but no peer is on this LAN; stay local until one is.
+    if not drive_available:
+        # AUTO/LAN fall back to local-only; DRIVE/LAN_DRIVE have nowhere to go.
         return None
+    if mode.requires_drive or mode is SyncMode.AUTO:
+        return Transport.DRIVE
     return None
+
 
 
 # Kinds the sync engine is allowed to move. `firmware` and `keys` are listed so
@@ -259,11 +275,12 @@ def build_plan(
     entries: Iterable[SyncEntry],
     *,
     same_lan: bool,
+    drive_available: bool = True,
 ) -> SyncPlan:
     """Plan a whole sync pass. With sync OFF nothing is transferred."""
 
     mode = parse_sync_mode(mode)
-    transport = select_transport(mode, same_lan=same_lan)
+    transport = select_transport(mode, same_lan=same_lan, drive_available=drive_available)
     transfers = [plan_entry(entry) for entry in entries] if mode is not SyncMode.OFF else []
     return SyncPlan(mode=mode, transport=transport, transfers=transfers)
 

@@ -52,10 +52,10 @@ class PhaseABrandingTests(unittest.TestCase):
         package = json.loads((ROOT / "native-offline" / "package.json").read_text(encoding="utf-8"))
         tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         android = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.android.conf.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["version"], "2.0.0")
-        self.assertEqual(tauri["version"], "2.0.0")
-        # GPLv3 transition release: every packaged app moves to 2.0.0.
-        self.assertEqual(android["version"], "2.0.0")
+        self.assertEqual(package["version"], "2.1.0")
+        self.assertEqual(tauri["version"], "2.1.0")
+        # Every packaged app moves together on a feature release.
+        self.assertEqual(android["version"], "2.1.0")
 
     def test_flatpak_sources_track_the_desktop_version(self):
         tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))

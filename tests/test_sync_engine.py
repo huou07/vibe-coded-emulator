@@ -24,6 +24,17 @@ class ModeAndTransportTests(unittest.TestCase):
         self.assertIsNone(se.select_transport(se.SyncMode.LAN, same_lan=False))
         self.assertIsNone(se.select_transport(se.SyncMode.OFF, same_lan=True))
 
+    def test_automatic_prefers_lan_then_drive(self):
+        self.assertEqual(se.parse_sync_mode("automatic"), se.SyncMode.AUTO)
+        self.assertEqual(se.parse_sync_mode("auto"), se.SyncMode.AUTO)
+        self.assertEqual(se.select_transport(se.SyncMode.AUTO, same_lan=True), se.Transport.LAN)
+        self.assertEqual(se.select_transport(se.SyncMode.AUTO, same_lan=False), se.Transport.DRIVE)
+        # No credentials means Automatic stays local instead of failing.
+        self.assertIsNone(se.select_transport(se.SyncMode.AUTO, same_lan=False, drive_available=False))
+        self.assertFalse(se.SyncMode.AUTO.requires_drive)
+        self.assertTrue(se.SyncMode.AUTO.lan_enabled)
+        self.assertTrue(se.SyncMode.AUTO.drive_enabled)
+
     def test_off_never_plans_transfers(self):
         entry = se.SyncEntry(kind=se.ItemKind.SAVE, key="a", local=item("1"))
         plan = se.build_plan(se.SyncMode.OFF, [entry], same_lan=True)

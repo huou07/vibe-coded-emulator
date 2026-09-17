@@ -17,7 +17,7 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI8, AtomicU64, Ordering},
         Arc, Mutex,
     },
     thread::JoinHandle,
@@ -62,6 +62,9 @@ pub struct ControllerStatus {
     pub paired: bool,
     pub code: String,
     pub input: String,
+    /// True only when the host has actually applied and acknowledged frames,
+    /// i.e. a native game is running and keeping up with the phone.
+    pub input_active: bool,
     pub expires_in_seconds: u64,
     pub error: String,
 }
@@ -74,11 +77,24 @@ struct Host {
     code: String,
     paired: Arc<AtomicBool>,
     input: Arc<Mutex<String>>,
+    input_active: Arc<AtomicBool>,
     expires: Arc<AtomicU64>,
     error: Arc<Mutex<String>>,
 }
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
+
+/// Test seam: -1 uses the platform runtime, 0 forces "no game", 1 forces
+/// "game running". Production always leaves it at -1.
+static INPUT_READY_OVERRIDE: AtomicI8 = AtomicI8::new(-1);
+
+fn input_ready() -> bool {
+    match INPUT_READY_OVERRIDE.load(Ordering::Relaxed) {
+        0 => false,
+        1 => true,
+        _ => crate::azahar::native_input_ready(),
+    }
+}
 
 fn sink_default() -> InputSink {
     Arc::new(|input| {
@@ -125,15 +141,30 @@ pub(crate) fn frame_input(frame: &serde_json::Value) -> NativeInput {
         buttons |= 1 << 7;
     }
     let scale = |value: f32| (value.clamp(-1.0, 1.0) * 32767.0) as i16;
+    // Normalized phone touch (0..1) maps to the libretro absolute Pointer
+    // contract used by the in-app NDS/3DS touch screen.
+    let touch = state.and_then(|value| value.get("t")).and_then(|value| value.as_array());
+    let (touch_x, touch_y, touch_pressed) = match touch {
+        Some(values) if values.len() == 2 => {
+            let nx = values[0].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+            let ny = values[1].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+            (
+                (nx * 65534.0 - 32767.0).round() as i16,
+                (ny * 65534.0 - 32767.0).round() as i16,
+                true,
+            )
+        }
+        _ => (0, 0, false),
+    };
     NativeInput {
         buttons,
         circle_x: scale(left_x),
         circle_y: scale(left_y),
         cstick_x: scale(right_x),
         cstick_y: scale(right_y),
-        touch_x: 0,
-        touch_y: 0,
-        touch_pressed: false,
+        touch_x,
+        touch_y,
+        touch_pressed,
     }
 }
 
@@ -248,6 +279,7 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
     let stop = Arc::new(AtomicBool::new(false));
     let paired = Arc::new(AtomicBool::new(false));
     let input = Arc::new(Mutex::new(String::new()));
+    let input_active = Arc::new(AtomicBool::new(false));
     let expires = Arc::new(AtomicU64::new(ttl_seconds));
     let error = Arc::new(Mutex::new(String::new()));
 
@@ -255,9 +287,13 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
     let thread_stop = stop.clone();
     let thread_paired = paired.clone();
     let thread_input = input.clone();
+    let thread_input_active = input_active.clone();
     let thread_expires = expires.clone();
     let thread_error = error.clone();
+    let ack_code = code.clone();
+    let ack_token = host_token.clone();
     let handle = std::thread::spawn(move || {
+        let mut last_acked: i64 = -1;
         while !thread_stop.load(Ordering::Relaxed) {
             match http_request(&thread_base, "GET", &query, None) {
                 Ok((200, body)) => {
@@ -270,16 +306,45 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
                         .unwrap_or(0);
                     thread_expires.store(remaining, Ordering::Relaxed);
                     if is_paired {
-                        let snapshot = frame_input(&payload);
                         if let Ok(mut guard) = thread_input.lock() {
                             *guard = describe(&payload);
                         }
-                        sink(snapshot);
+                        // Only acknowledge when a native game can really apply
+                        // the frame; otherwise the phone would be told "input
+                        // available" while nothing is running.
+                        let ready = input_ready();
+                        if ready {
+                            sink(frame_input(&payload));
+                            let sequence = payload
+                                .get("lastSequence")
+                                .and_then(|value| value.as_i64())
+                                .unwrap_or(0);
+                            if sequence > last_acked && sequence > 0 {
+                                // Tell the phone which system is running so it
+                                // can pick the matching pad layout.
+                                let system_clause = match crate::azahar::native_active_system() {
+                                    Some(system) => format!(",\"system\":\"{system}\""),
+                                    None => String::new(),
+                                };
+                                let ack_body = format!(
+                                    "{{\"code\":\"{ack_code}\",\"hostToken\":\"{ack_token}\",\"sequence\":{sequence}{system_clause}}}"
+                                );
+                                let _ = http_request(&thread_base, "POST", "/api/controller/ack", Some(&ack_body));
+                                last_acked = sequence;
+                            }
+                        } else {
+                            sink(frame_input(&serde_json::Value::Null));
+                        }
+                        let active = ready
+                            && payload.get("inputActive").and_then(|value| value.as_bool()).unwrap_or(false);
+                        thread_input_active.store(active, Ordering::Relaxed);
                     } else {
                         if let Ok(mut guard) = thread_input.lock() {
                             guard.clear();
                         }
                         sink(frame_input(&serde_json::Value::Null));
+                        thread_input_active.store(false, Ordering::Relaxed);
+                        last_acked = -1;
                     }
                 }
                 Ok((403, _)) | Ok((404, _)) => {
@@ -287,6 +352,7 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
                     set_error(&thread_error, "Controller session ended");
                     sink(frame_input(&serde_json::Value::Null));
                     thread_paired.store(false, Ordering::Relaxed);
+                    thread_input_active.store(false, Ordering::Relaxed);
                     thread_expires.store(0, Ordering::Relaxed);
                     break;
                 }
@@ -306,6 +372,7 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
         code: code.clone(),
         paired,
         input,
+        input_active,
         expires,
         error,
     });
@@ -332,6 +399,7 @@ pub fn status() -> ControllerStatus {
                 paired: host.paired.load(Ordering::Relaxed),
                 code: host.code.clone(),
                 input: host.input.lock().map(|value| value.clone()).unwrap_or_default(),
+                input_active: host.input_active.load(Ordering::Relaxed),
                 expires_in_seconds: host.expires.load(Ordering::Relaxed),
                 error: host.error.lock().map(|value| value.clone()).unwrap_or_default(),
             },
@@ -340,6 +408,7 @@ pub fn status() -> ControllerStatus {
                 paired: false,
                 code: String::new(),
                 input: String::new(),
+                input_active: false,
                 expires_in_seconds: 0,
                 error: String::new(),
             },
@@ -349,6 +418,7 @@ pub fn status() -> ControllerStatus {
             paired: false,
             code: String::new(),
             input: String::new(),
+            input_active: false,
             expires_in_seconds: 0,
             error: "Controller state lock unavailable".into(),
         },
@@ -373,6 +443,14 @@ fn describe(frame: &serde_json::Value) -> String {
 mod tests {
     use super::*;
     use std::io::BufRead;
+
+    /// `HOST` and `INPUT_READY_OVERRIDE` are process-global, so the tests that
+    /// drive a session must not run in parallel with each other.
+    static SESSION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn serialize() -> std::sync::MutexGuard<'static, ()> {
+        SESSION_TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+    }
 
     /// A tiny scripted HTTP server: every request is answered with the next
     /// scripted response (the last one repeats).
@@ -435,6 +513,36 @@ mod tests {
     }
 
     #[test]
+    fn frame_input_maps_normalized_touch_to_the_pointer_contract() {
+        let frame = serde_json::json!({"state": {"s": 2, "b": [], "t": [0.0, 1.0]}});
+        let input = frame_input(&frame);
+        assert!(input.touch_pressed);
+        assert_eq!(input.touch_x, -32767);
+        assert_eq!(input.touch_y, 32767);
+        let released = frame_input(&serde_json::json!({"state": {"s": 3, "b": []}}));
+        assert!(!released.touch_pressed);
+    }
+
+    #[test]
+    fn a_missing_game_never_acknowledges_input() {
+        let _guard = serialize();
+        INPUT_READY_OVERRIDE.store(0, Ordering::Relaxed);
+        let (base, _) = scripted_server(vec![
+            (201, "{\"code\":\"ABC123\",\"hostToken\":\"tok\",\"ttlSeconds\":3600,\"joinPath\":\"/controller/join?code=ABC123\"}"),
+            (200, "{\"paired\":true,\"lastSequence\":4,\"ackSequence\":0,\"inputActive\":false,\"state\":{\"s\":4,\"b\":[\"a\"]}}"),
+        ]);
+        let seen: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: InputSink = Arc::new(move |input| collector.lock().unwrap().push(input.buttons));
+        let _session = start_with(base, sink).expect("session");
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(seen.lock().unwrap().iter().all(|buttons| *buttons == 0));
+        assert!(!status().input_active);
+        stop();
+        INPUT_READY_OVERRIDE.store(-1, Ordering::Relaxed);
+    }
+
+    #[test]
     fn parse_base_requires_plain_http_and_keeps_the_port() {
         assert_eq!(parse_base("http://192.168.1.8:8092").unwrap(), ("192.168.1.8".into(), 8092));
         assert_eq!(parse_base("http://host").unwrap(), ("host".into(), 80));
@@ -453,9 +561,11 @@ mod tests {
 
     #[test]
     fn host_session_polls_and_applies_the_phone_frame() {
+        let _guard = serialize();
+        INPUT_READY_OVERRIDE.store(1, Ordering::Relaxed);
         let (base, served) = scripted_server(vec![
             (201, "{\"code\":\"ABC123\",\"hostToken\":\"tok\",\"ttlSeconds\":3600,\"joinPath\":\"/controller/join?code=ABC123\"}"),
-            (200, "{\"paired\":true,\"needsResync\":false,\"expiresInSeconds\":3599,\"state\":{\"s\":2,\"b\":[\"right\"],\"a\":[0,0,0,0]}}"),
+            (200, "{\"paired\":true,\"needsResync\":false,\"lastSequence\":2,\"ackSequence\":0,\"inputActive\":false,\"expiresInSeconds\":3599,\"state\":{\"s\":2,\"b\":[\"right\"],\"a\":[0,0,0,0]}}"),
         ]);
         let seen: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
@@ -481,6 +591,66 @@ mod tests {
         assert_eq!(state.input, "right");
         stop();
         assert!(!status().running);
+        INPUT_READY_OVERRIDE.store(-1, Ordering::Relaxed);
+    }
+
+    /// The host must acknowledge applied frames so the phone can report a
+    /// truthful connection state.
+    #[test]
+    fn the_host_acknowledges_the_frame_it_applied() {
+        use std::io::BufRead as _;
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = listener.local_addr().expect("addr");
+        let requests: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let recorder = requests.clone();
+        std::thread::spawn(move || {
+            let mut first = true;
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut reader = std::io::BufReader::new(stream.try_clone().expect("clone"));
+                let mut head = String::new();
+                let mut length = 0usize;
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse().unwrap_or(0);
+                    }
+                    if line == "\r\n" { break; }
+                    head.push_str(&line);
+                    line.clear();
+                }
+                let mut body = vec![0u8; length];
+                if length > 0 { let _ = reader.read_exact(&mut body); }
+                recorder.lock().unwrap().push(head.clone());
+                let (status, reason, payload): (u16, &str, String) = if first {
+                    first = false;
+                    (201, "Created", "{\"code\":\"ACK123\",\"hostToken\":\"tok\",\"ttlSeconds\":3600,\"joinPath\":\"/c\"}".into())
+                } else {
+                    (200, "OK", "{\"paired\":true,\"lastSequence\":7,\"ackSequence\":0,\"inputActive\":false,\"expiresInSeconds\":3599,\"state\":{\"s\":7,\"b\":[\"start\"]}}".into())
+                };
+                let response = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                    payload.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        let _guard = serialize();
+        INPUT_READY_OVERRIDE.store(1, Ordering::Relaxed);
+        let sink: InputSink = Arc::new(|_| {});
+        let _session = start_with(format!("http://{address}"), sink).expect("session");
+        let mut acked = false;
+        for _ in 0..40 {
+            if requests.lock().unwrap().iter().any(|head| head.starts_with("POST /api/controller/ack")) {
+                acked = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        stop();
+        INPUT_READY_OVERRIDE.store(-1, Ordering::Relaxed);
+        assert!(acked, "the host must acknowledge the applied frame");
     }
 
     /// Live probe against a real controller server (staging). Ignored by default
@@ -490,6 +660,10 @@ mod tests {
     #[test]
     #[ignore]
     fn live_staging_session_applies_a_phone_frame() {
+        let _guard = serialize();
+        // The probe drives the network path, not a real game, so force the
+        // input-ready gate on.
+        INPUT_READY_OVERRIDE.store(1, Ordering::Relaxed);
         let base = match std::env::var("AN3_CONTROLLER_TEST_BASE") {
             Ok(value) if !value.trim().is_empty() => value.trim().to_string(),
             _ => return,
@@ -526,6 +700,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         }
         stop();
+        INPUT_READY_OVERRIDE.store(-1, Ordering::Relaxed);
         assert!(applied, "the live phone frame must reach the desktop input sink");
     }
 }

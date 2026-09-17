@@ -695,6 +695,7 @@ class AzaharHost {
 
     bool running() const { return running_; }
     bool is_nds() const { return system_ == "nds"; }
+    const std::string& system_name() const { return system_; }
     const std::string& layout() const { return layout_; }
     bool set_screen_layout(const std::string& requested, std::string& error) {
         if (!running_ || (system_ != "nds" && system_ != "3ds")) {
@@ -3258,6 +3259,17 @@ extern "C" void an3_native_stop(void) {
 
 extern "C" int an3_native_is_running(void) {
     return an3::g_host && an3::g_host->running() ? 1 : 0;
+}
+
+// 0 = none, 1 = gba, 2 = nds, 3 = 3ds. Used only so the phone controller can
+// tell the phone which pad layout to show.
+extern "C" int an3_native_active_system(void) {
+    if (!an3::g_host) return 0;
+    const std::string& system = an3::g_host->system_name();
+    if (system == "gba" || system == "gb" || system == "gbc") return 1;
+    if (system == "nds") return 2;
+    if (system == "3ds") return 3;
+    return 0;
 }
 
 extern "C" uint64_t an3_native_presented_frames(void) {

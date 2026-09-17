@@ -56,6 +56,26 @@ class MainActivity : TauriActivity() {
     fun exportState(encoded: String) = activity.exportState(encoded)
   }
 
+  // Library Settings -> Phone Controller. It shares the one app-scoped host
+  // with in-game play, so a session started before a game keeps working when a
+  // game launches. Returns the current status as JSON; never the raw token.
+  private class AndroidNativeControllerBridge {
+    @JavascriptInterface
+    fun start(baseUrl: String): String {
+      An3ControllerHost.start(baseUrl)
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun stop(): String {
+      An3ControllerHost.stop()
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun status(): String = An3ControllerHost.statusJson()
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     // Keep Chrome DevTools available for local debug builds only.  A staging
     // release must not expose its private-ROM WebView inspector to another
@@ -69,6 +89,7 @@ class MainActivity : TauriActivity() {
     super.onWebViewCreate(webView)
     contentWebView = webView
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
+    webView.addJavascriptInterface(AndroidNativeControllerBridge(), "AN3AndroidNativeController")
     // Tauri creates its WebView at `tauri.localhost`; Android does not make
     // that origin cross-origin isolated. Tauri attaches its stock client
     // immediately after this callback, so replace it on the next event-loop

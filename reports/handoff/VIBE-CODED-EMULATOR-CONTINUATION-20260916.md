@@ -685,3 +685,66 @@ Switch Phase 1 (needs sign-off).
 
 **Owner action needed:** set the real public source repository URL
 (`AN3_SOURCE_REPOSITORY` / README) — currently a placeholder.
+
+## Update — 2026-09-17 (nineteenth session): controller/sync/multiplayer UX refactor
+
+Workspace `~/Documents/edit an3tocom apps&web` (`apps-web`). Full report:
+`reports/handoff/CONTROLLER_SYNC_MULTIPLAYER_UX_20260917.md`.
+
+**Shipped to staging (only):** asset `f2c429f14adc`, release
+`/opt/an3-arcade-staging/releases/20260917-023241-f2c429f14adc`.
+Suite **282 tests, 0 failures**; node contracts pass.
+
+- Removed staging-tooling language from `/controller`, `/controller/join`,
+  `/sync`, `/multiplayer`; all four are now product surfaces with a shared
+  dark-violet look and an `Advanced Diagnostics` page (`/diagnostics`).
+- **Truthful controller state:** host acks applied frames
+  (`POST /api/controller/ack`); the phone shows `Connected` only while the
+  host's input path keeps up, otherwise `Connected — input unavailable`.
+  No session countdown in normal UI.
+- **Phone pad rebuilt:** GBA/NDS/3DS/auto layouts, dual analog sticks, a large
+  4:3 NDS/3DS touchscreen, haptics, non-overlapping geometry, ordered
+  button/touch transitions.
+- **NDS/3DS touch wired into the web player** and verified on a running NDS
+  title (stylus drag → synthetic touch events on the source canvas).
+- **GBA phone drive verified end-to-end on staging** (phone Start →
+  `simulateInput(0,3,1)`/`(0,3,0)`); release-on-disconnect verified.
+- **LAN nearby-host discovery** for the phone (`/api/controller/hosts`,
+  same-subnet, never an address).
+- **Sync UX:** Automatic / Local network only / Google Drive only / Off,
+  content toggles (ROM off + warning), device list, conflict-resolution
+  endpoint. `sync_engine.SyncMode.AUTO` prefers LAN then Drive.
+- **Multiplayer UX:** game-centered Create/Join room codes, per-core capability
+  (only GBA advertised), relay origin hidden. NDS shows "Not available for this
+  system".
+
+**Still open:** native app rebuilds (Android library `Controller Mode`, native
+discovery, macOS/Windows packaged GUI pairing with a real phone); true
+peer-to-peer LAN transfer; real client save-store sync; Google Drive transport;
+NDS/3DS/Switch multiplayer; Switch companion. Guards RG-096 – RG-102 added.
+
+## Update — 2026-09-17 (twentieth session): native Phone Controller + 2.1.0 all-platform
+
+Full report: `reports/handoff/NATIVE_CONTROLLER_2.1.0_20260917.md`.
+
+**All five packaged apps are 2.1.0 and deployed to staging** (asset
+`f2c429f14adc`, release `/opt/an3-arcade-staging/releases/20260917-035348-f2c429f14adc`);
+all five installer URLs 200. Suite **283 tests, 0 failures**.
+
+- **Android Controller Mode in library Settings** (not only in-game). The
+  isolated `:game` process binds to a new `ControllerHostService` in the main
+  process; one `ControllerClient` is shared by both entry points. Verified on
+  the AVD: Start without a ROM, pair, launch GBA, auto layout `gba`, `Connected`,
+  Start presses advanced the game to NEW GAME/OPTION; NDS auto layout + stylus
+  delivered to the game process.
+- **Desktop host truthfulness**: ack + `system` reporting gated on
+  `native_input_ready`; phone auto-selects GBA/NDS/3DS. Live staging probes PASS
+  on macOS (`GRFDHN`) and Debian (`KYGD74`).
+- Versions unified at **2.1.0** (fixed the stale `Cargo.toml` and native
+  `web/index.html`); catalog + sidecars updated; `RELEASE_CATALOG=PASS`.
+- Windows EXE launch smoke PASS; Linux DEB/Flatpak run under Xvfb; macOS DMG
+  mounts/launches/signs.
+- **UNVERIFIED:** Windows interactive gameplay; Linux/macOS GUI click-through
+  (WebKit paint / assistive access); stylus effect on a reactive title; sync
+  client-store and true P2P transfer; Google/Drive.
+- New guards RG-103 – RG-107.

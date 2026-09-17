@@ -110,6 +110,7 @@ unsafe extern "C" {
     ) -> i32;
     fn an3_native_stop();
     fn an3_native_is_running() -> i32;
+    fn an3_native_active_system() -> i32;
     fn an3_native_set_input(
         buttons: u32,
         circle_x: i16,
@@ -428,6 +429,38 @@ pub fn stop_native_game(app: AppHandle) -> Result<(), String> {
         let _ = app;
         Ok(())
     }
+}
+
+/// True while a native game is actually running, so the phone controller only
+/// acknowledges frames that the emulator could really apply.
+pub fn native_input_ready() -> bool {
+    #[cfg(target_os = "windows")]
+    { return windows_runtime::running(); }
+    #[cfg(target_os = "linux")]
+    { return linux_runtime::running(); }
+    #[cfg(target_os = "macos")]
+    { return unsafe { an3_native_is_running() != 0 }; }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    { false }
+}
+
+/// The system the active native game is running, for the phone pad layout.
+pub fn native_active_system() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    { return windows_runtime::active_system(); }
+    #[cfg(target_os = "linux")]
+    { return linux_runtime::active_system(); }
+    #[cfg(target_os = "macos")]
+    {
+        return match unsafe { an3_native_active_system() } {
+            1 => Some("gba".to_string()),
+            2 => Some("nds".to_string()),
+            3 => Some("3ds".to_string()),
+            _ => None,
+        };
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    { None }
 }
 
 #[tauri::command]

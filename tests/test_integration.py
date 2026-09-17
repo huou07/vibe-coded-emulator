@@ -112,16 +112,16 @@ class SystemInferenceTests(unittest.TestCase):
         self.assertEqual(
             [item["filename"] for item in available],
             [
-                "vibecodedemulator-2.0.0-macos-aarch64.dmg",
-                "vibecodedemulator-2.0.0-android-arm64-staging.apk",
-                "vibecodedemulator-2.0.0-linux-amd64.deb",
-                "an3-offline-2.0.0-linux-amd64-staging.flatpak",
-                "vibecodedemulator-2.0.0-windows-x64-staging.exe",
+                "vibecodedemulator-2.1.0-macos-aarch64.dmg",
+                "vibecodedemulator-2.1.0-android-arm64-staging.apk",
+                "vibecodedemulator-2.1.0-linux-amd64.deb",
+                "an3-offline-2.1.0-linux-amd64-staging.flatpak",
+                "vibecodedemulator-2.1.0-windows-x64-staging.exe",
             ],
         )
         self.assertEqual(
             {item["format"]: item["version"] for item in available},
-            {"DMG": "2.0.0", "APK": "2.0.0", "DEB": "2.0.0", "Flatpak": "2.0.0", "EXE": "2.0.0"},
+            {"DMG": "2.1.0", "APK": "2.1.0", "DEB": "2.1.0", "Flatpak": "2.1.0", "EXE": "2.1.0"},
         )
         self.assertTrue(all(item["size"] and item["sha256"] for item in available))
 
@@ -666,6 +666,11 @@ class MultiplayerIntegrationTests(ServerBackedTestCase):
         self.assertEqual(status, 200)
         for marker in (b'id="mpCreateBtn"', b'id="mpJoinBtn"', b'id="mpCode"', b'/static/multiplayer.js'):
             self.assertIn(marker, body)
+        # The normal surface never exposes staging feature wording or the relay
+        # origin. The global environment badge in the header is not page copy.
+        self.assertNotIn(b"STAGING", body[body.index(b"<main"):])
+        self.assertNotIn(b"http://127.0.0.1:8094", body)
+        self.assertIn(b"Technical details", body)
 
     def test_create_join_and_status_over_http(self):
         public = Client(MULTIPLAYER_PORT)

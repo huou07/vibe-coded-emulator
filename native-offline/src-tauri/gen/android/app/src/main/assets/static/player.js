@@ -1849,20 +1849,57 @@
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(!panel)return;if(stage?.classList.contains("emulator-menu-open")){showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true);return;}closeSlotOptions();const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();});
    document.getElementById("closePad")?.addEventListener("click",()=>{if(!setPadEditing(false))return;closePlayerOptions();document.getElementById("playerControls")?.focus()});
 
-  // ---- Remote phone controller (staging-only) -----------------------------
+  // ---- Remote phone controller --------------------------------------------
   // The player page is the pairing host: it creates a session, shows a QR, and
   // polls the host-state endpoint, applying the phone's latest frame through the
   // same virtual-input path the on-screen pad uses. Input is applied only while
   // gameplay is running and no EmulatorJS menu owns input, so a phone can never
-  // drive a stopped session or leak a touch past an open menu.
+  // drive a stopped session or leak a touch past an open menu. After applying a
+  // frame the host acknowledges it, which is what lets the phone tell "paired"
+  // apart from "input actually reaching the game".
   const controllerPanel = document.getElementById("ctrlPhonePanel");
   const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
-  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false};
+  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null};
   const controllerRunning = () => Boolean(gameStarted) && !runtimeFailed && !stage?.classList.contains("emulator-menu-open");
+  const controllerTouchRelease = () => {
+    if (!controller.touch) return;
+    const target = controller.touch;
+    controller.touch = null;
+    try { dispatchNdsEvent(target.canvas,"mouseup",target.source,0); } catch (_) {}
+  };
+  const controllerTouchTarget = (nx,ny) => {
+    const root = document.getElementById("game");
+    if (!root) return null;
+    const canvas = globalThis.AN3NdsTouchBridge?.resolveSourceCanvas?.(root,null,[]) || root.querySelector("canvas:not(.an3-render-canvas)");
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const viewport = resolveNdsVideoViewport(canvas,rect);
+    const screen = globalThis.AN3NdsTouchBridge?.touchScreenRect?.({left:rect.left+viewport.left,top:rect.top+viewport.top,width:viewport.width,height:viewport.height},appliedNdsScreenLayout);
+    if (!screen || !(screen.width>0 && screen.height>0)) return null;
+    const x = Math.min(1,Math.max(0,Number(nx)||0)), y = Math.min(1,Math.max(0,Number(ny)||0));
+    const clientX = screen.left + x*screen.width, clientY = screen.top + y*screen.height;
+    return {canvas, source:{clientX,clientY,screenX:clientX,screenY:clientY,identifier:8741,pointerId:8741}};
+  };
+  const controllerTouchApply = (nx,ny) => {
+    if (!ndsPad && !threeDsPad) return;
+    const target = controllerTouchTarget(nx,ny);
+    if (!target) { controllerTouchRelease(); return; }
+    if (controller.touch && controller.touch.canvas === target.canvas) {
+      controller.touch = target;
+      dispatchNdsEvent(target.canvas,"mousemove",target.source,1);
+      return;
+    }
+    controllerTouchRelease();
+    // Geometry can change between gestures; never reuse a stale viewport.
+    ndsViewportCache.delete(target.canvas);
+    controller.touch = target;
+    dispatchNdsEvent(target.canvas,"mousedown",target.source,1);
+  };
   const controllerRelease = () => {
     for (const name of controller.applied) input(controllerButtonIndex[name],0);
     controller.applied = new Set();
     if (controller.axes) { analogInput(0,0); controller.axes = false; }
+    controllerTouchRelease();
   };
   const controllerApply = payload => {
     const frame = payload?.state || {};
@@ -1875,8 +1912,21 @@
     const engaged = Math.abs(leftX) > 0.35 || Math.abs(leftY) > 0.35;
     if (engaged) { analogInput(leftX,leftY); controller.axes = true; }
     else if (controller.axes) { analogInput(0,0); controller.axes = false; }
+    const touch = frame.t;
+    if (Array.isArray(touch) && touch.length === 2) controllerTouchApply(touch[0],touch[1]);
+    else controllerTouchRelease();
   };
   const controllerStatus = text => { const node=document.getElementById("ctrlPhoneStatus"); if(node)node.textContent=text; };
+  const controllerStatusText = payload => {
+    const en = config.lang==="en";
+    if (!payload.paired) return en?"Waiting for a phone…":"Đang chờ điện thoại…";
+    if (!payload.lastSequence) return en?"Connected — waiting for input":"Đã kết nối — chờ tín hiệu";
+    return payload.inputActive ? (en?"Connected":"Đã kết nối") : (en?"Connected — input unavailable":"Đã kết nối — chưa vào game");
+  };
+  const controllerAck = sequence => {
+    if (!controller.code || !controller.hostToken || !sequence) return;
+    fetch("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence})}).catch(()=>{});
+  };
   const controllerStop = message => {
     controllerRelease();
     if (controller.timer) clearInterval(controller.timer);
@@ -1887,20 +1937,20 @@
     if (!controller.code || !controller.hostToken) return;
     try {
       const response = await fetch("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
-      if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Session ended.":"Phiên đã kết thúc."); return; }
+      if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Disconnected":"Đã ngắt kết nối"); return; }
       if (!response.ok) return;
       const payload = await response.json();
-      if (controllerRunning()) controllerApply(payload); else controllerRelease();
-      const buttons = payload?.state?.b?.join(",") || "";
-      controllerStatus((payload.paired ? (config.lang==="en"?"Phone connected":"Điện thoại đã kết nối") : (config.lang==="en"?"Waiting for a phone…":"Đang chờ điện thoại…")) + (buttons ? " · " + buttons : "") + " · " + payload.expiresInSeconds + "s");
+      if (controllerRunning()) { controllerApply(payload); controllerAck(payload.lastSequence); }
+      else { controllerRelease(); }
+      controllerStatus(controllerStatusText(payload));
     } catch (_) { /* transient; the next poll retries */ }
   };
   const controllerStart = async () => {
     if (!config.controllerEnabled) return;
     controllerStop();
-    controllerStatus(config.lang==="en"?"Creating session…":"Đang tạo phiên…");
+    controllerStatus(config.lang==="en"?"Starting…":"Đang bắt đầu…");
     try {
-      const response = await fetch("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player"})});
+      const response = await fetch("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       controller.code = data.code; controller.hostToken = data.hostToken;
@@ -1909,7 +1959,7 @@
       if (linkNode) { linkNode.href = data.joinPath; linkNode.textContent = location.origin + data.joinPath; }
       const qrNode = document.getElementById("ctrlPhoneQr");
       if (qrNode) { qrNode.src = "/api/controller/qr.svg?code=" + encodeURIComponent(data.code); qrNode.hidden = false; }
-      controllerStatus((config.lang==="en"?"Waiting for a phone… ":"Đang chờ điện thoại… ") + data.ttlSeconds + "s");
+      controllerStatus(config.lang==="en"?"Waiting for a phone…":"Đang chờ điện thoại…");
       controller.timer = setInterval(controllerPoll, 250);
     } catch (error) { controllerStatus(error.message || String(error)); }
   };

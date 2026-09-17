@@ -18,8 +18,22 @@ class Clock:
 
 
 class CodeTests(unittest.TestCase):
-    def test_codes_avoid_ambiguous_characters_and_have_the_right_length(self):
-        code = nc.generate_pairing_code(8)
+    def test_pairing_codes_are_six_digits_and_allow_leading_zeroes(self):
+        for _ in range(200):
+            code = nc.generate_pairing_code()
+            self.assertEqual(len(code), 6)
+            self.assertTrue(code.isdigit(), code)
+            self.assertTrue(nc.is_pairing_code(code))
+        # A leading zero is a valid code, and the digit draw is unbiased.
+        self.assertEqual(nc.generate_pairing_code(6, randbelow=lambda n: 0), "000000")
+        self.assertEqual(nc.generate_pairing_code(2, randbelow=lambda n: 9), "99")
+        self.assertFalse(nc.is_pairing_code(""))
+        self.assertFalse(nc.is_pairing_code("ABCD12"))
+        self.assertFalse(nc.is_pairing_code("12345"))
+        self.assertFalse(nc.is_pairing_code("1234567"))
+
+    def test_room_codes_avoid_ambiguous_characters_and_have_the_right_length(self):
+        code = nc.generate_room_code(8)
         self.assertEqual(len(code), 8)
         for character in code:
             self.assertIn(character, nc.CODE_ALPHABET)
@@ -31,9 +45,17 @@ class CodeTests(unittest.TestCase):
         self.assertEqual(code, nc.CODE_ALPHABET[0] * 4)
         with self.assertRaises(nc.NetcodeError):
             nc.generate_room_code(0)
+        with self.assertRaises(nc.NetcodeError):
+            nc.generate_pairing_code(0)
+
+    def test_pairing_code_generation_uses_a_secure_ten_way_draw(self):
+        draws = []
+        nc.generate_pairing_code(6, randbelow=lambda n: (draws.append(n), 3)[1])
+        self.assertTrue(draws and all(value == 10 for value in draws), draws)
 
     def test_normalize_code_is_forgiving(self):
         self.assertEqual(nc.normalize_code(" ab-cd 12 "), "ABCD12")
+        self.assertEqual(nc.normalize_code(" 482 193 "), "482193")
 
 
 class TokenTests(unittest.TestCase):
@@ -83,6 +105,18 @@ class ControllerWireTests(unittest.TestCase):
         with self.assertRaises(nc.NetcodeError):
             nc.ControllerState.from_wire({"s": 1, "a": [0, 0]})
 
+    def test_touch_tuple_round_trips_and_absence_means_released(self):
+        state = nc.ControllerState(sequence=3, buttons=frozenset(), touch_active=True, touch_x=0.25, touch_y=0.75)
+        wire = state.to_wire()
+        self.assertEqual(wire["t"], [0.25, 0.75])
+        restored = nc.ControllerState.from_wire(wire)
+        self.assertTrue(restored.touch_active)
+        self.assertAlmostEqual(restored.touch_x, 0.25)
+        self.assertAlmostEqual(restored.touch_y, 0.75)
+        self.assertFalse(nc.ControllerState.from_wire({"s": 4, "b": []}).touch_active)
+        with self.assertRaises(nc.NetcodeError):
+            nc.ControllerState.from_wire({"s": 5, "b": [], "t": [0.1]})
+
 
 class ControllerSessionTests(unittest.TestCase):
     def _session(self, clock):
@@ -111,6 +145,25 @@ class ControllerSessionTests(unittest.TestCase):
         newest = session.accept_state({"s": 9, "b": ["start"]}, token=token)
         self.assertEqual(newest.sequence, 9)
         self.assertEqual(session.current_buttons(), frozenset({"start"}))
+
+    def test_input_is_active_only_after_the_host_acknowledges(self):
+        clock = Clock()
+        session = self._session(clock)
+        token = session.pair("phone")
+        session.accept_state({"s": 4, "b": ["a"]}, token=token)
+        self.assertFalse(session.input_active())
+        self.assertEqual(session.ack(4), 4)
+        self.assertTrue(session.input_active())
+        # An out-of-order acknowledgement cannot move backwards.
+        self.assertEqual(session.ack(2), 4)
+        # The host may lag by a frame or two, but a host whose input path stops
+        # advancing must fall out of the live window.
+        session.accept_state({"s": 7, "b": ["a"]}, token=token)
+        self.assertFalse(session.input_active())
+        session.ack(7)
+        self.assertTrue(session.input_active())
+        session.disconnect()
+        self.assertFalse(session.input_active())
 
     def test_input_requires_a_valid_token(self):
         clock = Clock()
