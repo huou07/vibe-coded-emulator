@@ -25,9 +25,9 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 | Milestone A — Eden configured + `core` built at the pinned commit | Implemented and tested |
 | Milestone B — Eden-backed bridge links + runs the smoke test | **Implemented, built, and runtime-verified** |
 | Milestone B+ — a real legal homebrew NRO (nx-hbmenu v3.6.1) loads and starts | **Implemented and runtime-verified (macOS, MoltenVK)** |
-| Milestone C — Rust/AN3 integration | **Partial** — separate-process companion built + automated (RG-118); Tauri `CompanionSystem` wiring + packaging not done |
-| Milestone D — frame readback / presentation to the AN3 surface | **Partial** — sustained rendering fixed (RG-115) and the companion presents its own window; readback into an AN3 callback remains open |
-| Milestone E — input, audio, saves, app UI | **Input + saves done** (RG-116/117); audio is Eden-native (cubeb); app UI not started |
+| Milestone C — Rust/AN3 integration | **Done (macOS)**: `CompanionSystem` in the app, `.nro` library/import, in-app launch, Focus/Stop UI, bundled companion + packaged E2E. Linux/Windows UNAVAILABLE; Android not supported |
+| Milestone D — frame readback / presentation to the AN3 surface | **Done (companion presents its own window)**: RG-115 fixed, sustained render verified; AN3 does not receive pixels (the separate-process design does not require it) |
+| Milestone E — input, audio, saves, app UI | **Done (macOS)**: input read-back verified; audio is Eden-native (sink verified, audible UNVERIFIED); service-level save persistence verified (game-level UNVERIFIED); Switch UI wired. Physical gamepad UNVERIFIED |
 
 ## Phase 6 — Switch completion: sustained render, input, saves, companion (2026-09-17)
 
@@ -59,11 +59,11 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 ### Still open (not claimed)
 
 - **Tauri `CompanionSystem`**: implemented as `native-offline/src-tauri/src/switch_companion.rs`
-  (detect/launch/status/stop) with the four `switch_companion_*` commands wired
-  and tested. **Still open:** bundling `an3_switch_companion` into the packaged
-  app resources, `.nro` library/import detection, and the UI surface. Switch is
-  deliberately **not** advertised in the app until those exist; a contract test
-  enforces that. The app version is now **2.3.0** (feature bump).
+  (detect/launch/status/stop/focus/input/analog/audio) with the commands wired,
+  the companion bundled into the macOS app, `.nro` library integration and a
+  Switch card UI. App version **2.3.0**. See
+  `reports/handoff/SWITCH_INTEGRATION_20260917.md` for the full evidence and the
+  remaining UNVERIFIED items (audible audio, game-level saves, physical pad).
 - **Frame readback into AN3**: the companion presents its own window; AN3 does
   not receive Eden frames (the documented architecture does not require it).
 - **Gamepad/keyboard play**: the companion's keyboard map exists but a real
