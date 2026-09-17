@@ -16,14 +16,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static int failures = 0;
 static int checks = 0;
 static int json_mode = 0;
 static int frames_requested = 1;
+static int seconds_requested = 0;
 static int loaded_ok = 0;
 static int frame_callbacks = 0;
+static int frames_run = 0;
+static long elapsed_ms = 0;
 static const char* result_mode = "error-path";
+
+static long now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000L + (long)(ts.tv_nsec / 1000000L);
+}
 
 #define CHECK(cond, message)                                    \
     do {                                                        \
@@ -38,10 +48,10 @@ static const char* result_mode = "error-path";
 static void emit_summary(void) {
     if (json_mode) {
         printf("AN3CTL_STATUS {\"target\":\"switch\",\"backend\":\"%s\",\"mode\":\"%s\","
-               "\"loaded\":%s,\"framesRequested\":%d,\"frameCallbacks\":%d,"
-               "\"checks\":%d,\"failures\":%d,\"result\":\"%s\"}\n",
+               "\"loaded\":%s,\"framesRequested\":%d,\"framesRun\":%d,\"frameCallbacks\":%d,"
+               "\"elapsedMs\":%ld,\"checks\":%d,\"failures\":%d,\"result\":\"%s\"}\n",
                an3_eden_backend_name(), result_mode, loaded_ok ? "true" : "false",
-               frames_requested, frame_callbacks, checks, failures,
+               frames_requested, frames_run, frame_callbacks, elapsed_ms, checks, failures,
                failures == 0 ? "PASS" : "FAIL");
     }
 }
@@ -64,6 +74,11 @@ int main(int argc, char** argv) {
         if (strcmp(argv[index], "--frames") == 0 && index + 1 < argc) {
             frames_requested = atoi(argv[++index]);
             if (frames_requested < 1) frames_requested = 1;
+            continue;
+        }
+        if (strcmp(argv[index], "--seconds") == 0 && index + 1 < argc) {
+            seconds_requested = atoi(argv[++index]);
+            if (seconds_requested < 1) seconds_requested = 1;
             continue;
         }
         content_path = argv[index];
@@ -152,12 +167,25 @@ int main(int argc, char** argv) {
          * the assertion is on the run_frame status, not the pixel path. */
         int seen = 0;
         int frame_errors = 0;
-        for (int frame = 0; frame < frames_requested; frame++) {
-            if (an3_eden_run_frame(core, frames_seen, &seen) != AN3_EDEN_OK) frame_errors++;
+        const long start_ms = now_ms();
+        if (seconds_requested > 0) {
+            /* Sustained-duration mode: keep emulating until the deadline. */
+            const long deadline = start_ms + (long)seconds_requested * 1000L;
+            while (now_ms() < deadline) {
+                if (an3_eden_run_frame(core, frames_seen, &seen) != AN3_EDEN_OK) frame_errors++;
+                frames_run++;
+            }
+        } else {
+            for (int frame = 0; frame < frames_requested; frame++) {
+                if (an3_eden_run_frame(core, frames_seen, &seen) != AN3_EDEN_OK) frame_errors++;
+                frames_run++;
+            }
         }
+        elapsed_ms = now_ms() - start_ms;
         frame_callbacks = seen;
         CHECK(frame_errors == 0, "every run_frame in the bounded loop returns OK");
-        printf("an3-eden-bridge run_frame: requested=%d frame callbacks=%d\n", frames_requested, seen);
+        printf("an3-eden-bridge run_frame: requested=%d seconds=%d framesRun=%d frameCallbacks=%d elapsed=%ldms\n",
+               frames_requested, seconds_requested, frames_run, seen, elapsed_ms);
         /* Input and save bridges are later milestones: the ABI accepts them and
          * must report UNSUPPORTED rather than faking success. */
         an3_eden_status button = an3_eden_submit_button(core, 0, AN3_EDEN_BUTTON_A, 1);
