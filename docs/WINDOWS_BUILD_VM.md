@@ -143,3 +143,46 @@ Official LunarG Vulkan SDK 1.4.357.0 is installed at `C:\VulkanSDK\1.4.357.0`; m
 Windows-native x64 mGBA is built from existing source commit e31759b with the documented logging-only MSVC patch; melonDS DS uses official v1.3.1 release archive pinned to its GitHub SHA-256. Both installed core DLLs load and report libretro ABI 1. Native runtime/launch integration is still absent from the source. The VM itself reports no Vulkan ICD (`vkCreateInstance: Found no drivers`, exit 1), GDI Generic OpenGL 1.1.0, Microsoft Basic Display Adapter. It cannot establish real Vulkan/3DS performance.
 
 Frozen-source diagnostic NSIS (`C:\AN3\release-20260913`): 25,264,627 bytes, SHA-256 `e9396f43a75263b457c729ab670b7893840c9729fc8e02f5c2d2ad08f7f9c237`. Clean installed at `C:\AN3\candidate-install-20260913`; actual application PE x64 and Windows-only resources verified. Not staging-download eligible. No interactive desktop user is logged in; a session-0 launch did not create a GUI window, so GUI/settings/save acceptance is unverified. Existing snapshots and VM configuration retained.
+
+## Software Vulkan ICD for 3DS/Vulkan verification — 2026-09-17
+
+The VM exposes only QEMU's emulated standard VGA (`<model type='vga'/>`) with no
+GPU passthrough, so Windows binds the inbox "Microsoft Basic Display Adapter"
+and registers **no Vulkan ICD**: `HKLM\SOFTWARE\Khronos\Vulkan\Drivers` and its
+`WOW6432Node` twin were both absent, and `vulkaninfo` (LunarG SDK 1.4.357.0,
+which ships only the loader) failed with
+`windows_read_data_files_in_registry: Registry lookup failed` /
+`vkCreateInstance: Found no drivers!` / `ERROR_INCOMPATIBLE_DRIVER`.
+
+For 3DS/Vulkan regression testing this is worked around with the **SwiftShader**
+software ICD that already ships with Edge/WebView2 — no third-party download:
+
+1. Verify provenance: the `vk_swiftshader.dll` next to the EdgeWebView ICD JSON
+   is Authenticode **Valid, signed by Microsoft Corporation**.
+2. Stage a stable copy (Edge updates move its own copy):
+
+   ```powershell
+   New-Item -ItemType Directory -Force -Path C:\AN3\swiftshader
+   $src = "C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<ver>"
+   Copy-Item "$src\vk_swiftshader.dll","$src\vk_swiftshader_icd.json" C:\AN3\swiftshader\ -Force
+   reg add "HKLM\SOFTWARE\Khronos\Vulkan\Drivers" /v "C:\AN3\swiftshader\vk_swiftshader_icd.json" /t REG_DWORD /d 0 /f
+   reg add "HKLM\SOFTWARE\WOW6432Node\Khronos\Vulkan\Drivers" /v "C:\AN3\swiftshader\vk_swiftshader_icd.json" /t REG_DWORD /d 0 /f
+   ```
+
+3. Verify: `vulkaninfo --summary` now reports one device —
+   `SwiftShader Device (Subzero)`, `driverName = SwiftShader driver`,
+   `apiVersion = 1.3.0`, `deviceType = PHYSICAL_DEVICE_TYPE_CPU`.
+
+This is a **software** device: it is sufficient to prove the Vulkan presentation
+and 3DS core path, but it establishes nothing about hardware performance. The
+registry keys persist across reboots, so the ICD stays installed.
+
+### Session-0 caveat
+
+The VM has no interactive desktop user (session 0 services only; the console
+session has no logon). GUI click-through cannot be performed over SSH, and
+`PrintWindow` returns blank for the composited Vulkan surface. Input could still
+be verified by posting real `WM_KEYDOWN`/`WM_KEYUP` messages (with scancodes) to
+the SDL game window, which drives the same `SDL_PollEvent` path as a physical
+keyboard. See RG-113.
+

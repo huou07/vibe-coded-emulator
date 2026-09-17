@@ -1,5 +1,29 @@
 # AN3 Arcade regression guards
 
+## Current authority — Windows 3DS/Vulkan + input verification, 2026-09-17
+
+- RG-113: The Windows package must be able to run a 3DS title through its Vulkan
+  path, and runtime input must reach the emulated system. The blocker was
+  environmental, not code: the VM had no Vulkan ICD. A Microsoft-signed
+  SwiftShader software ICD is now installed in the VM (see
+  `docs/WINDOWS_BUILD_VM.md`). Runtime evidence (installed 2.2.0 EXE,
+  `an3-native-runtime.exe --rom boot.3dsx --system 3ds --renderer vulkan`):
+  `Loading file ... as 3DSX`; `Using Vulkan hw renderer`;
+  `Vulkan device created successfully via negotiation interface`;
+  `Enabling extension: VK_KHR_swapchain`; `LibRetro PresentWindow initialized
+  with 720x240`; `Created 2 frame resources for LibRetro`; `Load3DSXFile`
+  code/rodata/data loaded; 3DS services active (`hid:USER` + `LoadInputDevices`,
+  APT, GSP `AcquireGpuRight`/`RegisterInterruptRelayQueue`, PTM). The emulated
+  system advanced in real time (~25 s of emulated time in a 25 s run).
+  Input was verified by posting real `WM_KEYDOWN`/`WM_KEYUP` (scancode 0x19 = P)
+  to the SDL game window: baseline log growth 49,630 bytes/4 s → **0 bytes/5 s
+  while paused** → 57,901 bytes/5 s after resume, with a matching ~5.3 s
+  emulated-time gap. Test content: `devkitPro/3ds-hbmenu` v2.4.3 `boot.3dsx`
+  (free official 3DS homebrew), used locally and not committed. This device is
+  CPU software rendering: it proves the path, not performance. True interactive
+  desktop click-through is still impossible in session 0, and the Linux and
+  macOS interactive-GUI gaps from RG-112 remain **UNVERIFIED**.
+
 ## Current authority — 2.2.0 all-platform rebuild, 2026-09-17
 
 - RG-112: Every packaged app moved from 2.1.0 to **2.2.0** together and was rebuilt
