@@ -95,6 +95,13 @@ From the original spec plus later requests:
   release scripts now derive artifact names from the version field). See
   `reports/handoff/RELEASE_1.4.0_20260916.md`.
 - Deploy regression fixed (missing `netcode.py`/`sync_engine.py`) + guard test.
+- **Switch / Eden (2026-09-17)**: the Eden bridge links and runs on macOS;
+  sustained rendering is stable (RG-115 fixed by hosting the CAMetalLayer on a
+  hidden window); button/analog input and save-directory export are implemented
+  and verified (RG-116/117); `an3_switch_companion` is a separate-process
+  companion with a visible window, keyboard input and an stdin automation
+  channel (RG-118); `an3ctl switch …` drives it. Legal homebrew only
+  (nx-hbmenu). See `docs/checkpoints/eden-native-integration.md`.
 
 **Not done**
 - Controller desktop **GUI glue** observed end to end (the client, the
@@ -108,7 +115,11 @@ From the original spec plus later requests:
   peer-to-peer device listeners and client-store wiring remain.
 - **Google sign-in + Drive transport** (owner skipped; needs OAuth
   credentials). `google_sync.py` is tested against an injected transport only.
-- **Switch companion** integration.
+- **Switch companion** integration: the companion process, its rendering,
+  input, saves and automation are built and verified on macOS; what remains is
+  the Tauri `CompanionSystem` (detect/launch/focus/stop), `.nro` detection,
+  bundling the companion into the packaged app, and a Switch library/UI
+  surface. Switch is intentionally not advertised in the app until then.
 - Per-engine renderer work is unchanged (and should stay unchanged unless
   demanded).
 

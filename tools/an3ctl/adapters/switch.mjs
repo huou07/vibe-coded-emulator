@@ -16,6 +16,10 @@ const HARNESS_CANDIDATES = [
   "/tmp/eden-build/bin/an3_eden_bridge_smoke",
 ];
 
+const COMPANION_CANDIDATES = [
+  "/tmp/eden-build/bin/an3_switch_companion",
+];
+
 const MOLTENVK_CANDIDATES = [
   "/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
 ];
@@ -38,6 +42,15 @@ export class SwitchAdapter {
   resolveMoltenVk() {
     if (process.env.LIBVULKAN_PATH) return process.env.LIBVULKAN_PATH;
     for (const candidate of MOLTENVK_CANDIDATES) {
+      if (existsSync(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  resolveCompanion(opts = {}) {
+    const explicit = opts.companion ?? process.env.AN3_SWITCH_COMPANION;
+    if (explicit && existsSync(explicit)) return explicit;
+    for (const candidate of COMPANION_CANDIDATES) {
       if (existsSync(candidate)) return candidate;
     }
     return null;
@@ -142,5 +155,33 @@ export class SwitchAdapter {
       verified: status.inputSupported === true && status.result === "PASS",
       status,
     };
+  }
+
+  // Launches the separate-process companion for a bounded run. This is the
+  // production path (AN3 launches the companion; Eden is never linked in).
+  async companion(opts = {}) {
+    const companion = this.resolveCompanion(opts);
+    if (!companion) {
+      throw new An3Error(
+        "E_TARGET_UNAVAILABLE",
+        "No Switch companion built. Build native/eden-bridge or set AN3_SWITCH_COMPANION.",
+      );
+    }
+    const args = [opts.rom, "--no-stdin"];
+    if (opts.visible) args.push("--visible");
+    const seconds = Number(opts.seconds ?? 10);
+    args.push("--seconds", String(seconds));
+    const env = { ...process.env };
+    const moltenvk = this.resolveMoltenVk();
+    if (moltenvk) env.LIBVULKAN_PATH = moltenvk;
+    const result = await run(companion, args, { env, timeoutMs: (seconds + 120) * 1000 });
+    const status = this.parseStatus(result.stdout);
+    if (status === null) {
+      throw new An3Error(
+        "E_ACTION_FAILED",
+        `Companion exited ${result.code}: ${(result.stderr || result.stdout).trim().slice(0, 400)}`,
+      );
+    }
+    return { companion, code: result.code, status };
   }
 }

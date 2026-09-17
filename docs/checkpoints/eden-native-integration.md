@@ -23,9 +23,49 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 | Milestone A — Eden configured + `core` built at the pinned commit | Implemented and tested |
 | Milestone B — Eden-backed bridge links + runs the smoke test | **Implemented, built, and runtime-verified** |
 | Milestone B+ — a real legal homebrew NRO (nx-hbmenu v3.6.1) loads and starts | **Implemented and runtime-verified (macOS, MoltenVK)** |
-| Milestone C — Rust/AN3 integration | Not started |
-| Milestone D — frame readback / presentation to the AN3 surface | Blocked engineering (see below) |
-| Milestone E — input, audio, saves, app UI | Not started |
+| Milestone C — Rust/AN3 integration | **Partial** — separate-process companion built + automated (RG-118); Tauri `CompanionSystem` wiring + packaging not done |
+| Milestone D — frame readback / presentation to the AN3 surface | **Partial** — sustained rendering fixed (RG-115) and the companion presents its own window; readback into an AN3 callback remains open |
+| Milestone E — input, audio, saves, app UI | **Input + saves done** (RG-116/117); audio is Eden-native (cubeb); app UI not started |
+
+## Phase 6 — Switch completion: sustained render, input, saves, companion (2026-09-17)
+
+- **RG-115 fixed.** The bare `CAMetalLayer` had zero bounds, so MoltenVK created
+  `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` failed with
+  `kIOGPUCommandBufferCallbackErrorInvalidInput` → `Lost VkDevice` → an uncaught
+  `Vulkan::vk::Exception` on Eden's GPU thread → SIGABRT. Fix: host the layer on
+  a hidden `NSWindow`/`NSView`. Swapchain now reports `size (1280, 720)`;
+  `--frames 1…600` all PASS (8/8 at 600); sustained `--seconds 65/60/60` PASS
+  with 0 MoltenVK errors.
+- **Input (RG-116).** `an3_eden_submit_button/submit_analog` drive Eden's
+  `virtual_gamepad` engine; `an3_eden_get_button/get_analog` read Eden's
+  emulated-controller state back. ABI v2 (analog gained a stick selector).
+  Harness: 69→**75 checks, 0 failures**, `inputSupported:true`.
+- **Saves (RG-117).** `an3_eden_get_save_dir` reports `EdenPath::SaveDir`;
+  `an3_eden_save_data(path)` exports the save tree (recursive copy) without
+  touching live saves.
+- **Deterministic harness.** `bridge_smoke --json [--frames N] [--seconds N]`
+  emits `AN3CTL_STATUS` with `framesRun`, `elapsedMs`, `inputSupported`.
+- **Separate-process companion (RG-118).** `an3_switch_companion` owns a visible
+  AppKit window, a frame loop, keyboard input and a stdin automation channel
+  (`button`/`analog`/`status`/`quit`). AN3 launches it; Eden is **not** linked
+  into the AN3 binary. Verified: on-screen window `Vibe Coded Emulator — Switch`,
+  704 frames/12 s, clean exit 0.
+- **Automation.** `an3ctl switch detect|status|run|input|sustained|companion`.
+- **Tests.** `tests/test_eden_switch_bridge.py` (source contracts + runtime
+  guards, opt-in sustained). Full suite **296 tests OK**.
+
+### Still open (not claimed)
+
+- **Tauri `CompanionSystem`**: `native-offline` has no Switch system, `.nro`
+  detection, companion packaging, or UI. Switch is deliberately **not**
+  advertised in the app, because doing so without this wiring would overclaim.
+- **Frame readback into AN3**: the companion presents its own window; AN3 does
+  not receive Eden frames (the documented architecture does not require it).
+- **Gamepad/keyboard play**: the companion's keyboard map exists but a real
+  human interaction pass and gamepad support are unverified.
+- **Game-level save round-trip**: unverified (nx-hbmenu writes no NAND save).
+- **Audio**: Eden initialises its own cubeb sink; continuous audible output was
+  not captured.
 
 ## Completed phases
 
