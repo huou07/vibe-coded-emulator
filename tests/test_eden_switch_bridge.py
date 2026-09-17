@@ -178,5 +178,32 @@ class EdenBridgeRuntimeTests(unittest.TestCase):
         self.assertGreater(status["framesRun"], 0)
 
 
+class SwitchCompanionContractTests(unittest.TestCase):
+    """The app must control Switch as a separate process and never advertise it
+    as a libretro/NativeSystem core."""
+
+    def setUp(self):
+        self.companion = ROOT / "native-offline/src-tauri/src/switch_companion.rs"
+        self.lib = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+
+    def test_30_companion_module_defines_the_lifecycle(self):
+        source = self.companion.read_text(encoding="utf-8")
+        for symbol in ("pub fn detect", "pub fn launch", "pub fn status", "pub fn stop"):
+            self.assertIn(symbol, source)
+
+    def test_31_app_registers_the_companion_commands(self):
+        self.assertIn("mod switch_companion;", self.lib)
+        for command in ("switch_companion_detect", "switch_companion_launch",
+                        "switch_companion_status", "switch_companion_stop"):
+            self.assertIn(command, self.lib)
+
+    def test_32_switch_is_not_advertised_as_a_native_system(self):
+        # Until the companion is packaged and wired into the library UI, .nro
+        # must not be mapped onto the libretro NativeSystem path.
+        self.assertNotIn('eq_ignore_ascii_case("nro")', self.lib)
+        self.assertNotIn('"switch" =>', self.lib)
+        self.assertIn("switch_companion::stop()", self.lib)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,11 @@
     "allow-native-controller-lan-start",
     "allow-native-controller-lan-stop",
     "allow-native-controller-lan-status",
-    "allow-native-controller-lan-refresh"
+    "allow-native-controller-lan-refresh",
+    "allow-switch-companion-detect",
+    "allow-switch-companion-launch",
+    "allow-switch-companion-status",
+    "allow-switch-companion-stop"
   ],
   "remote": {
     "urls": [

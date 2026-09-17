@@ -5,6 +5,7 @@ use include_dir::{include_dir, Dir};
 mod azahar;
 mod controller_host;
 mod lan_host;
+mod switch_companion;
 use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
 use serde::Serialize;
 use std::{
@@ -676,6 +677,33 @@ fn native_controller_lan_refresh() -> lan_host::LanStatus {
     lan_host::refresh_code()
 }
 
+// Nintendo Switch runs as a separate companion process (never linked into this
+// binary); these commands are its CompanionSystem lifecycle surface.
+
+#[tauri::command]
+fn switch_companion_detect() -> switch_companion::CompanionInfo {
+    switch_companion::detect()
+}
+
+#[tauri::command]
+fn switch_companion_launch(
+    content: String,
+    visible: Option<bool>,
+) -> Result<switch_companion::CompanionStatus, String> {
+    switch_companion::launch(&content, visible.unwrap_or(true))
+}
+
+#[tauri::command]
+fn switch_companion_status() -> switch_companion::CompanionStatus {
+    switch_companion::status()
+}
+
+#[tauri::command]
+fn switch_companion_stop() -> switch_companion::CompanionStatus {
+    switch_companion::stop();
+    switch_companion::status()
+}
+
 #[tauri::command]
 async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String> {
     validate_rom_id(&rom_id)?;
@@ -718,6 +746,7 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 controller_host::stop();
                 lan_host::stop();
+                switch_companion::stop();
             }
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
@@ -740,7 +769,11 @@ pub fn run() {
             native_controller_lan_start,
             native_controller_lan_stop,
             native_controller_lan_status,
-            native_controller_lan_refresh
+            native_controller_lan_refresh,
+            switch_companion_detect,
+            switch_companion_launch,
+            switch_companion_status,
+            switch_companion_stop
         ])
         .setup(|_app| {
             // Desktop uses the Rust loopback server to stream private ROMs
