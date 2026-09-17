@@ -20,6 +20,7 @@ import { WebAdapter } from "./adapters/web.mjs";
 import { AndroidAdapter } from "./adapters/android.mjs";
 import { EmulatorAdapter } from "./adapters/emulator.mjs";
 import { DesktopAdapter } from "./adapters/desktop.mjs";
+import { SwitchAdapter } from "./adapters/switch.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -65,6 +66,7 @@ function buildAdapters(root) {
     android: new AndroidAdapter(root),
     emulator: new EmulatorAdapter(root),
     desktop: new DesktopAdapter(root),
+    switch: new SwitchAdapter(root),
   };
 }
 
@@ -84,6 +86,8 @@ async function dispatch(adapters, { positionals, flags }) {
       return romCommand(adapters, action, flags, positionals);
     case "emulator":
       return emulatorCommand(adapters, action, flags);
+    case "switch":
+      return switchCommand(adapters, action, flags);
     case "test":
       return testCommand(adapters, action, flags);
     case "help":
@@ -101,11 +105,13 @@ async function targets(adapters) {
     adapters.desktop.available().catch((error) => ({ available: false, error: error.message })),
   ]);
   const emulator = adapters.emulator.available();
+  const switchTarget = adapters.switch.available();
   return {
     targets: {
       web,
       android,
       emulator,
+      switch: switchTarget,
       macos: desktop.targets?.macos ?? { available: false },
       linux: desktop.targets?.linux ?? { available: false },
       windows: desktop.targets?.windows ?? { available: false },
@@ -258,8 +264,37 @@ async function emulatorState(adapters, flags, common) {
   throw new An3Error("E_USAGE", "emulator state requires --save or --load");
 }
 
-async function testCommand(adapters, action, flags) {
-  const target = requireTarget(flags);
+async function switchCommand(adapters, action, flags) {
+  const opts = {
+    rom: flags.rom,
+    frames: flags.frames !== undefined ? Number(flags.frames) : undefined,
+    seconds: flags.seconds !== undefined ? Number(flags.seconds) : undefined,
+    harness: flags.harness,
+  };
+  const requireRom = (label) => {
+    if (!opts.rom) throw new An3Error("E_USAGE", `${label} requires --rom <legal-homebrew.nro>`);
+  };
+  switch (action) {
+    case "detect":
+      return adapters.switch.detect();
+    case "status":
+      requireRom("switch status");
+      return adapters.switch.status({ ...opts, frames: opts.frames ?? 1 });
+    case "run":
+      requireRom("switch run");
+      return adapters.switch.runBounded({ ...opts, frames: opts.frames ?? 1 });
+    case "input":
+      requireRom("switch input");
+      return adapters.switch.input({ ...opts, frames: opts.frames ?? 5 });
+    case "sustained":
+      requireRom("switch sustained");
+      return adapters.switch.runBounded({ ...opts, seconds: opts.seconds ?? 60 });
+    default:
+      throw new An3Error("E_USAGE", `Unknown switch action: ${action}`);
+  }
+}
+
+async function testCommand(adapters, action, flags) {  const target = requireTarget(flags);
   if (action === "smoke") return smokeTest(adapters, target, flags);
   if (action === "e2e") return smokeTest(adapters, target, flags);
   throw new An3Error("E_USAGE", `Unknown test action: ${action}`);
@@ -325,6 +360,13 @@ function usage() {
     "  an3ctl emulator diff     --name gba-boot --rom fixture.gba --frames 120",
     "  an3ctl emulator state    --rom fixture.gba --path save.state --save|--load",
     "  an3ctl emulator input    --rom fixture.gba --seq 'A@0-30;Start@40-45' --frames 60",
+    "",
+    "Switch (Eden bridge harness; legal homebrew only):",
+    "  an3ctl switch detect --json",
+    "  an3ctl switch status --rom hbmenu.nro --frames 1",
+    "  an3ctl switch run    --rom hbmenu.nro --frames 60",
+    "  an3ctl switch input  --rom hbmenu.nro",
+    "  an3ctl switch sustained --rom hbmenu.nro --seconds 60",
     "",
     "Tests:",
     "  an3ctl test smoke --target web|android|emulator",

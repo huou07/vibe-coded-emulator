@@ -20,6 +20,7 @@ an3ctl ui tree|query|click|fill|press|wait|text|value --target web|android ...
 an3ctl logs --target web|android
 an3ctl rom load <path> --target android
 an3ctl emulator status|snapshot|baseline|diff|state|input --rom <fixture> ...
+an3ctl switch detect|status|run|input|sustained --rom <legal-homebrew.nro> ...
 an3ctl test smoke --target web|android|emulator
 ```
 
@@ -127,6 +128,27 @@ code targets a physical device when a test/debug build exposes the socket.
 Spawns the packaged/local player in deterministic mode (local or over SSH),
 fetches the capture, hashes it, and diffs against a stored baseline. PASS/FAIL is
 a machine verdict, never an image a human must read.
+
+### Adapter: switch
+
+Drives the Eden bridge's deterministic harness
+(`native/eden-bridge/tests/bridge_smoke.c`), the single Switch control boundary.
+The harness emits one `AN3CTL_STATUS {"target":"switch",…,"result":"PASS|FAIL"}`
+line; the adapter parses it (tolerating Eden's control-byte prefixes) and returns
+an envelope. No window or screenshot is involved.
+
+```bash
+an3ctl switch detect --json                       # harness + backend + MoltenVK
+an3ctl switch status --rom hbmenu.nro --frames 5  # load + N frames + input test
+an3ctl switch run    --rom hbmenu.nro --seconds 60
+an3ctl switch input  --rom hbmenu.nro             # input verdict (reaches Eden)
+an3ctl switch sustained --rom hbmenu.nro --seconds 60
+```
+
+The harness is the same binary the runtime guards use
+(`tests/test_eden_switch_bridge.py`). Set `AN3_SWITCH_HARNESS` (and
+`AN3_SWITCH_HOMEBREW`) when it is not at a default path; only legal homebrew
+fixtures are accepted.
 
 ## 4. Structured UI contract
 
