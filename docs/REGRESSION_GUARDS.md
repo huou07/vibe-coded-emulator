@@ -1,5 +1,36 @@
 # AN3 Arcade regression guards
 
+## Current authority — Linux + macOS interactive gameplay, 2026-09-17
+
+- RG-114: The packaged 2.2.0 app must render and accept input on Linux and macOS,
+  not just launch. **Linux** (authorized Debian builder, headless): ran the
+  DEB-bundled player
+  `/usr/lib/VibeCodedEmulator/runtime/linux-x86_64/an3-offline-native --rom boot.3dsx
+  --system 3ds --renderer vulkan` under `Xvfb :96` + openbox with
+  `AN3_OFFLINE_LIBDIR=<extracted runtime dir>` (core resolution falls back to the
+  absolute `/usr/lib/an3-offline-native/libretro`, so an uninstalled extracted DEB
+  needs the override) and `SDL_AUDIODRIVER=dummy` (headless host has no ALSA
+  device). Vulkan device was `llvmpipe` (software). Observed: `Using Vulkan hw
+  renderer`; `PresentWindow initialized with 720x240`; 2 frame resources;
+  `Load3DSXFile`; and screenshots (`scrot` on the Xvfb framebuffer) showing the 3DS
+  Homebrew Launcher fully rendered (`the homebrew launcher`, `hax 2.x ✦ v2.4.3`,
+  both screens). Input (`xdotool`, XTEST — real input path): F4 toggled the SDL
+  window 1280x720 ↔ 1280x900 fullscreen; F1 changed the dual-screen layout
+  left-right → top-bottom; and `z` (mapped to libretro button 0 = B/Cancel) moved
+  the emulated 3DS from hbmenu's `3dslink NetLoader` screen back to the
+  `No applications found` screen. **macOS**: the built 2.2.0 `.app` UI rendered, and
+  GUI click-through was verified with synthesized CGEvents — clicked `Open ROM` →
+  native file picker → selected `boot.3dsx` → `Open` → imported as NINTENDO 3DS
+  `boot` (374 KB) → clicked `Play 3DS native`. Gameplay rendered the 3DS Homebrew
+  Launcher with the app status bar showing **60.0–60.3 FPS · Vulkan** and the
+  on-screen virtual pad. Content used: `devkitPro/3ds-hbmenu` v2.4.3 `boot.3dsx`
+  (free official 3DS homebrew); staged copies were deleted after the run.
+  **Honest gap**: hbmenu's static `No applications found` screen did not visibly
+  change when the on-screen A/Y pad buttons were tapped on macOS, so a per-button
+  in-game effect there is not independently confirmed (the pad is present and the
+  app UI responds to clicks). Linux used software Vulkan (llvmpipe), so it proves
+  the path, not performance.
+
 ## Current authority — Windows 3DS/Vulkan + input verification, 2026-09-17
 
 - RG-113: The Windows package must be able to run a 3DS title through its Vulkan
