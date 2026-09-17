@@ -2,6 +2,13 @@
 
 #include "vulkan_backend.h"
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define AN3_VK_LOG(...) __android_log_print(ANDROID_LOG_INFO, "AN3VK", __VA_ARGS__)
+#else
+#define AN3_VK_LOG(...) ((void)0)
+#endif
+
 #include <array>
 #include <algorithm>
 #include <atomic>
@@ -133,6 +140,30 @@ VkCompositeAlphaFlagBitsKHR composite_alpha(const VkSurfaceCapabilitiesKHR& capa
         if (capabilities.supportedCompositeAlpha & value) return value;
     }
     return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+}
+
+// The core presents display-referred sRGB-encoded UNORM frames. An _SRGB
+// swapchain format makes the presentation blit apply an extra
+// linear-to-sRGB encode, so the framebuffer loses saturation on the physical
+// GPU even though the format advertises the standard color space. Some Android
+// drivers (Adreno) list an _SRGB format with VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+// while MoltenVK/desktop only offer UNORM, which is why this never reproduced
+// off-device. Never treat an _SRGB format as a swapchain match.
+bool is_srgb_format(VkFormat format) {
+    switch (format) {
+    case VK_FORMAT_R8_SRGB:
+    case VK_FORMAT_R8G8_SRGB:
+    case VK_FORMAT_R8G8B8_SRGB:
+    case VK_FORMAT_B8G8R8_SRGB:
+    case VK_FORMAT_R8G8B8A8_SRGB:
+    case VK_FORMAT_B8G8R8A8_SRGB:
+#ifdef VK_FORMAT_A8B8G8R8_SRGB_PACK32
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+#endif
+        return true;
+    default:
+        return false;
+    }
 }
 
 } // namespace
@@ -903,6 +934,9 @@ struct PortableVulkanBackend::Impl {
         }
         std::vector<VkSurfaceFormatKHR> formats(format_count);
         get_surface_formats(physical_device, surface, &format_count, formats.data());
+        for (const auto& candidate : formats) {
+            AN3_VK_LOG("surface format=%d colorSpace=%d", static_cast<int>(candidate.format), static_cast<int>(candidate.colorSpace));
+        }
         // The core presents display-referred UNORM frames, so the swapchain
         // must stay in the standard sRGB-nonlinear color space and use a UNORM
         // color format. An _SRGB surface makes the presentation blit apply a
@@ -935,13 +969,18 @@ struct PortableVulkanBackend::Impl {
             selected.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
             have_selection = true;
         } else {
+            // Only UNORM formats are acceptable. An _SRGB format also reports
+            // the standard color space on some Android drivers, but selecting
+            // it double-encodes the core's already sRGB-encoded frames and
+            // desaturates them; see is_srgb_format().
             const VkFormat preferred_formats[] = {
                 VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM,
-                VK_FORMAT_B8G8R8A8_SRGB,  VK_FORMAT_R8G8B8A8_SRGB,
+                VK_FORMAT_A8B8G8R8_UNORM_PACK32,
             };
             for (const VkFormat preferred : preferred_formats) {
                 const auto candidate = std::find_if(formats.begin(), formats.end(), [preferred](const VkSurfaceFormatKHR& item) {
-                    return item.format == preferred && item.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+                    return item.format == preferred && item.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+                           !is_srgb_format(item.format);
                 });
                 if (candidate != formats.end() && supports_blit_dst(candidate->format)) {
                     selected = *candidate;
@@ -951,16 +990,19 @@ struct PortableVulkanBackend::Impl {
             }
         }
         if (!have_selection) {
-            // The driver advertised no preferred format with the standard
-            // space; scan for any blit-capable format that still presents in
-            // the standard space before accepting the (possibly wide-gamut)
-            // first entry. This keeps channel interpretation stable instead of
-            // letting the compositor reinterpret a P3/HDR surface.
-            const auto candidate = std::find_if(formats.begin(), formats.end(), [&supports_blit_dst](const VkSurfaceFormatKHR& item) {
-                return item.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && supports_blit_dst(item.format);
+            // The driver advertised no preferred UNORM format with the standard
+            // space; scan for any blit-capable non-sRGB format that still
+            // presents in the standard space before accepting the (possibly
+            // wide-gamut) first entry. This keeps channel interpretation stable
+            // instead of letting the compositor reinterpret a P3/HDR surface or
+            // an _SRGB blit re-encode the frame.
+            const auto candidate = std::find_if(formats.begin(), formats.end(), [&](const VkSurfaceFormatKHR& item) {
+                return item.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+                       !is_srgb_format(item.format) && supports_blit_dst(item.format);
             });
             if (candidate != formats.end()) selected = *candidate;
         }
+        AN3_VK_LOG("selected format=%d colorSpace=%d have=%d", static_cast<int>(selected.format), static_cast<int>(selected.colorSpace), have_selection ? 1 : 0);
         VkFormatProperties selected_properties{};
         get_format_properties(physical_device, selected.format, &selected_properties);
         if (!(selected_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT)) {
@@ -1793,10 +1835,13 @@ std::string PortableVulkanBackend::device_details() const {
     auto get = load_instance_function<PFN_vkGetPhysicalDeviceProperties>(impl_->get_instance_proc_addr,impl_->instance,"vkGetPhysicalDeviceProperties");
     if (!get) return {};
     get(impl_->physical_device,&properties);
+    const bool standard_space = impl_->swapchain_color_space == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    const bool srgb_format = is_srgb_format(impl_->swapchain_format);
     return std::string(properties.deviceName)+" API="+std::to_string(VK_VERSION_MAJOR(properties.apiVersion))+"."+std::to_string(VK_VERSION_MINOR(properties.apiVersion))+
         " type="+std::to_string(properties.deviceType)+" driver="+std::to_string(properties.driverVersion)+" FIFO images="+std::to_string(impl_->swapchain_images.size())+
         " format="+std::to_string(impl_->swapchain_format)+" colorSpace="+std::to_string(impl_->swapchain_color_space)+
-        (impl_->swapchain_color_space == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ? "" : " (non-sRGB color space: expect washed-out colors)");
+        (standard_space ? "" : " (non-sRGB color space: expect washed-out colors)")+
+        (srgb_format ? " (sRGB swapchain format: expect double-encoded colors)" : "");
 }
 
 void PortableVulkanBackend::receive_image(const void* image, uint32_t semaphore_count,
