@@ -163,9 +163,10 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         if (!Regex("^$romId\\.[a-z0-9]{1,12}$").matches(romFilename)) { finish(); return }
         rom = File(dataDir, "an3-roms/$romFilename").takeIf { it.isFile }
         if (rom == null) { finish(); return }
-        val storedLayout = preferences.getString("screen-layout-$system", preferences.getString("nds-layout", "left-right"))
+        val storedLayout = NativeSettings.layout(preferences, system)
+          ?: preferences.getString("screen-layout-$system", preferences.getString("nds-layout", "left-right"))
         layout = NativeLayoutModel.normalize(this, system, storedLayout)
-        backend = preferences.getString("renderer", "auto") ?: "auto"
+        backend = NativeSettings.renderer(preferences, system)
         val root = FrameLayout(this).apply { setBackgroundColor(0xff07060c.toInt()) }
         surface = SurfaceView(this)
         surface.holder.addCallback(this)

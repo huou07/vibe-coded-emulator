@@ -357,8 +357,8 @@ class NativeGameOverlay(
         (0..11).forEach { input(it, false) }; releaseVirtualDirections()
         send("clear-input", "")
         val draft = mutableMapOf(
-            "renderer" to (prefs.getString("renderer", "auto") ?: "auto"),
-            "nds-layout" to NativeLayoutModel.normalize(activity, system, prefs.getString("screen-layout-$system", prefs.getString("nds-layout", "left-right"))),
+            "renderer" to NativeSettings.renderer(prefs, system),
+            "nds-layout" to NativeLayoutModel.normalize(activity, system, NativeSettings.layout(prefs, system) ?: prefs.getString("screen-layout-$system", prefs.getString("nds-layout", "left-right"))),
             "volume" to prefs.getInt("volume", 100).toString(), "latency" to prefs.getInt("latency", 64).toString(),
             "quality" to (prefs.getString("quality", "medium") ?: "medium"),
             "autosave-mode" to NativeAutoSave.resolve(prefs)
@@ -386,7 +386,8 @@ class NativeGameOverlay(
                 else if (k == "nds-layout") {
                     edit.putString("screen-layout-$system", v)
                     if (system == "nds") edit.putString("nds-layout", v)
-                } else edit.putString(k,v)
+                } else if (k == "renderer") edit.putString("renderer-$system", v)
+                else edit.putString(k,v)
             }
             flags.forEach { (k,v) -> edit.putBoolean(k,v) }
             edit.putString("key-map", keyDraft.toString())
@@ -488,6 +489,16 @@ class NativeGameOverlay(
                     choice("Renderer · applies on next launch", "renderer", listOf("Auto", "Vulkan", "OpenGL ES"), listOf("auto", "vulkan", "opengl"))
                     checkbox("Show FPS", "show-fps")
                     if(system in listOf("nds", "3ds")) layoutChoice()
+                    action("Reset Graphics to Defaults") {
+                        NativeSettings.resetGraphics(activity, system)
+                        draft["renderer"] = NativeSettings.renderer(prefs, system)
+                        draft["nds-layout"] = NativeLayoutModel.normalize(activity, system,
+                            NativeSettings.layout(prefs, system) ?: prefs.getString("screen-layout-$system", "left-right"))
+                        if (system in listOf("nds", "3ds")) previewLayout(draft.getValue("nds-layout"))
+                        refreshPreferences()
+                        saved.text = "Graphics defaults restored for $system only."
+                        render("Graphics")
+                    }
                 }
                 "Audio" -> {
                     val volumeLabel=text("Volume ${draft["volume"]}%"); content.addView(volumeLabel)
@@ -525,7 +536,9 @@ class NativeGameOverlay(
                     if(options.length()==0) content.addView(text("The core has not announced any options."))
                     for(i in 0 until options.length()) {
                         val option=options.getJSONObject(i); val key=option.getString("key")
-                        if(key in listOf("melonds_render_mode", "melonds_screen_layout1", "melonds_number_of_screen_layouts", "melonds_touch_mode")) continue
+                        // Core options the runtime intentionally pins must not be
+                        // shown as if the user could override them.
+                        if(key in NativeSettingsSchema.pinned(system)) continue
                         val values=option.getJSONArray("values"); val names=(0 until values.length()).map{values.getString(it)}
                         if(names.isEmpty()) continue
                         content.addView(text(option.optString("title",key)))

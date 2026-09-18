@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import "./generate-player-ui.mjs";
+import "./generate-native-settings.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const nativeRoot = resolve(scriptDirectory, "..");
