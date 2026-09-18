@@ -70,6 +70,7 @@ pub struct ControllerStatus {
 }
 
 type InputSink = Arc<dyn Fn(NativeInput) + Send + Sync>;
+type UtilitySink = Arc<dyn Fn(&str) + Send + Sync>;
 
 struct Host {
     stop: Arc<AtomicBool>,
@@ -100,6 +101,40 @@ fn sink_default() -> InputSink {
     Arc::new(|input| {
         let _ = set_native_input(input);
     })
+}
+
+fn utility_sink_default() -> UtilitySink {
+    Arc::new(|action| {
+        // The desktop player's quick-save/speed/menu live in the platform host
+        // (the macOS Cocoa panel, or the Windows/Linux child runtime). Until a
+        // platform maps a canonical action, report it on stderr instead of
+        // pretending the action succeeded.
+        eprintln!("AN3 controller utility '{action}' is not wired on this desktop host yet");
+    })
+}
+
+/// Apply each not-yet-seen utility action once and return the newest sequence.
+/// The per-press sequence makes retries and replayed frames idempotent.
+pub(crate) fn dispatch_utilities(
+    payload: &serde_json::Value,
+    last: &mut i64,
+    sink: &UtilitySink,
+) -> i64 {
+    if let Some(entries) = payload.get("utilities").and_then(|value| value.as_array()) {
+        for entry in entries {
+            let sequence = entry.get("sequence").and_then(|value| value.as_i64()).unwrap_or(0);
+            if sequence <= *last {
+                continue;
+            }
+            *last = sequence;
+            if let Some(action) = entry.get("action").and_then(|value| value.as_str()) {
+                if !action.is_empty() {
+                    sink(action);
+                }
+            }
+        }
+    }
+    *last
 }
 
 fn set_error(slot: &Arc<Mutex<String>>, message: impl Into<String>) {
@@ -254,10 +289,10 @@ fn json_field<'a>(value: &'a serde_json::Value, key: &str) -> String {
 
 /// Start a host session. `base_url` is the staging controller origin.
 pub fn start(base_url: String) -> Result<ControllerSession, String> {
-    start_with(base_url, sink_default())
+    start_with(base_url, sink_default(), utility_sink_default())
 }
 
-pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<ControllerSession, String> {
+pub(crate) fn start_with(base_url: String, sink: InputSink, utility_sink: UtilitySink) -> Result<ControllerSession, String> {
     stop();
     let base = base_url.trim().trim_end_matches('/').to_string();
     let payload = format!("{{\"deviceId\":\"desktop-native\",\"ttlSeconds\":{NATIVE_SESSION_TTL_SECONDS}}}");
@@ -294,6 +329,8 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
     let ack_token = host_token.clone();
     let handle = std::thread::spawn(move || {
         let mut last_acked: i64 = -1;
+        let mut last_utility: i64 = 0;
+        let mut last_utility_acked: i64 = 0;
         while !thread_stop.load(Ordering::Relaxed) {
             match http_request(&thread_base, "GET", &query, None) {
                 Ok((200, body)) => {
@@ -319,18 +356,24 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
                                 .get("lastSequence")
                                 .and_then(|value| value.as_i64())
                                 .unwrap_or(0);
-                            if sequence > last_acked && sequence > 0 {
+                            let utility_sequence =
+                                dispatch_utilities(&payload, &mut last_utility, &utility_sink);
+                            if (sequence > last_acked && sequence > 0)
+                                || utility_sequence > last_utility_acked
+                            {
                                 // Tell the phone which system is running so it
                                 // can pick the matching pad layout.
                                 let system_clause = match crate::azahar::native_active_system() {
                                     Some(system) => format!(",\"system\":\"{system}\""),
                                     None => String::new(),
                                 };
+                                let applied_sequence = sequence.max(last_acked).max(0);
                                 let ack_body = format!(
-                                    "{{\"code\":\"{ack_code}\",\"hostToken\":\"{ack_token}\",\"sequence\":{sequence}{system_clause}}}"
+                                    "{{\"code\":\"{ack_code}\",\"hostToken\":\"{ack_token}\",\"sequence\":{applied_sequence},\"utilitySequence\":{utility_sequence}{system_clause}}}"
                                 );
                                 let _ = http_request(&thread_base, "POST", "/api/controller/ack", Some(&ack_body));
-                                last_acked = sequence;
+                                last_acked = applied_sequence;
+                                last_utility_acked = utility_sequence;
                             }
                         } else {
                             sink(frame_input(&serde_json::Value::Null));
@@ -345,6 +388,8 @@ pub(crate) fn start_with(base_url: String, sink: InputSink) -> Result<Controller
                         sink(frame_input(&serde_json::Value::Null));
                         thread_input_active.store(false, Ordering::Relaxed);
                         last_acked = -1;
+                        last_utility = 0;
+                        last_utility_acked = 0;
                     }
                 }
                 Ok((403, _)) | Ok((404, _)) => {
@@ -534,12 +579,34 @@ mod tests {
         let seen: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
         let sink: InputSink = Arc::new(move |input| collector.lock().unwrap().push(input.buttons));
-        let _session = start_with(base, sink).expect("session");
+        let _session = start_with(base, sink, utility_sink_default()).expect("session");
         std::thread::sleep(Duration::from_millis(600));
         assert!(seen.lock().unwrap().iter().all(|buttons| *buttons == 0));
         assert!(!status().input_active);
         stop();
         INPUT_READY_OVERRIDE.store(-1, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn utilities_dispatch_once_and_track_the_newest_sequence() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: UtilitySink = Arc::new(move |action| collector.lock().unwrap().push(action.to_string()));
+        let payload = serde_json::json!({
+            "utilities": [
+                {"action": "quick_save", "sequence": 2},
+                {"action": "speed_up", "sequence": 3},
+                {"action": "quick_save", "sequence": 3},
+                {"action": "open_menu", "sequence": 1}
+            ]
+        });
+        let mut last = 0i64;
+        let newest = dispatch_utilities(&payload, &mut last, &sink);
+        assert_eq!(newest, 3);
+        assert_eq!(seen.lock().unwrap().clone(), vec!["quick_save", "speed_up"]);
+        // A retried/duplicated frame must not repeat the side effects.
+        dispatch_utilities(&payload, &mut last, &sink);
+        assert_eq!(seen.lock().unwrap().len(), 2);
     }
 
     #[test]
@@ -572,7 +639,7 @@ mod tests {
         let sink: InputSink = Arc::new(move |input| {
             collector.lock().unwrap().push(input.buttons);
         });
-        let session = start_with(base, sink).expect("session");
+        let session = start_with(base, sink, utility_sink_default()).expect("session");
         assert_eq!(session.code, "ABC123");
         assert_eq!(session.ttl_seconds, 3600);
         let mut applied = false;
@@ -639,7 +706,7 @@ mod tests {
         let _guard = serialize();
         INPUT_READY_OVERRIDE.store(1, Ordering::Relaxed);
         let sink: InputSink = Arc::new(|_| {});
-        let _session = start_with(format!("http://{address}"), sink).expect("session");
+        let _session = start_with(format!("http://{address}"), sink, utility_sink_default()).expect("session");
         let mut acked = false;
         for _ in 0..40 {
             if requests.lock().unwrap().iter().any(|head| head.starts_with("POST /api/controller/ack")) {
@@ -673,7 +740,7 @@ mod tests {
         let sink: InputSink = Arc::new(move |input| {
             collector.lock().unwrap().push(input.buttons);
         });
-        let session = start_with(base.clone(), sink).expect("live session");
+        let session = start_with(base.clone(), sink, utility_sink_default()).expect("live session");
         println!("live pairing code {}", session.code);
         let pair_body = format!("{{\"code\":\"{}\",\"deviceId\":\"desktop-probe\"}}", session.code);
         let (status, body) = http_request(&base, "POST", "/api/controller/pair", Some(&pair_body)).expect("pair");

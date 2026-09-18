@@ -1236,11 +1236,15 @@
     const latest = states.filter(Boolean).sort((a,b) => b.updatedAt-a.updatedAt)[0];
     if (saveStatus) saveStatus.textContent = latest ? (config.lang === "en" ? "Saved on this device" : "Đã lưu trên thiết bị") : (config.lang === "en" ? "No save on this device" : "Chưa có save trên thiết bị");
   };
+  const QUICK_SLOT_KEY="vibe-quick-save-slot-v1";
+  const readQuickSlot=()=>{try{const value=Number(localStorage.getItem(QUICK_SLOT_KEY));return Number.isInteger(value)&&value>=1&&value<=10?value:1;}catch(_){return 1;}};
+  const writeQuickSlot=slot=>{try{localStorage.setItem(QUICK_SLOT_KEY,String(slot));}catch(_){}};
   const saveSlot = async slot => {
     const state = playerSession?.saveStateManager.exportBytes() || window.EJS_emulator?.gameManager?.getState();
     if (!state?.byteLength) throw new Error(config.lang === "en" ? "Save state is not ready" : "Save state chưa sẵn sàng");
     const bytes = state instanceof Uint8Array ? state : new Uint8Array(state);
     await requireQuickSaves().put(slot, bytes, Date.now());
+    writeQuickSlot(slot);
     await refreshSlots();
     showNotice(config.lang === "en" ? `Saved to slot ${slot}` : `Đã lưu vào slot ${slot}`);
   };
@@ -1250,6 +1254,7 @@
     const bytes = new Uint8Array(await saved.state.arrayBuffer());
     if (playerSession) playerSession.saveStateManager.importBytes(bytes);
     else window.EJS_emulator?.gameManager?.loadState?.(bytes);
+    writeQuickSlot(slot);
     showNotice(config.lang === "en" ? `Loaded slot ${slot}` : `Đã nạp slot ${slot}`);
   };
   document.getElementById("slotMenu")?.addEventListener("click", () => {
@@ -1843,6 +1848,15 @@
     return true;
   };
   const closePlayerOptions = () => { panel?.classList.remove("open");document.getElementById("playerControls")?.setAttribute("aria-expanded","false"); };
+  const openPlayerOptions = () => {
+    if (!panel) return false;
+    if (stage?.classList.contains("emulator-menu-open")) { showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true); return false; }
+    closeSlotOptions();
+    panel.classList.add("open");
+    document.getElementById("playerControls")?.setAttribute("aria-expanded","true");
+    document.getElementById("closePad")?.focus();
+    return true;
+  };
   const closeSlotOptions = () => { if(slotPanel)slotPanel.hidden=true;document.getElementById("slotMenu")?.setAttribute("aria-expanded","false"); };
   if (ndsPad && stage) new MutationObserver(()=>{if(stage.classList.contains("emulator-menu-open"))closePlayerOptions();}).observe(stage,{attributes:true,attributeFilter:["class"]});
   document.getElementById("emulatorMenu")?.addEventListener("click",()=>{showHints();closePlayerOptions();try{window.EJS_emulator?.menu?.toggle()}catch(_){}queueEmulatorMenuLayer();});
@@ -1860,6 +1874,14 @@
   const controllerPanel = document.getElementById("ctrlPhonePanel");
   const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
   const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null};
+  // Phone Controller utility actions reuse this host's existing operations and
+  // the shared per-press dedup guard; no second save/speed/menu implementation.
+  const controllerUtility = (window.AN3ControllerUtility || {createDispatcher:()=>({dispatch:()=>[],reset(){},get lastSequence(){return 0;}})}).createDispatcher({
+    QUICK_SAVE: () => saveSlot(readQuickSlot()),
+    SPEED_UP: () => shiftSpeed(1),
+    SPEED_DOWN: () => shiftSpeed(-1),
+    OPEN_MENU: () => openPlayerOptions(),
+  });
   const controllerRunning = () => Boolean(gameStarted) && !runtimeFailed && !stage?.classList.contains("emulator-menu-open");
   const controllerTouchRelease = () => {
     if (!controller.touch) return;
@@ -1923,12 +1945,13 @@
     if (!payload.lastSequence) return en?"Connected — waiting for input":"Đã kết nối — chờ tín hiệu";
     return payload.inputActive ? (en?"Connected":"Đã kết nối") : (en?"Connected — input unavailable":"Đã kết nối — chưa vào game");
   };
-  const controllerAck = sequence => {
+  const controllerAck = (sequence, utilitySequence) => {
     if (!controller.code || !controller.hostToken || !sequence) return;
-    fetch("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence})}).catch(()=>{});
+    fetch("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
   };
   const controllerStop = message => {
     controllerRelease();
+    controllerUtility.reset();
     if (controller.timer) clearInterval(controller.timer);
     controller.timer = 0; controller.code = ""; controller.hostToken = "";
     if (message) controllerStatus(message);
@@ -1940,8 +1963,17 @@
       if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Disconnected":"Đã ngắt kết nối"); return; }
       if (!response.ok) return;
       const payload = await response.json();
-      if (controllerRunning()) { controllerApply(payload); controllerAck(payload.lastSequence); }
-      else { controllerRelease(); }
+      if (controllerRunning()) {
+        controllerApply(payload);
+        const results = controllerUtility.dispatch(payload.utilities);
+        for (const result of results) {
+          if (result.ok) continue;
+          showNotice(result.reason === "unsupported"
+            ? (config.lang === "en" ? `${result.action} is unavailable on this host` : `${result.action} không khả dụng trên thiết bị này`)
+            : result.reason, true);
+        }
+        controllerAck(payload.lastSequence, controllerUtility.lastSequence);
+      } else { controllerRelease(); }
       controllerStatus(controllerStatusText(payload));
     } catch (_) { /* transient; the next poll retries */ }
   };

@@ -1656,9 +1656,10 @@ def core_preload_page(system, lang):
     ui_asset = versioned_player_asset("player-ui.js")
     runtime_asset = versioned_player_asset("player-runtime.js")
     player_asset = versioned_player_asset("player.js")
+    controller_utility_asset = f"/static/controller-utility.js?v={ASSET_VERSION}"
     renderer_asset = versioned_player_asset("renderer-worker.js")
     nds_touch_asset = versioned_player_asset("nds-touch.js")
-    body = f'<main class="player-shell" data-player=\'{esc(json.dumps(config,ensure_ascii=False))}\'><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="Virtual controller"></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">Preparing</strong><div class="progress" role="progressbar" aria-label="Core download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section></main><script src="{ui_asset}" defer></script><script src="{runtime_asset}" defer></script><script src="{renderer_asset}" defer></script><script src="{nds_touch_asset}" defer></script><script src="{player_asset}" defer></script>'
+    body = f'<main class="player-shell" data-player=\'{esc(json.dumps(config,ensure_ascii=False))}\'><section class="player-stage"><div id="game"></div><div id="tvPad" aria-label="Virtual controller"></div><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">Preparing</strong><div class="progress" role="progressbar" aria-label="Core download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section></main><script src="{ui_asset}" defer></script><script src="{runtime_asset}" defer></script><script src="{renderer_asset}" defer></script><script src="{nds_touch_asset}" defer></script><script src="{controller_utility_asset}" defer></script><script src="{player_asset}" defer></script>'
     return layout("Core preload", body, lang, None, "", player=True)
 
 
