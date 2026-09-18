@@ -20,6 +20,7 @@ object NativeSettingsSchema {
         val label: String,
         val category: String,
         val type: Type,
+        val storage: String,
         val values: List<String>,
         val labels: Map<String, String>,
         val min: Int?,
@@ -33,31 +34,31 @@ object NativeSettingsSchema {
     )
 
     val global: List<Definition> = listOf(
-        Definition("volume", "Volume", "audio", Type.INT, emptyList(), emptyMap(), 0, 100, "100", emptyList(), null, "none", null, true),
-        Definition("mute", "Mute", "audio", Type.BOOL, emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true),
-        Definition("latency", "Audio latency", "audio", Type.ENUM, listOf("32", "64", "96", "128"), mapOf("32" to "32 ms", "64" to "64 ms", "96" to "96 ms", "128" to "128 ms"), null, null, "64", emptyList(), null, "none", null, true),
-        Definition("quality", "Resampler quality", "audio", Type.ENUM, listOf("low", "medium", "high"), mapOf("low" to "Low", "medium" to "Medium", "high" to "High"), null, null, "medium", emptyList(), null, "none", null, true),
-        Definition("autosave-mode", "Auto Save", "emulation", Type.ENUM, listOf("off", "exit", "30", "10", "5"), mapOf("5" to "Every 5 seconds", "10" to "Every 10 seconds", "30" to "Every 30 seconds", "off" to "Off", "exit" to "On game exit"), null, null, null, emptyList(), "native-autosave", "none", null, true),
-        Definition("show-fps", "Show FPS", "display", Type.BOOL, emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true),
-        Definition("start-fullscreen", "Start fullscreen on launch", "display", Type.BOOL, emptyList(), emptyMap(), null, null, "true", emptyList(), null, "app", null, true),
-        Definition("key-map", "Keyboard map", "controls", Type.STRING, emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false),
-        Definition("controller-server", "Controller server", "network", Type.STRING, emptyList(), emptyMap(), null, null, "", emptyList(), null, "none", null, false)
+        Definition("volume", "Volume", "audio", Type.INT, "int", emptyList(), emptyMap(), 0, 100, "100", emptyList(), null, "none", null, true),
+        Definition("mute", "Mute", "audio", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true),
+        Definition("latency", "Audio latency", "audio", Type.ENUM, "int", listOf("32", "64", "96", "128"), mapOf("32" to "32 ms", "64" to "64 ms", "96" to "96 ms", "128" to "128 ms"), null, null, "64", emptyList(), null, "none", null, true),
+        Definition("quality", "Resampler quality", "audio", Type.ENUM, "string", listOf("low", "medium", "high"), mapOf("low" to "Low", "medium" to "Medium", "high" to "High"), null, null, "medium", emptyList(), null, "none", null, true),
+        Definition("autosave-mode", "Auto Save", "emulation", Type.ENUM, "string", listOf("off", "exit", "30", "10", "5"), mapOf("5" to "Every 5 seconds", "10" to "Every 10 seconds", "30" to "Every 30 seconds", "off" to "Off", "exit" to "On game exit"), null, null, null, emptyList(), "native-autosave", "none", null, true),
+        Definition("show-fps", "Show FPS", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true),
+        Definition("start-fullscreen", "Start fullscreen on launch", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "true", emptyList(), null, "app", null, true),
+        Definition("key-map", "Keyboard map", "controls", Type.STRING, "string", emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false),
+        Definition("controller-server", "Controller server", "network", Type.STRING, "string", emptyList(), emptyMap(), null, null, "", emptyList(), null, "none", null, false)
     )
 
     val graphics: Map<String, List<Definition>> = mapOf(
         "gba" to listOf(
-            Definition("renderer", "Renderer", "graphics", Type.ENUM, listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true)
+            Definition("renderer", "Renderer", "graphics", Type.ENUM, "string", listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true)
         ),
         "nds" to listOf(
-            Definition("renderer", "Renderer", "graphics", Type.ENUM, listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true),
-            Definition("screen-layout", "Screen layout", "graphics", Type.ENUM, listOf("left-right", "right-left", "top-bottom", "bottom-top", "hybrid-top", "hybrid-bottom", "flipped-hybrid-top", "flipped-hybrid-bottom", "largescreen-top", "largescreen-bottom", "flipped-largescreen-top", "flipped-largescreen-bottom"), mapOf("left-right" to "Left / Right", "right-left" to "Right / Left", "top-bottom" to "Top / Bottom", "bottom-top" to "Bottom / Top", "hybrid-top" to "Hybrid (focus top)", "hybrid-bottom" to "Hybrid (focus bottom)", "flipped-hybrid-top" to "Flipped hybrid (focus top)", "flipped-hybrid-bottom" to "Flipped hybrid (focus bottom)", "largescreen-top" to "Large screen (top)", "largescreen-bottom" to "Large screen (bottom)", "flipped-largescreen-top" to "Flipped large screen (top)", "flipped-largescreen-bottom" to "Flipped large screen (bottom)"), null, null, "left-right", listOf("screen-layout-nds", "nds-layout"), null, "game", "Applies immediately in-game and on the next launch outside the game.", true)
+            Definition("renderer", "Renderer", "graphics", Type.ENUM, "string", listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true),
+            Definition("screen-layout", "Screen layout", "graphics", Type.ENUM, "string", listOf("left-right", "right-left", "top-bottom", "bottom-top", "hybrid-top", "hybrid-bottom", "flipped-hybrid-top", "flipped-hybrid-bottom", "largescreen-top", "largescreen-bottom", "flipped-largescreen-top", "flipped-largescreen-bottom"), mapOf("left-right" to "Left / Right", "right-left" to "Right / Left", "top-bottom" to "Top / Bottom", "bottom-top" to "Bottom / Top", "hybrid-top" to "Hybrid (focus top)", "hybrid-bottom" to "Hybrid (focus bottom)", "flipped-hybrid-top" to "Flipped hybrid (focus top)", "flipped-hybrid-bottom" to "Flipped hybrid (focus bottom)", "largescreen-top" to "Large screen (top)", "largescreen-bottom" to "Large screen (bottom)", "flipped-largescreen-top" to "Flipped large screen (top)", "flipped-largescreen-bottom" to "Flipped large screen (bottom)"), null, null, "left-right", listOf("screen-layout-nds", "nds-layout"), null, "game", "Applies immediately in-game and on the next launch outside the game.", true)
         ),
         "3ds" to listOf(
-            Definition("renderer", "Renderer", "graphics", Type.ENUM, listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true),
-            Definition("screen-layout", "Screen layout", "graphics", Type.ENUM, listOf("left-right", "top-bottom", "single-screen", "large-screen"), mapOf("left-right" to "Side by Side", "top-bottom" to "Top / Bottom", "single-screen" to "Single Screen", "large-screen" to "Large Screen"), null, null, "left-right", listOf("screen-layout-3ds", "nds-layout"), null, "game", "Applies immediately in-game and on the next launch outside the game.", true)
+            Definition("renderer", "Renderer", "graphics", Type.ENUM, "string", listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true),
+            Definition("screen-layout", "Screen layout", "graphics", Type.ENUM, "string", listOf("left-right", "top-bottom", "single-screen", "large-screen"), mapOf("left-right" to "Side by Side", "top-bottom" to "Top / Bottom", "single-screen" to "Single Screen", "large-screen" to "Large Screen"), null, null, "left-right", listOf("screen-layout-3ds", "nds-layout"), null, "game", "Applies immediately in-game and on the next launch outside the game.", true)
         ),
         "switch" to listOf(
-            Definition("renderer", "Renderer", "graphics", Type.ENUM, listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true)
+            Definition("renderer", "Renderer", "graphics", Type.ENUM, "string", listOf("auto", "vulkan", "opengl"), mapOf("auto" to "Auto", "vulkan" to "Vulkan", "opengl" to "OpenGL ES"), null, null, "auto", listOf("renderer"), null, "renderer", "Applies on the next launch. Auto picks the stable backend for each system.", true)
         ),
     )
 

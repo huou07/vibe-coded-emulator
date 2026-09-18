@@ -397,7 +397,9 @@ class NativeGameOverlay(
             edit.putInt("virtual-control-opacity-$system", controlDraft.getValue("opacity").toInt())
             edit.putInt("virtual-control-position-x-$system", controlDraft.getValue("position-x").toInt())
             edit.putInt("virtual-control-position-y-$system", controlDraft.getValue("position-y").toInt())
-            edit.apply()
+            // Commit synchronously so the library process reads the new values
+            // as soon as this session ends (async apply can lag a kill).
+            edit.commit()
             if (system in listOf("nds", "3ds")) previewLayout(draft.getValue("nds-layout"))
             settingsSaved()
             refreshPreferences()

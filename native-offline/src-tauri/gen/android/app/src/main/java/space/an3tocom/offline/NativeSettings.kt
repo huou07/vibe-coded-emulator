@@ -4,6 +4,7 @@ package space.an3tocom.offline
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -32,46 +33,57 @@ object NativeSettings {
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(NativeSettingsSchema.STORE, Context.MODE_MULTI_PROCESS)
 
-    private fun read(preferences: SharedPreferences, definition: NativeSettingsSchema.Definition, key: String): Any? {
-        if (!preferences.contains(key)) return null
-        return when (definition.type) {
-            NativeSettingsSchema.Type.BOOL -> preferences.getBoolean(key, false)
-            NativeSettingsSchema.Type.INT -> preferences.getInt(key, 0)
-            else -> preferences.getString(key, null)
-        }
-    }
+    // Read the raw stored value so an older install that wrote a different
+    // primitive type (for example latency as Int) can never crash the adapter.
+    private fun read(preferences: SharedPreferences, key: String): Any? = preferences.all[key]
 
     /** Resolve the stored per-system value, the documented legacy fallback, then the default. */
     fun effective(preferences: SharedPreferences, definition: NativeSettingsSchema.Definition, system: String?): Any? {
-        val own = read(preferences, definition, NativeSettingsSchema.key(definition.id, system))
-        coerce(definition, own)?.let { return it }
+        coerce(definition, read(preferences, NativeSettingsSchema.key(definition.id, system)))?.let { return it }
         for (legacy in definition.legacyKeys) {
-            coerce(definition, read(preferences, definition, legacy))?.let { return it }
+            coerce(definition, read(preferences, legacy))?.let { return it }
         }
         if (definition.legacyResolve == "native-autosave") return NativeAutoSave.resolve(preferences)
-        return definition.default
+        return coerce(definition, definition.default)
     }
 
-    /** Validate a raw value; returns null when the value is unsupported or malformed. */
+    private fun boolOf(value: Any?): Boolean? = when (value) {
+        is Boolean -> value
+        is String -> when (value.lowercase()) { "true" -> true; "false" -> false; else -> null }
+        else -> null
+    }
+
+    private fun intOf(value: Any?): Int? = when (value) {
+        is Int -> value
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull()
+        else -> null
+    }
+
+    /**
+     * Validate a raw value against its logical type (enum/range) and return it
+     * in the definition's storage type; null means unsupported or malformed.
+     */
     fun coerce(definition: NativeSettingsSchema.Definition, value: Any?): Any? {
         if (value == null) return null
-        return when (definition.type) {
-            NativeSettingsSchema.Type.BOOL -> when (value) {
-                is Boolean -> value
-                is String -> value.lowercase().let { if (it == "true") true else if (it == "false") false else null }
-                else -> null
-            }
+        val logical: Any = when (definition.type) {
+            NativeSettingsSchema.Type.BOOL -> boolOf(value) ?: return null
             NativeSettingsSchema.Type.INT -> {
-                val number = when (value) {
-                    is Int -> value
-                    is Number -> value.toInt()
-                    is String -> value.toIntOrNull()
-                    else -> null
-                }
-                number?.takeIf { definition.min != null && definition.max != null && it in definition.min..definition.max }
+                val number = intOf(value) ?: return null
+                if (definition.min != null && definition.max != null && number !in definition.min..definition.max) return null
+                number
             }
-            NativeSettingsSchema.Type.ENUM -> value.toString().takeIf { it in definition.values }
+            NativeSettingsSchema.Type.ENUM -> value.toString().takeIf { it in definition.values } ?: return null
             NativeSettingsSchema.Type.STRING -> value.toString()
+        }
+        return when (definition.storage) {
+            "int" -> when (logical) {
+                is Int -> logical
+                is Number -> logical.toInt()
+                else -> logical.toString().toIntOrNull()
+            }
+            "bool" -> boolOf(logical)
+            else -> logical.toString()
         }
     }
 
@@ -124,8 +136,10 @@ object NativeSettings {
             }
             saved += key
         }
-        editor.apply()
-        return JSONObject().put("ok", rejected.isEmpty()).put("saved", saved).put("rejected", rejected)
+        // Commit synchronously: the game process reads this file at launch, and
+        // an async apply() can be lost if the device is killed right after Save.
+        editor.commit()
+        return JSONObject().put("ok", rejected.isEmpty()).put("saved", JSONArray(saved)).put("rejected", JSONArray(rejected))
     }
 
     /**
@@ -147,8 +161,10 @@ object NativeSettings {
             }
             saved += key
         }
-        editor.apply()
-        return JSONObject().put("ok", true).put("saved", saved)
+        // Commit synchronously: the game process reads this file at launch, and
+        // an async apply() can be lost if the device is killed right after Save.
+        editor.commit()
+        return JSONObject().put("ok", true).put("saved", JSONArray(saved))
     }
 
     /** Requested renderer for a system (legacy `renderer` fallback included). */

@@ -25,6 +25,7 @@
     "label": "Renderer",
     "category": "graphics",
     "type": "enum",
+    "storage": "string",
     "values": [
       "auto",
       "vulkan",
@@ -52,6 +53,7 @@
       "label": "Volume",
       "category": "audio",
       "type": "int",
+      "storage": "int",
       "values": [],
       "labels": {},
       "min": 0,
@@ -68,6 +70,7 @@
       "label": "Mute",
       "category": "audio",
       "type": "bool",
+      "storage": "bool",
       "values": [],
       "labels": {},
       "min": null,
@@ -84,6 +87,7 @@
       "label": "Audio latency",
       "category": "audio",
       "type": "enum",
+      "storage": "int",
       "values": [
         "32",
         "64",
@@ -110,6 +114,7 @@
       "label": "Resampler quality",
       "category": "audio",
       "type": "enum",
+      "storage": "string",
       "values": [
         "low",
         "medium",
@@ -134,6 +139,7 @@
       "label": "Auto Save",
       "category": "emulation",
       "type": "enum",
+      "storage": "string",
       "values": [
         "off",
         "exit",
@@ -162,6 +168,7 @@
       "label": "Show FPS",
       "category": "display",
       "type": "bool",
+      "storage": "bool",
       "values": [],
       "labels": {},
       "min": null,
@@ -178,6 +185,7 @@
       "label": "Start fullscreen on launch",
       "category": "display",
       "type": "bool",
+      "storage": "bool",
       "values": [],
       "labels": {},
       "min": null,
@@ -194,6 +202,7 @@
       "label": "Keyboard map",
       "category": "controls",
       "type": "string",
+      "storage": "string",
       "values": [],
       "labels": {},
       "min": null,
@@ -210,6 +219,7 @@
       "label": "Controller server",
       "category": "network",
       "type": "string",
+      "storage": "string",
       "values": [],
       "labels": {},
       "min": null,
@@ -229,6 +239,7 @@
         "label": "Renderer",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "auto",
           "vulkan",
@@ -257,6 +268,7 @@
         "label": "Renderer",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "auto",
           "vulkan",
@@ -283,6 +295,7 @@
         "label": "Screen layout",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "left-right",
           "right-left",
@@ -330,6 +343,7 @@
         "label": "Renderer",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "auto",
           "vulkan",
@@ -356,6 +370,7 @@
         "label": "Screen layout",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "left-right",
           "top-bottom",
@@ -387,6 +402,7 @@
         "label": "Renderer",
         "category": "graphics",
         "type": "enum",
+        "storage": "string",
         "values": [
           "auto",
           "vulkan",

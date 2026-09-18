@@ -58,6 +58,7 @@ const expand = (definition, system) => {
     label: definition.label,
     category: definition.category || "emulation",
     type: definition.type,
+    storage: definition.storage || (definition.type === "int" ? "int" : definition.type === "bool" ? "bool" : "string"),
     values,
     labels,
     min: Number.isInteger(definition.min) ? definition.min : null,
@@ -119,7 +120,7 @@ const kotlinDefinition = (definition, indent) => {
   const pad = " ".repeat(indent);
   const values = definition.values.length === 0 ? "emptyList()" : `listOf(${definition.values.map(kotlinString).join(", ")})`;
   const labels = Object.keys(definition.labels).length === 0 ? "emptyMap()" : `mapOf(${Object.entries(definition.labels).map(([k, v]) => `${kotlinString(k)} to ${kotlinString(v)}`).join(", ")})`;
-  return `${pad}Definition(${kotlinString(definition.id)}, ${kotlinString(definition.label)}, ${kotlinString(definition.category)}, Type.${definition.type.toUpperCase()}, ${values}, ${labels}, ${definition.min ?? "null"}, ${definition.max ?? "null"}, ${definition.default === null ? "null" : kotlinString(definition.default)}, ${kotlinStrings(definition.legacyKeys)}, ${definition.legacyResolve === null ? "null" : kotlinString(definition.legacyResolve)}, ${kotlinString(definition.restart)}, ${definition.note === null ? "null" : kotlinString(definition.note)}, ${definition.external})`;
+  return `${pad}Definition(${kotlinString(definition.id)}, ${kotlinString(definition.label)}, ${kotlinString(definition.category)}, Type.${definition.type.toUpperCase()}, ${kotlinString(definition.storage)}, ${values}, ${labels}, ${definition.min ?? "null"}, ${definition.max ?? "null"}, ${definition.default === null ? "null" : kotlinString(definition.default)}, ${kotlinStrings(definition.legacyKeys)}, ${definition.legacyResolve === null ? "null" : kotlinString(definition.legacyResolve)}, ${kotlinString(definition.restart)}, ${definition.note === null ? "null" : kotlinString(definition.note)}, ${definition.external})`;
 };
 
 const kotlin = `// Generated from native-offline/shared/native-settings-schema.json; edit the shared model.
@@ -139,6 +140,7 @@ object NativeSettingsSchema {
         val label: String,
         val category: String,
         val type: Type,
+        val storage: String,
         val values: List<String>,
         val labels: Map<String, String>,
         val min: Int?,

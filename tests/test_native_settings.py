@@ -107,9 +107,9 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         # Legacy fallback is read, never copied to every core.
         self.assertIn("definition.legacyKeys", kotlin)
         self.assertIn("NativeAutoSave.resolve", kotlin)
-        # One transaction for several related edits.
+        # One transaction for several related edits, committed before returning.
         self.assertIn("val editor = prefs(context).edit()", kotlin)
-        self.assertIn("editor.apply()", kotlin)
+        self.assertIn("editor.commit()", kotlin)
         self.assertIn("fun resetGraphics(context: Context, system: String)", kotlin)
 
     def test_bridge_registers_the_settings_surface(self):
