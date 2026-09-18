@@ -68,15 +68,17 @@
     const renderGroup = (container, definitions, scope) => {
       container.textContent = "";
       const draft = {};
-      if (definitions.length === 0) {
+      const editable = definitions.filter(definition => definition.editable !== false);
+      const pinned = definitions.filter(definition => definition.editable === false);
+      if (editable.length === 0 && pinned.length === 0) {
         const empty = document.createElement("p");
         empty.className = "native-muted";
         empty.textContent = scope == null
           ? "No shared settings in this group."
-          : "Core-specific options are edited in the in-game menu once the core is running.";
+          : "This system has no configurable options in this build.";
         container.appendChild(empty);
       }
-      for (const definition of definitions) {
+      for (const definition of editable) {
         const value = readStored(definition, scope);
         draft[definition.id] = model.coerce(definition, value);
         const field = control(definition, value, next => { draft[definition.id] = next; });
@@ -88,16 +90,23 @@
         }
         container.appendChild(field);
       }
+      if (pinned.length > 0) {
+        const managed = document.createElement("p");
+        managed.className = "native-muted";
+        managed.dataset.gsPinned = scope == null ? "global" : scope;
+        managed.textContent = `Managed automatically on this platform: ${pinned.map(definition => definition.label).join(", ")}.`;
+        container.appendChild(managed);
+      }
       if (scope == null) {
         const globalGroup = document.createElement("div");
         globalGroup.className = "native-settings-actions";
-        globalGroup.appendChild(action("Save application settings", () => saveDefinitions(definitions, scope, draft)));
+        globalGroup.appendChild(action("Save application settings", () => saveDefinitions(editable, scope, draft)));
         container.appendChild(globalGroup);
         return globalGroup;
       }
       const actions = document.createElement("div");
       actions.className = "native-settings-actions";
-      actions.appendChild(action("Save settings", () => saveDefinitions(definitions, scope, draft)));
+      actions.appendChild(action("Save settings", () => saveDefinitions(editable, scope, draft)));
       if (definitions.some(definition => definition.category === "graphics")) {
         actions.appendChild(action("Reset Graphics to Defaults", () => {
           if (!bridge) return;
