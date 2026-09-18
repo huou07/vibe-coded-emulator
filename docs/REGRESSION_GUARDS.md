@@ -1,5 +1,31 @@
 # AN3 Arcade regression guards
 
+## Canonical per-core settings — 2026-09-18
+
+- RG-129: **Global and per-core settings must stay separate, and a bad renderer
+  choice for one system must always be correctable outside the game.**
+  Historically Android stored one global `renderer` preference, read by
+  `NativeGameActivity`, and the only renderer UI lived in the in-game menu; a
+  Vulkan choice that crashed the game process could trap the user with no way
+  back. The canonical model is `native-offline/shared/native-settings-schema.json`,
+  generated into `NativeSettingsSchema.kt` (Android) and
+  `native-offline/web/native-settings.js` (offline shell). Global settings keep
+  their keys; per-system settings use `<id>-<system>`; a legacy global value is
+  read only as a fallback until the user stores an explicit per-system value.
+  External `Settings → Game Settings` edits the same persisted values through
+  `AN3AndroidSettings` (`NativeSettings.all/save/resetGraphics`), which re-reads
+  with `MODE_MULTI_PROCESS`, so the library process is never gated on the game's
+  renderer initializing. `Reset Graphics to Defaults` touches only the selected
+  system. Runtime-pinned core options (`citra_use_hw_shader`,
+  `citra_use_disk_shader_cache`, `citra_graphics_api`, `citra_layout_option`,
+  `melonds_*`) are hidden from the editable lists. Guards:
+  `tests/native_settings.test.mjs` (behavioral isolation/migration/validation/reset),
+  `tests/test_native_settings.py` (schema + adapter wiring + 3DS pins intact),
+  `tests.test_android_native_runtime`, `tests.test_offline_consolidation`.
+  AVD status: AVD VERIFIED for MainActivity/Settings/Game Settings navigation
+  and persistence; in-game parity and Adreno rendering remain PHYSICAL DEVICE
+  RE-TEST REQUIRED.
+
 ## Android 3DS Vulkan framebuffer color — 2026-09-18
 
 - RG-124: The Android 3DS Vulkan presenter must never select an `_SRGB` swapchain color format. `native-offline/native-runtime/video/vulkan/vulkan_backend.cpp::create_swapchain_resources` still matched `_SRGB` formats in both the preferred list and the standard-space fallback (the 1.0.1 fix only stopped the wide-gamut `formats.front()` default). The Azahar core hands the frontend display-referred, sRGB-encoded UNORM frames, so an `_SRGB` surface makes the presentation blit apply a second linear-to-sRGB encode and desaturates the 3DS framebuffer. MoltenVK (which only advertises `B8G8R8A8_UNORM`) and the AVD's emulated GPU offer UNORM first and never reproduced it. Fix: an `is_srgb_format()` guard on the preferred list and the fallback scan, a one-time `AN3VK` logcat line of the advertised/selected surface format, and a `device_details()` warning for an sRGB/non-standard swapchain. Device evidence (Redmi 25057RN09G, Android 16, Adreno 619 driver 0762.40): the Vulkan surface advertises `R8G8B8A8_UNORM` (format 37) first and the presenter selected it with `VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` before and after the change, so the `_SRGB` path was not reachable on this unit. Runtime status: 3DS rendered correctly on the packaged 2.3.1 APK (`db5a0a6c05c9123ecf91999b93ea69e535c2e2f63442d2e61bd128f3a94d7a65`) on both the Auto OpenGL ES (`core=57 present=57`) and forced Vulkan (`core=55 present=55`) paths with no new Vulkan errors; the reported intermittent desaturation itself remains **UNVERIFIED** on hardware because it did not reproduce in 60 s recordings on either path. Source checks: `tests.test_android_native_runtime`, `tests.test_native_renderer_contract`, `tests.test_native_regression_guards`.

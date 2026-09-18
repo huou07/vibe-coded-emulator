@@ -76,6 +76,27 @@ class MainActivity : TauriActivity() {
     fun status(): String = An3ControllerHost.statusJson()
   }
 
+  // Canonical settings surface for the offline shell. MainActivity is a
+  // separate process from NativeGameActivity, so `all()` re-reads the shared
+  // preferences; a renderer that crashes the game process can never trap the
+  // library UI, which edits the same persisted values directly.
+  private class AndroidNativeSettingsBridge(private val activity: MainActivity) {
+    @JavascriptInterface
+    fun all(): String = NativeSettings.all(activity).toString()
+
+    @JavascriptInterface
+    fun save(edits: String): String = try {
+      NativeSettings.save(activity, JSONObject(edits)).toString()
+    } catch (error: Exception) {
+      JSONObject().put("ok", false).put("error", error.message ?: "Invalid settings payload").toString()
+    }
+
+    @JavascriptInterface
+    fun resetGraphics(system: String): String =
+      if (system in NativeSettingsSchema.systems) NativeSettings.resetGraphics(activity, system).toString()
+      else JSONObject().put("ok", false).put("error", "Unknown system").toString()
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     // Keep Chrome DevTools available for local debug builds only.  A staging
     // release must not expose its private-ROM WebView inspector to another
@@ -90,6 +111,7 @@ class MainActivity : TauriActivity() {
     contentWebView = webView
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
     webView.addJavascriptInterface(AndroidNativeControllerBridge(), "AN3AndroidNativeController")
+    webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")
     // Tauri creates its WebView at `tauri.localhost`; Android does not make
     // that origin cross-origin isolated. Tauri attaches its stock client
     // immediately after this callback, so replace it on the next event-loop

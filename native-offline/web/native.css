@@ -226,3 +226,14 @@ body.native-app-shell{
   .native-search{order:3;width:100%}
   .native-title{flex:1}
 }
+
+/* Game Settings / Application settings (canonical per-core settings UI) */
+.native-settings-body{display:grid;gap:10px}
+.native-settings-field{margin:0}
+.native-settings-field input[type="checkbox"]{justify-self:start;width:20px;height:20px}
+.native-settings-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6)}
+.native-system-tabs,.native-settings-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.native-system-tab,.native-settings-tab{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--v-line,#282238);background:var(--v-surface-1,#120f1e);color:var(--v-text,#f4f2fb);font-size:13px;font-weight:650;cursor:pointer}
+.native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
+.native-settings-group{display:grid;gap:12px;margin-top:6px}
+.native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
