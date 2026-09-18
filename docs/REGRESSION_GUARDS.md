@@ -1,5 +1,32 @@
 # AN3 Arcade regression guards
 
+## Canonical input / circular D-pad / phone utilities — 2026-09-18
+
+- RG-130: **One canonical input-action model; a circular D-pad that emits
+  simultaneous cardinals; one-shot Phone Controller utilities.** The contract is
+  `native-offline/shared/input-actions-schema.json`, generated into
+  `NativeInputActions.kt` and `static/input-actions.js`. Gameplay buttons keep
+  the existing libretro ids (UP=4 … R=11); utility actions (QUICK_SAVE, SPEED_UP,
+  SPEED_DOWN, OPEN_MENU) are one-shot and never held bits. The circular geometry
+  is generated once into both languages: eight 45° sectors, a dead zone, and
+  `22.5° + hysteresis` region stickiness; a diagonal is two cardinal presses.
+  The in-game Controller tab offers D-pad / Analog Joystick / Circular D-pad
+  per system (`directional-control-<system>`), the circular view releases on
+  up/cancel, and the Phone Controller adds the same movement option plus the
+  four utility buttons (no Pad toggle). Utility commands travel the existing
+  authenticated `/api/controller/state` channel with a per-press `us` sequence;
+  the server queues each once, the host deduplicates and acknowledges with
+  `utilitySequence`, and disconnect clears pending commands. Guards:
+  `tests/input_actions.test.mjs` (geometry/actions),
+  `tests/test_input_actions.py` (schema/adapter/protocol),
+  `tests/test_multiplayer_api.py::ControllerUtilityApiTests` (authenticated
+  end-to-end), `tests.test_android_native_runtime`,
+  `tests.test_netcode`. AVD VERIFIED: the three movement options render, the
+  circular option persists, a diagonal highlights two regions at once, and
+  release clears the highlight while the NDS game keeps running; live
+  emulator movement parity for every core and Phone Controller hardware
+  verification remain UNVERIFIED.
+
 ## Canonical per-core settings — 2026-09-18
 
 - RG-129: **Global and per-core settings must stay separate, and a bad renderer
