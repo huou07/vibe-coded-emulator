@@ -217,7 +217,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         # instead of hard-coded duplicates.
         for label in ("Menu", "Pad", "0.5x", "1x", "x2", "Lock cursor", "General", "Graphics", "Audio", "Keyboard", "Controller", "Emulation", "Save States", "Diagnostics", "About"):
             self.assertIn('"'+label+'"', shared)
-        self.assertIn('"Save Settings"', overlay)
+        self.assertIn('"Save and Exit"', overlay)
         self.assertIn("for(slot in 1..10)", overlay)
         self.assertIn('"autosave-mode"', overlay)
         self.assertIn("NativePlayerUi.autoSaveTitles", overlay)
@@ -225,7 +225,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertNotIn("autosave-interval", overlay)
         self.assertIn("val draft = mutableMapOf", overlay)
         self.assertIn("val flags = mutableMapOf", overlay)
-        self.assertIn('button("Save Settings")', overlay)
+        self.assertIn("fun footerButton(", overlay)
         self.assertIn('send("option",', overlay)
         self.assertIn('private val previewLayout: (String) -> Unit', overlay)
         self.assertIn('Screen layout · applies immediately', overlay)

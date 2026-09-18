@@ -187,13 +187,13 @@ class NativeSettingsAdapterTests(unittest.TestCase):
 
     def test_overlay_writes_per_system_settings_and_hides_pinned_options(self):
         overlay = source(OVERLAY)
-        self.assertIn('edit.putString("renderer-$system", v)', overlay)
+        self.assertIn('edits.put("renderer-$system", draft.getValue("renderer"))', overlay)
         self.assertIn("NativeSettings.renderer(prefs, system)", overlay)
         self.assertIn("key in NativeSettingsSchema.pinned(system)", overlay)
         self.assertIn("Reset Graphics to Defaults", overlay)
         self.assertIn("NativeSettings.resetGraphics(activity, system)", overlay)
         self.assertIn("val draft = mutableMapOf", overlay)
-        self.assertIn('button("Save Settings")', overlay)
+        self.assertIn('footerButton("Save and Exit")', overlay)
 
     def test_web_shell_loads_the_canonical_model(self):
         index = source(INDEX)

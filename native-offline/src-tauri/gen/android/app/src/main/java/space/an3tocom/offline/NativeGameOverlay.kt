@@ -413,37 +413,113 @@ class NativeGameOverlay(
         val dialog = Dialog(activity); menu = dialog
         val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp()); background = shape() }
         val tabs = LinearLayout(activity)
-        root.addView(HorizontalScrollView(activity).apply { addView(tabs); isHorizontalScrollBarEnabled = false }, LinearLayout.LayoutParams(-1, 44.dp()))
+        val tabScroll = HorizontalScrollView(activity).apply { addView(tabs); isHorizontalScrollBarEnabled = false }
+        val previousTabs = button("◀").apply { contentDescription = "Previous tabs"; textSize = 18f }
+        val nextTabs = button("▶").apply { contentDescription = "Next tabs"; textSize = 18f }
+        // Edge indicators show only when tabs exist outside the visible region,
+        // so they never look misleading when every tab already fits.
+        fun updateTabArrows() {
+            previousTabs.visibility = if (tabScroll.canScrollHorizontally(-1)) View.VISIBLE else View.GONE
+            nextTabs.visibility = if (tabScroll.canScrollHorizontally(1)) View.VISIBLE else View.GONE
+        }
+        fun scrollToNextTab(direction: Int) {
+            if (tabScroll.width <= 0) return
+            val visibleLeft = tabScroll.scrollX
+            val visibleRight = visibleLeft + tabScroll.width
+            var target = -1
+            for (index in 0 until tabs.childCount) {
+                val child = tabs.getChildAt(index) ?: continue
+                if (direction > 0 && child.right > visibleRight + 1) { target = child.left; break }
+                if (direction < 0 && child.left < visibleLeft - 1) target = child.left
+            }
+            if (target < 0) return
+            val maximum = maxOf(0, tabs.width - tabScroll.width)
+            tabScroll.smoothScrollTo(target.coerceIn(0, maximum), 0)
+        }
+        fun ensureTabVisible(tab: String) {
+            for (index in 0 until tabs.childCount) {
+                val child = tabs.getChildAt(index) ?: continue
+                if ((child as? Button)?.text?.toString() != tab) continue
+                tabScroll.post {
+                    val maximum = maxOf(0, tabs.width - tabScroll.width)
+                    val visibleLeft = tabScroll.scrollX
+                    val visibleRight = visibleLeft + tabScroll.width
+                    when {
+                        child.left < visibleLeft -> tabScroll.smoothScrollTo(child.left.coerceIn(0, maximum), 0)
+                        child.right > visibleRight -> tabScroll.smoothScrollTo((child.right - tabScroll.width).coerceIn(0, maximum), 0)
+                    }
+                    updateTabArrows()
+                }
+                break
+            }
+        }
+        previousTabs.setOnClickListener { scrollToNextTab(-1); tabScroll.post { updateTabArrows() } }
+        nextTabs.setOnClickListener { scrollToNextTab(1); tabScroll.post { updateTabArrows() } }
+        tabScroll.setOnScrollChangeListener { _, _, _, _, _ -> updateTabArrows() }
+        tabs.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateTabArrows() }
+        root.addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(previousTabs, LinearLayout.LayoutParams(38.dp(), 38.dp()))
+            addView(tabScroll, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f))
+            addView(nextTabs, LinearLayout.LayoutParams(38.dp(), 38.dp()))
+        }, LinearLayout.LayoutParams(-1, 44.dp()))
         val content = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(8.dp(), 8.dp(), 8.dp(), 8.dp()) }
         root.addView(ScrollView(activity).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        val saved = text("Changes are saved only when you choose Save Settings.")
+        val saved = text("Save and Exit keeps your changes on this device; Exit discards them.")
         root.addView(saved)
-        root.addView(button("Save Settings") {
+
+        // Persist the draft through the canonical settings service, then apply
+        // the values that can take effect immediately. Returns false (menu stays
+        // open) if anything could not be written, so a failed save never closes
+        // the menu with the changes lost.
+        fun persistDraft(): Boolean {
+            val edits = JSONObject()
+            edits.put("renderer-$system", draft.getValue("renderer"))
+            if (system in listOf("nds", "3ds")) edits.put("screen-layout-$system", draft.getValue("nds-layout"))
+            edits.put("volume", draft.getValue("volume"))
+            edits.put("latency", draft.getValue("latency"))
+            edits.put("quality", draft.getValue("quality"))
+            edits.put("autosave-mode", draft.getValue("autosave-mode"))
+            flags.forEach { (key, value) -> edits.put(key, value) }
+            edits.put("key-map", keyDraft.toString())
+            val result = NativeSettings.save(activity, edits)
+            if (!result.optBoolean("ok")) return false
+            // Core options come from the live core and persist under the canonical
+            // per-system keys the external Game Settings read. Virtual-control
+            // presentation keeps its existing per-system preferences.
             val edit = prefs.edit()
-            draft.forEach { (k,v) ->
-                if (k in listOf("volume", "latency")) edit.putInt(k,v.toInt())
-                else if (k == "nds-layout") {
-                    edit.putString("screen-layout-$system", v)
-                    if (system == "nds") edit.putString("nds-layout", v)
-                } else if (k == "renderer") edit.putString("renderer-$system", v)
-                else edit.putString(k,v)
-            }
-            flags.forEach { (k,v) -> edit.putBoolean(k,v) }
-            edit.putString("key-map", keyDraft.toString())
-            optionDraft.forEach { (k,v) -> edit.putString("core-$system-$k", v); send("option", "$k\t$v") }
+            optionDraft.forEach { (key, value) -> edit.putString("core-$system-$key", value) }
             edit.putString("directional-control-$system", controlDraft.getValue("directional"))
             edit.putInt("virtual-control-scale-$system", controlDraft.getValue("scale").toInt())
             edit.putInt("virtual-control-opacity-$system", controlDraft.getValue("opacity").toInt())
             edit.putInt("virtual-control-position-x-$system", controlDraft.getValue("position-x").toInt())
             edit.putInt("virtual-control-position-y-$system", controlDraft.getValue("position-y").toInt())
-            // Commit synchronously so the library process reads the new values
-            // as soon as this session ends (async apply can lag a kill).
-            edit.commit()
+            if (!edit.commit()) return false
             if (system in listOf("nds", "3ds")) previewLayout(draft.getValue("nds-layout"))
+            optionDraft.forEach { (key, value) -> send("option", "$key\t$value") }
             settingsSaved()
             refreshPreferences()
-            saved.text = "Settings saved. Layout is applied now; renderer applies on next launch."
-        }, LinearLayout.LayoutParams(-1, 40.dp()))
+            return true
+        }
+
+        val footer = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        fun footerButton(label: String, block: () -> Unit) = button(label, action = block).apply {
+            textSize = 11f; setSingleLine(false); maxLines = 2; gravity = Gravity.CENTER
+        }
+        val saveAndExit = footerButton("Save and Exit") {
+            if (persistDraft()) {
+                saved.text = "Settings saved. Layout is applied now; renderer applies on next launch."
+                dialog.dismiss()
+            } else {
+                saved.text = "Could not save settings. The menu stays open so nothing is lost."
+            }
+        }
+        val exitButton = footerButton("Exit") { dialog.dismiss() }
+        val returnButton = footerButton("Return to Library") { dialog.dismiss(); activity.finish() }
+        listOf(saveAndExit, exitButton, returnButton).forEachIndexed { index, item ->
+            footer.addView(item, LinearLayout.LayoutParams(0, 46.dp(), 1f).apply { if (index < 2) rightMargin = 6.dp() })
+        }
+        root.addView(footer, LinearLayout.LayoutParams(-1, -2))
 
         fun checkbox(label: String, key: String) { content.addView(CheckBox(activity).apply { text=label; setTextColor(Color.WHITE); buttonTintList=android.content.res.ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked),intArrayOf()),intArrayOf(0xffc4b5fd.toInt(),0xff6f6885.toInt())); isChecked=flags[key] == true; setOnCheckedChangeListener { _, checked -> flags[key]=checked } }) }
         fun choice(label: String, key: String, labels: List<String>, values: List<String> = labels) {
@@ -611,6 +687,7 @@ class NativeGameOverlay(
                     action("Resume") {dialog.dismiss()};action("Return to library") {dialog.dismiss();activity.finish()}
                 }
             }
+            ensureTabVisible(tab)
         }
         for(tab in NativePlayerUi.tabs) tabs.addView(button(tab){render(tab)},LinearLayout.LayoutParams(-2,36.dp()).apply{rightMargin=5.dp()})
         dialog.setContentView(root)
@@ -633,5 +710,6 @@ class NativeGameOverlay(
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show();dialog.window?.setLayout(minOf(NativePlayerUi.PANEL_WIDTH.dp(),width-24.dp()),minOf(NativePlayerUi.PANEL_HEIGHT.dp(),height-24.dp()))
         render("General")
+        tabScroll.post { updateTabArrows() }
     }
 }
