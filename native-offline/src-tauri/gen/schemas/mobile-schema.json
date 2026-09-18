@@ -279,6 +279,66 @@
           "markdownDescription": "Enables the stop_native_game command without any pre-configured scope."
         },
         {
+          "description": "Enables the switch_companion_analog command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-analog",
+          "markdownDescription": "Enables the switch_companion_analog command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_audio command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-audio",
+          "markdownDescription": "Enables the switch_companion_audio command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_detect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-detect",
+          "markdownDescription": "Enables the switch_companion_detect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_focus command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-focus",
+          "markdownDescription": "Enables the switch_companion_focus command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-input",
+          "markdownDescription": "Enables the switch_companion_input command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_launch command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-launch",
+          "markdownDescription": "Enables the switch_companion_launch command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_launch_rom command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-launch-rom",
+          "markdownDescription": "Enables the switch_companion_launch_rom command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-status",
+          "markdownDescription": "Enables the switch_companion_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the switch_companion_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-switch-companion-stop",
+          "markdownDescription": "Enables the switch_companion_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ui_control_result command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ui-control-result",
+          "markdownDescription": "Enables the ui_control_result command without any pre-configured scope."
+        },
+        {
           "description": "Denies the native_3ds_capabilities command without any pre-configured scope.",
           "type": "string",
           "const": "deny-native-3ds-capabilities",
@@ -379,6 +439,66 @@
           "type": "string",
           "const": "deny-stop-native-game",
           "markdownDescription": "Denies the stop_native_game command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_analog command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-analog",
+          "markdownDescription": "Denies the switch_companion_analog command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_audio command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-audio",
+          "markdownDescription": "Denies the switch_companion_audio command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_detect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-detect",
+          "markdownDescription": "Denies the switch_companion_detect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_focus command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-focus",
+          "markdownDescription": "Denies the switch_companion_focus command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-input",
+          "markdownDescription": "Denies the switch_companion_input command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_launch command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-launch",
+          "markdownDescription": "Denies the switch_companion_launch command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_launch_rom command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-launch-rom",
+          "markdownDescription": "Denies the switch_companion_launch_rom command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-status",
+          "markdownDescription": "Denies the switch_companion_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the switch_companion_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-switch-companion-stop",
+          "markdownDescription": "Denies the switch_companion_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ui_control_result command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ui-control-result",
+          "markdownDescription": "Denies the ui_control_result command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

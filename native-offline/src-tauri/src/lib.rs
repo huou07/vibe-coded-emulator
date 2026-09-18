@@ -734,14 +734,23 @@ fn switch_companion_launch(
     switch_companion::launch(&app, &content, visible.unwrap_or(true))
 }
 
-#[cfg(not(mobile))]
 #[tauri::command]
 fn switch_companion_launch_rom(
     app: AppHandle,
     rom_id: String,
     visible: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
-    switch_companion::launch_rom(&app, &rom_id, visible.unwrap_or(true))
+    #[cfg(not(mobile))]
+    return switch_companion::launch_rom(&app, &rom_id, visible.unwrap_or(true));
+
+    // Android/iOS never ship the Switch companion. Keep the single command name
+    // (one #[tauri::command] definition) so the shared frontend contract and the
+    // build.rs AppManifest stay identical across platforms, and fail honestly.
+    #[cfg(mobile)]
+    {
+        let _ = (app, rom_id, visible);
+        return Err("Nintendo Switch is not supported on this platform.".to_string());
+    }
 }
 
 #[tauri::command]
