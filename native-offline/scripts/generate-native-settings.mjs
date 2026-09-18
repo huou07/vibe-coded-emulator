@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Generates the Android settings schema (Kotlin) and the shared offline-shell
-// settings model (JavaScript) from one canonical JSON schema. Run through
+// settings model (JavaScript) from one canonical JSON schema, plus the verified
+// core-option registry (shared/core-option-registry.json). Run through
 // `npm run prepare-web`; the outputs are committed.
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -10,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schema = JSON.parse(await readFile(resolve(root, "shared/native-settings-schema.json"), "utf8"));
 const layouts = JSON.parse(await readFile(resolve(root, "shared/native-layout-schema.json"), "utf8"));
+const registry = JSON.parse(await readFile(resolve(root, "shared", schema.coreOptionRegistry), "utf8"));
 
 const fail = message => { throw new Error(`native-settings-schema: ${message}`); };
 const systems = schema.systems;
@@ -18,7 +20,7 @@ if (!Array.isArray(systems) || systems.length === 0) fail("systems must be a non
 const definitionIds = new Set();
 const knownTypes = new Set(["enum", "int", "bool", "string"]);
 const validateDefinition = (definition, system) => {
-  if (!definition.id || !/^[a-z0-9-]+$/.test(definition.id)) fail(`invalid id ${definition.id}`);
+  if (!definition.id || !/^[a-z0-9_-]+$/.test(definition.id)) fail(`invalid id ${definition.id}`);
   const scoped = system ? `${system}:${definition.id}` : definition.id;
   if (definitionIds.has(scoped)) fail(`duplicate definition ${scoped}`);
   definitionIds.add(scoped);
@@ -29,19 +31,8 @@ const validateDefinition = (definition, system) => {
 };
 
 for (const definition of schema.global) validateDefinition(definition, null);
-for (const [id, definition] of Object.entries({ renderer: schema.renderer, "screen-layout": schema.screenLayout })) {
-  if (definition.id !== id) fail(`definition key/id mismatch for ${id}`);
-}
-for (const system of systems) {
-  for (const id of schema.systemGraphics[system] || []) {
-    const definition = id === "renderer" ? schema.renderer : id === "screen-layout" ? schema.screenLayout : null;
-    if (!definition) fail(`unknown graphics definition ${id} for ${system}`);
-    if (id === "screen-layout" && !definition.systems.includes(system)) fail(`screen-layout is not valid for ${system}`);
-    validateDefinition(definition, system);
-  }
-}
 
-const expand = (definition, system) => {
+const expand = (definition, system, applyLegacy = true) => {
   const values = definition.valuesFrom
     ? (layouts.systems[system] || []).map(item => item.id)
     : (definition.values || []);
@@ -51,8 +42,8 @@ const expand = (definition, system) => {
   } else if (definition.labels) {
     Object.assign(labels, definition.labels);
   }
-  const defaultKey = system ? `${definition.id}-${system}` : definition.id;
-  const legacyKeys = (definition.legacyKeys || []).map(key => key.replace("{key}", defaultKey));
+  const key = system ? `${definition.id}-${system}` : definition.id;
+  const legacyKeys = applyLegacy ? (definition.legacyKeys || []).map(item => item.replace("{key}", key)) : [];
   return {
     id: definition.id,
     label: definition.label,
@@ -69,18 +60,66 @@ const expand = (definition, system) => {
     restart: definition.restart || "none",
     note: definition.note || null,
     external: definition.external !== false,
+    pinned: false,
+    editable: true,
+    storageKey: null,
   };
 };
 
+const rendererDefinition = system => expand(
+  schema.renderer,
+  system,
+  !schema.renderer.legacySystems || schema.renderer.legacySystems.includes(system),
+);
+
 const globalDefinitions = schema.global.map(definition => expand(definition, null));
 const graphics = {};
+for (const system of systems) {
+  graphics[system] = (schema.systemGraphics[system] || []).map(id => {
+    if (id === "renderer") return rendererDefinition(system);
+    if (id === "screen-layout") {
+      if (!(schema.systemLayoutSystems || schema.screenLayout.systems).includes(system)) fail(`screen-layout is not valid for ${system}`);
+      return expand(schema.screenLayout, system);
+    }
+    fail(`unknown graphics definition ${id} for ${system}`);
+  });
+}
+
 const emulation = {};
 for (const system of systems) {
-  graphics[system] = (schema.systemGraphics[system] || []).map(id =>
-    expand(id === "renderer" ? schema.renderer : schema.screenLayout, system));
-  const declaredEmulation = schema.systemEmulation[system] || [];
-  if (declaredEmulation.length > 0) fail(`emulation definitions are not implemented yet: ${declaredEmulation.join(", ")}`);
-  emulation[system] = [];
+  const declared = schema.systemEmulation[system] || [];
+  if (declared.length === 0) { emulation[system] = []; continue; }
+  if (!(declared.length === 1 && declared[0] === "from-core-option-registry")) fail(`unknown systemEmulation policy for ${system}`);
+  const entry = registry.systems[system];
+  if (!entry) fail(`core-option registry has no ${system} entry`);
+  const pinned = new Set(schema.pinnedCoreOptions?.[system]?.android || []);
+  emulation[system] = entry.options
+    .filter(option => Array.isArray(option.values) && option.values.length > 0)
+    .map(option => {
+      const values = option.values.map(item => item.value);
+      const labels = Object.fromEntries(option.values.map(item => [item.value, item.label || item.value]));
+      const isPinned = pinned.has(option.key);
+      return {
+        id: option.key,
+        label: option.label || option.key,
+        category: option.category || "emulation",
+        type: "enum",
+        storage: "string",
+        values,
+        labels,
+        min: null,
+        max: null,
+        default: option.default && values.includes(option.default) ? option.default : values[0],
+        legacyKeys: [],
+        legacyResolve: null,
+        restart: /restart/i.test(option.label || "") ? "core" : "none",
+        note: option.description || null,
+        external: true,
+        pinned: isPinned,
+        editable: !isPinned,
+        storageKey: `core-${system}-${option.key}`,
+      };
+    });
 }
 
 const availability = {};
@@ -120,7 +159,8 @@ const kotlinDefinition = (definition, indent) => {
   const pad = " ".repeat(indent);
   const values = definition.values.length === 0 ? "emptyList()" : `listOf(${definition.values.map(kotlinString).join(", ")})`;
   const labels = Object.keys(definition.labels).length === 0 ? "emptyMap()" : `mapOf(${Object.entries(definition.labels).map(([k, v]) => `${kotlinString(k)} to ${kotlinString(v)}`).join(", ")})`;
-  return `${pad}Definition(${kotlinString(definition.id)}, ${kotlinString(definition.label)}, ${kotlinString(definition.category)}, Type.${definition.type.toUpperCase()}, ${kotlinString(definition.storage)}, ${values}, ${labels}, ${definition.min ?? "null"}, ${definition.max ?? "null"}, ${definition.default === null ? "null" : kotlinString(definition.default)}, ${kotlinStrings(definition.legacyKeys)}, ${definition.legacyResolve === null ? "null" : kotlinString(definition.legacyResolve)}, ${kotlinString(definition.restart)}, ${definition.note === null ? "null" : kotlinString(definition.note)}, ${definition.external})`;
+  const storageKey = definition.storageKey === null ? "null" : kotlinString(definition.storageKey);
+  return `${pad}Definition(${kotlinString(definition.id)}, ${kotlinString(definition.label)}, ${kotlinString(definition.category)}, Type.${definition.type.toUpperCase()}, ${kotlinString(definition.storage)}, ${values}, ${labels}, ${definition.min ?? "null"}, ${definition.max ?? "null"}, ${definition.default === null ? "null" : kotlinString(definition.default)}, ${kotlinStrings(definition.legacyKeys)}, ${definition.legacyResolve === null ? "null" : kotlinString(definition.legacyResolve)}, ${kotlinString(definition.restart)}, ${definition.note === null ? "null" : kotlinString(definition.note)}, ${definition.external}, ${definition.pinned}, ${definition.editable}, ${storageKey})`;
 };
 
 const kotlin = `// Generated from native-offline/shared/native-settings-schema.json; edit the shared model.
@@ -151,6 +191,9 @@ object NativeSettingsSchema {
         val restart: String,
         val note: String?,
         val external: Boolean,
+        val pinned: Boolean,
+        val editable: Boolean,
+        val storageKey: String?,
     )
 
     val global: List<Definition> = listOf(
@@ -162,7 +205,7 @@ ${systems.map(system => `        ${kotlinString(system)} to listOf(\n${graphics[
     )
 
     val emulation: Map<String, List<Definition>> = mapOf(
-${systems.map(system => `        ${kotlinString(system)} to listOf(${emulation[system].map(definition => kotlinDefinition(definition, 12)).join(", ")})`).join(",\n")}
+${systems.map(system => `        ${kotlinString(system)} to listOf(\n${emulation[system].map(definition => kotlinDefinition(definition, 12)).join(",\n")}\n        ),`).join("\n")}
     )
 
     val pinnedCoreOptions: Map<String, List<String>> = mapOf(
@@ -176,7 +219,11 @@ ${Object.entries(availability).map(([system, platforms]) => `        ${kotlinStr
 
     fun key(id: String, system: String?): String = if (system == null) id else "$id-$system"
 
+    fun storageKey(definition: Definition, system: String?): String = definition.storageKey ?: key(definition.id, system)
+
     fun definitionsFor(system: String): List<Definition> = graphics[system].orEmpty() + emulation[system].orEmpty()
+
+    fun editableFor(system: String): List<Definition> = definitionsFor(system).filter { it.editable }
 
     fun definition(id: String, system: String?): Definition? =
         if (system == null) global.firstOrNull { it.id == id } else definitionsFor(system).firstOrNull { it.id == id }
@@ -207,7 +254,13 @@ const js = `// Generated from native-offline/shared/native-settings-schema.json;
 
   const key = (id, system) => (system == null ? id : id + "-" + system);
 
+  const storageKeyFor = (definition, system) => definition.storageKey || key(definition.id, system);
+
   const definitionsFor = (system) => [...(schema.graphics[system] || []), ...(schema.emulation[system] || [])];
+
+  const editable = (definitions) => definitions.filter((definition) => definition.editable !== false);
+
+  const pinned = (definitions) => definitions.filter((definition) => definition.editable === false);
 
   const externalGlobal = () => schema.global.filter((definition) => definition.external);
 
@@ -243,7 +296,7 @@ const js = `// Generated from native-offline/shared/native-settings-schema.json;
 
   // Stored per-system value, then the documented legacy fallback, then default.
   const effective = (definition, system, stored, legacy) => {
-    const own = stored ? stored[key(definition.id, system)] : undefined;
+    const own = stored ? stored[storageKeyFor(definition, system)] : undefined;
     const ownCheck = validate(definition, own);
     if (ownCheck.ok) return ownCheck.value;
     for (const legacyKey of definition.legacyKeys || []) {
@@ -255,16 +308,17 @@ const js = `// Generated from native-offline/shared/native-settings-schema.json;
   };
 
   const buildEdit = (definition, system, value) => {
+    if (definition.editable === false) return null;
     const result = validate(definition, value);
     if (!result.ok) return null;
-    return { key: key(definition.id, system), value: result.value };
+    return { key: storageKeyFor(definition, system), value: result.value };
   };
 
   const resetGraphicsEdits = (system, defaultValue) => {
     const edits = {};
     for (const definition of schema.graphics[system] || []) {
       const value = defaultValue ? defaultValue(definition, system) : definition.default;
-      edits[key(definition.id, system)] = coerce(definition, value);
+      edits[storageKeyFor(definition, system)] = coerce(definition, value);
     }
     return edits;
   };
@@ -288,7 +342,10 @@ const js = `// Generated from native-offline/shared/native-settings-schema.json;
     pinnedCoreOptions: schema.pinnedCoreOptions,
     platform,
     key,
+    storageKeyFor,
     definitionsFor,
+    editable,
+    pinned,
     externalGlobal,
     valuesOf,
     labelOf,
@@ -305,4 +362,4 @@ const js = `// Generated from native-offline/shared/native-settings-schema.json;
 
 await writeFile(resolve(root, "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettingsSchema.kt"), kotlin);
 await writeFile(resolve(root, "web/native-settings.js"), js);
-console.log("NATIVE_SETTINGS_SCHEMA=generated");
+console.log(`NATIVE_SETTINGS_SCHEMA=generated emulation gba=${emulation.gba.length} nds=${emulation.nds.length} 3ds=${emulation["3ds"].length} switch=${emulation.switch.length}`);

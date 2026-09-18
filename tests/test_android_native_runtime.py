@@ -322,7 +322,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         # One mode token drives the menu, the persisted setting and the host.
         for token in ('"off"', '"exit"', '"30"', '"10"', '"5"'):
             self.assertIn(token, source(ROOT / "native-offline/shared/generated/player_ui.h"))
-        self.assertIn('getBoolean("autosave", true)', resolver)
+        self.assertIn("fun resolveValues(values: Map<String, Any?>): String", resolver)
 
     def test_failed_suspend_export_removes_stale_resume_snapshot(self):
         jni = source(JNI)

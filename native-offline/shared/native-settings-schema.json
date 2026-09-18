@@ -2,6 +2,7 @@
   "version": 1,
   "description": "Canonical native application and per-core emulator settings. One logical source of truth for the Android adapter (SharedPreferences) and the offline shell UI. Per-system settings use the storage key <id>-<system>; global settings use <id>. Legacy keys are read as a fallback until the user stores an explicit per-system value, so existing preferences are preserved and never blindly copied between cores.",
   "store": "an3-native-game",
+  "coreOptionRegistry": "core-option-registry.json",
   "systems": ["gba", "nds", "3ds", "switch"],
   "systemLabels": {"gba": "GBA", "nds": "NDS", "3ds": "3DS", "switch": "Switch"},
   "global": [
@@ -24,6 +25,7 @@
     "labels": {"auto": "Auto", "vulkan": "Vulkan", "opengl": "OpenGL ES"},
     "default": "auto",
     "legacyKeys": ["renderer"],
+    "legacySystems": ["gba", "nds", "3ds"],
     "restart": "renderer",
     "note": "Applies on the next launch. Auto picks the stable backend for each system."
   },
@@ -46,9 +48,9 @@
     "switch": ["renderer"]
   },
   "systemEmulation": {
-    "gba": [],
-    "nds": [],
-    "3ds": [],
+    "gba": ["from-core-option-registry"],
+    "nds": ["from-core-option-registry"],
+    "3ds": ["from-core-option-registry"],
     "switch": []
   },
   "platformAvailability": {
@@ -59,12 +61,8 @@
   },
   "pinnedCoreOptions": {
     "gba": {"android": [], "default": []},
-    "nds": {"android": ["melonds_render_mode", "melonds_screen_layout1", "melonds_number_of_screen_layouts", "melonds_touch_mode"], "default": []},
+    "nds": {"android": ["melonds_render_mode", "melonds_threaded_renderer", "melonds_touch_mode", "melonds_show_cursor", "melonds_number_of_screen_layouts", "melonds_screen_layout1"], "default": []},
     "3ds": {"android": ["citra_graphics_api", "citra_use_hw_shader", "citra_use_disk_shader_cache", "citra_layout_option"], "default": []},
     "switch": {"android": [], "default": []}
-  },
-  "coreOptionCategories": {
-    "graphics": ["renderer", "resolution", "texture", "shader", "graphics", "video", "frame", "filter", "scaling", "aspect"],
-    "emulation": []
   }
 }

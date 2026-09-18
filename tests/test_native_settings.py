@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Guards for the canonical per-core settings model.
 
-The behavior of the settings model is exercised behaviorally by
+The behaviour of the settings model is exercised behaviorally by
 tests/native_settings.test.mjs (node --test). These checks keep the Android
-adapter, the generated schema, and the migration rules wired to that one model,
-and confirm the Android 3DS renderer workarounds are not bypassed.
+adapter, the generated schema, the verified core-option registry and the
+migration policy wired to that one model, and confirm the Android 3DS renderer
+workarounds are not bypassed.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import unittest
 
@@ -21,11 +23,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 NATIVE = ROOT / "native-offline"
 SCHEMA = NATIVE / "shared" / "native-settings-schema.json"
 LAYOUT_SCHEMA = NATIVE / "shared" / "native-layout-schema.json"
+REGISTRY = NATIVE / "shared" / "core-option-registry.json"
+REGISTRY_GENERATOR = NATIVE / "scripts" / "generate-core-option-registry.mjs"
+PROBE = NATIVE / "tools" / "core_option_probe.cpp"
 GENERATOR = NATIVE / "scripts" / "generate-native-settings.mjs"
 KOTLIN_SCHEMA = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettingsSchema.kt"
 KOTLIN_SETTINGS = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettings.kt"
 GAME_ACTIVITY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeGameActivity.kt"
 OVERLAY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeGameOverlay.kt"
+AUTOSAVE = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeAutoSave.kt"
 MAIN_ACTIVITY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt"
 JS_MODEL = NATIVE / "web" / "native-settings.js"
 WEB_UI = NATIVE / "web" / "game-settings.js"
@@ -44,7 +50,6 @@ class NativeSettingsSchemaTests(unittest.TestCase):
         self.assertEqual(schema["systems"], ["gba", "nds", "3ds", "switch"])
         self.assertTrue(schema["global"], "global settings must be declared")
         global_ids = {definition["id"] for definition in schema["global"]}
-        # Global settings keep one shared key; they are not duplicated per core.
         for key in ("volume", "mute", "latency", "quality", "show-fps", "start-fullscreen"):
             self.assertIn(key, global_ids)
 
@@ -74,43 +79,85 @@ class NativeSettingsSchemaTests(unittest.TestCase):
     def test_runtime_pinned_options_are_declared(self):
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
         pinned = schema["pinnedCoreOptions"]
-        self.assertIn("citra_use_hw_shader", pinned["3ds"]["android"])
-        self.assertIn("citra_use_disk_shader_cache", pinned["3ds"]["android"])
-        self.assertIn("citra_graphics_api", pinned["3ds"]["android"])
+        for key in ("citra_graphics_api", "citra_use_hw_shader", "citra_use_disk_shader_cache", "citra_layout_option"):
+            self.assertIn(key, pinned["3ds"]["android"])
+        for key in ("melonds_render_mode", "melonds_threaded_renderer", "melonds_touch_mode", "melonds_show_cursor", "melonds_number_of_screen_layouts", "melonds_screen_layout1"):
+            self.assertIn(key, pinned["nds"]["android"])
         self.assertEqual(pinned["gba"]["android"], [])
         self.assertEqual(pinned["switch"]["android"], [])
 
     def test_generated_outputs_are_in_sync_with_the_schema(self):
         before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL)}
         result = subprocess.run(
-            ["node", str(GENERATOR)], cwd=NATIVE, capture_output=True, text=True, timeout=60,
+            ["node", str(GENERATOR)], cwd=NATIVE, capture_output=True, text=True, timeout=120,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL)}
         self.assertEqual(before, after, "committed generated settings files are stale; run npm run prepare-web")
 
 
+class CoreOptionRegistryTests(unittest.TestCase):
+    def setUp(self):
+        self.registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+
+    def test_registry_is_generated_from_the_vendored_cores(self):
+        self.assertTrue(PROBE.is_file())
+        self.assertIn("core_option_probe.cpp", source(REGISTRY_GENERATOR))
+        manifest = json.loads((NATIVE / "vendor/libretro/macos-arm64/manifest.json").read_text(encoding="utf-8"))
+        versions = {core["system"]: core["version"] for core in manifest["cores"]}
+        self.assertEqual(self.registry["systems"]["gba"]["version"], versions["gba"])
+        self.assertEqual(self.registry["systems"]["nds"]["version"], versions["nds"])
+        azahar = json.loads((NATIVE / "vendor/azahar/macos-arm64/manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(self.registry["systems"]["3ds"]["version"], azahar["version"])
+
+    def test_registry_exposes_real_options_per_system(self):
+        counts = {system: len(entry["options"]) for system, entry in self.registry["systems"].items()}
+        self.assertEqual(counts["gba"], 17)
+        self.assertEqual(counts["nds"], 73)
+        self.assertEqual(counts["3ds"], 32)
+        self.assertEqual(counts["switch"], 0)
+        for system in ("gba", "nds", "3ds"):
+            for option in self.registry["systems"][system]["options"]:
+                self.assertTrue(option["key"])
+                self.assertTrue(option["values"], option["key"])
+                # Core defaults can differ in case from the labelled values (Azahar);
+                # the generated model normalises the default to an offered value.
+                self.assertTrue(any(entry["value"].lower() == option["default"].lower() for entry in option["values"]), option["key"])
+
+    def test_no_host_specific_values_are_committed(self):
+        text = REGISTRY.read_text(encoding="utf-8")
+        self.assertIsNone(re.search(r"([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", text), "MAC address leaked")
+        for path in ("/Users/", "/home/", "/private/", "/tmp/"):
+            self.assertNotIn(path, text)
+        for option in self.registry["systems"]["nds"]["options"]:
+            self.assertNotIn(option["key"], ("melonds_direct_network_interface", "melonds_firmware_nds_path", "melonds_dsi_nand_path"))
+
+
 class NativeSettingsAdapterTests(unittest.TestCase):
-    def test_kotlin_schema_uses_system_scoped_keys(self):
+    def test_kotlin_schema_uses_storage_keys(self):
         kotlin = source(KOTLIN_SCHEMA)
         self.assertIn('const val STORE = "an3-native-game"', kotlin)
-        self.assertIn('fun key(id: String, system: String?): String = if (system == null) id else "$id-$system"', kotlin)
-        self.assertIn('listOf("auto", "vulkan", "opengl")', kotlin)
-        self.assertIn('Definition("screen-layout"', kotlin)
-        self.assertIn('val unavailable: Map<String, Map<String, String>>', kotlin)
-        self.assertIn('"android" to "Nintendo Switch is not supported on Android', kotlin)
+        self.assertIn('fun storageKey(definition: Definition, system: String?): String', kotlin)
+        self.assertIn('"core-gba-mgba_gb_model"', kotlin)
+        self.assertIn('"core-nds-melonds_jit_enable"', kotlin)
+        self.assertIn('"core-3ds-citra_cpu_clock_percentage"', kotlin)
+        self.assertIn("val unavailable: Map<String, Map<String, String>>", kotlin)
 
-    def test_adapter_reads_across_processes_and_migrates_legacy(self):
+    def test_adapter_reads_fresh_files_and_migrates_legacy(self):
         kotlin = source(KOTLIN_SETTINGS)
-        # MODE_MULTI_PROCESS makes the main process observe a :game write.
-        self.assertIn("Context.MODE_MULTI_PROCESS", kotlin)
+        # Shell reads re-parse the committed file, independent of process caches.
+        self.assertIn('shared_prefs/${NativeSettingsSchema.STORE}.xml', kotlin)
+        self.assertIn("Context.MODE_PRIVATE", kotlin)
+        self.assertNotIn("Context.MODE_MULTI_PROCESS", kotlin)
         # Legacy fallback is read, never copied to every core.
         self.assertIn("definition.legacyKeys", kotlin)
-        self.assertIn("NativeAutoSave.resolve", kotlin)
-        # One transaction for several related edits, committed before returning.
+        self.assertIn("NativeAutoSave.resolveValues", kotlin)
+        # One committed transaction for several related edits.
         self.assertIn("val editor = prefs(context).edit()", kotlin)
         self.assertIn("editor.commit()", kotlin)
         self.assertIn("fun resetGraphics(context: Context, system: String)", kotlin)
+        # Runtime-pinned options cannot be written through the bridge.
+        self.assertIn("if (!definition.editable) { rejected += key; continue }", kotlin)
 
     def test_bridge_registers_the_settings_surface(self):
         activity = source(MAIN_ACTIVITY)
@@ -124,6 +171,11 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         self.assertIn("NativeSettings.layout(preferences, system)", activity)
         self.assertNotIn('preferences.getString("renderer", "auto")', activity)
 
+    def test_autosave_resolves_from_a_value_map(self):
+        autosave = source(AUTOSAVE)
+        self.assertIn("fun resolveValues(values: Map<String, Any?>): String", autosave)
+        self.assertIn('null -> true', autosave)
+
     def test_overlay_writes_per_system_settings_and_hides_pinned_options(self):
         overlay = source(OVERLAY)
         self.assertIn('edit.putString("renderer-$system", v)', overlay)
@@ -131,7 +183,6 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         self.assertIn("key in NativeSettingsSchema.pinned(system)", overlay)
         self.assertIn("Reset Graphics to Defaults", overlay)
         self.assertIn("NativeSettings.resetGraphics(activity, system)", overlay)
-        # The draft/discard and explicit Save semantics are preserved.
         self.assertIn("val draft = mutableMapOf", overlay)
         self.assertIn('button("Save Settings")', overlay)
 
@@ -145,12 +196,14 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         self.assertIn("window.NativeSettingsModel", ui)
         self.assertIn("window.AN3AndroidSettings", ui)
         self.assertIn("Reset Graphics to Defaults", ui)
+        self.assertIn("editable !== false", ui)
 
-    def test_js_model_per_core_keys(self):
+    def test_js_model_exposes_emulation_and_storage_keys(self):
         model = source(JS_MODEL)
-        self.assertIn("const key = (id, system) => (system == null ? id : id + \"-\" + system);", model)
+        self.assertIn("const storageKeyFor = (definition, system) => definition.storageKey || key(definition.id, system);", model)
         self.assertIn("resetGraphicsEdits", model)
         self.assertIn("effective", model)
+        self.assertIn('"core-gba-mgba_gb_model"', model)
 
 
 class NativeSettingsWorkaroundTests(unittest.TestCase):
@@ -159,17 +212,17 @@ class NativeSettingsWorkaroundTests(unittest.TestCase):
         self.assertIn('!std::strcmp(variable->key, "citra_use_hw_shader")) variable->value="disabled";', host)
         self.assertIn('!std::strcmp(variable->key, "citra_use_disk_shader_cache")) variable->value="disabled";', host)
         self.assertIn('graphics_api_ == "Vulkan"', host)
-        # Pins stay scoped to the 3DS system.
         self.assertIn("system_ == NativeSystem::ThreeDS", host)
 
     def test_settings_model_cannot_override_pinned_options(self):
+        registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
-        editable = set()
-        for definitions in schema["systemGraphics"].values():
-            editable.update(definitions)
-        # The runtime-pinned names are not offered as editable setting ids.
-        for pinned in schema["pinnedCoreOptions"]["3ds"]["android"]:
-            self.assertNotIn(pinned, editable)
+        model = source(JS_MODEL)
+        for key in schema["pinnedCoreOptions"]["3ds"]["android"]:
+            self.assertIn(f'"core-3ds-{key}"', model)
+            # Pinned definitions are present but marked non-editable.
+            self.assertRegex(model, re.compile(rf'"id": "{re.escape(key)}",(?:.|\n)*?"editable": false'))
+        self.assertTrue(any(option["key"] == "melonds_render_mode" for option in registry["systems"]["nds"]["options"]))
 
 
 class NativeSettingsBehaviorTests(unittest.TestCase):

@@ -129,7 +129,63 @@ test("pinned core options are declared per system", () => {
   assert.ok(model.pinnedCoreOptions["3ds"].includes("citra_layout_option"));
   assert.equal(model.pinnedCoreOptions["3ds"].length, 4);
   assert.ok(model.pinnedCoreOptions["nds"].includes("melonds_render_mode"));
-  assert.equal(model.pinnedCoreOptions["nds"].length, 4);
+  assert.ok(model.pinnedCoreOptions["nds"].includes("melonds_threaded_renderer"));
+  assert.ok(model.pinnedCoreOptions["nds"].includes("melonds_show_cursor"));
+  assert.equal(model.pinnedCoreOptions["nds"].length, 6);
   assert.equal(model.pinnedCoreOptions["gba"].length, 0);
   assert.equal(model.pinnedCoreOptions["switch"].length, 0);
+});
+
+test("the Emulation registry exposes real per-core options", () => {
+  const model = load();
+  const counts = {gba: model.emulation.gba.length, nds: model.emulation.nds.length, "3ds": model.emulation["3ds"].length, switch: model.emulation.switch.length};
+  assert.equal(counts.gba, 17);
+  assert.equal(counts.nds, 73);
+  assert.equal(counts["3ds"], 32);
+  assert.equal(counts.switch, 0);
+  for (const system of ["gba", "nds", "3ds"]) {
+    for (const definition of model.emulation[system]) {
+      assert.ok(definition.values.length > 0, definition.id);
+      assert.ok(definition.values.includes(definition.default), `${definition.id} default`);
+      assert.equal(definition.storageKey, `core-${system}-${definition.id}`);
+    }
+  }
+});
+
+test("runtime-pinned emulation options are present but not editable", () => {
+  const model = load();
+  const renderMode = model.emulation.nds.find(definition => definition.id === "melonds_render_mode");
+  assert.ok(renderMode);
+  assert.equal(renderMode.pinned, true);
+  assert.equal(renderMode.editable, false);
+  assert.equal(model.buildEdit(renderMode, "nds", "opengl"), null);
+  const jit = model.emulation.nds.find(definition => definition.id === "melonds_jit_enable");
+  assert.equal(jit.editable, true);
+  assert.equal(model.buildEdit(jit, "nds", "disabled").key, "core-nds-melonds_jit_enable");
+});
+
+test("emulation edits are isolated per core and never use another key shape", () => {
+  const model = load();
+  const store = memoryStore({});
+  const gba = model.emulation.gba.find(definition => definition.id === "mgba_allow_opposing_directions");
+  const nds = model.emulation.nds.find(definition => definition.id === "melonds_jit_enable");
+  store.apply({[model.buildEdit(gba, "gba", "yes").key]: "yes"});
+  store.apply({[model.buildEdit(nds, "nds", "disabled").key]: "disabled"});
+  assert.equal(store.get("core-gba-mgba_allow_opposing_directions"), "yes");
+  assert.equal(store.get("core-nds-melonds_jit_enable"), "disabled");
+  assert.equal(store.get("core-3ds-melonds_jit_enable"), undefined);
+});
+
+test("a legacy renderer no longer leaks into Switch", () => {
+  const model = load();
+  const renderer = system => model.graphics[system].find(definition => definition.id === "renderer");
+  assert.equal(model.effective(renderer("gba"), "gba", {}, {renderer: "vulkan"}), "vulkan");
+  assert.equal(model.effective(renderer("nds"), "nds", {}, {renderer: "vulkan"}), "vulkan");
+  assert.equal(model.effective(renderer("3ds"), "3ds", {}, {renderer: "vulkan"}), "vulkan");
+  assert.equal(model.effective(renderer("switch"), "switch", {}, {renderer: "vulkan"}), "auto");
+});
+
+test("an explicit per-system Auto overrides the legacy renderer", () => {
+  const model = load();
+  assert.equal(model.effective(model.renderer, "3ds", {"renderer-3ds": "auto"}, {renderer: "vulkan"}), "auto");
 });
