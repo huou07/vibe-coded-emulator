@@ -465,6 +465,9 @@ class ControllerUtilityApiTests(unittest.TestCase):
         self.patches = [
             patch.object(app, "CONTROLLER_ENABLED", True),
             patch.object(app, "CONTROLLERS", {}),
+            # Fresh rate limiter so the shared 127.0.0.1 budget from earlier
+            # controller tests cannot make this class flaky.
+            patch.object(app, "CONTROLLER_LIMITER", netcode.SlidingRateLimiter(limit=1000, window_seconds=60)),
         ]
         for active in self.patches:
             active.start()
