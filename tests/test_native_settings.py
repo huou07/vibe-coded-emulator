@@ -159,6 +159,15 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         # Runtime-pinned options cannot be written through the bridge.
         self.assertIn("if (!definition.editable) { rejected += key; continue }", kotlin)
 
+    def test_adapter_xml_reader_always_advances(self):
+        # Regression: the `<map>` root has no `name` attribute; skipping it with
+        # `?: continue` skipped `parser.next()` and hung the shell forever.
+        kotlin = source(KOTLIN_SETTINGS)
+        reader = kotlin[kotlin.index("private fun storedValues"):kotlin.index("fun effective(")]
+        self.assertNotIn("?: continue", reader)
+        self.assertIn("event = parser.next()", reader)
+        self.assertIn('"set" -> parser.nextText()', reader)
+
     def test_bridge_registers_the_settings_surface(self):
         activity = source(MAIN_ACTIVITY)
         self.assertIn('webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")', activity)

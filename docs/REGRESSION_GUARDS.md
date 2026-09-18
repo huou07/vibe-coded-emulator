@@ -34,6 +34,11 @@
   AVD status: AVD VERIFIED for MainActivity/Settings/Game Settings navigation,
   Emulation/Graphics pages and persistence; in-game parity and Adreno rendering
   remain PHYSICAL DEVICE RE-TEST REQUIRED.
+  Follow-up: the first file-based reader skipped the `<map>` root with
+  `?: continue`, which skipped `parser.next()` and hung the shell's JS thread
+  (devtools stopped responding). Fixed and guarded by
+  `tests/test_native_settings.py::test_adapter_xml_reader_always_advances`;
+  Android bumped to 2.5.1 because the 2.5.0 bytes carried the bug.
 
 ## Android 3DS Vulkan framebuffer color — 2026-09-18
 

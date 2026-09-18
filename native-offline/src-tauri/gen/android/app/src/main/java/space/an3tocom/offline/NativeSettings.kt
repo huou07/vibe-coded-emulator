@@ -53,13 +53,15 @@ object NativeSettings {
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
                 if (event == XmlPullParser.START_TAG) {
-                    val name = parser.getAttributeValue(null, "name") ?: continue
+                    // Never `continue` here: the loop must always advance, and the
+                    // `<map>` root has no `name` attribute.
+                    val name = parser.getAttributeValue(null, "name")
                     when (parser.name) {
-                        "string" -> values[name] = parser.nextText()
-                        "int" -> values[name] = parser.getAttributeValue(null, "value")?.toIntOrNull()
-                        "long" -> values[name] = parser.getAttributeValue(null, "value")?.toLong()
-                        "float" -> values[name] = parser.getAttributeValue(null, "value")?.toFloatOrNull()
-                        "boolean" -> values[name] = parser.getAttributeValue(null, "value") == "true"
+                        "string" -> { val text = parser.nextText(); if (name != null) values[name] = text }
+                        "int" -> if (name != null) values[name] = parser.getAttributeValue(null, "value")?.toIntOrNull()
+                        "long" -> if (name != null) values[name] = parser.getAttributeValue(null, "value")?.toLong()
+                        "float" -> if (name != null) values[name] = parser.getAttributeValue(null, "value")?.toFloatOrNull()
+                        "boolean" -> if (name != null) values[name] = parser.getAttributeValue(null, "value") == "true"
                         "set" -> parser.nextText()
                     }
                 }
