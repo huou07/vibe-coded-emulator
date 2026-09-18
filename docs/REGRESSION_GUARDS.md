@@ -1,5 +1,33 @@
 # AN3 Arcade regression guards
 
+## In-game menu navigation — 2026-09-18
+
+- RG-131: **Save and Exit, Exit and Return to Library are three distinct
+  actions, and the settings tab strip indicates hidden tabs.** The in-game
+  footer replaces the single "Save Settings" button with `Save and Exit` /
+  `Exit` / `Return to Library`. `Save and Exit` persists the draft through the
+  canonical `NativeSettings.save` (per-core `renderer-<system>` /
+  `screen-layout-<system>` plus the global audio/display/key-map keys and the
+  live core options) and only dismisses on success; a rejected save keeps the
+  menu open with the values intact. `Exit` dismisses without persisting and the
+  dismiss listener reverts the immediately-previewed layout/virtual controls,
+  so drafts never leak. `Return to Library` discards the draft, dismisses and
+  calls `activity.finish()`, reusing the existing `NativeGameActivity` teardown
+  (`surfaceDestroyed` → `nativeStop(!isFinishing)`, `onDestroy` →
+  `nativeStop(false)` and controller detach); the process is retained, the
+  emulator thread stops, and the autosave-on-exit policy still writes only the
+  dedicated autosave slot. The tab strip gains `◀`/`▶` indicators driven by
+  `canScrollHorizontally`, clickable to reveal the next hidden tab, with the
+  active tab scrolled into view; a layout-change listener keeps them correct on
+  resize/orientation. Guards: `tests/test_menu_navigation.py`,
+  `tests/test_android_native_runtime.py`, `tests/test_native_settings.py`.
+  AVD VERIFIED on a real NDS title: Save and Exit persisted `renderer-nds=opengl`
+  and closed the menu; Exit discarded an Auto draft (reopen showed Vulkan);
+  Return to Library returned to MainActivity with the game stopped and a second
+  GBA session launched cleanly; the right arrow showed at the start, left at the
+  end, both mid-strip, and swipe still scrolls. Phone-controller OPEN_MENU still
+  opens the same menu. Physical-phone verification remains required.
+
 ## Canonical input / circular D-pad / phone utilities — 2026-09-18
 
 - RG-130: **One canonical input-action model; a circular D-pad that emits
