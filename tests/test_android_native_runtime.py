@@ -414,6 +414,18 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             '!std::strcmp(variable->key, "citra_use_hw_shader")) variable->value="disabled";', host
         )
 
+    def test_android_3ds_vulkan_avoids_the_stale_driver_pipeline_cache(self):
+        host = source(HOST)
+        # RG-081: on the Vulkan renderer a persisted core driver pipeline cache
+        # makes Adreno's shader compiler fail, so vkCreateGraphicsPipelines
+        # returns VK_ERROR_UNKNOWN and the uncaught vk::UnknownError aborts the
+        # process. The runtime must keep the Vulkan 3DS path off that cache.
+        self.assertIn('graphics_api_ == "Vulkan" &&', host)
+        self.assertIn(
+            '!std::strcmp(variable->key, "citra_use_disk_shader_cache")) variable->value="disabled";',
+            host,
+        )
+
     def test_3ds_vulkan_negotiation_stays_in_the_shared_portable_contract(self):
         host = source(HOST)
         hardware = source(VULKAN_HARDWARE)

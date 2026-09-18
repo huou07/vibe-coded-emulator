@@ -461,6 +461,15 @@ bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
         // pin the PICA shader path to the faithful software implementation
         // there until the upstream GLES generator is fixed.
         else if (system_ == NativeSystem::ThreeDS && !std::strcmp(variable->key, "citra_use_hw_shader")) variable->value="disabled";
+        // RG-081: on the Vulkan renderer a persisted core shader/pipeline cache
+        // makes Adreno's driver compiler fail, so vkCreateGraphicsPipelines
+        // returns VK_ERROR_UNKNOWN, vulkan-hpp throws vk::UnknownError and the
+        // uncaught exception aborts the game process. The on-disk driver
+        // pipeline cache is only validated against the driver UUID, so it is
+        // reused after any frontend/core change and goes stale. Keep the
+        // renderer off that cache until the core invalidates it itself.
+        else if (system_ == NativeSystem::ThreeDS && graphics_api_ == "Vulkan" &&
+                 !std::strcmp(variable->key, "citra_use_disk_shader_cache")) variable->value="disabled";
 #endif
         else if (!std::strcmp(variable->key,"melonds_render_mode")) variable->value="software";
 
