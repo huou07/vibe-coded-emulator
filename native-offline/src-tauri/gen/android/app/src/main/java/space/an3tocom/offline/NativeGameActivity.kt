@@ -72,6 +72,7 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
                         data.getFloat(ControllerHostService.KEY_X),
                         data.getFloat(ControllerHostService.KEY_Y),
                     )
+                    "utility" -> data.getString(ControllerHostService.KEY_ACTION)?.let { overlay.utility(it) }
                     "touch" -> {
                         if (!overlay.isMenuOpen()) {
                             val pressed = data.getBoolean(ControllerHostService.KEY_PRESSED)

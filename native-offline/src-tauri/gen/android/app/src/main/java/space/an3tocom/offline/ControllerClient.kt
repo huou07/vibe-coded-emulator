@@ -49,6 +49,7 @@ class ControllerClient(
     private val onAnalog: (Float, Float) -> Unit,
     private val systemProvider: () -> String? = { null },
     private val onTouch: (Float, Float, Boolean) -> Unit = { _, _, _ -> },
+    private val onUtility: (String) -> Unit = {},
 ) {
     companion object {
         // Same libretro joypad indices the web player and phone page use.
@@ -72,6 +73,7 @@ class ControllerClient(
     @Volatile private var axesEngaged = false
     @Volatile private var touchPressed = false
     @Volatile private var lastAck = 0
+    @Volatile private var lastUtility = 0
 
     val running: Boolean get() = poll != null
 
@@ -109,6 +111,7 @@ class ControllerClient(
         code = ""
         hostToken = ""
         lastAck = 0
+        lastUtility = 0
         release()
         onStatus(EMPTY.copy(error = ""))
     }
@@ -125,6 +128,7 @@ class ControllerClient(
             val ackSequence = payload.optInt("ackSequence", 0)
             if (shouldApply()) {
                 apply(payload)
+                dispatchUtilities(payload)
                 if (lastSequence > lastAck && lastSequence > 0) {
                     ack(lastSequence)
                 }
@@ -155,9 +159,27 @@ class ControllerClient(
             .put("code", code)
             .put("hostToken", hostToken)
             .put("sequence", sequence)
+            .put("utilitySequence", lastUtility)
         systemProvider()?.let { system -> if (system.isNotBlank()) body.put("system", system) }
         request("POST", "/api/controller/ack", body)
         lastAck = sequence
+    }
+
+    /**
+     * Dispatch each pending utility action at most once. The server resends the
+     * pending list until it is acknowledged, so the host — not the network —
+     * enforces "once per deliberate press".
+     */
+    private fun dispatchUtilities(payload: JSONObject) {
+        val utilities = payload.optJSONArray("utilities") ?: return
+        for (index in 0 until utilities.length()) {
+            val entry = utilities.optJSONObject(index) ?: continue
+            val sequence = entry.optInt("sequence", 0)
+            if (sequence <= lastUtility) continue
+            lastUtility = sequence
+            val action = entry.optString("action")
+            if (action.isNotEmpty()) onUtility(action)
+        }
     }
 
     private fun apply(payload: JSONObject) {

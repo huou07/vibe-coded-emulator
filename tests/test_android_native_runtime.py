@@ -454,7 +454,10 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn("NativeLayoutModel.normalize", activity)
         self.assertIn('commandWhenReady("layout", layout)', activity)
         self.assertIn('"Directional control"', overlay)
-        self.assertIn('"Analog Joystick"', overlay)
+        # Movement options (including the circular D-pad) come from the canonical
+        # action model instead of hard-coded duplicates.
+        self.assertIn("NativeInputActions.directionalControls", overlay)
+        self.assertIn("NativeInputActions.directionalControlLabels", overlay)
         self.assertIn("releaseVirtualDirections", overlay)
         self.assertIn("virtual-control-position-x-$system", overlay)
         self.assertIn('"3ds"', schema)

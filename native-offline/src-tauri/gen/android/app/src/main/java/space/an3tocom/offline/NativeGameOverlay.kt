@@ -86,6 +86,9 @@ class NativeGameOverlay(
     private val cursor = button(NativePlayerUi.CURSOR_LOCK_LABEL) { lockCursor() }
     private val keys = mutableMapOf<Int, Button>()
     private val joystick = NativeAnalogStick(activity, directionalInput)
+    private val circular = NativeCircularDpad(activity) { ids -> applyCircularDirections(ids) }
+    private var circularPressed: Set<Int> = emptySet()
+    private var currentSpeed = "1"
     // The controller host lives in the main process (library Settings). This
     // game process binds to it through a Messenger bridge; the raw host token
     // never crosses the boundary. The bridge is set by NativeGameActivity.
@@ -127,6 +130,7 @@ class NativeGameOverlay(
             keys[id] = key; pad.add(key); addView(key)
         }
         pad.add(joystick); addView(joystick)
+        pad.add(circular); addView(circular)
         fps.textSize = 11f; fps.setTextColor(Color.WHITE); fps.setBackgroundColor(0xb8000000.toInt())
         // The FPS badge is display-only: it must never intercept a tap meant for
         // the game surface or a control beneath it.
@@ -138,14 +142,24 @@ class NativeGameOverlay(
 
     private fun releaseVirtualDirections() {
         joystick.release()
+        circular.release()
         listOf(4, 5, 6, 7).forEach { input(it, false) }
         directionalInput(0f, 0f)
     }
+    private fun applyCircularDirections(next: Set<Int>) {
+        // A diagonal is two cardinals pressed together; never a synthetic button.
+        for (id in circularPressed) if (id !in next) input(id, false)
+        for (id in next) if (id !in circularPressed) input(id, true)
+        circularPressed = next
+    }
     private fun applyDirectionalMode() {
         val joystickMode = directionalMode == "joystick"
-        listOf(4, 5, 6, 7).forEach { id -> keys[id]?.visibility = if (joystickMode) View.GONE else View.VISIBLE }
+        val circularMode = directionalMode == "circular"
+        listOf(4, 5, 6, 7).forEach { id -> keys[id]?.visibility = if (joystickMode || circularMode) View.GONE else View.VISIBLE }
         joystick.visibility = if (joystickMode) View.VISIBLE else View.GONE
+        circular.visibility = if (circularMode) View.VISIBLE else View.GONE
         if (!joystickMode) joystick.release()
+        if (!circularMode) circular.release()
     }
     private fun applyVirtualControlStyle() {
         pad.forEach { it.alpha = controlOpacity / 100f }
@@ -181,9 +195,31 @@ class NativeGameOverlay(
         val slots = (1..10).map { "Slot $it" }.toTypedArray()
         AlertDialog.Builder(activity)
             .setTitle(if (save) NativePlayerUi.QUICK_SAVE_LABEL else NativePlayerUi.QUICK_LOAD_LABEL)
-            .setItems(slots) { _, which -> send(if (save) "save" else "load", (which + 1).toString()) }
+            .setItems(slots) { _, which ->
+                val slot = which + 1
+                if (save) prefs.edit().putInt("quick-save-slot", slot).commit()
+                send(if (save) "save" else "load", slot.toString())
+            }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /** Canonical utility actions (one-shot; never held gameplay bits). */
+    fun utility(action: String) {
+        when (action) {
+            "QUICK_SAVE" -> send("save", quickSaveSlot().toString())
+            "SPEED_UP" -> setSpeed(stepSpeed(1))
+            "SPEED_DOWN" -> setSpeed(stepSpeed(-1))
+            "OPEN_MENU" -> if (!isMenuOpen()) showMenu()
+        }
+    }
+
+    private fun quickSaveSlot(): Int = prefs.getInt("quick-save-slot", 1).coerceIn(1, 10)
+
+    private fun stepSpeed(direction: Int): String {
+        val speeds = NativeInputActions.speeds
+        val index = speeds.indexOf(currentSpeed).takeIf { it >= 0 } ?: 1
+        return speeds[(index + direction).coerceIn(0, speeds.lastIndex)]
     }
 
     private fun showSaveMenu() {
@@ -247,6 +283,7 @@ class NativeGameOverlay(
 
     /** Release every remote-held control; used when the menu opens or the game ends. */
     fun releaseRemoteInput() {
+        circular.release()
         for (index in 0..11) input(index, false)
         directionalInput(0f, 0f)
     }
@@ -258,6 +295,7 @@ class NativeGameOverlay(
     }
 
     private fun setSpeed(value: String) {
+        currentSpeed = value
         send("speed", value)
         slow.alpha = if (value == "0.5") 1f else .7f; normal.alpha = if (value == "1") 1f else .7f
         fast.alpha = if (value !in listOf("0.5", "1")) 1f else .7f
@@ -298,6 +336,7 @@ class NativeGameOverlay(
         place(keys.getValue(6), left, bottom-key*2, key, key)
         place(keys.getValue(7), left+key*2, bottom-key*2, key, key)
         place(joystick, left, bottom-key*3, key*3, key*3)
+        place(circular, left, bottom-key*3, key*3, key*3)
         place(keys.getValue(8), right+key*2, bottom-key*2, key, key)
         place(keys.getValue(0), right+key, bottom-key, key, key)
         place(keys.getValue(9), right+key, bottom-key*3, key, key)
@@ -522,7 +561,9 @@ class NativeGameOverlay(
                 }
                 "Controller" -> {
                     content.addView(text("Controller support: native Android gamepad buttons and directional input. Keyboard and gamepad mappings remain independent of virtual controls."))
-                    controlChoice("Directional control", "directional", listOf("D-Pad", "Analog Joystick"), listOf("dpad", "joystick"))
+                    controlChoice("Directional control", "directional",
+                        NativeInputActions.directionalControls.map { NativeInputActions.directionalControlLabels[it] ?: it },
+                        NativeInputActions.directionalControls)
                     controlRange("Virtual control scale", "scale", 70, 140)
                     controlRange("Virtual control opacity", "opacity", 30, 100)
                     controlRange("Virtual control horizontal position", "position-x", -40, 40)

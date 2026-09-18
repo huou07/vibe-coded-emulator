@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
+import pathlib
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -35,6 +37,32 @@ from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
 
 import sync_engine as se
+
+
+def _load_input_actions() -> Tuple[frozenset, frozenset]:
+    """Read the canonical action contract so wire names cannot drift.
+
+    Falls back to the current literals when the schema is unavailable (for
+    example when netcode is imported from an installed package without it).
+    """
+
+    path = pathlib.Path(__file__).with_name("native-offline") / "shared" / "input-actions-schema.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        buttons = frozenset(str(entry["wire"]) for entry in data["buttons"].values())
+        utility = frozenset(str(entry["wire"]) for entry in data["utility"].values())
+        if buttons and utility:
+            return buttons, utility
+    except (OSError, KeyError, TypeError, ValueError):
+        pass
+    return (
+        frozenset({"b", "y", "select", "start", "up", "down", "left", "right", "a", "x", "l", "r"}),
+        frozenset({"quick_save", "speed_up", "speed_down", "open_menu"}),
+    )
+
+
+CONTROLLER_BUTTONS, CONTROLLER_UTILITY_ACTIONS = _load_input_actions()
+
 
 # Crockford-style alphabet: no I, L, O, U to avoid transcription errors.
 CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -181,6 +209,10 @@ class ControllerState:
     touch_active: bool = False
     touch_x: float = 0.0
     touch_y: float = 0.0
+    # One-shot canonical utility action carried by this frame, with a per-press
+    # sequence so retries and duplicates never fire it twice.
+    utility_action: str = ""
+    utility_sequence: int = 0
 
     def to_wire(self) -> dict:
         """Compact payload: short keys, omitted zero axes, touch when pressed."""
@@ -193,6 +225,9 @@ class ControllerState:
             payload["a"] = axes
         if self.touch_active:
             payload["t"] = [round(self.touch_x, 4), round(self.touch_y, 4)]
+        if self.utility_action:
+            payload["u"] = self.utility_action
+            payload["us"] = self.utility_sequence
         return payload
 
     @classmethod
@@ -216,6 +251,15 @@ class ControllerState:
             except (TypeError, ValueError) as error:
                 raise NetcodeError("controller frame has a non-numeric touch tuple") from error
             touch_active = True
+        utility_action = ""
+        utility_sequence = 0
+        candidate = str(payload.get("u") or "")
+        if candidate and (not CONTROLLER_UTILITY_ACTIONS or candidate in CONTROLLER_UTILITY_ACTIONS):
+            utility_action = candidate
+            try:
+                utility_sequence = int(payload.get("us") or 0)
+            except (TypeError, ValueError):
+                utility_sequence = 0
         return cls(
             sequence=sequence,
             buttons=frozenset(str(name) for name in payload.get("b") or []),
@@ -223,6 +267,7 @@ class ControllerState:
             right_x=float(axes[2]), right_y=float(axes[3]),
             received_at=received_at,
             touch_active=touch_active, touch_x=touch_x, touch_y=touch_y,
+            utility_action=utility_action, utility_sequence=utility_sequence,
         )
 
 
@@ -243,6 +288,8 @@ class ControllerSession:
     _token_digest: str = ""
     _last: Optional[ControllerState] = None
     _ack_sequence: int = 0
+    _utility_sequence: int = 0
+    _pending_utilities: List[dict] = field(default_factory=list)
     clock: Callable[[], float] = time.monotonic
 
     # -- lifecycle ---------------------------------------------------------
@@ -264,6 +311,8 @@ class ControllerSession:
         # A paired session is no longer valid for a second guest.
         self._last = None
         self._ack_sequence = 0
+        self._utility_sequence = 0
+        self._pending_utilities = []
         return token
 
     def authenticate(self, token: str) -> bool:
@@ -276,25 +325,43 @@ class ControllerSession:
         self._token_digest = ""
         self._last = None
         self._ack_sequence = 0
+        # One-shot commands must never survive a disconnect and replay on reconnect.
+        self._utility_sequence = 0
+        self._pending_utilities = []
 
     # -- acknowledgement ---------------------------------------------------
-    def ack(self, sequence: object) -> int:
+    def ack(self, sequence: object, utility_sequence: object = 0) -> int:
         """Record the newest frame the host's input path has applied.
 
         The host reports this after it has pushed the frame into the emulator,
         which is what lets the phone tell "transport connected" apart from
-        "input actually reaching the game".
+        "input actually reaching the game". ``utility_sequence`` clears every
+        pending one-shot command the host has already dispatched.
         """
 
         try:
             applied = int(sequence)
         except (TypeError, ValueError):
-            return self._ack_sequence
-        self._ack_sequence = max(self._ack_sequence, applied)
+            applied = None
+        if applied is not None:
+            self._ack_sequence = max(self._ack_sequence, applied)
+        try:
+            dispatched = int(utility_sequence)
+        except (TypeError, ValueError):
+            dispatched = 0
+        if dispatched > 0:
+            self._pending_utilities = [
+                item for item in self._pending_utilities if item["sequence"] > dispatched
+            ]
         return self._ack_sequence
 
     def ack_sequence(self) -> int:
         return self._ack_sequence
+
+    def pending_utilities(self) -> List[dict]:
+        """One-shot actions the host has not acknowledged yet."""
+
+        return list(self._pending_utilities)
 
     def last_sequence(self) -> int:
         return self._last.sequence if self._last else 0
@@ -327,6 +394,14 @@ class ControllerSession:
         if self._last is not None and state.sequence <= self._last.sequence:
             return None
         self._last = state
+        if state.utility_action and state.utility_sequence > self._utility_sequence:
+            self._utility_sequence = state.utility_sequence
+            self._pending_utilities.append({
+                "action": state.utility_action,
+                "sequence": state.utility_sequence,
+            })
+            if len(self._pending_utilities) > 32:
+                del self._pending_utilities[:-32]
         return state
 
     def latest_state(self) -> Optional[ControllerState]:

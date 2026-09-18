@@ -19,6 +19,8 @@ object An3ControllerHost {
         fun analog(x: Float, y: Float)
         /** Normalized 0..1 stylus position; pressed=false is a release. */
         fun touch(x: Float, y: Float, pressed: Boolean) {}
+        /** One-shot canonical utility action (QUICK_SAVE/SPEED_UP/SPEED_DOWN/OPEN_MENU). */
+        fun utility(action: String) {}
         /** The running system (gba/nds/3ds) so the phone picks the right layout. */
         fun system(): String? = null
     }
@@ -52,6 +54,7 @@ object An3ControllerHost {
             onAnalog = { x, y -> sink?.analog(x, y) },
             systemProvider = { sink?.system() },
             onTouch = { x, y, pressed -> sink?.touch(x, y, pressed) },
+            onUtility = { action -> sink?.utility(action) },
         )
         client = created
         created.start()

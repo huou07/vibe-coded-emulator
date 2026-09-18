@@ -33,6 +33,7 @@ class ControllerHostService : Service() {
         const val KEY_KIND = "kind"
         const val KEY_BUTTON = "button"
         const val KEY_PRESSED = "pressed"
+        const val KEY_ACTION = "action"
         const val KEY_X = "x"
         const val KEY_Y = "y"
         const val KEY_MENU = "menu"
@@ -55,6 +56,9 @@ class ControllerHostService : Service() {
         )
         override fun touch(x: Float, y: Float, pressed: Boolean) = forward(
             Bundle().apply { putString(KEY_KIND, "touch"); putFloat(KEY_X, x); putFloat(KEY_Y, y); putBoolean(KEY_PRESSED, pressed) },
+        )
+        override fun utility(action: String) = forward(
+            Bundle().apply { putString(KEY_KIND, "utility"); putString(KEY_ACTION, action) },
         )
         override fun system(): String? = if (game != null) activeSystem else null
     }

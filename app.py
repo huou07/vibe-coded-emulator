@@ -1833,6 +1833,11 @@ def controller_join_page(lang, user, csrf, code=""):
 <option value="3ds">3DS</option>
 <option value="custom">{tr(lang,"Tùy chỉnh","Custom")}</option>
 </select></label>
+<label class="ctrl-layout-picker">{tr(lang,"Di chuyển","Movement")}<select id="ctrlMovement">
+<option value="dpad">D-Pad</option>
+<option value="joystick">{tr(lang,"Cần gạt","Analog Joystick")}</option>
+<option value="circular">Circular D-pad</option>
+</select></label>
 </section>
 <section id="ctrlJoinPanel" class="ctrl-connect">
 <h2>{tr(lang,"Kết nối tới thiết bị","Connect to a device")}</h2>
@@ -1852,6 +1857,12 @@ def controller_join_page(lang, user, csrf, code=""):
 <button type="button" class="ctrl-key dpad-right" data-btn="right" aria-label="Right">▶</button>
 <button type="button" class="ctrl-key dpad-down" data-btn="down" aria-label="Down">▼</button>
 </div>
+<div id="ctrlCircular" class="ctrl-circular" data-role="circular" role="group" aria-label="Circular D-pad" hidden>
+<span class="ctrl-circular-arrow up" data-dir="up">▲</span>
+<span class="ctrl-circular-arrow left" data-dir="left">◀</span>
+<span class="ctrl-circular-arrow right" data-dir="right">▶</span>
+<span class="ctrl-circular-arrow down" data-dir="down">▼</span>
+</div>
 <div class="ctrl-sticks" data-role="sticks">
 <span class="ctrl-stick" data-stick="left" role="slider" aria-label="{tr(lang,"Cần gạt trái","Left stick")}" tabindex="0"></span>
 <span class="ctrl-stick" data-stick="right" role="slider" aria-label="{tr(lang,"Cần gạt phải","Right stick")}" tabindex="0"></span>
@@ -1864,8 +1875,15 @@ def controller_join_page(lang, user, csrf, code=""):
 </div>
 </div>
 <div class="ctrl-system"><button type="button" class="ctrl-key" data-btn="select">Select</button><button type="button" class="ctrl-key" data-btn="start">Start</button></div>
+<div class="ctrl-utility">
+<button type="button" class="ctrl-key ctrl-util" data-util="speed_down">Speed −</button>
+<button type="button" class="ctrl-key ctrl-util" data-util="speed_up">Speed +</button>
+<button type="button" class="ctrl-key ctrl-util" data-util="quick_save">Quick Save</button>
+<button type="button" class="ctrl-key ctrl-util" data-util="open_menu">Menu</button>
+</div>
 </section>
 <p class="muted ctrl-phone-foot"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
+<script src="/static/input-actions.js?v={ASSET_VERSION}" defer></script>
 <script src="/static/controller.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Tay cầm", "Controller"), body, lang, user, csrf)
@@ -3001,6 +3019,7 @@ class Handler(BaseHTTPRequestHandler):
             "system": record.get("system") or "auto",
             "name": record.get("name") or "",
             "expiresInSeconds": max(0, int(session.ttl_seconds - (session.clock() - session.created_at))),
+            "utilities": session.pending_utilities(),
             "state": latest.to_wire() if latest else None,
         })
 
@@ -3019,7 +3038,7 @@ class Handler(BaseHTTPRequestHandler):
         if not host_token or not hmac.compare_digest(record["host"], netcode.token_digest(host_token)):
             return self.send_json({"error": "host token rejected"}, 403)
         session = record["session"]
-        applied = session.ack(data.get("sequence"))
+        applied = session.ack(data.get("sequence"), data.get("utilitySequence"))
         # The host tells us which system is running so the phone can pick the
         # matching pad layout without the user choosing one.
         system = str(data.get("system") or "").strip().lower()

@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import "./generate-player-ui.mjs";
 import "./generate-native-settings.mjs";
+import "./generate-input-actions.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const nativeRoot = resolve(scriptDirectory, "..");

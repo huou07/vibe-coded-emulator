@@ -2703,3 +2703,21 @@ body.reference-shell .site-header .brand{
 /* Diagnostics */
 .diag-panel{max-width:900px}
 .diag-output{margin:0;padding:16px;border:1px solid var(--v-line,var(--line));border-radius:12px;background:var(--v-bg-soft,var(--panel2));color:var(--v-text,var(--text));font-size:12.5px;line-height:1.5;overflow:auto;max-height:64vh;white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Phone Controller: circular D-pad and utility actions (no Pad toggle) */
+.ctrl-circular{--ctrl-circular:168px;position:relative;flex:0 0 auto;width:var(--ctrl-circular);height:var(--ctrl-circular);border-radius:50%;border:1px solid var(--v-line-2,var(--line));background:radial-gradient(circle at 50% 50%,var(--v-surface-3,var(--panel2)) 30%,var(--v-surface-2,var(--panel2)) 100%);touch-action:none;user-select:none;-webkit-user-select:none}
+.ctrl-circular[hidden]{display:none!important}
+.ctrl-circular::after{content:"";position:absolute;left:50%;top:50%;width:30%;height:30%;margin:-15% 0 0 -15%;border-radius:50%;border:1px solid var(--v-line-2,var(--line));opacity:.7}
+.ctrl-circular-arrow{position:absolute;color:var(--v-muted,var(--muted));font-size:22px;line-height:1}
+.ctrl-circular-arrow.up{left:50%;top:6px;transform:translateX(-50%)}
+.ctrl-circular-arrow.down{left:50%;bottom:6px;transform:translateX(-50%)}
+.ctrl-circular-arrow.left{left:8px;top:50%;transform:translateY(-50%)}
+.ctrl-circular-arrow.right{right:8px;top:50%;transform:translateY(-50%)}
+.ctrl-circular[data-active~="up"] .ctrl-circular-arrow.up,
+.ctrl-circular[data-active~="down"] .ctrl-circular-arrow.down,
+.ctrl-circular[data-active~="left"] .ctrl-circular-arrow.left,
+.ctrl-circular[data-active~="right"] .ctrl-circular-arrow.right{color:var(--v-violet-2,var(--cyan));text-shadow:0 0 12px rgba(139,92,246,.75)}
+.ctrl-circular.active{border-color:var(--v-violet-2,var(--cyan))}
+.ctrl-utility{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.ctrl-utility .ctrl-key{min-height:44px;border-radius:20px;font-size:13px;padding:0 14px}
+@media(max-width:420px){.ctrl-circular{--ctrl-circular:136px}}

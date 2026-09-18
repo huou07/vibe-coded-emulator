@@ -99,6 +99,8 @@
     var codeInput = byId("ctrlCode");
     var hostsList = byId("ctrlHosts");
     var layoutPicker = byId("ctrlLayout");
+    var movementPicker = byId("ctrlMovement");
+    var circular = byId("ctrlCircular");
     var touchscreen = byId("ctrlTouchscreen");
     var pairedCode = "";
     var token = "";
@@ -114,6 +116,12 @@
     var heartbeatTimer = 0;
     var system = "auto";
     var manualLayout = false;
+    var movement = "dpad";
+    var circularRegion = null;
+    var circularActions = [];
+    var utilitySequence = 0;
+    try { var storedMovement = localStorage.getItem("an3-controller-movement"); if (storedMovement) movement = storedMovement; } catch (_) {}
+    try { if (movementPicker) movementPicker.value = movement; } catch (_) {}
 
     var setPhoneState = function (text) { if (statusNodePhone) statusNodePhone.textContent = text; };
     var setPadState = function (text) { if (padState) padState.textContent = text; };
@@ -129,6 +137,35 @@
       if (pad) pad.dataset.layout = layout;
       if (touchscreen) touchscreen.hidden = !(layout === "nds" || layout === "3ds" || layout === "custom");
       if (layoutPicker && !manualLayout) layoutPicker.value = layoutFor("auto");
+    };
+
+    // The movement control is chosen on the phone and drives the same canonical
+    // digital actions as the in-game overlay. Circular uses shared geometry.
+    var applyMovement = function () {
+      if (movementPicker) movement = movementPicker.value;
+      var dpad = pad && pad.querySelector(".ctrl-dpad");
+      if (dpad) dpad.hidden = movement !== "dpad";
+      if (circular) circular.hidden = movement !== "circular";
+      if (movement !== "circular") releaseCircular();
+    };
+    var releaseCircular = function () {
+      var changed = false;
+      ["up", "down", "left", "right"].forEach(function (dir) { if (pressed.delete(dir)) changed = true; });
+      circularActions = [];
+      circularRegion = null;
+      if (circular) circular.removeAttribute("data-active");
+      if (changed) signal("button");
+    };
+
+    var sendUtility = function (action) {
+      if (!pairedCode || !token) return;
+      utilitySequence += 1;
+      sequence += 1;
+      var payload = {s: sequence, b: Array.from(pressed), a: [axes.lx, axes.ly, axes.rx, axes.ry], u: action, us: utilitySequence};
+      if (touch.active) payload.t = [touch.x, touch.y];
+      outbox.push({payload: payload, move: false});
+      if (outbox.length > 24) outbox.splice(0, outbox.length - 24);
+      pump();
     };
 
     var outbox = [];
@@ -202,6 +239,9 @@
       pressed.clear();
       axes = {lx: 0, ly: 0, rx: 0, ry: 0};
       touch = {active: false, x: 0, y: 0};
+      circularRegion = null;
+      circularActions = [];
+      if (circular) circular.removeAttribute("data-active");
       document.querySelectorAll(".ctrl-stick.active").forEach(function (node) { node.classList.remove("active"); node.style.setProperty("--sx", "0px"); node.style.setProperty("--sy", "0px"); });
       signal("button");
     };
@@ -369,13 +409,80 @@
       connect(code);
     });
     if (byId("ctrlDisconnect")) byId("ctrlDisconnect").addEventListener("click", function () { releaseAll(); disconnect("Off"); });
+    if (movementPicker) movementPicker.addEventListener("change", function () {
+      movement = movementPicker.value;
+      try { localStorage.setItem("an3-controller-movement", movement); } catch (_) {}
+      applyMovement();
+    });
     if (layoutPicker) layoutPicker.addEventListener("change", function () { manualLayout = true; applyLayout(); });
     addEventListener("pagehide", function () { if (pairedCode && token) { releaseAll(); } }, {once: true});
+
+    var bindCircular = function () {
+      if (!circular || !window.AN3InputActions) return;
+      var pointerId = null;
+      var update = function (event) {
+        var rect = circular.getBoundingClientRect();
+        var radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+        var dx = (event.clientX - (rect.left + rect.width / 2)) / radius;
+        var dy = (event.clientY - (rect.top + rect.height / 2)) / radius;
+        var result = window.AN3InputActions.circularDirections(dx, dy, circularRegion);
+        circularRegion = result.region;
+        var next = result.actions.map(function (action) { return action.toLowerCase(); });
+        var changed = false;
+        ["up", "down", "left", "right"].forEach(function (dir) {
+          var want = next.indexOf(dir) >= 0;
+          var has = pressed.has(dir);
+          if (want && !has) { pressed.add(dir); changed = true; }
+          else if (!want && has) { pressed.delete(dir); changed = true; }
+        });
+        circularActions = next;
+        if (next.length) circular.setAttribute("data-active", next.join(" "));
+        else circular.removeAttribute("data-active");
+        if (changed) signal("button");
+      };
+      circular.addEventListener("pointerdown", function (event) {
+        event.preventDefault();
+        pointerId = event.pointerId;
+        circular.classList.add("active");
+        try { circular.setPointerCapture(pointerId); } catch (_) {}
+        update(event);
+      });
+      circular.addEventListener("pointermove", function (event) {
+        if (pointerId === null || event.pointerId !== pointerId) return;
+        event.preventDefault();
+        update(event);
+      });
+      var release = function (event) {
+        if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+        pointerId = null;
+        circular.classList.remove("active");
+        releaseCircular();
+      };
+      circular.addEventListener("pointerup", release);
+      circular.addEventListener("pointercancel", release);
+    };
+
+    var bindUtility = function () {
+      document.querySelectorAll("#ctrlPad [data-util]").forEach(function (button) {
+        button.addEventListener("pointerdown", function (event) {
+          event.preventDefault();
+          var wire = button.getAttribute("data-util");
+          var action = window.AN3InputActions && window.AN3InputActions.utilityWireToAction[wire];
+          if (!action) return;
+          buzz(8);
+          sendUtility(action);
+        });
+        button.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+      });
+    };
 
     bindButtons();
     bindSticks();
     bindTouchscreen();
+    bindCircular();
+    bindUtility();
     applyLayout();
+    applyMovement();
     if (!codeInput || !codeInput.value) loadHosts();
     else connect(codeInput.value.trim().toUpperCase());
   }

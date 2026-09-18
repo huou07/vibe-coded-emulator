@@ -458,5 +458,82 @@ class PlayerCspTests(unittest.TestCase):
         self.assertNotIn("ws://", csp)
 
 
+class ControllerUtilityApiTests(unittest.TestCase):
+    """End-to-end one-shot utility commands over the authenticated channel."""
+
+    def setUp(self):
+        self.patches = [
+            patch.object(app, "CONTROLLER_ENABLED", True),
+            patch.object(app, "CONTROLLERS", {}),
+        ]
+        for active in self.patches:
+            active.start()
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), app.Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        for active in self.patches:
+            active.stop()
+
+    def request(self, method, path, payload=None):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        body = json.dumps(payload).encode() if payload is not None else None
+        headers = {"Content-Type": "application/json"} if body else {}
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        status, data = response.status, response.read()
+        connection.close()
+        return status, data
+
+    def _paired(self):
+        _, body = self.request("POST", "/api/controller/session", {"deviceId": "host"})
+        session = json.loads(body)
+        _, body = self.request("POST", "/api/controller/pair", {"code": session["code"], "deviceId": "phone"})
+        return session, json.loads(body)
+
+    def _utilities(self, session):
+        status, body = self.request("GET", f"/api/controller/state?code={session['code']}&hostToken={session['hostToken']}")
+        self.assertEqual(status, 200)
+        return json.loads(body)["utilities"]
+
+    def test_utility_is_queued_once_and_cleared_by_ack(self):
+        session, phone = self._paired()
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "u": "speed_up", "us": 1})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["applied"])
+        # A duplicate/retried frame must not queue a second command.
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "u": "speed_up", "us": 1})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["applied"])
+        pending = self._utilities(session)
+        self.assertEqual([item["action"] for item in pending], ["speed_up"])
+        status, _ = self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": session["hostToken"], "sequence": 1, "utilitySequence": 1})
+        self.assertEqual(status, 200)
+        self.assertEqual(self._utilities(session), [])
+
+    def test_unknown_utility_is_ignored(self):
+        session, phone = self._paired()
+        self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "u": "evil", "us": 1})
+        self.assertEqual(self._utilities(session), [])
+
+    def test_utility_requires_a_paired_token(self):
+        session, _ = self._paired()
+        status, _ = self.request("POST", "/api/controller/state", {"code": session["code"], "token": "nope", "s": 1, "b": [], "u": "quick_save", "us": 1})
+        self.assertEqual(status, 403)
+        self.assertEqual(self._utilities(session), [])
+
+    def test_disconnect_clears_pending_utilities(self):
+        session, phone = self._paired()
+        self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "u": "quick_save", "us": 1})
+        self.assertEqual(len(self._utilities(session)), 1)
+        self.request("POST", "/api/controller/disconnect", {"code": session["code"]})
+        self.request("POST", "/api/controller/pair", {"code": session["code"], "deviceId": "phone"})
+        self.assertEqual(self._utilities(session), [])
+
+
 if __name__ == "__main__":
     unittest.main()
