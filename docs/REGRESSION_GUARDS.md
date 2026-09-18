@@ -1,5 +1,29 @@
 # AN3 Arcade regression guards
 
+## Phone Controller utilities across hosts — 2026-09-18
+
+- RG-132: **The canonical Phone Controller utility actions must behave the same
+  on every host that consumes the authenticated controller channel.** The
+  contract is `native-offline/shared/input-actions-schema.json`
+  (`QUICK_SAVE`/`SPEED_UP`/`SPEED_DOWN`/`OPEN_MENU`), dispatched through the
+  shared `static/controller-utility.js` (host supplies its existing operations;
+  the per-press sequence makes retries idempotent). Android natively maps them
+  to the overlay (`ControllerClient.dispatchUtilities` → `An3ControllerHost.Sink
+  .utility` → `NativeGameOverlay.utility`). The browser/web-player host
+  (`static/player.js`) maps them to the existing slot save (last-used slot
+  remembered, default 1), the existing speed steps, and the existing player
+  options panel, then acknowledges `utilitySequence`. The desktop shared host
+  (`controller_host.rs`, macOS/Windows/Linux) parses and deduplicates the same
+  list, invokes a `UtilitySink`, and acknowledges the newest utility sequence;
+  its default sink reports unwired platform actions on stderr rather than
+  pretending success. Guards: `tests/controller_utility.test.js` (behavioral
+  dispatch/dedup), `tests/test_phone_controller_hosts.py`,
+  `tests/test_netcode.py`, `tests/test_multiplayer_api.py`,
+  `tests/test_input_actions.py`. Status: browser host PASS; Android unchanged
+  PASS; desktop host plumbing PASS with per-platform native save/speed/menu
+  mapping **UNVERIFIED** (Windows/Linux not built here, macOS Cocoa host not
+  exercised); real phone over Wi-Fi remains PHYSICAL DEVICE RE-TEST REQUIRED.
+
 ## In-game menu navigation — 2026-09-18
 
 - RG-131: **Save and Exit, Exit and Return to Library are three distinct
