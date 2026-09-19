@@ -179,14 +179,14 @@ From the original spec plus later requests:
 
 ## 7. Custom opencode agents/skills to create for this project
 
-**Created 2026-09-16** under `.opencode/skills/<name>/SKILL.md` and
-`.opencode/agent/<name>.md` (project-local so they travel with the repo):
+**Created 2026-09-16** under the project-local skill/agent directories (so they
+travel with the repo):
 `an3-build`, `an3-staging-deploy`, `an3-player-regression`,
 `an3-codegraph-first`, `player-verifier`, `release-coordinator`,
 `staging-browser-verify`. The descriptions below are the original rationale.
 
-Suggested under `.opencode/skill/<name>/SKILL.md` and `.opencode/agent/<name>.md`
-(project-local so they travel with the repo):
+Shared skills belong under `.agents/skills/<name>/SKILL.md`; client-specific
+agents, when still needed, remain under `.opencode/agent/`:
 
 1. **skill `an3-build`** — "Build/publish a native platform for Vibe Coded
    Emulator." Encodes: the version-bump rule (patch/minor/major), the exact

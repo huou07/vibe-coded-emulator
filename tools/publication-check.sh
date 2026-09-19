@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Fail-closed pre-publication security check for the public source snapshot.
-# Policy: .opencode/skills/public-release-security/SKILL.md
+# Policy: .agents/skills/public-release-security/SKILL.md
 #
 # Usage:
 #   tools/publication-check.sh [--history] [CANDIDATE_DIR]

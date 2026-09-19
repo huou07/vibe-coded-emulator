@@ -1,53 +1,22 @@
 # AN3 Arcade regression guards
 
-## Parallel orchestration v1.1 — provenance, recovery, warning hygiene — 2026-09-19
+## Parallelism history and current guard
 
-- RG-134: **Every orchestrated candidate has an auditable provenance chain, and the
-  orchestrator's deterministic checks separate accepted history from new warnings.**
-  `.opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_state.py
-  record-provenance` records `workerCommit`, `reviewedCommit`,
-  `integrationInputCommit`, `integratedCommit`, `integrationMethod`, `workerPatchId`,
-  `integratedPatchId`, `contentEquivalent`, `adapterCommit` and `changedFiles`; an
-  exact cherry-pick/merge is content-equivalent through `git patch-id`, and a
-  deliberate integration change is a separate adapter commit (never hidden in a
-  cherry-pick). `check-provenance` re-verifies. `validate_candidate.py` reports
-  `PASS`/`WARN_KNOWN`/`WARN_NEW`/`FAIL` with `newWarningCount`/`knownWarningCount`;
-  accepted warnings need an explicit justified `knownAcceptedWarnings` entry in
-  `config.json`. `inspect_run.py recover` distinguishes `PROCESS_RUNNING` /
-  `SESSION_RESUMABLE` / `SESSION_UNKNOWN` / `SESSION_DEAD`, reports `RECOVERABLE` and
-  never performs destructive recovery. `resource_lock.py` handles malformed and
-  crashed locks explicitly. Automated guard:
-  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
-  (36 tests: worktree isolation, leases, concurrent acquire, malformed/stale locks,
-  logical-conflict scans, provenance, target movement, atomic run-state, recovery,
-  session lifecycle, overlap scheduling, backlog pressure, model policy). Validation:
-  36/36 OK on 2026-09-19; disposable real-session stress (`stress_test.py`) passed
-  with 3 worker sessions, read-only subagents, a dependency edge, a shared lease, a
-  deliberate conflict and an explicit adapter; a real 2-component test-only dogfood
-  integrated cleanly with `contentEquivalent: true`. Runtime status: recovery was
-  exercised with fabricated dead launchers and planted fixtures; no production or
-  staging deploy occurred. Regression debt: `duplicate-rg` and
-  `stale-release-filenames` now report `PASS` (the RG-057/060/062/063/064 collisions
-  are historical layered-authority entries recorded as known-accepted;
-  `tools/release-train.sh` derives versions from metadata).
+The former `an3-parallel-orchestrator` and its autonomous supervisor are retired
+and deleted. The old RG-133/RG-134 orchestration results are archival evidence
+only; do not restore, invoke, or extend that workflow.
 
-## Parallel orchestration determinism — 2026-09-19
+The current cross-agent guard is the project-agnostic global skill:
 
-- RG-133: **The AN3 parallel-orchestrator's bookkeeping and logical-conflict
-  checks are deterministic and fail closed.** `.opencode/skills/an3-parallel-orchestrator/scripts`
-  owns run state (atomic JSON under the shared Git common dir), safe worktree
-  creation/removal, atomic resource leases (a held lease is never stolen; stale
-  recovery requires an expired lease plus a dead PID), and base-relative
-  conflict checks: duplicate regression-guard IDs, duplicate/missing Tauri
-  commands, catalog hash/size drift, version inconsistency, hard-coded release
-  filenames, test-only automation strings in distribution artifacts, model
-  policy, and manifest schema. Model is pinned to
-  `opencode-go/deepseek-v4.1-flash` with no fallback. Automated guard:
-  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
-  (17 tests) exercises worktree isolation, lease deny/release/stale, and planted
-  fixtures for every conflict check. Validation: 17/17 OK on 2026-09-19. Runtime
-  status: the git worktree/lease/state paths were exercised in disposable temp
-  repositories; staging was **not** deployed to test the framework.
+```bash
+python3 "$HOME/.agents/skills/parallelism/scripts/parallelism_selftest.py"
+```
+
+It covers the v1.1/v1.2 deterministic behavior plus v1.3 discovery,
+`project.json` validation, portable fixtures, zero-helper behavior and the
+optional host-adapter boundary. Parallelism remains Master-owned; Codex native
+helpers inherit the Master model/reasoning and are used only when `decide`
+recommends independent work.
 
 ## Android 3DS Vulkan framebuffer color — 2026-09-18
 
