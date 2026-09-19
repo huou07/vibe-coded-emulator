@@ -257,6 +257,19 @@ coordinated_build_all() {
   windows_root="C:/AN3/release-train-$run_id"
   mkdir -p "$artifacts"
 
+  # Derive every expected artifact name from the version metadata the app actually
+  # uses, so a version bump cannot silently leave a stale hard-coded filename in
+  # the coordinated matrix. Android has its own version field.
+  local desktop_version android_version
+  desktop_version="$(node -p "require('$native_root/src-tauri/tauri.conf.json').version")"
+  android_version="$(node -p "require('$native_root/src-tauri/tauri.android.conf.json').version")"
+  local mac_name apk_name deb_name flatpak_name exe_name
+  mac_name="vibecodedemulator-${desktop_version}-macos-aarch64.dmg"
+  apk_name="vibecodedemulator-${android_version}-android-arm64-staging.apk"
+  deb_name="vibecodedemulator-${desktop_version}-linux-amd64.deb"
+  flatpak_name="an3-offline-${desktop_version}-linux-amd64-staging.flatpak"
+  exe_name="vibecodedemulator-${desktop_version}-windows-x64-staging.exe"
+
   # Build the Mac artifacts from an extracted copy too: a later edit of the
   # working tree cannot silently alter a supposedly frozen matrix.
   extract_frozen_tree "$mac_source" "$source_archive" "$cache_archive"
@@ -277,8 +290,8 @@ coordinated_build_all() {
   "${ssh_cmd[@]}" "$linux_builder" "test ! -e '$linux_root' && mkdir -p '$linux_root'"
   "${scp_cmd[@]}" "$source_archive" "$cache_archive" "$linux_builder:$linux_root/"
   "${ssh_cmd[@]}" "$linux_builder" "cd '$linux_root' && tar -xzf source.tar.gz && tar -xzf dependency-cache.tar.gz && mkdir releases && AN3_DEPENDENCY_CACHE='$linux_root/native-offline/work/dependency-cache' AN3_REQUIRE_DEPENDENCY_CACHE=1 AN3_RELEASE_DIR='$linux_root/releases' bash native-offline/scripts/build-linux-staging.sh deb && AN3_DEPENDENCY_CACHE='$linux_root/native-offline/work/dependency-cache' AN3_REQUIRE_DEPENDENCY_CACHE=1 AN3_RELEASE_DIR='$linux_root/releases' bash native-offline/scripts/build-linux-staging.sh flatpak"
-  "${scp_cmd[@]}" "$linux_builder:$linux_root/releases/vibecodedemulator-0.4.5-linux-amd64.deb" "$artifacts/"
-  "${scp_cmd[@]}" "$linux_builder:$linux_root/releases/an3-offline-0.4.5-linux-amd64-staging.flatpak" "$artifacts/"
+  "${scp_cmd[@]}" "$linux_builder:$linux_root/releases/$deb_name" "$artifacts/"
+  "${scp_cmd[@]}" "$linux_builder:$linux_root/releases/$flatpak_name" "$artifacts/"
 
   local init_windows extract_windows
   init_windows=$(cat <<'PS'
@@ -320,26 +333,21 @@ PS
 )
   extract_windows="${extract_windows//__ROOT__/$windows_root}"
   windows_ps "$windows_builder" "$extract_windows"
-  "${scp_cmd[@]}" "$windows_builder:$windows_root/releases/vibecodedemulator-0.4.5-windows-x64-staging.exe" "$artifacts/"
+  "${scp_cmd[@]}" "$windows_builder:$windows_root/releases/$exe_name" "$artifacts/"
 
   local artifact expected
-  for expected in \
-    vibecodedemulator-0.4.5-macos-aarch64.dmg \
-    vibecodedemulator-0.4.5-android-arm64-staging.apk \
-    vibecodedemulator-0.4.5-linux-amd64.deb \
-    an3-offline-0.4.5-linux-amd64-staging.flatpak \
-    vibecodedemulator-0.4.5-windows-x64-staging.exe; do
+  for expected in "$mac_name" "$apk_name" "$deb_name" "$flatpak_name" "$exe_name"; do
     artifact="$artifacts/$expected"
     [[ -s "$artifact" ]] || die "Expected coordinated artifact is missing: $artifact"
   done
   (
     cd "$artifacts"
     shasum -a 256 \
-      vibecodedemulator-0.4.5-macos-aarch64.dmg \
-      vibecodedemulator-0.4.5-android-arm64-staging.apk \
-      vibecodedemulator-0.4.5-linux-amd64.deb \
-      an3-offline-0.4.5-linux-amd64-staging.flatpak \
-      vibecodedemulator-0.4.5-windows-x64-staging.exe > ARTIFACTS.sha256
+      "$mac_name" \
+      "$apk_name" \
+      "$deb_name" \
+      "$flatpak_name" \
+      "$exe_name" > ARTIFACTS.sha256
   )
   cp "$frozen_source" "$run_root/SOURCE_FROZEN.json"
   note "COORDINATED_SOURCE_SHA256=$source_hash"
