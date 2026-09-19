@@ -16,6 +16,9 @@ WORKTREE: {{WORKTREE}}
 BASE_SHA: {{BASE_SHA}}
 RESOURCES (leased; do not exceed): {{RESOURCES}}
 
+Run state (read-only for you): `$(git rev-parse --git-common-dir)/opencode-orchestrator/{{RUN_ID}}/`
+— do not modify it; the orchestrator records your status from your report.
+
 ## Goals (in order)
 {{GOALS}}
 

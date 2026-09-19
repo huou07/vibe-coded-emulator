@@ -6,6 +6,8 @@ temperature: 0.1
 permission:
   edit: allow
   skill: allow
+  external_directory:
+    "*/.git/opencode-orchestrator/*": allow
   bash:
     "*": allow
     "opencode run*": deny
