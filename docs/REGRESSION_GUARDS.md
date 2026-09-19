@@ -1,5 +1,23 @@
 # AN3 Arcade regression guards
 
+## Parallel orchestration determinism — 2026-09-19
+
+- RG-133: **The AN3 parallel-orchestrator's bookkeeping and logical-conflict
+  checks are deterministic and fail closed.** `.opencode/skills/an3-parallel-orchestrator/scripts`
+  owns run state (atomic JSON under the shared Git common dir), safe worktree
+  creation/removal, atomic resource leases (a held lease is never stolen; stale
+  recovery requires an expired lease plus a dead PID), and base-relative
+  conflict checks: duplicate regression-guard IDs, duplicate/missing Tauri
+  commands, catalog hash/size drift, version inconsistency, hard-coded release
+  filenames, test-only automation strings in distribution artifacts, model
+  policy, and manifest schema. Model is pinned to
+  `opencode-go/deepseek-v4.1-flash` with no fallback. Automated guard:
+  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
+  (14 tests) exercises worktree isolation, lease deny/release/stale, and planted
+  fixtures for every conflict check. Validation: 14/14 OK on 2026-09-19. Runtime
+  status: the git worktree/lease/state paths were exercised in disposable temp
+  repositories; staging was **not** deployed to test the framework.
+
 ## Android 3DS Vulkan framebuffer color — 2026-09-18
 
 - RG-124: The Android 3DS Vulkan presenter must never select an `_SRGB` swapchain color format. `native-offline/native-runtime/video/vulkan/vulkan_backend.cpp::create_swapchain_resources` still matched `_SRGB` formats in both the preferred list and the standard-space fallback (the 1.0.1 fix only stopped the wide-gamut `formats.front()` default). The Azahar core hands the frontend display-referred, sRGB-encoded UNORM frames, so an `_SRGB` surface makes the presentation blit apply a second linear-to-sRGB encode and desaturates the 3DS framebuffer. MoltenVK (which only advertises `B8G8R8A8_UNORM`) and the AVD's emulated GPU offer UNORM first and never reproduced it. Fix: an `is_srgb_format()` guard on the preferred list and the fallback scan, a one-time `AN3VK` logcat line of the advertised/selected surface format, and a `device_details()` warning for an sRGB/non-standard swapchain. Device evidence (Redmi 25057RN09G, Android 16, Adreno 619 driver 0762.40): the Vulkan surface advertises `R8G8B8A8_UNORM` (format 37) first and the presenter selected it with `VK_COLOR_SPACE_SRGB_NONLINEAR_KHR` before and after the change, so the `_SRGB` path was not reachable on this unit. Runtime status: 3DS rendered correctly on the packaged 2.3.1 APK (`db5a0a6c05c9123ecf91999b93ea69e535c2e2f63442d2e61bd128f3a94d7a65`) on both the Auto OpenGL ES (`core=57 present=57`) and forced Vulkan (`core=55 present=55`) paths with no new Vulkan errors; the reported intermittent desaturation itself remains **UNVERIFIED** on hardware because it did not reproduce in 60 s recordings on either path. Source checks: `tests.test_android_native_runtime`, `tests.test_native_renderer_contract`, `tests.test_native_regression_guards`.
