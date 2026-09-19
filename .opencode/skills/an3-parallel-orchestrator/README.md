@@ -201,9 +201,17 @@ Integrate verified changes and deploy staging when appropriate.
   is not "message delivered" until its id appears in the JSON event stream.
 - Subagent step budgets (`steps`) are enforced by OpenCode; primary worker
   sessions stay long-lived.
-- The `skill` tool's available list is cached when a session starts; a session
-  that was already open when the skill was created will not see it until it is
-  restarted. New `opencode run` sessions see it immediately.
+- The `skill` tool's available list is captured when a session starts, so a skill
+  created after a session opened is not listed until that session restarts
+  (`opencode debug skill` in a fresh process sees it immediately). Edited content of
+  an already-listed skill is read from disk (verified: a fresh process returned the
+  current v1.1 body, frontmatter stripped from `content`).
+- Installed OpenCode 1.18.31 enforces a **primary** agent's permissions under
+  `opencode run --agent` but not a **subagent-mode** agent's. Read-only subagents
+  (`an3-code-explorer`, `an3-blind-reviewer`, `an3-test-analyzer`,
+  `an3-integration-reviewer`) are therefore invoked only through the Task tool
+  inside a primary session, where their denies ARE enforced; `session.py` refuses
+  to launch them as top-level sessions.
 - Orchestration run state lives in the shared Git common dir, outside the
   worktree; the `an3-*` agents grant `external_directory` for the narrow pattern
   `*/.git/opencode-orchestrator/*` so non-interactive sessions can read it.

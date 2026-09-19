@@ -400,6 +400,20 @@ class SessionGuardTests(unittest.TestCase):
         finally:
             tmp.cleanup()
 
+    def test_rejects_subagent_as_top_level_session(self):
+        # Installed OpenCode 1.18.31 does not enforce a subagent-mode agent's
+        # permissions under `opencode run --agent`; read-only subagents must run
+        # via the Task tool, so session.py must refuse them as top-level sessions.
+        tmp = TmpRepo()
+        try:
+            rc, out, _ = run("session.py", "start", "--run-id", "20260101-0700", "--domain", "x",
+                             "--worktree", tmp.path, "--prompt-file", os.path.join(tmp.path, "p.md"),
+                             "--agent", "an3-code-explorer", repo=tmp.path, expect=64)
+            self.assertFalse(out["ok"])
+            self.assertIn("an3-worker", out["allowed"])
+        finally:
+            tmp.cleanup()
+
 
 class ProvenanceTests(unittest.TestCase):
     def _init(self, tmp, base, run_id="20260201-0000"):

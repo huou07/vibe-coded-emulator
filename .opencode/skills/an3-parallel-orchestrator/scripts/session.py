@@ -60,11 +60,30 @@ def _first_session_id(log_path):
     return None
 
 
+def _top_level_agents():
+    return CFG.get("sessions", {}).get("topLevelAgents") or [CFG["sessions"]["defaultAgent"]]
+
+
+def _assert_top_level_agent(agent):
+    """Only primary agents may be launched as top-level sessions.
+
+    Installed OpenCode 1.18.31 enforces a primary agent's permissions under
+    `opencode run --agent`, but NOT a subagent-mode agent's. Read-only subagents
+    (code-explorer/reviewer/test-analyzer) must be invoked through the Task tool
+    inside a primary session, where their denies are enforced.
+    """
+    if agent not in _top_level_agents():
+        lib.fail("agent %r cannot be launched as a top-level session; use the Task tool "
+                 "inside a primary session for read-only subagents" % agent, code=64,
+                 allowed=_top_level_agents())
+
+
 def cmd_start(args):
     repo = lib.find_repo_root(args.repo)
     lib.validate_run_id(args.run_id)
     lib.validate_domain(args.domain)
     agent = args.agent or CFG["sessions"]["defaultAgent"]
+    _assert_top_level_agent(agent)
     model = args.model or lib.CANONICAL_MODEL
     if model != lib.CANONICAL_MODEL:
         lib.fail("model must be %s" % lib.CANONICAL_MODEL, code=64)
@@ -120,7 +139,9 @@ def cmd_send(args):
                  exit_code=4)
     model = lib.CANONICAL_MODEL
     prompt = _read_prompt(args.prompt_file)
-    cmd = _base_cmd(args.agent or CFG["sessions"]["defaultAgent"], model)
+    agent = args.agent or CFG["sessions"]["defaultAgent"]
+    _assert_top_level_agent(agent)
+    cmd = _base_cmd(agent, model)
     cmd += ["--session", args.session_id, prompt]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout)
