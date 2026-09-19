@@ -1,0 +1,29 @@
+{
+  "name": "an3-offline-native",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-only local-ROM player for VibeCodedEmulator",
+  "scripts": {
+    "tauri": "tauri",
+    "prepare-azahar": "node scripts/fetch-azahar-libretro.mjs",
+    "prepare-azahar-android": "node scripts/fetch-azahar-libretro-android.mjs",
+    "prepare-native-cores": "node scripts/fetch-gba-nds-libretro.mjs",
+    "prepare-moltenvk": "node scripts/fetch-moltenvk.mjs",
+    "prepare-web": "node scripts/prepare-web.mjs",
+    "check": "node --check scripts/prepare-switch-companion.mjs && node --check scripts/fetch-azahar-libretro.mjs && node --check scripts/fetch-azahar-libretro-android.mjs && node --check scripts/fetch-gba-nds-libretro.mjs && node --check scripts/fetch-linux-gba-nds-libretro.mjs && node --check scripts/fetch-moltenvk.mjs && node --check scripts/prepare-web.mjs && node --check web/native-bootstrap.js && node --check web/native-app.js && node --check web/android-staging.js",
+    "dev": "npm run prepare-azahar && npm run prepare-native-cores && npm run prepare-moltenvk && npm run prepare-web && tauri dev",
+    "build": "npm run prepare-azahar && npm run prepare-native-cores && npm run prepare-moltenvk && npm run prepare-web && npm run prepare-switch-companion && MACOSX_DEPLOYMENT_TARGET=13.4 tauri build --bundles app",
+    "build:macos": "npm run build && scripts/package-macos.sh",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-staging.ps1",
+    "build:deb": "npm run prepare-web && tauri build --bundles deb",
+    "android:init": "npm run prepare-web && tauri android init",
+    "android:build": "npm run prepare-web && tauri android build",
+    "ios:init": "npm run prepare-web && tauri ios init",
+    "ios:build": "npm run prepare-web && tauri ios build",
+    "prepare-switch-companion": "node scripts/prepare-switch-companion.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0"
+  }
+}

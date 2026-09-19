@@ -1,0 +1,40 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Offline local-ROM player window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "allow-pick-and-import-native-rom",
+    "allow-remove-native-rom",
+    "allow-native-capabilities",
+    "allow-start-native-game",
+    "allow-stop-native-game",
+    "allow-set-native-input",
+    "allow-native-controller-start",
+    "allow-native-controller-stop",
+    "allow-native-controller-status",
+    "allow-native-controller-lan-start",
+    "allow-native-controller-lan-stop",
+    "allow-native-controller-lan-status",
+    "allow-native-controller-lan-refresh",
+    "allow-switch-companion-detect",
+    "allow-switch-companion-launch",
+    "allow-switch-companion-launch-rom",
+    "allow-switch-companion-status",
+    "allow-switch-companion-stop",
+    "allow-switch-companion-focus",
+    "allow-switch-companion-input",
+    "allow-switch-companion-analog",
+    "allow-switch-companion-audio",
+    "allow-ui-control-result"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:38471/*"
+    ]
+  }
+}
