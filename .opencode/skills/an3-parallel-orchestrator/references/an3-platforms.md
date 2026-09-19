@@ -47,6 +47,15 @@ before claiming any of them.
 - Release train: `tools/release-train.sh`.
 - Staging SSH env: `tools/ssh/staging-env.sh` + `tools/ssh/check-staging-key.sh`.
 
+## Run-state access
+
+Orchestration run state lives in the shared Git common dir, which is **outside**
+the project worktree (`$(git rev-parse --git-common-dir)/opencode-orchestrator/`).
+Non-interactive sessions auto-reject unapproved external paths, so the `an3-*`
+agents grant `external_directory` for the narrow pattern
+`*/.git/opencode-orchestrator/*`. Keep that pattern narrow; do not broaden it to
+the whole `.git` or the checkout parent.
+
 ## Rules
 
 - Never expose secrets, tokens, keys, staging SSH material, or production data.
