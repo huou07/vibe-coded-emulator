@@ -7,8 +7,6 @@ permission:
   edit: allow
   skill: allow
   webfetch: allow
-  external_directory:
-    "*/.git/opencode-orchestrator/*": allow
   bash:
     "*": allow
     "opencode run*": deny
