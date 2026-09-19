@@ -137,6 +137,15 @@ def atomic_write_json(path: str, data: Any) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, path)
+        # fsync the directory so the rename itself is durable across a crash.
+        try:
+            dir_fd = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -230,3 +239,141 @@ def parse_frontmatter(path: str) -> Dict[str, str]:
             key, _, value = line.partition(":")
             result[key.strip()] = value.strip().strip('"').strip("'")
     return result
+
+
+# --- atomically serialized compound run-state updates -----------------------
+
+
+@contextmanager
+def run_lock(rdir: str, timeout: float = 60.0):
+    """Serialize compound multi-file run-state updates across processes.
+
+    Individual `update_json` calls are already atomic, but operations that touch
+    two files (for example sessions.json + manifest.json) can interleave and
+    lose updates. Wrap them in this run-level lock.
+    """
+    os.makedirs(rdir, exist_ok=True)
+    with file_lock(os.path.join(rdir, ".run.lock"), timeout=timeout):
+        yield
+
+
+# --- git identity helpers (provenance) --------------------------------------
+
+
+def git_patch_id(repo: str, sha: str) -> Optional[str]:
+    """Stable patch-id of a commit's diff (None if the diff is empty/unknown)."""
+    show = subprocess.run(["git", "-C", repo, "show", "--no-color", sha],
+                          capture_output=True, text=True)
+    if show.returncode != 0:
+        return None
+    proc = subprocess.run(["git", "-C", repo, "patch-id", "--stable"],
+                          input=show.stdout, capture_output=True, text=True)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return proc.stdout.strip().split()[0]
+
+
+def git_tree(repo: str, sha: str) -> Optional[str]:
+    proc = run_git(repo, ["rev-parse", "%s^{tree}" % sha], check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def git_changed_files(repo: str, a: str, b: str) -> List[str]:
+    proc = run_git(repo, ["diff", "--name-only", a, b], check=False)
+    if proc.returncode != 0:
+        return []
+    return [line for line in proc.stdout.splitlines() if line.strip()]
+
+
+def git_is_ancestor(repo: str, ancestor: str, descendant: str) -> bool:
+    proc = run_git(repo, ["merge-base", "--is-ancestor", ancestor, descendant], check=False)
+    return proc.returncode == 0
+
+
+def ref_exists(repo: str, ref: str) -> bool:
+    return git_ok(repo, ["rev-parse", "--verify", ref])
+
+
+def resolve_head(repo: str, ref: str) -> Optional[str]:
+    proc = run_git(repo, ["rev-parse", ref], check=False)
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def paths_overlap(declared: str, pattern: str) -> bool:
+    """True when a declared module/file plausibly covers a central contract.
+
+    Declared values may be files, directories, or globs; patterns may be exact
+    paths or globs. `*` matches across `/`, matching fnmatch semantics.
+    """
+    import fnmatch
+
+    declared = (declared or "").rstrip("/")
+    pattern = (pattern or "").rstrip("/")
+    if not declared or not pattern:
+        return False
+    if declared == pattern:
+        return True
+    if pattern.startswith(declared + "/"):  # declared is a directory
+        return True
+    if declared.startswith(pattern + "/"):  # declared is inside a contract directory
+        return True
+    if fnmatch.fnmatch(declared, pattern) or fnmatch.fnmatch(pattern, declared):
+        return True
+    return False
+
+
+# --- session lifecycle ------------------------------------------------------
+
+
+def read_ndjson_events(log_path: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    if not os.path.exists(log_path):
+        return events
+    with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                continue
+    if limit is not None:
+        return events[-limit:]
+    return events
+
+
+def last_event_type(log_path: str) -> Optional[str]:
+    last = None
+    for event in read_ndjson_events(log_path):
+        last = event.get("type", last)
+    return last
+
+
+# OpenCode event types that mean the agent loop for that prompt has finished.
+# The launcher process may then exit while the session stays resumable.
+TERMINAL_SESSION_EVENTS = {"step_finish", "session.idle", "session_idle", "idle"}
+
+
+def session_state(session: Dict[str, Any], log_path: Optional[str] = None,
+                  process_alive: Optional[bool] = None) -> str:
+    """PROCESS_RUNNING | SESSION_RESUMABLE | SESSION_UNKNOWN | SESSION_DEAD.
+
+    A launcher exiting does not mean the session is dead: `opencode run` records
+    a durable session id that `--session` can resume. Only when there is no
+    recorded session id at all (or it is the UNKNOWN placeholder) is the session
+    considered dead.
+    """
+    alive = is_pid_alive(session.get("pid")) if process_alive is None else process_alive
+    if alive:
+        return "PROCESS_RUNNING"
+    session_id = session.get("sessionId") or session.get("session_id")
+    if not session_id or session_id == "UNKNOWN":
+        return "SESSION_DEAD"
+    last = last_event_type(log_path) if log_path else None
+    if last in TERMINAL_SESSION_EVENTS:
+        return "SESSION_RESUMABLE"
+    if last is None:
+        return "SESSION_UNKNOWN"
+    # a non-terminal last event with a dead launcher is recoverable uncertainty
+    return "SESSION_UNKNOWN"

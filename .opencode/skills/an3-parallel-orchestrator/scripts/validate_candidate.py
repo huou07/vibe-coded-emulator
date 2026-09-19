@@ -45,6 +45,21 @@ TAURI_CMD_RE = re.compile(
 )
 RG_DEF_RE = re.compile(r"^-\s*(RG-[A-Za-z0-9-]+)\s*:", re.MULTILINE)
 
+# Explicit, per-id accepted historical warnings (never a blanket suppression).
+KNOWN_ACCEPTED = lib.load_config().get("knownAcceptedWarnings", {})
+
+# Status vocabulary. WARN_KNOWN is accepted history; WARN_NEW is actionable and
+# never hidden among historical warnings; FAIL blocks.
+STATUS_PASS = "PASS"
+STATUS_FAIL = "FAIL"
+STATUS_WARN_KNOWN = "WARN_KNOWN"
+STATUS_WARN_NEW = "WARN_NEW"
+STATUS_UNVERIFIED = "UNVERIFIED"
+STATUS_SKIPPED = "SKIPPED"
+STATUS_NA = "N/A"
+BLOCKING = {STATUS_FAIL}
+ACTIONABLE = {STATUS_FAIL, STATUS_WARN_NEW}
+
 
 def result(check, status, findings=None, **extra):
     payload = {"check": check, "status": status, "findings": findings or []}
@@ -140,26 +155,41 @@ def _dup_ids(ids):
 def check_duplicate_rg(repo, base=None):
     path = os.path.join(repo, RG_FILE)
     if not os.path.exists(path):
-        return result("duplicate-rg", "N/A", ["no %s" % RG_FILE])
+        return result("duplicate-rg", STATUS_NA, ["no %s" % RG_FILE])
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         current_ids = RG_DEF_RE.findall(handle.read())
     current_dups = _dup_ids(current_ids)
     base_ids = RG_DEF_RE.findall(git_show(repo, base, RG_FILE) or "") if base else []
     base_dups = _dup_ids(base_ids)
-    new_dups = sorted(set(current_dups) - set(base_dups)) if base else []
-    findings = []
-    if current_dups and base:
-        findings.append("pre-existing duplicate guard ids: %s" % ", ".join(current_dups))
-    if current_dups and not base:
-        findings.append("duplicate guard ids present (no --base to attribute): %s" % ", ".join(current_dups))
-    if new_dups:
-        findings.append("candidate introduces duplicate guard ids: %s" % ", ".join(new_dups))
+    known = set(KNOWN_ACCEPTED.get("duplicate-rg", {}).get("ids", []))
     if base:
-        status = "FAIL" if new_dups else "PASS"
+        introduced = sorted(set(current_dups) - set(base_dups))
     else:
-        status = "WARN" if current_dups else "PASS"
+        introduced = []  # cannot attribute without a base
+    unaccepted = sorted(set(current_dups) - known)
+    known_seen = sorted(set(current_dups) & known)
+    findings = []
+    if known_seen:
+        findings.append("known accepted historical duplicate ids: %s (%s)"
+                        % (", ".join(known_seen),
+                           KNOWN_ACCEPTED.get("duplicate-rg", {}).get("justification", ""))[:400])
+    if introduced:
+        findings.append("candidate introduces duplicate guard ids: %s" % ", ".join(introduced))
+    if unaccepted:
+        findings.append("unaccepted duplicate guard ids (add an allowlist entry with justification "
+                        "or fix them): %s" % ", ".join(unaccepted))
+    if introduced:
+        status = STATUS_FAIL
+    elif unaccepted and not base:
+        status = STATUS_WARN_NEW
+    else:
+        # base-relative: pre-existing unaccepted debt is reported but not blamed on
+        # the candidate; only an introduced collision fails.
+        status = STATUS_PASS
     return result("duplicate-rg", status, findings,
-                  total_definitions=len(current_ids), newDuplicates=new_dups)
+                  total_definitions=len(current_ids), newDuplicates=introduced,
+                  knownAccepted=known_seen, unaccepted=unaccepted, warnings={"known": known_seen,
+                  "new": unaccepted})
 
 
 def _read_json_file(repo, relpath):
@@ -269,7 +299,8 @@ def _iter_scripts(repo):
 
 
 def check_stale_release_filenames(repo, base=None):
-    findings, new_hits = [], []
+    findings, introduced, current_hits = [], [], []
+    known = set(KNOWN_ACCEPTED.get("stale-release-filenames", {}).get("ids", []))
     for path in _iter_scripts(repo):
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
             text = handle.read()
@@ -277,20 +308,27 @@ def check_stale_release_filenames(repo, base=None):
         if not hits:
             continue
         rel = os.path.relpath(path, repo)
+        current_hits.extend(hits)
         if base:
             base_text = git_show(repo, base, rel) or ""
             base_hits = set(m.group(0) for m in VERSIONED_FILENAME_RE.finditer(base_text))
-            introduced = sorted(set(hits) - base_hits)
-            if introduced:
-                new_hits.append("%s: %s" % (rel, ", ".join(introduced)))
+            for hit in sorted(set(hits) - base_hits):
+                introduced.append("%s: %s" % (rel, hit))
         else:
-            findings.append("%s hard-codes %s" % (rel, ", ".join(hits)))
-    if base:
-        status = "FAIL" if new_hits else "PASS"
-        findings = new_hits
+            for hit in hits:
+                if hit not in known:
+                    findings.append("%s hard-codes %s" % (rel, hit))
+    unaccepted = sorted(set(current_hits) - known)
+    if introduced:
+        status = STATUS_FAIL
+        findings = introduced
+    elif not base and findings:
+        status = STATUS_WARN_NEW
     else:
-        status = "WARN" if findings else "PASS"
-    return result("stale-release-filenames", status, findings, baseRelative=bool(base))
+        status = STATUS_PASS
+    return result("stale-release-filenames", status, findings,
+                  baseRelative=bool(base), knownAccepted=sorted(set(current_hits) & known),
+                  unaccepted=unaccepted)
 
 
 def check_distribution_strings(repo, _base=None):
@@ -390,6 +428,45 @@ def check_status(repo, _base=None, status_file=None):
     return result("status", status, problems, parsed=data)
 
 
+def check_provenance(repo, _base=None, run_id=None):
+    if not run_id:
+        return result("provenance", STATUS_NA, ["no --run-id supplied"])
+    rdir = lib.run_dir(repo, run_id)
+    path = os.path.join(rdir, "candidates.json")
+    if not os.path.exists(path):
+        return result("provenance", STATUS_NA, ["no candidates.json for run %s" % run_id])
+    candidates = lib.read_json(path)
+    problems, checked, checked_domains = [], 0, []
+    for domain, entries in (candidates or {}).items():
+        for record in entries:
+            prov = record.get("provenance")
+            if not prov:
+                continue
+            checked += 1
+            checked_domains.append(domain)
+            if record.get("adaptationUndeclared"):
+                problems.append("%s: content changed without a declared adapter commit" % domain)
+            if not lib.ref_exists(repo, prov.get("integratedCommit", "")):
+                problems.append("%s: integrated commit %s is missing"
+                                % (domain, prov.get("integratedCommit")))
+                continue
+            if not lib.ref_exists(repo, prov.get("workerCommit", "")):
+                # cherry-pick SHA rewrite can leave the worker commit reachable; if
+                # it is gone that is recorded as unknown rather than failed.
+                problems.append("%s: worker commit %s no longer exists locally"
+                                % (domain, prov.get("workerCommit")))
+                continue
+            wpid = lib.git_patch_id(repo, prov["workerCommit"])
+            ipid = lib.git_patch_id(repo, prov["integratedCommit"])
+            if prov.get("contentEquivalent") and not (wpid and ipid and wpid == ipid):
+                problems.append("%s: recorded contentEquivalent=true but patch identities differ" % domain)
+    if not checked:
+        return result("provenance", STATUS_NA, ["no candidate provenance recorded"])
+    fail = [p for p in problems if "contentEquivalent=true" in p or "missing" in p]
+    status = STATUS_FAIL if fail else (STATUS_WARN_NEW if problems else STATUS_PASS)
+    return result("provenance", status, problems, checked=checked, domains=checked_domains)
+
+
 CHECKS = {
     "tauri-commands": check_tauri_commands,
     "duplicate-rg": check_duplicate_rg,
@@ -399,21 +476,43 @@ CHECKS = {
     "distribution-strings": check_distribution_strings,
     "model-policy": check_model_policy,
     "validate-manifest": check_validate_manifest,
+    "provenance": check_provenance,
     "status": check_status,
 }
 
 
 def run_check(name, repo, base, run_id=None, status_file=None, fast=False):
     if fast and name in ("manifest-hash", "distribution-strings"):
-        return result(name, "SKIPPED", ["--fast"])
+        return result(name, STATUS_SKIPPED, ["--fast"])
     try:
         if name in ("validate-manifest",):
+            return CHECKS[name](repo, base, run_id=run_id)
+        if name in ("provenance",):
             return CHECKS[name](repo, base, run_id=run_id)
         if name in ("status",):
             return CHECKS[name](repo, base, status_file=status_file)
         return CHECKS[name](repo, base)
     except Exception as exc:  # noqa: BLE001 - fail closed, never crash the scan
-        return result(name, "FAIL", ["check raised %s: %s" % (type(exc).__name__, exc)])
+        return result(name, STATUS_FAIL, ["check raised %s: %s" % (type(exc).__name__, exc)])
+
+
+WARNING_STATUSES = {STATUS_WARN_NEW, STATUS_WARN_KNOWN}  # informational vocabulary
+
+
+def summarize(results):
+    failed = [r["check"] for r in results if r["status"] == STATUS_FAIL]
+    new_warnings = [r["check"] for r in results if r["status"] == STATUS_WARN_NEW]
+    known_warnings = [r["check"] for r in results if r["status"] == STATUS_WARN_KNOWN]
+    unverified = [r["check"] for r in results
+                  if r["status"] in (STATUS_UNVERIFIED, STATUS_SKIPPED)]
+    return {
+        "failed": failed,
+        "newWarnings": new_warnings,
+        "knownWarnings": known_warnings,
+        "unverified": unverified,
+        "newWarningCount": len(new_warnings),
+        "knownWarningCount": len(known_warnings),
+    }
 
 
 def cmd_scan(args):
@@ -426,14 +525,21 @@ def cmd_scan(args):
             base = lib.read_json(manifest_path).get("baseSha")
     if args.candidate:
         lib.require_commit(repo, args.candidate, "candidate")
-    order = ["model-policy", "validate-manifest", "duplicate-rg", "tauri-commands", "versions",
-             "stale-release-filenames", "manifest-hash", "distribution-strings", "status"]
+    order = ["model-policy", "validate-manifest", "provenance", "duplicate-rg", "tauri-commands",
+             "versions", "stale-release-filenames", "manifest-hash", "distribution-strings", "status"]
     results = [run_check(name, repo, base, run_id=run_id, status_file=args.status_file, fast=args.fast)
                for name in order]
-    failed = [r["check"] for r in results if r["status"] == "FAIL"]
-    payload = {"ok": not failed, "repo": repo, "baseSha": base, "candidate": args.candidate,
-               "runId": run_id, "failed": failed, "results": results}
-    lib.emit(payload, exit_code=0 if not failed else 1)
+    summary = summarize(results)
+    ok = not summary["failed"] and not (args.strict_warnings and summary["newWarnings"])
+    payload = {"ok": ok, "status": "FAIL" if summary["failed"] else
+               ("WARN_NEW" if summary["newWarnings"] else "PASS"),
+               "repo": repo, "baseSha": base, "candidate": args.candidate, "runId": run_id,
+               "failed": summary["failed"], "newWarnings": summary["newWarnings"],
+               "knownWarnings": summary["knownWarnings"],
+               "newWarningCount": summary["newWarningCount"],
+               "knownWarningCount": summary["knownWarningCount"],
+               "unverified": summary["unverified"], "results": results}
+    lib.emit(payload, exit_code=0 if ok else 1)
 
 
 def build_parser():
@@ -446,12 +552,15 @@ def build_parser():
     p.add_argument("--base")
     p.add_argument("--status-file")
     p.add_argument("--fast", action="store_true")
+    p.add_argument("--strict-warnings", action="store_true",
+                   help="treat WARN_NEW as failure (default: only FAIL blocks)")
     p.set_defaults(func=cmd_scan)
     for name in CHECKS:
         cp = sub.add_parser(name)
         cp.add_argument("--base")
         cp.add_argument("--run-id")
         cp.add_argument("--status-file")
+        cp.add_argument("--strict-warnings", action="store_true")
         cp.set_defaults(func=lambda a, _n=name: _single(a, _n))
     return parser
 
@@ -461,8 +570,9 @@ def _single(args, name):
     outcome = run_check(name, repo, getattr(args, "base", None),
                         run_id=getattr(args, "run_id", None),
                         status_file=getattr(args, "status_file", None))
-    lib.emit({"ok": outcome["status"] != "FAIL", **outcome},
-             exit_code=0 if outcome["status"] != "FAIL" else 1)
+    strict = getattr(args, "strict_warnings", False)
+    blocking = outcome["status"] in BLOCKING or (strict and outcome["status"] == STATUS_WARN_NEW)
+    lib.emit({"ok": not blocking, **outcome}, exit_code=0 if not blocking else 1)
 
 
 def main():
