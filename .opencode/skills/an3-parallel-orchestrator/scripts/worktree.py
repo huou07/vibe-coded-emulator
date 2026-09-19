@@ -172,12 +172,24 @@ def _recorded_path(repo, run_id, domain):
     return worktree_path(repo, run_id, domain)
 
 
+def _recorded_branch(repo, run_id, domain):
+    manifest_path = os.path.join(lib.run_dir(repo, run_id), "manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            recorded = (lib.read_json(manifest_path).get("branches") or {}).get(domain)
+            if recorded:
+                return recorded
+        except ValueError:
+            pass
+    return agent_branch(run_id, domain)
+
+
 def cmd_remove(args: argparse.Namespace) -> None:
     repo = lib.find_repo_root(args.repo)
     lib.validate_run_id(args.run_id)
     lib.validate_domain(args.domain)
     path = os.path.abspath(args.path) if args.path else _recorded_path(repo, args.run_id, args.domain)
-    branch = agent_branch(args.run_id, args.domain)
+    branch = _recorded_branch(repo, args.run_id, args.domain)
     if os.path.realpath(path) == os.path.realpath(repo):
         lib.fail("refusing to remove the main checkout", code=3)
     entry = _find_entry(_worktrees(repo), path)

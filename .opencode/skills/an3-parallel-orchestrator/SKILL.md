@@ -86,6 +86,7 @@ State lives under the shared Git common dir, readable from every worktree:
 | Print canonical model | `scripts/orchestrator_state.py model` |
 | Create a run + manifest | `scripts/orchestrator_state.py init --goal ... --base-sha <sha>` |
 | Record task / session / candidate / status | `orchestrator_state.py add-task\|add-session\|set-candidate\|set-status` |
+| Record integration / staging head | `orchestrator_state.py set-head --field integrationHead\|stagingHead` |
 | Verify model on all recorded sessions | `orchestrator_state.py check-model --run-id <id>` |
 | Create agent/integration worktree + branch | `scripts/worktree.py create --run-id ... --domain ... --base-sha ...` |
 | Launch a worker/QA/integration session | `scripts/session.py start --run-id ... --domain ... --worktree ... --prompt-file ...` |
