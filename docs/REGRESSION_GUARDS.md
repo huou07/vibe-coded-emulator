@@ -1,5 +1,36 @@
 # AN3 Arcade regression guards
 
+## Parallel orchestration v1.1 — provenance, recovery, warning hygiene — 2026-09-19
+
+- RG-134: **Every orchestrated candidate has an auditable provenance chain, and the
+  orchestrator's deterministic checks separate accepted history from new warnings.**
+  `.opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_state.py
+  record-provenance` records `workerCommit`, `reviewedCommit`,
+  `integrationInputCommit`, `integratedCommit`, `integrationMethod`, `workerPatchId`,
+  `integratedPatchId`, `contentEquivalent`, `adapterCommit` and `changedFiles`; an
+  exact cherry-pick/merge is content-equivalent through `git patch-id`, and a
+  deliberate integration change is a separate adapter commit (never hidden in a
+  cherry-pick). `check-provenance` re-verifies. `validate_candidate.py` reports
+  `PASS`/`WARN_KNOWN`/`WARN_NEW`/`FAIL` with `newWarningCount`/`knownWarningCount`;
+  accepted warnings need an explicit justified `knownAcceptedWarnings` entry in
+  `config.json`. `inspect_run.py recover` distinguishes `PROCESS_RUNNING` /
+  `SESSION_RESUMABLE` / `SESSION_UNKNOWN` / `SESSION_DEAD`, reports `RECOVERABLE` and
+  never performs destructive recovery. `resource_lock.py` handles malformed and
+  crashed locks explicitly. Automated guard:
+  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
+  (36 tests: worktree isolation, leases, concurrent acquire, malformed/stale locks,
+  logical-conflict scans, provenance, target movement, atomic run-state, recovery,
+  session lifecycle, overlap scheduling, backlog pressure, model policy). Validation:
+  36/36 OK on 2026-09-19; disposable real-session stress (`stress_test.py`) passed
+  with 3 worker sessions, read-only subagents, a dependency edge, a shared lease, a
+  deliberate conflict and an explicit adapter; a real 2-component test-only dogfood
+  integrated cleanly with `contentEquivalent: true`. Runtime status: recovery was
+  exercised with fabricated dead launchers and planted fixtures; no production or
+  staging deploy occurred. Regression debt: `duplicate-rg` and
+  `stale-release-filenames` now report `PASS` (the RG-057/060/062/063/064 collisions
+  are historical layered-authority entries recorded as known-accepted;
+  `tools/release-train.sh` derives versions from metadata).
+
 ## Parallel orchestration determinism — 2026-09-19
 
 - RG-133: **The AN3 parallel-orchestrator's bookkeeping and logical-conflict

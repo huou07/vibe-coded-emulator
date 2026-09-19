@@ -23,6 +23,31 @@ incoming commit
 → record result, continue
 ```
 
+## Integration adapters
+
+Sometimes two valid worker features need a small glue change. Never modify a worker's
+historical commit or pretend the integrator applied it unchanged. Record:
+
+```text
+worker A commits + worker B commits
+→ explicit integration adapter commit (registration glue, shared enum addition,
+  route connection, version/catalog reconciliation, conflict-resolution glue)
+```
+
+The adapter must NOT become a place for major feature implementation. Record it with
+`record-provenance --method adapted --adapter-commit <sha>`; the provenance then shows
+`contentEquivalent: false` and the exact changed files.
+
+## Candidate provenance (mandatory)
+
+Every candidate records an auditable chain: `workerCommit`, `reviewedCommit`,
+`integrationInputCommit`, `integratedCommit`, `integrationMethod`, `workerPatchId`,
+`integratedPatchId`, `contentEquivalent`, `adapterCommit`, `changedFiles`. An exact
+cherry-pick/merge is `contentEquivalent: true`; a deliberate integration change is a
+separate adapter commit with `contentEquivalent: false`. Never treat different SHAs as
+equivalent without a `git patch-id`/tree comparison. `check-provenance` re-verifies
+the recorded equivalence and flags an undeclared adaptation.
+
 ## Logical conflict checks (Git markers are not enough)
 
 Run `scripts/validate_candidate.py scan`, which deterministically checks the

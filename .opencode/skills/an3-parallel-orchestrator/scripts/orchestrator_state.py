@@ -347,6 +347,7 @@ def cmd_metrics(args: argparse.Namespace) -> None:
         "workersSpawned": len([s for s in sessions.values()]),
         "subagentsSpawned": None,  # not observable from state; recorded by orchestrator when known
         "workerCommits": len({r.get("workerCommit") for r in candidates_flat if r.get("workerCommit")}),
+        "candidates": len(candidates),
         "candidateRecords": len(candidates_flat),
         "integrationAdaptations": len([r for r in candidates_flat
                                        if r.get("provenance", {}).get("integrationMethod") == "adapted"]),
