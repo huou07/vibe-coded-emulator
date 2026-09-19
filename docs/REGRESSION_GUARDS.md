@@ -1,5 +1,23 @@
 # AN3 Arcade regression guards
 
+## Parallel orchestration determinism — 2026-09-19
+
+- RG-133: **The AN3 parallel-orchestrator's bookkeeping and logical-conflict
+  checks are deterministic and fail closed.** `.opencode/skills/an3-parallel-orchestrator/scripts`
+  owns run state (atomic JSON under the shared Git common dir), safe worktree
+  creation/removal, atomic resource leases (a held lease is never stolen; stale
+  recovery requires an expired lease plus a dead PID), and base-relative
+  conflict checks: duplicate regression-guard IDs, duplicate/missing Tauri
+  commands, catalog hash/size drift, version inconsistency, hard-coded release
+  filenames, test-only automation strings in distribution artifacts, model
+  policy, and manifest schema. Model is pinned to
+  `opencode-go/deepseek-v4.1-flash` with no fallback. Automated guard:
+  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
+  (14 tests) exercises worktree isolation, lease deny/release/stale, and planted
+  fixtures for every conflict check. Validation: 14/14 OK on 2026-09-19. Runtime
+  status: the git worktree/lease/state paths were exercised in disposable temp
+  repositories; staging was **not** deployed to test the framework.
+
 ## Phone Controller utilities across hosts — 2026-09-18
 
 - RG-132: **The canonical Phone Controller utility actions must behave the same

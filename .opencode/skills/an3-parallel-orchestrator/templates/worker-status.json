@@ -1,0 +1,16 @@
+{
+  "runId": "YYYYMMDD-HHMM",
+  "domain": "example-domain",
+  "status": "WORKING",
+  "branch": "agent/YYYYMMDD-HHMM/example-domain",
+  "head": "0000000000000000000000000000000000000000",
+  "commits": [],
+  "dependsOn": [],
+  "sharedInterfacesChanged": [],
+  "sharedFilesChanged": [],
+  "testsPassed": [],
+  "testsFailed": [],
+  "unverified": [],
+  "knownIssues": [],
+  "integrationNotes": []
+}
