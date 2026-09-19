@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -67,9 +68,13 @@ class TmpRepo:
         self._git("config", "user.name", "selftest")
         self.write("README.md", "fixture\n")
         self.commit("init")
+        self._git("branch", "-M", "main")
 
     def _git(self, *args):
         return subprocess.run(["git", "-C", self.path, *args], capture_output=True, text=True)
+
+    def head(self):
+        return self._git("rev-parse", "HEAD").stdout.strip()
 
     def write(self, rel, content):
         path = os.path.join(self.path, rel)
@@ -394,6 +399,389 @@ class SessionGuardTests(unittest.TestCase):
             self.assertFalse(out["ok"])
         finally:
             tmp.cleanup()
+
+    def test_rejects_subagent_as_top_level_session(self):
+        # Installed OpenCode 1.18.31 does not enforce a subagent-mode agent's
+        # permissions under `opencode run --agent`; read-only subagents must run
+        # via the Task tool, so session.py must refuse them as top-level sessions.
+        tmp = TmpRepo()
+        try:
+            rc, out, _ = run("session.py", "start", "--run-id", "20260101-0700", "--domain", "x",
+                             "--worktree", tmp.path, "--prompt-file", os.path.join(tmp.path, "p.md"),
+                             "--agent", "an3-code-explorer", repo=tmp.path, expect=64)
+            self.assertFalse(out["ok"])
+            self.assertIn("an3-worker", out["allowed"])
+        finally:
+            tmp.cleanup()
+
+
+class ProvenanceTests(unittest.TestCase):
+    def _init(self, tmp, base, run_id="20260201-0000"):
+        run(STATE, "init", "--run-id", run_id, "--base-sha", base, "--target-branch", "main",
+            repo=tmp.path, expect=0)
+        return run_id
+
+    def test_exact_cherry_pick_is_content_equivalent(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            tmp.write("feature.txt", "worker\n")
+            worker = tmp.commit("worker feature")
+            tmp._git("checkout", "-q", "-b", "integration", base)
+            tmp._git("cherry-pick", "-x", worker)
+            integrated = tmp.head()
+            self.assertNotEqual(worker, integrated)  # cherry-pick rewrote the SHA
+            self._init(tmp, base)
+            rc, out, _ = run(STATE, "record-provenance", "--run-id", "20260201-0000",
+                             "--domain", "feat", "--worker-commit", worker,
+                             "--integrated-commit", integrated, "--method", "cherry-pick",
+                             repo=tmp.path, expect=0)
+            prov = out["provenance"]
+            self.assertTrue(prov["contentEquivalent"])
+            self.assertEqual(prov["workerPatchId"], prov["integratedPatchId"])
+            self.assertEqual(prov["changedFiles"], [])
+        finally:
+            tmp.cleanup()
+
+    def test_adaptation_is_recorded_separately(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            tmp.write("feature.txt", "worker\n")
+            worker = tmp.commit("worker feature")
+            tmp.write("feature.txt", "worker + integration glue\n")
+            adapter = tmp.commit("integration adapter: register feature")
+            self._init(tmp, base)
+            rc, out, _ = run(STATE, "record-provenance", "--run-id", "20260201-0000",
+                             "--domain", "feat", "--worker-commit", worker,
+                             "--integrated-commit", adapter, "--method", "adapted",
+                             "--adapter-commit", adapter, repo=tmp.path, expect=0)
+            prov = out["provenance"]
+            self.assertFalse(prov["contentEquivalent"])
+            self.assertEqual(prov["adapterCommit"], adapter)
+            self.assertIn("feature.txt", prov["changedFiles"])
+        finally:
+            tmp.cleanup()
+
+    def test_undeclared_adaptation_warns_and_fails(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            tmp.write("feature.txt", "worker\n")
+            worker = tmp.commit("worker feature")
+            tmp.write("feature.txt", "changed without an adapter\n")
+            changed = tmp.commit("integration changed content")
+            self._init(tmp, base)
+            rc, out, _ = run(STATE, "record-provenance", "--run-id", "20260201-0000",
+                             "--domain", "feat", "--worker-commit", worker,
+                             "--integrated-commit", changed, "--method", "cherry-pick",
+                             repo=tmp.path, expect=1)
+            self.assertIn("warning", out)
+            self.assertFalse(out["provenance"]["contentEquivalent"])
+        finally:
+            tmp.cleanup()
+
+    def test_duplicate_integration_is_detected(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            tmp.write("feature.txt", "worker\n")
+            worker = tmp.commit("worker feature")
+            self._init(tmp, base)
+            rc, out, _ = run(STATE, "record-provenance", "--run-id", "20260201-0000",
+                             "--domain", "feat", "--worker-commit", worker,
+                             "--integrated-commit", worker, "--method", "already-integrated",
+                             repo=tmp.path, expect=0)
+            self.assertTrue(out["provenance"]["alreadyIntegrated"])
+            rc, out, _ = run(STATE, "check-provenance", "--run-id", "20260201-0000",
+                             repo=tmp.path, expect=0)
+            self.assertTrue(out["ok"])
+        finally:
+            tmp.cleanup()
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_interrupted_run_recover_and_target_movement(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            run(STATE, "init", "--run-id", "20260201-0100", "--base-sha", base,
+                "--target-branch", "main", repo=tmp.path, expect=0)
+            # simulate a worker whose launcher died but whose session is resumable
+            rdir = lib.run_dir(tmp.path, "20260201-0100")
+            sessions = {
+                "sync": {"domain": "sync", "sessionId": "ses_dead_launcher", "pid": 999999,
+                         "worktree": os.path.join(tmp.path, "wt-sync"),
+                         "branch": "agent/20260201-0100/sync"},
+            }
+            lib.atomic_write_json(os.path.join(rdir, "sessions.json"), sessions)
+            log_dir = os.path.join(rdir, "sessions")
+            os.makedirs(log_dir, exist_ok=True)
+            with open(os.path.join(log_dir, "sync.ndjson"), "w", encoding="utf-8") as handle:
+                handle.write(json.dumps({"type": "step_start", "sessionID": "ses_dead_launcher"}) + "\n")
+                handle.write(json.dumps({"type": "step_finish", "sessionID": "ses_dead_launcher"}) + "\n")
+            # target branch moves after the run started
+            tmp.write("moved.txt", "target moved\n")
+            tmp.commit("target movement")
+            rc, out, _ = run("inspect_run.py", "recover",
+                             "--run-id", "20260201-0100", repo=tmp.path, expect=0)
+            self.assertEqual(out["state"], "RECOVERABLE")
+            joined = " ".join(out["nextActions"])
+            self.assertIn("resume worker sync", joined)
+            self.assertTrue(out["view"]["targetMoved"])
+            rc, out, _ = run(STATE, "check-target", "--run-id", "20260201-0100",
+                             repo=tmp.path, expect=1)
+            self.assertTrue(out["targetMoved"])
+            self.assertFalse(out["promotionSafe"])
+        finally:
+            tmp.cleanup()
+
+    def test_partial_state_is_still_readable(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            run(STATE, "init", "--run-id", "20260201-0200", "--base-sha", base, repo=tmp.path, expect=0)
+            rdir = lib.run_dir(tmp.path, "20260201-0200")
+            # simulate an interruption mid-write: tasks.json missing
+            os.unlink(os.path.join(rdir, "tasks.json"))
+            rc, out, _ = run("inspect_run.py", "--run-id", "20260201-0200", repo=tmp.path, expect=0)
+            self.assertEqual(out["tasks"], [])
+            rc, out, _ = run("inspect_run.py", "recover",
+                             "--run-id", "20260201-0200", repo=tmp.path, expect=0)
+            self.assertIn(out["state"], ("RECOVERABLE", "STALLED"))
+        finally:
+            tmp.cleanup()
+
+    def test_dirty_worktree_cleanup_is_refused(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            run(STATE, "init", "--run-id", "20260201-0300", "--base-sha", base, repo=tmp.path, expect=0)
+            wt = os.path.join(tmp.path, "wt-work")
+            run(WORKTREE, "create", "--run-id", "20260201-0300", "--domain", "work",
+                "--base-sha", base, "--path", wt, repo=tmp.path, expect=0)
+            with open(os.path.join(wt, "dirty.txt"), "w") as handle:
+                handle.write("uncommitted\n")
+            rc, out, _ = run(WORKTREE, "remove", "--run-id", "20260201-0300", "--domain", "work",
+                             repo=tmp.path, expect=3)
+            self.assertFalse(out["ok"])
+            self.assertTrue(os.path.isdir(wt))
+        finally:
+            tmp.cleanup()
+
+    def test_integration_conflict_leaves_run_recoverable(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            tmp.write("shared.txt", "base\n")
+            base = tmp.commit("shared base")
+            tmp._git("checkout", "-q", "-b", "feature-a", base)
+            tmp.write("shared.txt", "A\n")
+            tmp.commit("A changes shared")
+            tmp._git("checkout", "-q", "-b", "feature-b", base)
+            tmp.write("shared.txt", "B\n")
+            tmp.commit("B changes shared")
+            tmp._git("checkout", "-q", "main")
+            tmp._git("merge", "--no-edit", "feature-a")
+            merge = tmp._git("merge", "feature-b")
+            self.assertNotEqual(merge.returncode, 0)  # real conflict
+            status = tmp._git("status", "--porcelain").stdout
+            self.assertIn("UU shared.txt", status)
+            # recovery is explicit: abort restores a clean, readable state
+            tmp._git("merge", "--abort")
+            self.assertEqual(tmp._git("status", "--porcelain").stdout.strip(), "")
+        finally:
+            tmp.cleanup()
+
+
+class SessionLifecycleTests(unittest.TestCase):
+    def _session(self, **kw):
+        base = {"sessionId": "ses_x", "pid": 999999}
+        base.update(kw)
+        return base
+
+    def test_states_are_distinguished(self):
+        tmp = tempfile.mkdtemp(prefix="an3-orch-log-")
+        try:
+            resumable = os.path.join(tmp, "resumable.ndjson")
+            with open(resumable, "w") as handle:
+                handle.write(json.dumps({"type": "step_finish"}) + "\n")
+            unknown = os.path.join(tmp, "unknown.ndjson")
+            with open(unknown, "w") as handle:
+                handle.write(json.dumps({"type": "step_start"}) + "\n")
+            self.assertEqual(lib.session_state(self._session(pid=os.getpid()), None), "PROCESS_RUNNING")
+            self.assertEqual(lib.session_state(self._session(), resumable), "SESSION_RESUMABLE")
+            self.assertEqual(lib.session_state(self._session(), unknown), "SESSION_UNKNOWN")
+            self.assertEqual(lib.session_state(self._session(sessionId="UNKNOWN"), None), "SESSION_DEAD")
+            self.assertEqual(lib.session_state(self._session(sessionId=None), None), "SESSION_DEAD")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_send_refuses_without_a_durable_session_id(self):
+        rc, out, _ = run("session.py", "send", "--session-id", "UNKNOWN",
+                         "--prompt-file", os.devnull, expect=4)
+        self.assertFalse(out["deliveryConfirmed"])
+        self.assertFalse(out["sent"])
+        rc, out, _ = run("session.py", "send", "--session-id", "",
+                         "--prompt-file", os.devnull, expect=4)
+
+
+class ResourceContentionTests(unittest.TestCase):
+    def test_concurrent_acquire_has_exactly_one_winner(self):
+        tmp = TmpRepo()
+        try:
+            procs = []
+            for n in range(6):
+                cmd = [sys.executable, script("resource_lock.py"), "--repo", tmp.path,
+                       "acquire", "shared:device", "owner-%d" % n, "race"]
+                procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                              stderr=subprocess.PIPE, text=True))
+            codes = [p.wait() for p in procs]
+            self.assertEqual(sorted(codes).count(0), 1, "exactly one acquisition must win")
+            self.assertEqual(sorted(codes).count(2), 5, "the rest must be denied")
+        finally:
+            tmp.cleanup()
+
+    def test_malformed_and_interrupted_locks_need_explicit_break(self):
+        tmp = TmpRepo()
+        try:
+            state_root = lib.locks_dir(tmp.path)
+            broken = os.path.join(state_root, "broken.lock")
+            os.makedirs(broken)
+            with open(os.path.join(broken, "lease.json"), "w") as handle:
+                handle.write("{not json")
+            rc, out, _ = run(LOCK, "status", "broken", repo=tmp.path, expect=0)
+            self.assertEqual(out["leases"][0]["state"], "MALFORMED")
+            rc, out, _ = run(LOCK, "acquire", "broken", "o", "p", repo=tmp.path, expect=2)
+            self.assertEqual(out["state"], "MALFORMED")
+            rc, out, _ = run(LOCK, "acquire", "broken", "o", "p", "--break-malformed",
+                             repo=tmp.path, expect=0)
+            self.assertTrue(out["acquired"])
+            # interrupted write: lock dir exists but lease.json never landed
+            empty = os.path.join(state_root, "crashed.lock")
+            os.makedirs(empty)
+            rc, out, _ = run(LOCK, "status", "crashed", repo=tmp.path, expect=0)
+            self.assertEqual(out["leases"][0]["state"], "UNKNOWN")
+            rc, out, _ = run(LOCK, "acquire", "crashed", "o", "p", repo=tmp.path, expect=2)
+            rc, out, _ = run(LOCK, "acquire", "crashed", "o", "p", "--break-malformed",
+                             repo=tmp.path, expect=0)
+            self.assertTrue(out["acquired"])
+        finally:
+            tmp.cleanup()
+
+    def test_stale_recovery_requires_expiry_and_dead_pid(self):
+        tmp = TmpRepo()
+        try:
+            state_root = lib.locks_dir(tmp.path)
+            stale = os.path.join(state_root, "stale.lock")
+            os.makedirs(stale)
+            lib.atomic_write_json(os.path.join(stale, "lease.json"), {
+                "resource": "stale", "ownerSession": "dead", "pid": 999999,
+                "leaseUntil": 1, "purpose": "fixture"})
+            rc, out, _ = run(LOCK, "status", "stale", repo=tmp.path, expect=0)
+            self.assertEqual(out["leases"][0]["state"], "STALE")
+            # an unexpired lease with a dead pid is NOT stale and cannot be broken
+            live = os.path.join(state_root, "unexpired.lock")
+            os.makedirs(live)
+            lib.atomic_write_json(os.path.join(live, "lease.json"), {
+                "resource": "unexpired", "ownerSession": "dead", "pid": 999999,
+                "leaseUntil": int(time.time()) + 3600, "purpose": "fixture"})
+            rc, out, _ = run(LOCK, "acquire", "unexpired", "o", "p", "--break-stale",
+                             repo=tmp.path, expect=2)
+            self.assertFalse(out["acquired"])
+            self.assertEqual(out["state"], "HELD_UNVERIFIED")
+        finally:
+            tmp.cleanup()
+
+
+class AtomicRunStateTests(unittest.TestCase):
+    def test_concurrent_session_writes_do_not_lose_updates(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            run(STATE, "init", "--run-id", "20260201-0400", "--base-sha", base, repo=tmp.path, expect=0)
+            procs = []
+            for n in range(8):
+                cmd = [sys.executable, script("orchestrator_state.py"), "--repo", tmp.path,
+                       "add-session", "--run-id", "20260201-0400", "--domain", "d%d" % n,
+                       "--session-id", "ses_%d" % n, "--worktree", "/tmp/wt%d" % n,
+                       "--branch", "agent/x/d%d" % n]
+                procs.append(subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                              stderr=subprocess.PIPE, text=True))
+            for p in procs:
+                self.assertEqual(p.wait(), 0)
+            rdir = lib.run_dir(tmp.path, "20260201-0400")
+            sessions = lib.read_json(os.path.join(rdir, "sessions.json"))
+            self.assertEqual(len(sessions), 8, "every concurrent session write must survive")
+            manifest = lib.read_json(os.path.join(rdir, "manifest.json"))
+            self.assertEqual(len(manifest.get("sessions", {})), 8)
+        finally:
+            tmp.cleanup()
+
+
+class OverlapSchedulingTests(unittest.TestCase):
+    def test_central_contract_overlap_serializes(self):
+        tasks = json.dumps([
+            {"id": "A", "class": "S", "modules": ["native-offline/src-tauri/src/lib.rs"]},
+            {"id": "B", "class": "S", "modules": ["native-offline/src-tauri/src/lib.rs"]},
+            {"id": "C", "class": "S", "modules": ["docs/only.md"]},
+        ])
+        rc, out, _ = run("scheduler.py", "overlap", "--tasks", tasks, expect=0)
+        pairs = {(p["a"], p["b"]): p["recommendation"] for p in out["pairs"]}
+        self.assertEqual(pairs[("A", "B")], "SERIALIZE")
+        self.assertEqual(pairs[("A", "C")], "PARALLEL_OK")
+
+    def test_ready_frontier_respects_dependencies(self):
+        tasks = json.dumps([
+            {"id": "A", "class": "A", "modules": [], "dependsOn": []},
+            {"id": "B", "class": "S", "modules": ["b/"], "dependsOn": ["A"]},
+            {"id": "C", "class": "S", "modules": ["c/"], "dependsOn": ["B"]},
+        ])
+        rc, out, _ = run("scheduler.py", "overlap", "--tasks", tasks, "--done", "", expect=0)
+        self.assertEqual(out["ready"], ["A"])
+        rc, out, _ = run("scheduler.py", "overlap", "--tasks", tasks, "--done", "A", expect=0)
+        self.assertEqual(out["ready"], ["B"])
+
+
+class BacklogPressureTests(unittest.TestCase):
+    def test_high_backlog_throttles_new_writers(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp.head()
+            run(STATE, "init", "--run-id", "20260201-0500", "--base-sha", base, repo=tmp.path, expect=0)
+            for n in range(4):
+                run(STATE, "set-candidate", "--run-id", "20260201-0500", "--domain", "ready%d" % n,
+                    "--stage", "READY_FOR_REVIEW", repo=tmp.path, expect=0)
+            for n in range(4):
+                run(STATE, "set-candidate", "--run-id", "20260201-0500", "--domain", "qa%d" % n,
+                    "--stage", "IN_QA", repo=tmp.path, expect=0)
+            for n in range(4):
+                run(STATE, "set-candidate", "--run-id", "20260201-0500", "--domain", "rev%d" % n,
+                    "--stage", "REVIEWED", repo=tmp.path, expect=0)
+            rc, out, _ = run(STATE, "pressure", "--run-id", "20260201-0500", repo=tmp.path, expect=0)
+            self.assertEqual(out["pressure"], "HIGH")
+            self.assertFalse(out["allowNewWriters"])
+            self.assertEqual(out["maxNewWriters"], 0)
+        finally:
+            tmp.cleanup()
+
+
+class RepoDebtTests(unittest.TestCase):
+    def test_worker_dispatch_with_another_model_fails_before_work(self):
+        tmp = TmpRepo()
+        try:
+            rc, out, _ = run("session.py", "start", "--run-id", "20260201-0600", "--domain", "x",
+                             "--worktree", tmp.path, "--prompt-file", os.path.join(tmp.path, "p.md"),
+                             "--model", "opencode-go/glm-5.3", repo=tmp.path, expect=64)
+            self.assertFalse(out["ok"])
+        finally:
+            tmp.cleanup()
+
+    def test_known_regression_debt_checks_pass(self):
+        rc, out, _ = run(VALIDATE, "duplicate-rg", repo=REPO_ROOT, expect=0)
+        self.assertEqual(out["status"], "PASS")
+        rc, out, _ = run(VALIDATE, "stale-release-filenames", repo=REPO_ROOT, expect=0)
+        self.assertEqual(out["status"], "PASS")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,36 @@
 # AN3 Arcade regression guards
 
+## Parallel orchestration v1.1 — provenance, recovery, warning hygiene — 2026-09-19
+
+- RG-134: **Every orchestrated candidate has an auditable provenance chain, and the
+  orchestrator's deterministic checks separate accepted history from new warnings.**
+  `.opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_state.py
+  record-provenance` records `workerCommit`, `reviewedCommit`,
+  `integrationInputCommit`, `integratedCommit`, `integrationMethod`, `workerPatchId`,
+  `integratedPatchId`, `contentEquivalent`, `adapterCommit` and `changedFiles`; an
+  exact cherry-pick/merge is content-equivalent through `git patch-id`, and a
+  deliberate integration change is a separate adapter commit (never hidden in a
+  cherry-pick). `check-provenance` re-verifies. `validate_candidate.py` reports
+  `PASS`/`WARN_KNOWN`/`WARN_NEW`/`FAIL` with `newWarningCount`/`knownWarningCount`;
+  accepted warnings need an explicit justified `knownAcceptedWarnings` entry in
+  `config.json`. `inspect_run.py recover` distinguishes `PROCESS_RUNNING` /
+  `SESSION_RESUMABLE` / `SESSION_UNKNOWN` / `SESSION_DEAD`, reports `RECOVERABLE` and
+  never performs destructive recovery. `resource_lock.py` handles malformed and
+  crashed locks explicitly. Automated guard:
+  `python3 .opencode/skills/an3-parallel-orchestrator/scripts/orchestrator_selftest.py`
+  (36 tests: worktree isolation, leases, concurrent acquire, malformed/stale locks,
+  logical-conflict scans, provenance, target movement, atomic run-state, recovery,
+  session lifecycle, overlap scheduling, backlog pressure, model policy). Validation:
+  36/36 OK on 2026-09-19; disposable real-session stress (`stress_test.py`) passed
+  with 3 worker sessions, read-only subagents, a dependency edge, a shared lease, a
+  deliberate conflict and an explicit adapter; a real 2-component test-only dogfood
+  integrated cleanly with `contentEquivalent: true`. Runtime status: recovery was
+  exercised with fabricated dead launchers and planted fixtures; no production or
+  staging deploy occurred. Regression debt: `duplicate-rg` and
+  `stale-release-filenames` now report `PASS` (the RG-057/060/062/063/064 collisions
+  are historical layered-authority entries recorded as known-accepted;
+  `tools/release-train.sh` derives versions from metadata).
+
 ## Parallel orchestration determinism — 2026-09-19
 
 - RG-133: **The AN3 parallel-orchestrator's bookkeeping and logical-conflict
@@ -17,125 +48,6 @@
   fixtures for every conflict check. Validation: 17/17 OK on 2026-09-19. Runtime
   status: the git worktree/lease/state paths were exercised in disposable temp
   repositories; staging was **not** deployed to test the framework.
-
-## Phone Controller utilities across hosts — 2026-09-18
-
-- RG-132: **The canonical Phone Controller utility actions must behave the same
-  on every host that consumes the authenticated controller channel.** The
-  contract is `native-offline/shared/input-actions-schema.json`
-  (`QUICK_SAVE`/`SPEED_UP`/`SPEED_DOWN`/`OPEN_MENU`), dispatched through the
-  shared `static/controller-utility.js` (host supplies its existing operations;
-  the per-press sequence makes retries idempotent). Android natively maps them
-  to the overlay (`ControllerClient.dispatchUtilities` → `An3ControllerHost.Sink
-  .utility` → `NativeGameOverlay.utility`). The browser/web-player host
-  (`static/player.js`) maps them to the existing slot save (last-used slot
-  remembered, default 1), the existing speed steps, and the existing player
-  options panel, then acknowledges `utilitySequence`. The desktop shared host
-  (`controller_host.rs`, macOS/Windows/Linux) parses and deduplicates the same
-  list, invokes a `UtilitySink`, and acknowledges the newest utility sequence;
-  its default sink reports unwired platform actions on stderr rather than
-  pretending success. Guards: `tests/controller_utility.test.js` (behavioral
-  dispatch/dedup), `tests/test_phone_controller_hosts.py`,
-  `tests/test_netcode.py`, `tests/test_multiplayer_api.py`,
-  `tests/test_input_actions.py`. Status: browser host PASS; Android unchanged
-  PASS; desktop host plumbing PASS with per-platform native save/speed/menu
-  mapping **UNVERIFIED** (Windows/Linux not built here, macOS Cocoa host not
-  exercised); real phone over Wi-Fi remains PHYSICAL DEVICE RE-TEST REQUIRED.
-
-## In-game menu navigation — 2026-09-18
-
-- RG-131: **Save and Exit, Exit and Return to Library are three distinct
-  actions, and the settings tab strip indicates hidden tabs.** The in-game
-  footer replaces the single "Save Settings" button with `Save and Exit` /
-  `Exit` / `Return to Library`. `Save and Exit` persists the draft through the
-  canonical `NativeSettings.save` (per-core `renderer-<system>` /
-  `screen-layout-<system>` plus the global audio/display/key-map keys and the
-  live core options) and only dismisses on success; a rejected save keeps the
-  menu open with the values intact. `Exit` dismisses without persisting and the
-  dismiss listener reverts the immediately-previewed layout/virtual controls,
-  so drafts never leak. `Return to Library` discards the draft, dismisses and
-  calls `activity.finish()`, reusing the existing `NativeGameActivity` teardown
-  (`surfaceDestroyed` → `nativeStop(!isFinishing)`, `onDestroy` →
-  `nativeStop(false)` and controller detach); the process is retained, the
-  emulator thread stops, and the autosave-on-exit policy still writes only the
-  dedicated autosave slot. The tab strip gains `◀`/`▶` indicators driven by
-  `canScrollHorizontally`, clickable to reveal the next hidden tab, with the
-  active tab scrolled into view; a layout-change listener keeps them correct on
-  resize/orientation. Guards: `tests/test_menu_navigation.py`,
-  `tests/test_android_native_runtime.py`, `tests/test_native_settings.py`.
-  AVD VERIFIED on a real NDS title: Save and Exit persisted `renderer-nds=opengl`
-  and closed the menu; Exit discarded an Auto draft (reopen showed Vulkan);
-  Return to Library returned to MainActivity with the game stopped and a second
-  GBA session launched cleanly; the right arrow showed at the start, left at the
-  end, both mid-strip, and swipe still scrolls. Phone-controller OPEN_MENU still
-  opens the same menu. Physical-phone verification remains required.
-
-## Canonical input / circular D-pad / phone utilities — 2026-09-18
-
-- RG-130: **One canonical input-action model; a circular D-pad that emits
-  simultaneous cardinals; one-shot Phone Controller utilities.** The contract is
-  `native-offline/shared/input-actions-schema.json`, generated into
-  `NativeInputActions.kt` and `static/input-actions.js`. Gameplay buttons keep
-  the existing libretro ids (UP=4 … R=11); utility actions (QUICK_SAVE, SPEED_UP,
-  SPEED_DOWN, OPEN_MENU) are one-shot and never held bits. The circular geometry
-  is generated once into both languages: eight 45° sectors, a dead zone, and
-  `22.5° + hysteresis` region stickiness; a diagonal is two cardinal presses.
-  The in-game Controller tab offers D-pad / Analog Joystick / Circular D-pad
-  per system (`directional-control-<system>`), the circular view releases on
-  up/cancel, and the Phone Controller adds the same movement option plus the
-  four utility buttons (no Pad toggle). Utility commands travel the existing
-  authenticated `/api/controller/state` channel with a per-press `us` sequence;
-  the server queues each once, the host deduplicates and acknowledges with
-  `utilitySequence`, and disconnect clears pending commands. Guards:
-  `tests/input_actions.test.mjs` (geometry/actions),
-  `tests/test_input_actions.py` (schema/adapter/protocol),
-  `tests/test_multiplayer_api.py::ControllerUtilityApiTests` (authenticated
-  end-to-end), `tests.test_android_native_runtime`,
-  `tests.test_netcode`. AVD VERIFIED: the three movement options render, the
-  circular option persists, a diagonal highlights two regions at once, and
-  release clears the highlight while the NDS game keeps running; live
-  emulator movement parity for every core and Phone Controller hardware
-  verification remain UNVERIFIED.
-
-## Canonical per-core settings — 2026-09-18
-
-- RG-129: **Global and per-core settings must stay separate, and a bad renderer
-  choice for one system must always be correctable outside the game.**
-  Historically Android stored one global `renderer` preference, read by
-  `NativeGameActivity`, and the only renderer UI lived in the in-game menu; a
-  Vulkan choice that crashed the game process could trap the user with no way
-  back. The canonical model is `native-offline/shared/native-settings-schema.json`,
-  generated into `NativeSettingsSchema.kt` (Android) and
-  `native-offline/web/native-settings.js` (offline shell). Global settings keep
-  their keys; per-system graphics use `<id>-<system>`; verified per-system
-  emulation options use `core-<system>-<coreKey>`; a legacy global renderer is
-  read only as a fallback on `gba/nds/3ds` (never Switch) until the user stores
-  an explicit per-system value. External `Settings → Game Settings` edits the
-  same persisted values through `AN3AndroidSettings`
-  (`NativeSettings.all/save/resetGraphics`): writes are synchronous commits and
-  shell reads re-parse the committed preferences XML, so the library process is
-  never gated on the game's renderer initializing and does not depend on the
-  deprecated `MODE_MULTI_PROCESS`. `Reset Graphics to Defaults` touches only the
-  selected system. The verified Emulation registry
-  (`shared/core-option-registry.json`, generated by
-  `tools/core_option_probe.cpp` from the vendored revisions: gba 17, nds 73,
-  3ds 32) drives the external Emulation pages; runtime-pinned options
-  (`citra_use_hw_shader`, `citra_use_disk_shader_cache`, `citra_graphics_api`,
-  `citra_layout_option`, `melonds_render_mode`, `melonds_threaded_renderer`,
-  `melonds_touch_mode`, `melonds_show_cursor`, `melonds_number_of_screen_layouts`,
-  `melonds_screen_layout1`) are present but non-editable and rejected by the
-  adapter. Guards: `tests/native_settings.test.mjs` (behavioral registry,
-  isolation, migration, validation, reset), `tests/test_native_settings.py`
-  (registry provenance + adapter wiring + 3DS pins intact),
-  `tests.test_android_native_runtime`, `tests.test_offline_consolidation`.
-  AVD status: AVD VERIFIED for MainActivity/Settings/Game Settings navigation,
-  Emulation/Graphics pages and persistence; in-game parity and Adreno rendering
-  remain PHYSICAL DEVICE RE-TEST REQUIRED.
-  Follow-up: the first file-based reader skipped the `<map>` root with
-  `?: continue`, which skipped `parser.next()` and hung the shell's JS thread
-  (devtools stopped responding). Fixed and guarded by
-  `tests/test_native_settings.py::test_adapter_xml_reader_always_advances`;
-  Android bumped to 2.5.1 because the 2.5.0 bytes carried the bug.
 
 ## Android 3DS Vulkan framebuffer color — 2026-09-18
 

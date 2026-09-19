@@ -5,13 +5,18 @@ Wraps `opencode run` so the orchestrator gets a recorded session id, a log file
 under the run state, and a machine-readable result instead of hand-rolled shell.
 
 Usage:
-  session.py start --run-id ID --domain D --worktree PATH --prompt-file FILE [--agent an3-worker] [--repo P]
-  session.py send  --session-id ID --prompt-file FILE [--repo P] [--timeout S]
+  session.py start  --run-id ID --domain D --worktree PATH --prompt-file FILE [--agent an3-worker] [--repo P]
+  session.py send   --session-id ID --prompt-file FILE [--repo P] [--timeout S]
   session.py status --run-id ID [--repo P]
 
 `start` launches the session detached and returns as soon as the session id is
 known, so several workers can run concurrently. The model is always the canonical
 DeepSeek V4.1 Flash; there is no fallback.
+
+Lifecycle is tracked as PROCESS_RUNNING | SESSION_RESUMABLE | SESSION_UNKNOWN |
+SESSION_DEAD. A launcher exiting does not mean the session is dead: the durable
+session id can be resumed with `--session`. `send` never claims a message was
+delivered unless a session event was actually observed.
 """
 from __future__ import annotations
 
@@ -42,11 +47,43 @@ def _read_prompt(path):
         return handle.read()
 
 
+def _log_paths(repo, run_id, domain):
+    sessions_dir = os.path.join(lib.run_dir(repo, run_id), "sessions")
+    return (os.path.join(sessions_dir, "%s.ndjson" % domain),
+            os.path.join(sessions_dir, "%s.err" % domain))
+
+
+def _first_session_id(log_path):
+    for event in lib.read_ndjson_events(log_path, limit=5):
+        if event.get("sessionID"):
+            return event["sessionID"]
+    return None
+
+
+def _top_level_agents():
+    return CFG.get("sessions", {}).get("topLevelAgents") or [CFG["sessions"]["defaultAgent"]]
+
+
+def _assert_top_level_agent(agent):
+    """Only primary agents may be launched as top-level sessions.
+
+    Installed OpenCode 1.18.31 enforces a primary agent's permissions under
+    `opencode run --agent`, but NOT a subagent-mode agent's. Read-only subagents
+    (code-explorer/reviewer/test-analyzer) must be invoked through the Task tool
+    inside a primary session, where their denies are enforced.
+    """
+    if agent not in _top_level_agents():
+        lib.fail("agent %r cannot be launched as a top-level session; use the Task tool "
+                 "inside a primary session for read-only subagents" % agent, code=64,
+                 allowed=_top_level_agents())
+
+
 def cmd_start(args):
     repo = lib.find_repo_root(args.repo)
     lib.validate_run_id(args.run_id)
     lib.validate_domain(args.domain)
     agent = args.agent or CFG["sessions"]["defaultAgent"]
+    _assert_top_level_agent(agent)
     model = args.model or lib.CANONICAL_MODEL
     if model != lib.CANONICAL_MODEL:
         lib.fail("model must be %s" % lib.CANONICAL_MODEL, code=64)
@@ -54,8 +91,7 @@ def cmd_start(args):
         lib.fail("worktree does not exist: %s" % args.worktree, code=4)
     sessions_dir = os.path.join(lib.run_dir(repo, args.run_id), "sessions")
     os.makedirs(sessions_dir, exist_ok=True)
-    log_path = os.path.join(sessions_dir, "%s.ndjson" % args.domain)
-    err_path = os.path.join(sessions_dir, "%s.err" % args.domain)
+    log_path, err_path = _log_paths(repo, args.run_id, args.domain)
     prompt = _read_prompt(args.prompt_file)
     cmd = _base_cmd(agent, model) + ["--dir", args.worktree,
                                      "--title", "%s-%s" % (args.run_id, args.domain), prompt]
@@ -66,22 +102,13 @@ def cmd_start(args):
     session_id = None
     deadline = time.time() + args.wait
     while time.time() < deadline:
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8") as handle:
-                for line in handle:
-                    try:
-                        event = json.loads(line)
-                    except ValueError:
-                        continue
-                    if event.get("sessionID"):
-                        session_id = event["sessionID"]
-                        break
+        session_id = _first_session_id(log_path)
         if session_id:
             break
         if proc.poll() is not None:
+            session_id = _first_session_id(log_path)
             break
         time.sleep(0.5)
-    # record in run state
     state_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orchestrator_state.py")
     record = [sys.executable, state_script, "--repo", repo, "add-session",
               "--run-id", args.run_id, "--domain", args.domain,
@@ -91,48 +118,67 @@ def cmd_start(args):
     subprocess.run(record, capture_output=True, text=True)
     if not session_id and proc.poll() is not None:
         lib.emit({"ok": False, "started": False, "rc": proc.returncode,
+                  "sessionState": "SESSION_DEAD",
                   "log": log_path, "errorLog": err_path,
                   "error": "session exited before producing an id"}, exit_code=1)
+    state = "PROCESS_RUNNING" if proc.poll() is None else (
+        "SESSION_RESUMABLE" if session_id else "SESSION_UNKNOWN")
     lib.emit({"ok": True, "started": True, "domain": args.domain, "sessionId": session_id,
-              "pid": proc.pid, "log": log_path, "errorLog": err_path,
+              "pid": proc.pid, "launcherPid": proc.pid, "sessionState": state,
+              "log": log_path, "errorLog": err_path,
               "agent": agent, "model": model,
               "sessionIdPending": session_id is None})
 
 
 def cmd_send(args):
+    if not args.session_id or args.session_id == "UNKNOWN":
+        lib.emit({"ok": False, "sent": False, "deliveryConfirmed": False,
+                  "sessionState": "SESSION_UNKNOWN" if args.session_id else "SESSION_DEAD",
+                  "error": "no durable session id recorded; cannot resume. Inspect the run log and "
+                           "restart a worker in the same worktree with a checkpoint."},
+                 exit_code=4)
     model = lib.CANONICAL_MODEL
     prompt = _read_prompt(args.prompt_file)
-    cmd = _base_cmd(args.agent or CFG["sessions"]["defaultAgent"], model)
+    agent = args.agent or CFG["sessions"]["defaultAgent"]
+    _assert_top_level_agent(agent)
+    cmd = _base_cmd(agent, model)
     cmd += ["--session", args.session_id, prompt]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout)
     except subprocess.TimeoutExpired:
-        lib.emit({"ok": False, "sent": False, "error": "timeout"}, exit_code=1)
-    lib.emit({"ok": proc.returncode == 0, "sent": True, "rc": proc.returncode,
-              "stdoutTail": proc.stdout[-2000:], "stderrTail": proc.stderr[-1000:]})
+        lib.emit({"ok": False, "sent": False, "deliveryConfirmed": False,
+                  "error": "timeout"}, exit_code=1)
+    confirmed = proc.returncode == 0 and ('"sessionID"' in proc.stdout or "sessionID" in proc.stdout)
+    lib.emit({"ok": proc.returncode == 0, "sent": True, "deliveryConfirmed": confirmed,
+              "sessionId": args.session_id, "rc": proc.returncode,
+              "stdoutTail": proc.stdout[-2000:], "stderrTail": proc.stderr[-1000:]},
+             exit_code=0 if proc.returncode == 0 else 1)
 
 
 def cmd_status(args):
     repo = lib.find_repo_root(args.repo)
     rdir = lib.run_dir(repo, args.run_id)
-    sessions_path = os.path.join(rdir, "sessions.json")
-    sessions = lib.read_json(sessions_path) if os.path.exists(sessions_path) else {}
+    sessions = _read_sessions(rdir)
     out = []
     for domain, session in sessions.items():
-        log_path = os.path.join(rdir, "sessions", "%s.ndjson" % domain)
-        last_type, tail = None, ""
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
-                for line in handle:
-                    try:
-                        event = json.loads(line)
-                        last_type = event.get("type", last_type)
-                    except ValueError:
-                        continue
-            tail = last_type or ""
-        out.append({"domain": domain, "pidAlive": lib.is_pid_alive(session.get("pid")),
-                    "sessionId": session.get("sessionId"), "lastEvent": tail})
+        log_path, _ = _log_paths(repo, args.run_id, domain)
+        state = lib.session_state(session, log_path)
+        out.append({"domain": domain,
+                    "sessionState": state,
+                    "pidAlive": lib.is_pid_alive(session.get("pid")),
+                    "sessionId": session.get("sessionId"),
+                    "lastEvent": lib.last_event_type(log_path)})
     lib.emit({"ok": True, "runId": args.run_id, "sessions": out})
+
+
+def _read_sessions(rdir):
+    path = os.path.join(rdir, "sessions.json")
+    if os.path.exists(path):
+        try:
+            return lib.read_json(path)
+        except ValueError:
+            return {}
+    return {}
 
 
 def build_parser():

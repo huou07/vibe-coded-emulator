@@ -47,8 +47,22 @@ directory. Read the names from `config.json`; do not hard-code them in prompts.
 - Release train: `tools/release-train.sh`.
 - Staging SSH env: `tools/ssh/staging-env.sh` + `tools/ssh/check-staging-key.sh`.
 
-## Run-state access
+## Subagent permissions (installed OpenCode 1.18.31)
 
+Primary-agent permissions ARE enforced under `opencode run --agent` (verified: the
+`an3-worker` `opencode run*` deny blocks the command). A **subagent-mode** agent's
+permissions are NOT enforced when it is launched as a top-level `opencode run
+--agent` session (verified: `an3-code-explorer` ran a denied `echo` and the
+`an3-blind-reviewer` wrote files). They ARE enforced when the subagent is invoked
+through the **Task tool** inside a primary session (verified: the code-explorer
+subagent's `echo` was denied and it had no write tool).
+
+Therefore: launch only `an3-orchestrator` / `an3-worker` / `an3-integrator` as
+top-level sessions (`session.py` refuses others), and run
+`an3-code-explorer` / `an3-blind-reviewer` / `an3-test-analyzer` /
+`an3-integration-reviewer` with the Task tool.
+
+## Run-state access
 Orchestration run state lives in the shared Git common dir, which is **outside**
 the project worktree (`$(git rev-parse --git-common-dir)/opencode-orchestrator/`).
 Non-interactive sessions auto-reject unapproved external paths, so the `an3-*`

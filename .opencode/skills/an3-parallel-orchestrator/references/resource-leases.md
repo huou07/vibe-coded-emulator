@@ -28,6 +28,17 @@ Add new resources to `config.json` (`resources`) so names stay in one place.
   directory aside first. An apparently active lease is never stolen automatically.
 - `status` is read-only and safe to run at any time.
 
+## Concurrency and failure handling
+
+- Acquisition is atomic across real processes: simultaneous `acquire` calls for one
+  resource produce exactly one winner and explicit denials (exit 2) for the rest.
+- A crashed or malformed lock (a lock directory with no `lease.json`, or unparseable
+  JSON) is reported `UNKNOWN`/`MALFORMED`; it is never auto-inherited and needs the
+  explicit `--break-malformed`.
+- A lease past `leaseUntil` only becomes `STALE` when its PID is also dead; an
+  unexpired lease with a dead PID stays `HELD_UNVERIFIED` and cannot be broken.
+- `renew` extends a lease the caller owns. A foreign release is refused.
+
 ## Why it matters
 
 This prevents: two agents installing different APKs on one AVD; simultaneous

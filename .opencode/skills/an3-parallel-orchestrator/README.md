@@ -106,21 +106,72 @@ without `--allow-unmerged`.
 
 ## Resuming after an interruption
 
-State is durable and machine-readable. Inspect the run, keep the worktree, then
-either resume the same session (`session.py send --session-id ...`) or restart a
-worker in the same worktree with a concise checkpoint. Completed commits are never
-discarded automatically.
+State is durable and machine-readable. Recovery is inspect-first:
 
-## Deterministic checks
+```bash
+python3 $SK/inspect_run.py recover --run-id <id>
+```
+
+It reports the baseline, session lifecycle
+(`PROCESS_RUNNING`/`SESSION_RESUMABLE`/`SESSION_UNKNOWN`/`SESSION_DEAD`), worktrees
+and dirty state, candidate/QA/integration state, leases, staging state, target-branch
+movement and the safe next actions. A launcher that exited is not a dead session: the
+durable session can be resumed with `session.py send --session-id ...`, or a worker
+can be restarted in the **same** worktree with a checkpoint. Destructive recovery is
+never automatic.
+
+## Candidate provenance
+
+Every candidate records how worker bytes became integration bytes:
+
+```bash
+python3 $SK/orchestrator_state.py record-provenance --run-id <id> --domain <d> \
+  --worker-commit <sha> --integrated-commit <sha> --method cherry-pick|merge|adapted \
+  [--adapter-commit <sha>]
+python3 $SK/orchestrator_state.py check-provenance --run-id <id>
+```
+
+A cherry-pick rewrites the SHA but keeps the patch identity, so
+`contentEquivalent: true` and the changed-file list is empty. If integration must
+change content, record it as a separate adapter commit with `--method adapted`; that
+is stored as `contentEquivalent: false` with the explicit changed files. The two
+different SHAs are never assumed equivalent without a patch-id/tree check.
+
+## Warning hygiene
+
+Deterministic checks report `PASS`, `WARN_KNOWN`, `WARN_NEW` or `FAIL`. `WARN_NEW` is
+always distinguishable from accepted history, and each accepted warning needs an
+explicit, justified entry in `config.json` (`knownAcceptedWarnings`). The scan summary
+shows `newWarningCount` and `knownWarningCount`; only `FAIL` (or `WARN_NEW` with
+`--strict-warnings`) blocks. Prefer removing a warning over adding it to the allowlist.
+
+## Scheduling pressure and overlap
+
+```bash
+python3 $SK/scheduler.py overlap --tasks-file tasks.json   # PARALLEL_OK/CONTRACT_FIRST/SERIALIZE
+python3 $SK/orchestrator_state.py pressure --run-id <id>   # LOW/MEDIUM/HIGH + allowNewWriters
+```
+
+`overlap` flags two writers that declare the same file or a central contract
+(`config.json` `centralContracts`). `pressure` throttles new write sessions when the
+READY_FOR_REVIEW / QA / integration backlog is high; read-only investigation stays
+allowed.
+
+## Deterministic checks and stress harness
 
 ```bash
 python3 $SK/validate_candidate.py scan --run-id <id>       # all logical-conflict checks
-python3 $SK/orchestrator_selftest.py                       # 14 self-tests
+python3 $SK/orchestrator_selftest.py                       # 36 self-tests
+python3 $SK/stress_test.py                                 # disposable real-session stress run
 ```
 
 Checks cover duplicate regression-guard IDs, duplicate/unsupported Tauri commands,
 catalog hash/size drift, version inconsistency, hard-coded release filenames,
-test-only automation strings in shipped artifacts, model policy and manifest schema.
+test-only automation strings in shipped artifacts, model policy, candidate provenance
+and manifest schema. `stress_test.py` builds a throwaway repo under the OS temp area
+and exercises 3 real worker sessions, read-only subagents, a dependency edge, a lease,
+a deliberate integration conflict and provenance; it never touches product code or
+staging.
 
 ## Examples
 
@@ -150,9 +201,17 @@ Integrate verified changes and deploy staging when appropriate.
   is not "message delivered" until its id appears in the JSON event stream.
 - Subagent step budgets (`steps`) are enforced by OpenCode; primary worker
   sessions stay long-lived.
-- The `skill` tool's available list is cached when a session starts; a session
-  that was already open when the skill was created will not see it until it is
-  restarted. New `opencode run` sessions see it immediately.
+- The `skill` tool's available list is captured when a session starts, so a skill
+  created after a session opened is not listed until that session restarts
+  (`opencode debug skill` in a fresh process sees it immediately). Edited content of
+  an already-listed skill is read from disk (verified: a fresh process returned the
+  current v1.1 body, frontmatter stripped from `content`).
+- Installed OpenCode 1.18.31 enforces a **primary** agent's permissions under
+  `opencode run --agent` but not a **subagent-mode** agent's. Read-only subagents
+  (`an3-code-explorer`, `an3-blind-reviewer`, `an3-test-analyzer`,
+  `an3-integration-reviewer`) are therefore invoked only through the Task tool
+  inside a primary session, where their denies ARE enforced; `session.py` refuses
+  to launch them as top-level sessions.
 - Orchestration run state lives in the shared Git common dir, outside the
   worktree; the `an3-*` agents grant `external_directory` for the narrow pattern
   `*/.git/opencode-orchestrator/*` so non-interactive sessions can read it.

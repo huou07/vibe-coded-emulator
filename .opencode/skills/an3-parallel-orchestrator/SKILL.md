@@ -4,7 +4,7 @@ description: Use when a large AN3/Vibe Coded Emulator request spans several inde
 license: MIT
 compatibility: opencode
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   manifest-schema: "1"
 ---
 
@@ -49,7 +49,8 @@ When unsure, write a short plan first; do not spawn sessions speculatively.
 6. **Review + QA** — fresh-context `an3-blind-reviewer` on the diff, then
    `an3-test-analyzer`/QA from a clean candidate worktree when risk warrants.
 7. **Integrate** — only the `an3-integrator` session merges, serially, into
-   `integration/<run-id>`; run `validate_candidate.py scan` before each integration.
+   `integration/<run-id>`; run `validate_candidate.py scan` before each integration
+   and record candidate provenance (`orchestrator_state.py record-provenance`).
 8. **Stage** — only the integrator deploys staging, after gates; verify bytes and health.
 9. **Report** — per-dimension status; never collapse the run to a single "complete".
 
@@ -71,11 +72,13 @@ When unsure, write a short plan first; do not spawn sessions speculatively.
 
 Build the DAG before spawning writers. Parallelize only ready nodes; do not call a
 dependent node early. When two writers need one shared contract, pause both, fix the
-contract first, resume both against it. Optimize `throughput - coordination - risk`,
-not raw parallelism. Limits: **1 orchestrator, ≤5 top-level sessions, ≤3 subagents per
-session, 1 platform tester per isolated resource.** Reduce concurrency when the
-integration backlog grows, shared APIs are unstable, tests fail systemically, or
-resources saturate. Only the orchestrator creates top-level sessions; workers and
+contract first, resume both against it. Check declared-file overlap with
+`scheduler.py overlap` (central contracts in `config.json`) before dispatch. Optimize
+`throughput - coordination - risk`, not raw parallelism. Limits: **1 orchestrator,
+≤5 top-level sessions, ≤3 subagents per session, 1 platform tester per isolated
+resource.** Watch `orchestrator_state.py pressure`: when the integration backlog is
+high, stop spawning lower-priority write sessions, allow read-only investigation, and
+drain QA/integration. Only the orchestrator creates top-level sessions; workers and
 subagents never do.
 
 ## State, worktrees, resources (deterministic — do not hand-roll)
@@ -89,18 +92,30 @@ State lives under the shared Git common dir, readable from every worktree:
 | Create a run + manifest | `scripts/orchestrator_state.py init --goal ... --base-sha <sha>` |
 | Record task / session / candidate / status | `orchestrator_state.py add-task\|add-session\|set-candidate\|set-status` |
 | Record integration / staging head | `orchestrator_state.py set-head --field integrationHead\|stagingHead` |
+| Record candidate provenance (worker→integration) | `orchestrator_state.py record-provenance --domain ... --worker-commit ... --integrated-commit ... --method cherry-pick\|merge\|adapted` |
+| Verify all provenance records | `orchestrator_state.py check-provenance --run-id <id>` |
+| Integration backlog pressure / run metrics | `orchestrator_state.py pressure\|metrics --run-id <id>` |
+| Target-branch movement check | `orchestrator_state.py check-target --run-id <id>` |
 | Verify model on all recorded sessions | `orchestrator_state.py check-model --run-id <id>` |
+| Shared-file overlap + DAG frontier | `scripts/scheduler.py overlap --tasks-file ...` |
 | Create agent/integration worktree + branch | `scripts/worktree.py create --run-id ... --domain ... --base-sha ...` |
 | Launch a worker/QA/integration session | `scripts/session.py start --run-id ... --domain ... --worktree ... --prompt-file ...` |
 | Send a follow-up to the same session | `scripts/session.py send --session-id ... --prompt-file ...` |
+| Session lifecycle (`PROCESS_RUNNING`/`SESSION_RESUMABLE`/…) | `scripts/session.py status --run-id <id>` |
 | List / validate / remove worktrees | `worktree.py list\|validate\|remove --run-id ...` |
 | Acquire / release / inspect a resource | `scripts/resource_lock.py acquire\|release\|status` |
-| Inspect or resume a run | `scripts/inspect_run.py --run-id <id>` |
+| Inspect / recover a run (read-only) | `scripts/inspect_run.py --run-id <id>` / `inspect_run.py recover --run-id <id>` |
 | Deterministic conflict checks | `scripts/validate_candidate.py scan --run-id <id>` |
 | Safe cleanup | `scripts/cleanup_run.py --run-id <id> --apply` |
-| Deterministic self-test | `scripts/orchestrator_selftest.py` |
+| Deterministic self-test / stress harness | `scripts/orchestrator_selftest.py`, `scripts/stress_test.py` |
 
 All scripts emit JSON, fail closed, never discard work, and never steal an active lease.
+Deterministic checks use `PASS`/`WARN_KNOWN`/`WARN_NEW`/`FAIL`; a newly introduced
+warning is never hidden among accepted history, and known warnings need an explicit
+justified allowlist entry in `config.json`. Candidate provenance always explains how
+worker bytes became integration bytes: an exact cherry-pick is `contentEquivalent: true`,
+and a deliberate integration change is recorded as a separate adapter commit with
+`contentEquivalent: false` and the changed files.
 
 ## Worker / QA / integration contracts
 
@@ -126,18 +141,23 @@ All scripts emit JSON, fail closed, never discard work, and never steal an activ
 8. Do not modify `main`/`apps-web` without explicit project policy; reconcile target
    branch movement before any promotion.
 9. If the model is unavailable, stop and report `MODEL_UNAVAILABLE`; never substitute.
+10. Every candidate has an auditable provenance chain; never treat two different SHAs
+    as equivalent without a patch-id/tree check, and record an integration adaptation
+    as its own adapter commit rather than hiding it in a cherry-pick.
+11. Recovery is inspect-first: `inspect_run.py recover` recommends actions and never
+    performs destructive recovery automatically; a dead launcher is not a dead session.
 
 ## Failure routing, recovery, interruption
 
 - Defect found by QA/review → route to the **owning worker session** with reproduction
   and logs; it fixes on its own branch; then QA → integration again. Integration may
-  fix only tiny adapters.
-- Worker crash → keep the worktree, inspect commits and `git status`, resume the same
-  session when possible, otherwise restart in the **same** worktree with a checkpoint.
+  fix only tiny glue through an explicit adapter commit, never a feature rewrite.
+- Worker crash → keep the worktree, run `inspect_run.py recover`, resume the same
+  session (`SESSION_RESUMABLE`) or restart in the **same** worktree with a checkpoint.
 - User changes priorities mid-run → keep validated commits, update the DAG, cancel
   obsolete unstarted work, redirect workers; record the scope change in the manifest.
-- Target branch moved during the run → reconcile candidate + new target and rerun
-  affected tests; never blindly fast-forward an old candidate.
+- Target branch moved during the run → `check-target` fails; reconcile candidate + new
+  target and rerun affected tests; never blindly fast-forward an old candidate.
 
 ## Final report
 
