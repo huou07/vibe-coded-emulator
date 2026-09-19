@@ -58,7 +58,9 @@ When unsure, write a short plan first; do not spawn sessions speculatively.
 - **S (session)** — independent implementation, persistent context, own commits and
   test loop. Gets branch + worktree + session.
 - **A (subagent)** — research, CodeGraph exploration, review, log/test analysis,
-  security review, comparison. Read-only agents, no worktree.
+  security review, comparison. Read-only agents, no worktree. Review/QA/testing/
+  analysis are **always A, never W**; W is only a small code/doc write inside an
+  existing session's own domain.
 - **W (owner write)** — small write clearly belonging to an existing session. Do not
   create a session.
 - **I (integration/serial)** — shared contracts, manifests, lockfiles, version/catalog
