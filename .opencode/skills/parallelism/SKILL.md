@@ -3,7 +3,7 @@ name: parallelism
 description: Use when a request contains genuinely independent implementation work that could run concurrently. The current session is the Master and implements work directly; it spawns optional helper sessions only for concrete, independent tasks, then integrates, tests, reviews and reports itself. Not for ordinary single-threaded coding, questions, or docs.
 ---
 
-# parallelism — Master session + optional helper workers (v1.1)
+# parallelism — Master session + optional helper workers (v1.2)
 
 The current OpenCode session **is the Master**. No separate orchestration agent,
 no autonomous supervisor, no background scheduling, no role pipeline. One Master
