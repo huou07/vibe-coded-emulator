@@ -24,10 +24,10 @@ before claiming any of them.
 
 ## Shared resources (lease names)
 
-`android-avd:codex-nds-api35`, `android-avd:an3qa-api35`,
-`windows-vm:an3-win11-build`, `linux-builder:an3-dell`, `staging:8092`,
-`port-range:8110-8119` / `8130-8139` / `8140-8149` / `8150-8159`,
-`artifact-dir:native-offline/releases`.
+The canonical resource list is `config.json` (`resources`, enforced by
+`resource_lock.py`). Lease categories: Android AVDs, the Windows build VM, the
+Linux builder, staging, fixed port ranges, and the shared artifact output
+directory. Read the names from `config.json`; do not hard-code them in prompts.
 
 ## Reuse existing skills (do not duplicate)
 

@@ -150,5 +150,11 @@ Integrate verified changes and deploy staging when appropriate.
   is not "message delivered" until its id appears in the JSON event stream.
 - Subagent step budgets (`steps`) are enforced by OpenCode; primary worker
   sessions stay long-lived.
+- The `skill` tool's available list is cached when a session starts; a session
+  that was already open when the skill was created will not see it until it is
+  restarted. New `opencode run` sessions see it immediately.
+- Orchestration run state lives in the shared Git common dir, outside the
+  worktree; the `an3-*` agents grant `external_directory` for the narrow pattern
+  `*/.git/opencode-orchestrator/*` so non-interactive sessions can read it.
 - Hardware-bound checks (physical phones, real two-device transfer) remain
   `UNVERIFIED` unless the hardware is actually exercised.
