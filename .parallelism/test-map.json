@@ -1,0 +1,27 @@
+{
+  "full": [
+    "python3 -m unittest discover -s tests",
+    "node --test tests/*.test.mjs"
+  ],
+  "shared": [
+    "app.py",
+    "netcode.py",
+    "sync_engine.py",
+    "static/player.js",
+    "static/nds-touch.js",
+    "static/player-runtime.js",
+    "static/site.css",
+    "static/renderer-worker.js"
+  ],
+  "rules": [
+    { "match": "app.py", "tests": ["python3 -m unittest tests.test_integration tests.test_auth_redirects tests.test_multiplayer_api tests.test_qr_svg"] },
+    { "match": "netcode.py", "tests": ["python3 -m unittest tests.test_netcode"] },
+    { "match": "sync_engine.py", "tests": ["python3 -m unittest tests.test_google_sync"] },
+    { "match": "static/player.js", "tests": ["node --test tests/input_actions.test.mjs tests/an3ctl.test.mjs"] },
+    { "match": "static/nds-touch.js", "tests": ["node --test tests/input_actions.test.mjs"] },
+    { "match": "static/", "tests": ["node --test tests/input_actions.test.mjs"] },
+    { "match": "native-offline/", "tests": ["python3 -m unittest tests.test_native_regression_guards"] },
+    { "match": "tests/", "tests": ["python3 -m unittest discover -s tests"] },
+    { "match": "tools/", "tests": ["python3 -m unittest tests.test_packaging_imports"] }
+  ]
+}

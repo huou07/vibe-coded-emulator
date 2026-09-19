@@ -11,8 +11,13 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fnmatch
+import hashlib
 import json
 import os
+import platform
+import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -364,7 +369,7 @@ def cmd_spawn(args):
     data.update({"id": helper_id, "status": "WORKING", "model": model, "branch": branch,
                  "worktree": worktree, "title": title, "pid": proc.pid, "owns": owns,
                  "excludes": [f for f in (args.excludes or "").split(",") if f.strip()],
-                 "log": log_path, "startedAt": now()})
+                 "group": args.group, "log": log_path, "startedAt": now()})
     data.pop("last_signature", None)
     data.pop("stall", None)
     write_json(path, data)
@@ -376,22 +381,53 @@ def cmd_spawn(args):
 # --- event-driven completion ------------------------------------------------
 
 
+def _resolve_names(repo, args):
+    if getattr(args, "name", None):
+        return [args.name]
+    if getattr(args, "names", None):
+        return [n for n in args.names.split(",") if n.strip()]
+    if getattr(args, "group", None):
+        return [h.get("name") for h in _helpers(repo) if h.get("group") == args.group]
+    return [h.get("name") for h in _helpers(repo)
+            if h.get("status") not in TERMINAL and is_pid_alive(h.get("pid"))]
+
+
+def _worker_done(repo, name):
+    path = _ckpt_path(repo, name)
+    data = read_json(path) if os.path.exists(path) else {}
+    return (data.get("status") in (TERMINAL | {"BLOCKED"})) or not is_pid_alive(data.get("pid"))
+
+
 def cmd_wait(args):
-    """Deterministic, event-driven wait on worker process exit (no LLM polling)."""
+    """Deterministic, event-driven wait on a worker or a known group (no LLM polling)."""
     repo = find_repo(args.repo)
-    if args.name:
-        names = [args.name]
-    else:
-        names = [h.get("name") for h in _helpers(repo)
-                 if h.get("status") not in TERMINAL and is_pid_alive(h.get("pid"))]
+    names = _resolve_names(repo, args)
+    if not names:
+        emit({"ok": True, "completed": [], "pending": []})
     deadline = time.time() + args.timeout if args.timeout else None
     while True:
-        pending = [n for n in names if is_pid_alive((read_json(_ckpt_path(repo, n)) or {}).get("pid"))]
+        pending = [n for n in names if not _worker_done(repo, n)]
         if not pending:
             emit({"ok": True, "completed": names, "pending": []})
         if deadline and time.time() > deadline:
-            emit({"ok": False, "error": "timeout", "pending": pending}, code=5)
+            done = [n for n in names if n not in pending]
+            emit({"ok": False, "error": "timeout", "pending": pending, "completed": done}, code=5)
         time.sleep(args.poll)
+
+
+def cmd_collect(args):
+    """Collect compact completion results for a name or group (structured, bounded)."""
+    repo = find_repo(args.repo)
+    names = _resolve_names(repo, args)
+    out = []
+    for name in names:
+        path = _ckpt_path(repo, name)
+        data = read_json(path) if os.path.exists(path) else {}
+        out.append({"id": data.get("id", name), "name": name, "status": data.get("status"),
+                    "commit": data.get("commit"), "tests": data.get("tests"),
+                    "blocker": data.get("blocker"), "pidAlive": is_pid_alive(data.get("pid")),
+                    "result": data.get("result")})
+    emit({"ok": True, "count": len(out), "workers": out})
 
 
 def cmd_result(args):
@@ -455,8 +491,19 @@ def cmd_lock(args):
     emit({"ok": True, "name": args.name, "acquired": True, "holder": payload})
 
 
+def _merge_tree_conflicts(repo, ref_a, ref_b):
+    """Use `git merge-tree --write-tree` when supported; never touches a worktree."""
+    proc = run_git(repo, ["merge-tree", "--write-tree", ref_a, ref_b], check=False)
+    if proc.returncode == 0:
+        return False, []
+    if "usage:" in proc.stderr.lower() or "unknown option" in proc.stderr.lower():
+        return None, ["merge-tree --write-tree unsupported"]
+    conflicts = [ln.strip() for ln in proc.stdout.splitlines() if "CONFLICT" in ln.upper()]
+    return True, conflicts or ["conflict detected"]
+
+
 def cmd_premerge(args):
-    """Safety preflight for Master integration. Never merges anything itself."""
+    """Deterministic pre-merge validation. Never merges, pushes, or deploys."""
     repo = find_repo(args.repo)
     lock = _lock_path(repo, args.lock)
     if not os.path.exists(lock):
@@ -470,13 +517,162 @@ def cmd_premerge(args):
     commit = run_git(repo, ["rev-parse", "--verify", "%s^{commit}" % args.candidate], check=False)
     if commit.returncode != 0:
         fail("candidate is not a commit: %s" % args.candidate, code=4)
+    if args.expect_head:
+        expected = run_git(repo, ["rev-parse", args.expect_head], check=False)
+        if expected.returncode != 0:
+            fail("cannot resolve expected head %s" % args.expect_head, code=4)
+        current = run_git(repo, ["rev-parse", args.integration_branch or "HEAD"], check=False)
+        if current.returncode != 0 or current.stdout.strip() != expected.stdout.strip():
+            fail("stale integration HEAD: expected %s, found %s"
+                 % (expected.stdout.strip()[:12], (current.stdout or "?").strip()[:12]), code=7)
+    if args.worktree:
+        status = run_git(repo, ["-C", args.worktree, "status", "--porcelain"], check=False)
+        if status.stdout.strip():
+            fail("integration worktree is not clean", code=7, worktree=args.worktree)
+    conflicts = None
     if args.base:
         anc = run_git(repo, ["merge-base", "--is-ancestor", args.base, args.candidate], check=False)
         if anc.returncode != 0:
             fail("candidate %s is not a descendant of base %s" % (args.candidate, args.base), code=7)
-    emit({"ok": True, "candidate": commit.stdout.strip(), "lock": holder,
-          "tests": args.tests, "ownership": "single-writer", "merge": "master-must-run"}
-         | ({"base": args.base} if args.base else {}))
+    if args.target:
+        conflicts, detail = _merge_tree_conflicts(repo, args.target, args.candidate)
+        if conflicts:
+            fail("merge conflict detected against %s" % args.target, code=7, conflicts=detail)
+    payload = {"ok": True, "candidate": commit.stdout.strip(), "lock": holder,
+               "tests": args.tests, "ownership": "single-writer", "merge": "master-must-run",
+               "conflicts": "none" if conflicts is False else "not-checked", "scope": args.scope}
+    if args.base:
+        payload["base"] = args.base
+    if args.target:
+        payload["target"] = args.target
+    emit(payload)
+
+
+def _bounded(text, limit=2000):
+    text = text or ""
+    return text if len(text) <= limit else text[:limit] + "\n...[truncated]"
+
+
+def _parse_test_output(text):
+    counts = {"total": None, "passed": None, "failed": None, "skipped": None}
+    failed = []
+    m = re.search(r"Ran (\d+) tests?", text)
+    if m:
+        counts["total"] = int(m.group(1))
+    m = re.search(r"^OK(?: \(skipped=(\d+)\))?", text, re.MULTILINE)
+    if m:
+        counts["skipped"] = int(m.group(1) or 0)
+        counts["failed"] = 0
+        if counts["total"] is not None:
+            counts["passed"] = counts["total"] - counts["skipped"]
+    m = re.search(r"FAILED \(([^)]*)\)", text)
+    if m:
+        body = m.group(1)
+        f = re.search(r"failures=(\d+)", body)
+        e = re.search(r"errors=(\d+)", body)
+        s = re.search(r"skipped=(\d+)", body)
+        counts["failed"] = (int(f.group(1)) if f else 0) + (int(e.group(1)) if e else 0)
+        counts["skipped"] = int(s.group(1)) if s else 0
+        if counts["total"] is not None:
+            counts["passed"] = counts["total"] - counts["failed"] - counts["skipped"]
+    for key, pat in (("total", r"# tests (\d+)"), ("passed", r"# pass (\d+)"),
+                     ("failed", r"# fail (\d+)"), ("skipped", r"# skipped (\d+)")):
+        mm = re.search(pat, text)
+        if mm:
+            counts[key] = int(mm.group(1))
+    for line in text.splitlines():
+        if line.startswith("FAIL: ") or line.startswith("ERROR: "):
+            failed.append(line.split(":", 1)[1].strip())
+        mm = re.match(r"not ok \d+ - (.+)", line)
+        if mm:
+            failed.append(mm.group(1).strip())
+    return counts, sorted(set(failed))
+
+
+def _load_map(repo, path):
+    for candidate in (path, os.path.join(repo, ".parallelism", "test-map.json")):
+        if candidate and os.path.exists(candidate):
+            try:
+                return read_json(candidate)
+            except ValueError:
+                return None
+    return None
+
+
+def cmd_select_tests(args):
+    """Deterministic, risk-aware test selection. Unknown/shared changes -> broad suite."""
+    repo = find_repo(args.repo)
+    data = _load_map(repo, args.map)
+    if not data:
+        fail("no test map found (--map or <repo>/.parallelism/test-map.json)", code=4)
+    base = args.base or "HEAD~1"
+    head = args.head or "HEAD"
+    diff = run_git(repo, ["diff", "--name-only", base, head], check=False)
+    if diff.returncode != 0:
+        fail("cannot diff %s..%s" % (base, head), code=4)
+    changed = [f for f in diff.stdout.splitlines() if f.strip()]
+    shared = data.get("shared", [])
+    rules = data.get("rules", [])
+    selected, matched, unclassified = set(), {}, []
+    full = False
+    for f in changed:
+        if any(f == s or f.startswith(s.rstrip("/") + "/") for s in shared):
+            full = True
+            matched.setdefault("shared", []).append(f)
+            continue
+        hit = next((r for r in rules if f == r.get("match")
+                    or f.startswith(r.get("match", "").rstrip("/") + "/")
+                    or fnmatch.fnmatch(f, r.get("match", ""))), None)
+        if hit is None or not hit.get("tests"):
+            unclassified.append(f)
+            full = True
+            continue
+        selected.update(hit["tests"])
+        matched.setdefault(hit["match"], []).append(f)
+    commands = sorted(set(data.get("full", []))) if full else sorted(selected)
+    emit({"ok": True, "base": base, "head": head, "changed": changed, "full": full,
+          "unclassified": unclassified, "commands": commands, "matched": matched})
+
+
+def cmd_run_tests(args):
+    """Run a test command, write the full log to disk, return a bounded structured result."""
+    repo = find_repo(args.repo)
+    state = state_dir(repo)
+    pyv = subprocess.run([sys.executable, "--version"], capture_output=True, text=True).stdout.strip()
+    nodev = subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip() \
+        if shutil.which("node") else ""
+    head = run_git(repo, ["rev-parse", "HEAD"], check=False).stdout.strip()
+    env_id = args.platform or platform.platform()
+    key = hashlib.sha256("\n".join([args.cmd, head, pyv, nodev, env_id]).encode()).hexdigest()[:16]
+    ev_path = os.path.join(state, "evidence", "%s.json" % key)
+    if args.reuse and os.path.exists(ev_path):
+        cached = read_json(ev_path)
+        cached["reused"] = True
+        emit(cached)
+    log_path = os.path.join(state, "logs", "test-%s.log" % key)
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    timed_out, start = False, time.time()
+    try:
+        proc = subprocess.run(args.cmd, shell=True, cwd=repo, capture_output=True, text=True,
+                              timeout=args.timeout)
+        output, exit_code = proc.stdout + "\n" + proc.stderr, proc.returncode
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + "\n" + (exc.stderr or "")
+        exit_code, timed_out = 124, True
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(output)
+    counts, failed = _parse_test_output(output)
+    if timed_out:
+        counts["timedOut"] = True
+    ok = exit_code == 0 and not timed_out
+    payload = {"ok": ok, "command": args.cmd, "exitCode": exit_code, "counts": counts,
+               "failed": failed, "log": log_path, "platform": env_id,
+               "runtime": {"python": pyv, "node": nodev}, "head": head, "key": key,
+               "excerpt": _bounded(output[-2000:]) if not ok else "", "reused": False,
+               "seconds": round(time.time() - start, 2)}
+    if ok:
+        write_json(ev_path, dict(payload, storedAt=now()))
+    emit(payload)
 
 
 def build_parser():
@@ -510,12 +706,16 @@ def build_parser():
     p.add_argument("--model", required=True); p.add_argument("--assignment")
     p.add_argument("--objective"); p.add_argument("--owns"); p.add_argument("--excludes")
     p.add_argument("--accept"); p.add_argument("--tests"); p.add_argument("--worktree")
-    p.add_argument("--branch"); p.add_argument("--base-sha")
+    p.add_argument("--branch"); p.add_argument("--base-sha"); p.add_argument("--group")
     p.add_argument("--resume", action="store_true"); p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_spawn)
 
-    p = sub.add_parser("wait"); p.add_argument("--name"); p.add_argument("--timeout", type=float)
+    p = sub.add_parser("wait"); p.add_argument("--name"); p.add_argument("--names")
+    p.add_argument("--group"); p.add_argument("--timeout", type=float)
     p.add_argument("--poll", type=float, default=0.2); p.set_defaults(func=cmd_wait)
+
+    p = sub.add_parser("collect"); p.add_argument("--name"); p.add_argument("--names")
+    p.add_argument("--group"); p.set_defaults(func=cmd_collect)
 
     p = sub.add_parser("result"); p.add_argument("--name", required=True)
     p.add_argument("--file"); p.set_defaults(func=cmd_result)
@@ -526,7 +726,16 @@ def build_parser():
 
     p = sub.add_parser("premerge"); p.add_argument("--candidate", required=True)
     p.add_argument("--base"); p.add_argument("--tests"); p.add_argument("--lock", default="integration")
+    p.add_argument("--expect-head"); p.add_argument("--integration-branch")
+    p.add_argument("--target"); p.add_argument("--worktree"); p.add_argument("--scope")
     p.set_defaults(func=cmd_premerge)
+
+    p = sub.add_parser("select-tests"); p.add_argument("--map"); p.add_argument("--base")
+    p.add_argument("--head"); p.set_defaults(func=cmd_select_tests)
+
+    p = sub.add_parser("run-tests"); p.add_argument("--cmd", required=True)
+    p.add_argument("--platform"); p.add_argument("--timeout", type=float, default=1800)
+    p.add_argument("--reuse", action="store_true"); p.set_defaults(func=cmd_run_tests)
 
     return parser
 

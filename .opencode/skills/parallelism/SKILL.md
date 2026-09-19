@@ -47,11 +47,14 @@ their assignment is complete.
 
 ## Event-driven completion
 
-`scripts/parallelism.py wait --name <id> [--timeout S]` blocks on worker process
-exit using deterministic process checks — **no LLM polling**. Workers finish by
-writing a compact JSON result (`status`, `commit`, `files`, `tests`, `acceptance`,
-`blockers`); ingest it with `result --name <id> --file <json>`. The Master may
-implement its own independent task while helpers run.
+`scripts/parallelism.py wait --name <id> | --names a,b | --group <g> [--timeout S]`
+blocks on worker process exit using deterministic process checks — **no LLM
+polling**; a group waits for exactly its known members and never waits forever on
+a failed/interrupted/cancelled/blocked worker. Workers finish by writing a compact
+JSON result (`status`, `commit`, `files`, `tests`, `acceptance`, `blockers`);
+ingest it with `result --name <id> --file <json>`, and read a whole group with
+`collect --group <g>`. The Master may implement its own independent task while
+helpers run.
 
 Lifecycle: `ASSIGNED → WORKING → VALIDATING → COMPLETED`, plus `BLOCKED`,
 `FAILED`, `CANCELLED`. No worker→reviewer→worker loop.
@@ -78,12 +81,35 @@ The Master integrates directly after a dependency-ordered batch is ready:
    5. resolve conflicts; 6. run integration + broader regression tests; 7. review;
    8. record evidence; 9. release the lock; 10. report.
 
-`scripts/parallelism.py premerge --candidate <sha> [--base <sha>] --tests "<evidence>"`
-refuses unless the lock is held and tests evidence says `pass`; it **never merges**
-— the Master runs the merge only after it passes. Never auto-merge a worker branch
-on completion. Preserve mandatory independent review and security gates. Never
-modify `main`, deploy, or publish without authorization. One writer per branch;
-no concurrent integration writers.
+`scripts/parallelism.py premerge --candidate <sha> [--base <sha>] [--target <integration-sha>]
+[--expect-head <sha>] [--worktree <path>] --tests "<evidence>"` refuses unless the
+lock is held, tests evidence says `pass`, `--base` is an ancestor of the candidate,
+the worktree is clean, the integration HEAD matches `--expect-head` (stale-HEAD
+rejection), and `git merge-tree --write-tree` reports no conflict against
+`--target`. It **never merges** — the Master re-checks HEAD, lock ownership and
+candidate identity immediately before running the merge itself. A conflict-free
+merge is not proof of semantic correctness. Never auto-merge a worker branch on
+completion. Preserve mandatory independent review and security gates. Never
+modify `main`, deploy, or publish without authorization. One writer per branch.
+
+## Deterministic test selection, results and evidence
+
+Move test work out of LLM reasoning while keeping required gates:
+
+- `select-tests --base <a> --head <b>` reads an explicit map
+  (`<repo>/.parallelism/test-map.json` or `--map`) of known modules → tests plus a
+  `shared` list of central files. A `shared` change, or any change that matches no
+  rule, selects the **broad/full** suite (fail-safe); never silently skips
+  coverage. Full regression, security, release and platform gates are preserved.
+- `run-tests --cmd "<command>" [--reuse] [--timeout S]` runs the command, writes
+  the **full log to disk**, and returns a bounded structured result: command,
+  exit code, passed/failed/skipped/timed-out counts, failed test ids, an error
+  excerpt, log path, platform and runtime identity. A missing error excerpt is
+  never treated as success. `--reuse` returns a stored PASS only when the cache
+  key (command + HEAD + python/node + platform) matches; never reuse for
+  freshly-built final-artifact validation.
+- No LLM call is used to check liveness, test pass/fail, unchanged hashes, lock
+  validity, waits, or machine-readable results — all deterministic.
 
 ## Token-efficiency rules
 
@@ -99,10 +125,11 @@ no concurrent integration writers.
 ## Script
 
 `scripts/parallelism.py`: `decide`, `resolve-model`, `verify-model`, `spawn`,
-`wait`, `result`, `checkpoint`, `status`, `progress`, `lock`, `premerge`.
-Python stdlib only. It never merges, never deploys, and never starts a background
-service. `scripts/parallelism_selftest.py` runs the deterministic regression suite
-(uses `PARALLELISM_LAUNCHER` to mock workers; no real provider calls).
+`wait`, `collect`, `result`, `checkpoint`, `status`, `progress`, `lock`,
+`premerge`, `select-tests`, `run-tests`. Python stdlib only. It never merges,
+never deploys, and never starts a background service.
+`scripts/parallelism_selftest.py` runs the deterministic regression suite (uses
+`PARALLELISM_LAUNCHER` to mock workers; no real provider calls).
 
 ## Project specifics
 
