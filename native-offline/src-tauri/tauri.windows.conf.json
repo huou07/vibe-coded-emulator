@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "../vendor/runtime/windows-x64/": "runtime/windows-x64/"
+    }
+  }
+}

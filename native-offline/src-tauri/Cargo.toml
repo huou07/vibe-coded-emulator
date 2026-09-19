@@ -1,0 +1,34 @@
+[package]
+name = "an3-offline-native"
+version = "2.3.0"
+description = "VibeCodedEmulator local-ROM offline player"
+authors = ["Vibe Coded Emulator"]
+edition = "2021"
+
+[lib]
+name = "an3_offline_native"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+# Test-only structured UI control bridge (loopback, token-gated). Never enabled
+# in a distribution build; the automation E2E builds with it.
+ui-control = []
+
+[build-dependencies]
+cc = "1"
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+include_dir = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+# Direct LAN phone controller: standard primitives only (no custom crypto).
+aes-gcm = "0.10"
+base64 = "0.21"
+getrandom = "0.2"
+hkdf = "0.12"
+hmac = "0.12"
+p256 = { version = "0.13", features = ["ecdh"] }
+sha2 = "0.10"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Staging-only. The native phone-controller host talks to the isolated staging
+  controller service over the LAN, which is plain HTTP. Cleartext stays
+  disabled by default and is permitted only for the configured staging host and
+  loopback; every other host keeps the platform default.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.0.2.8</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
