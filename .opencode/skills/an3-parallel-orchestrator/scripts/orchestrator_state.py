@@ -221,6 +221,17 @@ def _scan_agent_models(repo: str):
     return found
 
 
+def cmd_set_head(args: argparse.Namespace) -> None:
+    _, rdir = _load_run(args)
+
+    def mutate(manifest):
+        manifest[args.field] = args.commit
+        return manifest
+
+    manifest = lib.update_json(os.path.join(rdir, "manifest.json"), mutate)
+    lib.emit({"ok": True, "field": args.field, "value": manifest.get(args.field)})
+
+
 def cmd_check_model(args: argparse.Namespace) -> None:
     repo, rdir = _load_run(args)
     sessions = lib.read_json(os.path.join(rdir, "sessions.json"))
@@ -327,6 +338,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check-model")
     p.add_argument("--run-id", required=True)
     p.set_defaults(func=cmd_check_model)
+
+    p = sub.add_parser("set-head")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--field", choices=["integrationHead", "stagingHead"], required=True)
+    p.add_argument("--commit", required=True)
+    p.set_defaults(func=cmd_set_head)
 
     p = sub.add_parser("validate")
     p.add_argument("--run-id", required=True)

@@ -180,6 +180,23 @@ class ResourceLockTests(unittest.TestCase):
             tmp.cleanup()
 
 
+    def test_integration_worktree_uses_integration_branch(self):
+        tmp = TmpRepo()
+        try:
+            base = tmp._git("rev-parse", "HEAD").stdout.strip()
+            run(STATE, "init", "--run-id", "20260101-0001", "--base-sha", base, repo=tmp.path, expect=0)
+            rc, out, _ = run(WORKTREE, "create-integration", "--run-id", "20260101-0001",
+                             "--base-sha", base, repo=tmp.path, expect=0)
+            self.assertEqual(out["branch"], "integration/20260101-0001")
+            # the recorded integration branch is the one removed, not an agent/ branch
+            rc, out, _ = run(WORKTREE, "remove", "--run-id", "20260101-0001", "--domain", "integration",
+                             repo=tmp.path, expect=0)
+            self.assertEqual(out["branch"], "integration/20260101-0001")
+            self.assertFalse(tmp._git("rev-parse", "--verify", "refs/heads/integration/20260101-0001").returncode == 0)
+        finally:
+            tmp.cleanup()
+
+
 class ConflictFixtureTests(unittest.TestCase):
     def test_duplicate_regression_guard_ids(self):
         tmp = TmpRepo()
