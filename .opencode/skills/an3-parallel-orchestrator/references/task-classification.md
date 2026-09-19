@@ -17,6 +17,11 @@ and Sync are only current examples and must not be baked into the rules.
    dependency manifest, lockfile, version/catalog metadata, release scripts,
    merge resolution, staging state, shared dispatcher)? → **I — Integration/serial**.
 
+**Disambiguation:** review, QA, testing, verification, comparison and analysis are
+**always A**, even when they produce a written report. **W is only a code/doc write
+that lands in an existing writer's own domain.** Do not classify a review or a test
+run as W.
+
 Tie-break: prefer **W** over **S** (do not spawn a session for a small write);
 prefer **A** over **S** (do not spawn a writer for research). Prefer **I** whenever
 two S nodes would have to edit the same contract.
