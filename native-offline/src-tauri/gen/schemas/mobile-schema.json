@@ -189,10 +189,22 @@
           "markdownDescription": "Enables the native_capabilities command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_controller_lan_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-join",
+          "markdownDescription": "Enables the native_controller_lan_join command without any pre-configured scope."
+        },
+        {
           "description": "Enables the native_controller_lan_refresh command without any pre-configured scope.",
           "type": "string",
           "const": "allow-native-controller-lan-refresh",
           "markdownDescription": "Enables the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-send",
+          "markdownDescription": "Enables the native_controller_lan_send command without any pre-configured scope."
         },
         {
           "description": "Enables the native_controller_lan_start command without any pre-configured scope.",
@@ -351,10 +363,22 @@
           "markdownDescription": "Denies the native_capabilities command without any pre-configured scope."
         },
         {
+          "description": "Denies the native_controller_lan_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-join",
+          "markdownDescription": "Denies the native_controller_lan_join command without any pre-configured scope."
+        },
+        {
           "description": "Denies the native_controller_lan_refresh command without any pre-configured scope.",
           "type": "string",
           "const": "deny-native-controller-lan-refresh",
           "markdownDescription": "Denies the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-send",
+          "markdownDescription": "Denies the native_controller_lan_send command without any pre-configured scope."
         },
         {
           "description": "Denies the native_controller_lan_start command without any pre-configured scope.",

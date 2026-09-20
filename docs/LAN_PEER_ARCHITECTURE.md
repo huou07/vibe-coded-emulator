@@ -11,7 +11,7 @@ The native peer service is `an3-peer`, protocol version `1`, discovered over
 local multicast `239.255.43.3:47831`. An advertisement contains only:
 
 ```json
-{"an3":"peer","service":"an3-peer","v":1,"id":"device-id","name":"short label","port":47832,"capabilities":["controller","sync"]}
+{"an3":"peer","service":"an3-peer","v":1,"id":"device-id","name":"short label","port":47832,"capabilities":["controller"]}
 ```
 
 The datagram contains no email, account identifier, access token, password, or
@@ -38,9 +38,12 @@ close()
 provider's opaque proof/challenge mechanism when an account provider is
 available; it is never advertised in multicast and is never implemented by
 sending a bearer token through the AN3 server. A peer without a successful
-proof is not eligible for sync. This offline build currently has no account
-login provider, so a native sync adapter must supply that proof before sync is
-enabled.
+proof is not eligible for sync. The web service has a first-party
+username/password session provider, but the installed offline shell currently
+has no native login surface or account-proof adapter. It therefore advertises
+the controller capability only; a native sync adapter must be supplied with
+an existing account-scoped proof mechanism before sync is enabled. The generic
+sync engine remains fail-closed until then.
 
 ## Save-set identity and atomicity
 

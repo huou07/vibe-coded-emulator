@@ -87,11 +87,15 @@ class ControllerClient(
         private const val PROTOCOL_VERSION = 1
         private const val MAX_FRAME_BYTES = 64 * 1024
         private const val PAIRING_TTL_MILLIS = 120_000L
+        private const val MAX_FAILURES_PER_MINUTE = 6
+        private const val FAILURE_WINDOW_MILLIS = 60_000L
         private const val AXIS_THRESHOLD = 0.35f
         private const val DIR_PHONE_TO_HOST = 1
         private const val DIR_HOST_TO_PHONE = 2
         private val EMPTY = ControllerStatus(false, "off", false, "", false, 0, 0, "", "")
         private val RANDOM = SecureRandom()
+        private val failureLock = Any()
+        private val failedAttempts = mutableMapOf<String, MutableList<Long>>()
     }
 
     private val executor = Executors.newCachedThreadPool { runnable ->
@@ -117,8 +121,32 @@ class ControllerClient(
     @Volatile private var axesEngaged = false
     @Volatile private var touchPressed = false
     private val deviceId = randomHex(16)
+    private val pairingLock = Any()
 
     val running: Boolean get() = (server != null || clientSocket != null) && !stopping.get()
+
+    private fun failureKey(address: InetAddress): String = address.hostAddress ?: address.toString()
+
+    private fun rateLimited(address: InetAddress): Boolean = synchronized(failureLock) {
+        val key = failureKey(address)
+        val now = System.currentTimeMillis()
+        val attempts = failedAttempts[key] ?: return@synchronized false
+        attempts.removeAll { now - it >= FAILURE_WINDOW_MILLIS }
+        if (attempts.isEmpty()) failedAttempts.remove(key)
+        attempts.size >= MAX_FAILURES_PER_MINUTE
+    }
+
+    private fun noteFailure(address: InetAddress) = synchronized(failureLock) {
+        val key = failureKey(address)
+        val now = System.currentTimeMillis()
+        val attempts = failedAttempts.getOrPut(key) { mutableListOf() }
+        attempts.removeAll { now - it >= FAILURE_WINDOW_MILLIS }
+        attempts.add(now)
+    }
+
+    private fun clearFailures(address: InetAddress) = synchronized(failureLock) {
+        failedAttempts.remove(failureKey(address))
+    }
 
     @Synchronized
     fun start() {
@@ -293,7 +321,9 @@ class ControllerClient(
                     .put("id", deviceId)
                     .put("name", "Android device")
                     .put("port", CONTROL_PORT)
-                    .put("capabilities", JSONArray().put("controller").put("sync"))
+                    // Native sync is intentionally not advertised until this
+                    // shell has an account-backed peer proof provider.
+                    .put("capabilities", JSONArray().put("controller"))
                     .toString()
                     .toByteArray(Charsets.UTF_8)
                 socket.send(DatagramPacket(advertisement, advertisement.size, address, DISCOVERY_PORT))
@@ -321,8 +351,10 @@ class ControllerClient(
                     val sensitive = record.keys().asSequence().any { it.matches(Regex("(?i)account|email|token|accessToken|refreshToken|password|credential|secret|auth")) }
                     val capabilities = record.optJSONArray("capabilities")
                     val controller = capabilities != null && (0 until capabilities.length()).any { capabilities.optString(it) == "controller" }
+                    val id = record.optString("id")
+                    val name = record.optString("name")
                     val port = record.optInt("port", 0)
-                    if (!sensitive && record.optString("an3") == "peer" && record.optString("service") == "an3-peer" && record.optInt("v") == PROTOCOL_VERSION && controller && port in 1..65535) {
+                    if (!sensitive && record.optString("an3") == "peer" && record.optString("service") == "an3-peer" && record.optInt("v") == PROTOCOL_VERSION && controller && port in 1..65535 && Regex("^[A-Za-z0-9._-]{8,64}$").matches(id) && name.length in 1..64) {
                         return DiscoveredPeer(packet.address, port)
                     }
                 } catch (_: Exception) {
@@ -365,11 +397,17 @@ class ControllerClient(
     private fun handle(socket: Socket) {
         socket.use { connection ->
             try {
+                val peerAddress = connection.inetAddress
                 connection.soTimeout = 30_000
                 val inputStream = DataInputStream(connection.getInputStream())
                 val outputStream = DataOutputStream(connection.getOutputStream())
                 val hello = JSONObject(String(readFrame(inputStream), Charsets.UTF_8))
-                if (hello.optString("k") != "hello" || hello.optInt("v") != PROTOCOL_VERSION) return
+                val peerId = hello.optString("id")
+                if (hello.optString("k") != "hello" || hello.optInt("v") != PROTOCOL_VERSION || hello.optString("capability") != "controller" || !Regex("^[A-Za-z0-9._-]{8,64}$").matches(peerId)) {
+                    noteFailure(peerAddress)
+                    return
+                }
+                if (rateLimited(peerAddress)) return
                 val peerPublic = publicKeyFromRaw(decode(hello.optString("pub")))
                 val keyPair = ecKeyPair()
                 val agreement = KeyAgreement.getInstance("ECDH")
@@ -386,11 +424,24 @@ class ControllerClient(
 
                 if (paired || System.currentTimeMillis() >= codeExpiresAt) return
                 val sessionKey = deriveKey(shared, code.toByteArray(Charsets.UTF_8))
-                val auth = open(sessionKey, DIR_PHONE_TO_HOST, 0, readFrame(inputStream)) ?: return
-                if (auth.optString("k") != "auth") return
-                paired = true
-                code = ""
-                codeExpiresAt = 0L
+                val auth = open(sessionKey, DIR_PHONE_TO_HOST, 0, readFrame(inputStream))
+                if (auth?.optString("k") != "auth") {
+                    noteFailure(peerAddress)
+                    return
+                }
+                // Pairing is one-shot even when two peers race to use the
+                // same displayed code. The second authenticated socket is
+                // rejected before it can receive a ready frame.
+                synchronized(pairingLock) {
+                    if (paired || System.currentTimeMillis() >= codeExpiresAt) {
+                        noteFailure(peerAddress)
+                        return
+                    }
+                    paired = true
+                    code = ""
+                    codeExpiresAt = 0L
+                }
+                clearFailures(peerAddress)
                 val ready = JSONObject()
                     .put("k", "ready")
                     .put("token", JSONObject.NULL)

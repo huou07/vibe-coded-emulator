@@ -117,6 +117,20 @@ class AndroidHostUnchangedTests(unittest.TestCase):
         self.assertIn("fun utility(action: String)", host)
         self.assertIn("onUtility = { action -> sink?.utility(action) }", host)
 
+    def test_android_advertises_only_the_capability_it_currently_serves(self):
+        client = source(ANDROID_CLIENT)
+        self.assertIn('.put("capabilities", JSONArray().put("controller"))', client)
+        self.assertNotIn('JSONArray().put("controller").put("sync")', client)
+
+    def test_android_pairing_rejects_wrong_capability_and_limits_failed_attempts(self):
+        client = source(ANDROID_CLIENT)
+        self.assertIn("MAX_FAILURES_PER_MINUTE = 6", client)
+        self.assertIn("rateLimited(peerAddress)", client)
+        self.assertIn("noteFailure(peerAddress)", client)
+        self.assertIn("clearFailures(peerAddress)", client)
+        self.assertIn('hello.optString("capability") != "controller"', client)
+        self.assertIn('Regex("^[A-Za-z0-9._-]{8,64}$").matches(peerId)', client)
+
 
 if __name__ == "__main__":
     unittest.main()
