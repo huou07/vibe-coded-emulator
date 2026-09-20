@@ -299,6 +299,7 @@
           ? `WebGPU was requested; the effective backend is ${status.effective}.`
           : `Đã yêu cầu WebGPU; backend thực tế là ${status.effective}.`);
       }).catch(error => showNotice(error.message || String(error), true));
+      restoreLocalGameSave();
     }
     if (config.mode !== "preload") queueTvDiscovery();
     reportPreload(true);
@@ -1116,6 +1117,19 @@
       ? `Save sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} conflict(s) need a choice` : ""}.`
       : `Đồng bộ tệp save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột` : ""}.`);
     return result;
+  };
+  const restoreLocalGameSave = async () => {
+    const manager = window.EJS_emulator?.gameManager;
+    if (!manager || !globalThis.AN3SyncTransfer?.restoreGameSave) return;
+    try {
+      const restored = await globalThis.AN3SyncTransfer.restoreGameSave({
+        manager,
+        identity: syncSaveIdentity(),
+      });
+      if (restored) showNotice(config.lang === "en" ? "Restored game save on this device." : "Đã khôi phục tệp save trên thiết bị.");
+    } catch (error) {
+      showNotice(error.message || String(error), true);
+    }
   };
   syncSaveFileButton?.addEventListener("click", () => {
     syncSaveFileButton.disabled = true;

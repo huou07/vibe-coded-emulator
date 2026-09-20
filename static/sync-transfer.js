@@ -8,6 +8,8 @@
   var STATE_DATABASE_NAME = "an3-arcade-save-slots";
   var STATE_STORE_NAME = "states";
   var DEVICE_STORAGE_KEY = "vibe-sync-device-v1";
+  var SAVE_BACKUP_PREFIX = "vibe-sync-save-backup-v1:";
+  var MAX_SAVE_BACKUP_BYTES = 3 * 1024 * 1024;
   var KIND_STATE = "state";
   var KIND_SAVE = "save";
   var KEY_PATTERN = /^[A-Za-z0-9._:@/\\-]{1,256}$/;
@@ -20,11 +22,100 @@
     }).join("");
   };
 
-  var digestBytes = async function (bytes) {
-    if (!globalThis.crypto || !globalThis.crypto.subtle) {
-      throw new Error("Secure Web Crypto is required for LAN byte sync.");
+  // Android Chrome does not expose Web Crypto on an http://192.168.x.x LAN
+  // origin. Keep the same SHA-256 contract there without weakening the
+  // byte-integrity check or requiring a second crypto dependency.
+  var sha256Fallback = function (value) {
+    var input = value instanceof Uint8Array ? value : new Uint8Array(value);
+    var bitLength = input.length * 8;
+    var totalLength = ((input.length + 9 + 63) >> 6) << 6;
+    var padded = new Uint8Array(totalLength);
+    padded.set(input);
+    padded[input.length] = 0x80;
+    var highLength = Math.floor(bitLength / 0x100000000);
+    var lowLength = bitLength >>> 0;
+    padded[totalLength - 8] = (highLength >>> 24) & 0xff;
+    padded[totalLength - 7] = (highLength >>> 16) & 0xff;
+    padded[totalLength - 6] = (highLength >>> 8) & 0xff;
+    padded[totalLength - 5] = highLength & 0xff;
+    padded[totalLength - 4] = (lowLength >>> 24) & 0xff;
+    padded[totalLength - 3] = (lowLength >>> 16) & 0xff;
+    padded[totalLength - 2] = (lowLength >>> 8) & 0xff;
+    padded[totalLength - 1] = lowLength & 0xff;
+    var words = [
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    ];
+    var constants = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b,
+      0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+      0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
+      0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+      0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
+      0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+      0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+      0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+      0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+      0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+      0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+      0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ];
+    var rotateRight = function (value, count) {
+      return (value >>> count) | (value << (32 - count));
+    };
+    var schedule = new Uint32Array(64);
+    for (var offset = 0; offset < padded.length; offset += 64) {
+      for (var index = 0; index < 16; index += 1) {
+        var base = offset + index * 4;
+        schedule[index] = ((padded[base] << 24) | (padded[base + 1] << 16) | (padded[base + 2] << 8) | padded[base + 3]) >>> 0;
+      }
+      for (var word = 16; word < 64; word += 1) {
+        var first = schedule[word - 15];
+        var second = schedule[word - 2];
+        var small0 = rotateRight(first, 7) ^ rotateRight(first, 18) ^ (first >>> 3);
+        var small1 = rotateRight(second, 17) ^ rotateRight(second, 19) ^ (second >>> 10);
+        schedule[word] = (schedule[word - 16] + small0 + schedule[word - 7] + small1) >>> 0;
+      }
+      var a = words[0];
+      var b = words[1];
+      var c = words[2];
+      var d = words[3];
+      var e = words[4];
+      var f = words[5];
+      var g = words[6];
+      var h = words[7];
+      for (var round = 0; round < 64; round += 1) {
+        var big1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+        var choose = (e & f) ^ (~e & g);
+        var temporary1 = (h + big1 + choose + constants[round] + schedule[round]) >>> 0;
+        var big0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+        var majority = (a & b) ^ (a & c) ^ (b & c);
+        var temporary2 = (big0 + majority) >>> 0;
+        h = g;
+        g = f;
+        f = e;
+        e = (d + temporary1) >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = (temporary1 + temporary2) >>> 0;
+      }
+      words[0] = (words[0] + a) >>> 0;
+      words[1] = (words[1] + b) >>> 0;
+      words[2] = (words[2] + c) >>> 0;
+      words[3] = (words[3] + d) >>> 0;
+      words[4] = (words[4] + e) >>> 0;
+      words[5] = (words[5] + f) >>> 0;
+      words[6] = (words[6] + g) >>> 0;
+      words[7] = (words[7] + h) >>> 0;
     }
-    return hex(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)));
+    return words.map(function (word) { return word.toString(16).padStart(8, "0"); }).join("");
+  };
+
+  var digestBytes = async function (bytes) {
+    if (globalThis.crypto?.subtle) return hex(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)));
+    return sha256Fallback(bytes);
   };
 
   var encodeBase64 = function (bytes) {
@@ -40,6 +131,55 @@
       output += index + 2 < bytes.length ? alphabet[third & 63] : "=";
     }
     return output;
+  };
+
+  var decodeBase64 = function (value) {
+    if (typeof globalThis.atob !== "function") return null;
+    try {
+      var binary = globalThis.atob(String(value || ""));
+      var bytes = new Uint8Array(binary.length);
+      for (var index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  var saveBackupStorageKey = function (artifactKey) {
+    return SAVE_BACKUP_PREFIX + encodeURIComponent(String(artifactKey || ""));
+  };
+
+  // EmulatorJS currently removes its IDBFS save file during its beforeunload
+  // exit path. Keep a verified, bounded local copy so a browser reload can
+  // rehydrate the same canonical path without introducing another save API or
+  // changing the LAN transfer contract.
+  var writeSaveBackup = function (artifactKey, bytes, contentHash) {
+    if (!artifactKey || !bytes?.byteLength || bytes.byteLength > MAX_SAVE_BACKUP_BYTES) return;
+    try {
+      globalThis.localStorage?.setItem(saveBackupStorageKey(artifactKey), JSON.stringify({
+        version: 1,
+        key: artifactKey,
+        contentHash: contentHash,
+        size: bytes.byteLength,
+        data: encodeBase64(bytes),
+      }));
+    } catch (_) {}
+  };
+
+  var readSaveBackup = async function (artifactKey) {
+    if (!artifactKey) return null;
+    try {
+      var raw = globalThis.localStorage?.getItem(saveBackupStorageKey(artifactKey));
+      if (!raw) return null;
+      var record = JSON.parse(raw);
+      if (record?.version !== 1 || record.key !== artifactKey || !HASH_PATTERN.test(String(record.contentHash || ""))) return null;
+      var bytes = decodeBase64(record.data);
+      if (!bytes || bytes.byteLength !== Number(record.size) || bytes.byteLength > MAX_SAVE_BACKUP_BYTES) return null;
+      if (await digestBytes(bytes) !== record.contentHash) return null;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
   };
 
   var readBytes = async function (value) {
@@ -209,6 +349,7 @@
         if (!value) return [];
         var bytes = await readBytes(value);
         if (!bytes.byteLength) return [];
+        writeSaveBackup(canonicalKey, bytes, await digestBytes(bytes));
         return [{id: canonicalKey, key: canonicalKey, bytes: bytes, path: path, updatedAt: Date.now()}];
       },
       put: async function (record) {
@@ -220,8 +361,25 @@
         ensureSaveParent(active.FS, target);
         active.FS.writeFile(target, bytes);
         await syncFileSystem(active.FS);
+        if (!record?.isCopy) writeSaveBackup(canonicalKey, bytes, await digestBytes(bytes));
         // Refresh the running core only after the verified bytes are durable.
         if (!record?.isCopy && typeof active.loadSaveFiles === "function") active.loadSaveFiles();
+      },
+      restore: async function () {
+        var active = requireManager();
+        var path = resolvePath();
+        var existing = active.getSaveFile(false);
+        if (existing) {
+          var existingBytes = await readBytes(existing);
+          if (existingBytes.byteLength) return false;
+        }
+        var bytes = await readSaveBackup(canonicalKey);
+        if (!bytes?.byteLength) return false;
+        ensureSaveParent(active.FS, path);
+        active.FS.writeFile(path, bytes);
+        await syncFileSystem(active.FS);
+        if (typeof active.loadSaveFiles === "function") active.loadSaveFiles();
+        return true;
       },
       artifactKey: function () { return canonicalKey || saveArtifactKey(identity, resolvePath()); },
     };
@@ -404,6 +562,10 @@
     return syncKind(Object.assign({}, options || {}, {kind: KIND_SAVE}));
   };
 
+  var restoreGameSave = function (options) {
+    return gameSaveStorage(options || {}).restore();
+  };
+
   var resolveConflict = async function (options) {
     options = options || {};
     var conflict = options.conflict || {};
@@ -439,6 +601,7 @@
     syncState: syncState,
     syncSave: syncSave,
     resolveConflict: resolveConflict,
+    restoreGameSave: restoreGameSave,
     indexedStorage: indexedStorage,
     gameSaveStorage: gameSaveStorage,
     saveArtifactKey: saveArtifactKey,

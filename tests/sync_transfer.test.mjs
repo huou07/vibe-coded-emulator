@@ -6,16 +6,19 @@ import vm from "node:vm";
 
 const source = await readFile(new URL("../static/sync-transfer.js", import.meta.url), "utf8");
 
-const loadTransfer = () => {
+const loadTransfer = ({cryptoValue = webcrypto, localStorageValue = null} = {}) => {
   const context = {
     ArrayBuffer,
     Blob,
     Map,
     Set,
+    Uint32Array,
     Uint8Array,
-    crypto: webcrypto,
+    crypto: cryptoValue,
+    atob: value => Buffer.from(value, "base64").toString("binary"),
     console,
   };
+  if (localStorageValue) context.localStorage = localStorageValue;
   context.globalThis = context;
   vm.runInNewContext(source, context, {filename: "sync-transfer.js"});
   return context.AN3SyncTransfer;
@@ -55,6 +58,32 @@ const makeGameManager = initialBytes => {
   };
   return manager;
 };
+
+test("digestBytes keeps SHA-256 verification on an insecure LAN origin", async () => {
+  const transfer = loadTransfer({cryptoValue: undefined});
+  const bytes = new Uint8Array(Buffer.from("android-lan-save"));
+  assert.equal(await transfer.digestBytes(bytes), sha256(bytes));
+});
+
+test("restoreGameSave rehydrates an empty EmulatorJS save from its verified local backup", async () => {
+  const values = new Map();
+  const localStorageValue = {
+    getItem(key) { return values.get(key) ?? null; },
+    setItem(key, value) { values.set(key, String(value)); },
+  };
+  const transfer = loadTransfer({localStorageValue});
+  const identity = {core: "mgba", gameId: "emerald", romHash: "d".repeat(64)};
+  const bytes = new Uint8Array(Buffer.from("persisted-browser-save"));
+  const sourceManager = makeGameManager(bytes);
+  await transfer.gameSaveStorage({manager: sourceManager, identity}).readAll();
+
+  const targetManager = makeGameManager(null);
+  assert.equal(await transfer.restoreGameSave({manager: targetManager, identity}), true);
+  assert.deepEqual(new Uint8Array(targetManager.inspect().current), bytes);
+  assert.equal(targetManager.inspect().syncCount, 1);
+  assert.equal(targetManager.inspect().loadCount, 1);
+  assert.equal(await transfer.restoreGameSave({manager: targetManager, identity}), false);
+});
 
 test("syncState publishes and downloads raw save-state bytes", async () => {
   const transfer = loadTransfer();
