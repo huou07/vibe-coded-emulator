@@ -61,10 +61,19 @@ class MainActivity : TauriActivity() {
   // game launches. Returns the current status as JSON; never the raw token.
   private class AndroidNativeControllerBridge {
     @JavascriptInterface
-    fun start(baseUrl: String): String {
-      An3ControllerHost.start(baseUrl)
+    fun start(): String {
+      An3ControllerHost.start()
       return An3ControllerHost.statusJson()
     }
+
+    @JavascriptInterface
+    fun join(code: String): String {
+      An3ControllerHost.join(code)
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun send(state: String): String = An3ControllerHost.send(state).toJson()
 
     @JavascriptInterface
     fun stop(): String {

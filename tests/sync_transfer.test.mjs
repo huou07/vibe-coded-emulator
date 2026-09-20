@@ -447,3 +447,57 @@ test("generic save conflicts support local, remote, and both without crossing id
   assert.deepEqual(new Uint8Array(files.get(managerBoth.inspect().path)), remoteBytes);
   assert.ok(published.at(-1).items[0].key.endsWith(".conflict"));
 });
+
+test("direct LAN transport carries sync payloads without an HTTP fallback", async () => {
+  const transfer = loadTransfer();
+  const localBytes = new Uint8Array(Buffer.from("direct-peer-state"));
+  const sent = [];
+  let manifestCalls = 0;
+  const storage = {
+    async readAll() {
+      return [{id: "gba/emerald:slot:direct", state: new Blob([localBytes]), updatedAt: 10}];
+    },
+    async put() {},
+  };
+  const transport = {
+    async sameAccount(context) {
+      assert.equal(context.capability, "sync");
+      return true;
+    },
+    async manifest() {
+      manifestCalls += 1;
+      return {items: []};
+    },
+    async plan(payload) {
+      assert.equal(payload.kind, "state");
+      return {transfers: [{key: payload.records[0].key, direction: "upload"}]};
+    },
+    async publish(payload) { sent.push(payload); return {ok: true}; },
+    async blob() { throw new Error("blob must not be requested for an upload"); },
+    async resolve() { return {direction: "upload"}; },
+  };
+  const result = await transfer.syncState({deviceId: "device-local", mode: "lan", storage, transport});
+  assert.equal(result.counts.uploaded, 1);
+  assert.equal(manifestCalls, 1);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, "state");
+  assert.deepEqual(new Uint8Array(Buffer.from(sent[0].items[0].data, "base64")), localBytes);
+});
+
+test("direct LAN sync refuses a peer without same-account proof before reading data", async () => {
+  const transfer = loadTransfer();
+  let manifestCalls = 0;
+  const transport = {
+    async sameAccount() { return false; },
+    async manifest() { manifestCalls += 1; return {items: []}; },
+    async plan() { throw new Error("plan must not run"); },
+    async publish() { throw new Error("publish must not run"); },
+    async blob() { throw new Error("blob must not run"); },
+    async resolve() { throw new Error("resolve must not run"); },
+  };
+  await assert.rejects(
+    transfer.syncState({deviceId: "device-local", mode: "lan", storage: {async readAll() { return []; }}, transport}),
+    /account/,
+  );
+  assert.equal(manifestCalls, 0);
+});

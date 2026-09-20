@@ -63,7 +63,7 @@ def static_asset_version():
 
 
 ASSET_VERSION = static_asset_version()
-PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "sync-transfer.js", "player.js", "site.css"})
+PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "lan-peer.js", "sync-transfer.js", "player.js", "site.css"})
 
 # The public source location for the GPL corresponding source. The owner sets
 # the real URL (via AN3_SOURCE_REPOSITORY or by editing this default) so the
@@ -175,9 +175,9 @@ def multiplayer_capability(system):
             "reason": "Not available for this system"}
 
 
-# The remote controller is staging-only too. A host creates a short-lived
-# pairing session, the phone pairs with the code, and both sides use
-# role-scoped tokens. No controller endpoint exists in production.
+# Legacy web-controller endpoints are staging/development test fixtures only.
+# Installed AN3 applications host and pair over the direct native LAN peer
+# layer; these endpoints are not part of the product controller architecture.
 CONTROLLER_ENABLED = ENVIRONMENT in {"staging", "development"}
 CONTROLLERS = {}
 CONTROLLER_LOCK = threading.Lock()
@@ -205,10 +205,11 @@ def controller_reap():
     return len(expired)
 
 
-# Cross-device sync is staging-only. The pure planning core lives in
-# sync_engine; this app owns the per-device mode, the plan/conflict surface, and
-# the LAN peer registry. Google Drive transport needs owner OAuth credentials
-# and stays unavailable (mode rejected, option unadvertised) until configured.
+# Legacy web sync fixtures are staging/development-only. The pure planning core
+# lives in sync_engine; installed AN3 applications use the direct native peer
+# transport and do not call this application for LAN data.
+# Google Drive transport needs owner OAuth credentials and stays unavailable
+# (mode rejected, option unadvertised) until configured.
 SYNC_ENABLED = ENVIRONMENT in {"staging", "development"}
 GOOGLE_DRIVE_ENABLED = bool(os.environ.get("AN3_GOOGLE_CLIENT_ID", "").strip())
 LAN_PEER_TTL_SECONDS = 90
@@ -216,10 +217,11 @@ LAN_PEERS = {}
 LAN_PEERS_LOCK = threading.Lock()
 SYNC_LIMITER = netcode.SlidingRateLimiter(limit=60, window_seconds=60)
 SYNC_MANIFEST_LIMIT = 2000
-# LAN transfer: eligible save/state blobs kept in memory for a short window so a
-# peer on the same LAN can pull them. The staging app server is the LAN
-# rendezvous; nothing is persisted and nothing leaves the LAN. Only user data
-# kinds are accepted, and firmware/keys can never be published.
+# Development/test compatibility fixture: eligible save/state blobs are kept in
+# memory for a short window so deterministic browser/API tests can exercise the
+# old HTTP envelope. This is not the installed-app LAN transport, is never a
+# production default, and is not a product data store. Only user data kinds are
+# accepted, and firmware/keys can never be published.
 LAN_BLOB_TTL_SECONDS = 900
 LAN_BLOB_MAX_BYTES = 16 * 1024 * 1024
 # A LAN item is base64-wrapped in the JSON envelope. Keep the generic API
@@ -2046,7 +2048,7 @@ def sync_page(lang, user, csrf):
 <div id="syncConflicts" class="sync-conflicts" hidden></div>
 <p class="muted"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 </section>
-<script src="/static/sync-transfer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
+<script src="/static/lan-peer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync-transfer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
 
@@ -2156,7 +2158,7 @@ def player_page(game, lang, user, csrf):
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
 {slot_panel}{pad_panel}{controller_panel}{multiplayer_panel}</main>
-<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("sync-transfer.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
+<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("lan-peer.js")}" defer></script><script src="{versioned_player_asset("sync-transfer.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
 
@@ -3561,7 +3563,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 except Exception:
                     self.send_bytes(502, b"emulator asset unavailable\n", "text/plain; charset=utf-8")
         elif path.startswith("/static/v/"):
-            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|sync-transfer\.js|player\.js|site\.css)", path)
+            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|lan-peer\.js|sync-transfer\.js|player\.js|site\.css)", path)
             if not match or match.group(1) != ASSET_VERSION:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:

@@ -97,8 +97,8 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
     private val controllerBridge = object : NativeGameOverlay.ControllerBridge {
         override fun isRunning(): Boolean = controllerRunning
         override fun statusText(): String = controllerStatusLabel
-        override fun start(server: String) {
-            sendToControllerService(ControllerHostService.MSG_START, Bundle().apply { putString("server", server) })
+        override fun start() {
+            sendToControllerService(ControllerHostService.MSG_START)
         }
         override fun stop() {
             sendToControllerService(ControllerHostService.MSG_STOP)

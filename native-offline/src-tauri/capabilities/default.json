@@ -18,6 +18,8 @@
     "allow-native-controller-stop",
     "allow-native-controller-status",
     "allow-native-controller-lan-start",
+    "allow-native-controller-lan-join",
+    "allow-native-controller-lan-send",
     "allow-native-controller-lan-stop",
     "allow-native-controller-lan-status",
     "allow-native-controller-lan-refresh",

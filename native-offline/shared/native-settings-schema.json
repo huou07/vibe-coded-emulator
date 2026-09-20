@@ -13,8 +13,7 @@
     {"id": "autosave-mode", "label": "Auto Save", "category": "emulation", "type": "enum", "values": ["off", "exit", "30", "10", "5"], "labels": {"off": "Off", "exit": "On game exit", "30": "Every 30 seconds", "10": "Every 10 seconds", "5": "Every 5 seconds"}, "default": null, "legacyResolve": "native-autosave", "restart": "none", "external": true},
     {"id": "show-fps", "label": "Show FPS", "category": "display", "type": "bool", "default": "false", "restart": "none", "external": true},
     {"id": "start-fullscreen", "label": "Start fullscreen on launch", "category": "display", "type": "bool", "default": "true", "restart": "app", "external": true},
-    {"id": "key-map", "label": "Keyboard map", "category": "controls", "type": "string", "default": "{}", "restart": "none", "external": false},
-    {"id": "controller-server", "label": "Controller server", "category": "network", "type": "string", "default": "", "restart": "none", "external": false}
+    {"id": "key-map", "label": "Keyboard map", "category": "controls", "type": "string", "default": "{}", "restart": "none", "external": false}
   ],
   "renderer": {
     "id": "renderer",

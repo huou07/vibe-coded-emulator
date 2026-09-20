@@ -18,11 +18,6 @@ import android.widget.*
 import org.json.JSONArray
 import org.json.JSONObject
 
-// The Android app is offline-first and has no origin of its own, so the
-// staging-only phone-controller service is configured explicitly. The default
-// matches the isolated staging host.
-private const val DEFAULT_CONTROLLER_SERVER = "http://192.168.1.8:8092"
-
 /** Native counterpart of AN3NativeGameView's DMG controls and nine-tab menu. */
 class NativeGameOverlay(
     private val activity: Activity,
@@ -94,7 +89,7 @@ class NativeGameOverlay(
     // never crosses the boundary. The bridge is set by NativeGameActivity.
     interface ControllerBridge {
         fun isRunning(): Boolean
-        fun start(server: String)
+        fun start()
         fun stop()
         fun statusText(): String
     }
@@ -238,12 +233,6 @@ class NativeGameOverlay(
             .show()
     }
 
-    // Phone controller. The native app is the pairing host: it creates the
-    // session, shows the code, polls the host state and pushes the phone's
-    // frame through the same input path as the on-screen pad.
-    private fun controllerServer(): String =
-        (prefs.getString("controller-server", DEFAULT_CONTROLLER_SERVER) ?: DEFAULT_CONTROLLER_SERVER).trim()
-
     private fun controllerStatusText(): String = controllerBridge?.statusText() ?: "Off"
 
     private fun controllerRunning(): Boolean = controllerBridge?.isRunning() == true
@@ -259,12 +248,7 @@ class NativeGameOverlay(
             controllerStatus?.text = "Off"
             return
         }
-        val server = controllerServer()
-        if (!server.startsWith("http://") && !server.startsWith("https://")) {
-            controllerStatus?.text = "Set the controller server URL (http://…)."
-            return
-        }
-        bridge.start(server)
+        bridge.start()
         controllerStatus?.text = "Starting…"
         removeCallbacks(controllerStatusTick)
         post(controllerStatusTick)
@@ -590,14 +574,6 @@ class NativeGameOverlay(
                     checkbox("Start fullscreen on launch", "start-fullscreen"); action("Enter fullscreen now") { fullscreen() }
                     content.addView(text("Phone Controller").apply { setPadding(0, 12.dp(), 0, 0) })
                     content.addView(text("Use a phone on the same network as a controller for this game. The phone never receives the game or its saves.").apply { textSize=12f })
-                    val serverField = EditText(activity).apply {
-                        setText(controllerServer()); setTextColor(Color.WHITE); textSize = 13f
-                        setHint("Controller server URL"); setSingleLine(true)
-                    }
-                    content.addView(serverField, LinearLayout.LayoutParams(-1, -2))
-                    serverField.setOnFocusChangeListener { _, focused ->
-                        if (!focused) prefs.edit().putString("controller-server", serverField.text.toString().trim()).apply()
-                    }
                     controllerStatus = text(controllerStatusText())
                     content.addView(controllerStatus)
                     action(if (controllerRunning()) "Stop controller session" else "Start controller session") { toggleController() }

@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Staging-only phone-controller host for the desktop shells.
+//! Legacy development/test phone-controller client for the desktop shells.
 //!
-//! The desktop app is the pairing host: it creates a session on the configured
-//! staging controller server, polls the host-state endpoint, and feeds the
-//! phone's frame into the same `set_native_input` path the in-app controls use.
+//! This module is retained only for explicit development/test adapters. The
+//! installed desktop app uses `lan_host` for direct peer sessions.
 //! The same module serves macOS, Linux, and Windows; the platform difference is
 //! already handled by `set_native_input`.
 //!
-//! The controller service is a LAN HTTP origin, so this client speaks plain
-//! HTTP/1.1 over a TCP socket and never carries TLS. The raw host token stays
-//! inside this module and is never logged or persisted.
+//! Its plain HTTP implementation must not be selected by normal product UI.
 
 use serde::Serialize;
 use std::{
@@ -230,7 +227,7 @@ mod button_map_tests {
 fn parse_base(base: &str) -> Result<(String, u16), String> {
     let trimmed = base.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err("Set the controller server URL (for example http://192.168.1.8:8092).".into());
+        return Err("Set an explicit development controller fixture URL.".into());
     }
     let rest = trimmed
         .strip_prefix("http://")
@@ -611,11 +608,11 @@ mod tests {
 
     #[test]
     fn parse_base_requires_plain_http_and_keeps_the_port() {
-        assert_eq!(parse_base("http://192.168.1.8:8092").unwrap(), ("192.168.1.8".into(), 8092));
+        assert_eq!(parse_base("http://127.0.0.1:8092").unwrap(), ("127.0.0.1".into(), 8092));
         assert_eq!(parse_base("http://host").unwrap(), ("host".into(), 80));
         assert!(parse_base("https://relay.example").is_err());
         assert!(parse_base("").is_err());
-        assert!(parse_base("192.168.1.8:8092").is_err());
+        assert!(parse_base("127.0.0.1:8092").is_err());
     }
 
     #[test]
@@ -722,7 +719,7 @@ mod tests {
 
     /// Live probe against a real controller server (staging). Ignored by default
     /// because it needs the network; run with:
-    ///   AN3_CONTROLLER_TEST_BASE=http://192.168.1.8:8092 \
+    ///   AN3_CONTROLLER_TEST_BASE=http://127.0.0.1:8092 \
     ///     cargo test --lib live_staging -- --ignored --nocapture
     #[test]
     #[ignore]

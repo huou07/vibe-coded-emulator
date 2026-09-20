@@ -106,8 +106,7 @@ class ControllerHostService : Service() {
             MSG_DETACH -> { game = null; activeSystem = null }
             MSG_MENU -> menuOpen = message.data?.getBoolean(KEY_MENU) ?: false
             MSG_START -> {
-                val server = message.data?.getString("server") ?: ""
-                if (server.isNotBlank()) An3ControllerHost.start(server)
+                An3ControllerHost.start()
                 sendStatus()
             }
             MSG_STOP -> {

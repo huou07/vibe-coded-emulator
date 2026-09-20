@@ -46,6 +46,8 @@ fn main() {
             "native_controller_stop",
             "native_controller_status",
             "native_controller_lan_start",
+            "native_controller_lan_join",
+            "native_controller_lan_send",
             "native_controller_lan_stop",
             "native_controller_lan_status",
             "native_controller_lan_refresh",

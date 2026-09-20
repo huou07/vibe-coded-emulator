@@ -18,12 +18,16 @@
   var state = {mode: "off", content: {}, modes: [], contentOptions: [], peers: [], conflicts: []};
 
   var setStatus = function (text) { statusNode.textContent = text; };
+  // Only an explicit development adapter may speak to the legacy web server.
+  // Installed clients get their transport from the native LAN peer layer.
+  var devJson = async function (url, options) {
+    var adapter = globalThis.AN3SyncDevAdapter;
+    if (!adapter || typeof adapter.json !== "function") throw new Error("Direct LAN sync is available in the installed AN3 app.");
+    return adapter.json(url, options);
+  };
+  var directTransport = function () { return globalThis.AN3LanPeerTransport || null; };
   var json = async function (url, options) {
-    var response = await fetch(url, options);
-    var data = {};
-    try { data = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
-    return data;
+    return devJson(url, options);
   };
 
   var fallbackDeviceId = (function () {
@@ -44,9 +48,9 @@
     return null;
   };
   var modeSummary = function (mode) {
-    if (mode === "auto") return "Uses the local network first, then Google Drive when needed.";
-    if (mode === "lan") return "Transfers stay on this local network.";
-    if (mode === "drive") return "Transfers go through Google Drive.";
+    if (mode === "auto") return "Automatic sync is unavailable outside the installed app.";
+    if (mode === "lan") return "Transfers go directly between nearby installed AN3 apps.";
+    if (mode === "drive") return "Cloud sync is not part of LAN features.";
     return "Sync is off. Nothing is transferred.";
   };
 
@@ -81,7 +85,7 @@
   };
 
   var updateTransferButton = function () {
-    if (transferButton) transferButton.disabled = state.mode === "off" || state.mode === "drive" || !state.content.state || !globalThis.AN3SyncTransfer;
+    if (transferButton) transferButton.disabled = state.mode === "off" || state.mode === "drive" || !state.content.state || !globalThis.AN3SyncTransfer || !directTransport();
   };
 
   var renderDevices = function (peers) {
@@ -172,8 +176,7 @@
     var result = await globalThis.AN3SyncTransfer.syncState({
       deviceId: deviceId,
       mode: state.mode,
-      // This explicit staging surface is the LAN transport. Peer discovery is
-      // still shown separately, while the server rendezvous carries the bytes.
+      transport: directTransport(),
       sameLan: true,
     });
     renderConflicts((result.plan || {}).transfers, result);
@@ -187,10 +190,23 @@
 
   var load = async function () {
     try {
-      var data = await json("/api/sync/settings");
-      renderModes(data);
-      renderContent(data);
-      setStatus("");
+      if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/settings");
+        renderModes(data);
+        renderContent(data);
+      } else {
+        var available = Boolean(directTransport());
+        renderModes({
+          mode: available ? "lan" : "off",
+          modes: [
+            {id: "off", label: "Off", available: true},
+            {id: "lan", label: "Direct LAN", available: available},
+          ],
+          content: {save: true, state: true, library: false, rom: false},
+          driveConfigured: false,
+        });
+      }
+      setStatus(directTransport() ? "Direct LAN peer ready." : "Install the AN3 app to use direct LAN sync.");
     } catch (error) { setStatus(error.message); }
   };
 
@@ -205,26 +221,41 @@
 
   var save = async function () {
     try {
-      var data = await json("/api/sync/settings", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({mode: select.value, content: collectContent()})
-      });
-      renderModes(data);
-      renderContent(data);
+      if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/settings", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({mode: select.value, content: collectContent()})
+        });
+        renderModes(data);
+        renderContent(data);
+      } else {
+        state.mode = select.value;
+        state.content = collectContent();
+        try { localStorage.setItem("an3-direct-sync-settings-v1", JSON.stringify({mode: state.mode, content: state.content})); } catch (_) {}
+        updateTransferButton();
+      }
       setStatus("Saved.");
     } catch (error) { setStatus(error.message); }
   };
 
   var announce = async function () {
     try {
-      var data = await json("/api/sync/lan/announce", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({deviceId: deviceId, name: "Vibe Coded Emulator", port: 0})
-      });
-      renderDevices(data.peers || []);
-      setStatus("");
+      if (directTransport()?.discover) {
+        renderDevices(await directTransport().discover());
+        setStatus("");
+      } else if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/lan/announce", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({deviceId: deviceId, name: "Vibe Coded Emulator", port: 0})
+        });
+        renderDevices(data.peers || []);
+        setStatus("");
+      } else {
+        renderDevices([]);
+        setStatus("Direct LAN discovery is available in the installed AN3 app.");
+      }
     } catch (error) { setStatus(error.message); }
   };
 

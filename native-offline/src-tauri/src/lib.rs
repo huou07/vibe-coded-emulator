@@ -4,6 +4,7 @@
 use include_dir::{include_dir, Dir};
 mod azahar;
 mod controller_host;
+mod lan_peer;
 mod lan_host;
 mod switch_companion;
 // Test-only structured UI bridge; inert unless the `ui-control` feature is on.
@@ -703,6 +704,18 @@ async fn native_controller_lan_start() -> Result<lan_host::LanStatus, String> {
 }
 
 #[tauri::command]
+async fn native_controller_lan_join(code: String) -> Result<lan_host::LanStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || lan_host::join(code))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_controller_lan_send(state: serde_json::Value) -> Result<lan_host::LanStatus, String> {
+    lan_host::send_state(state)
+}
+
+#[tauri::command]
 fn native_controller_lan_stop() {
     lan_host::stop();
 }
@@ -847,6 +860,8 @@ pub fn run() {
             native_controller_stop,
             native_controller_status,
             native_controller_lan_start,
+            native_controller_lan_join,
+            native_controller_lan_send,
             native_controller_lan_stop,
             native_controller_lan_status,
             native_controller_lan_refresh,

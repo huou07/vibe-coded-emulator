@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package space.an3tocom.offline
 
+import org.json.JSONObject
+
 /**
  * App-scoped phone-controller host shared by every surface.
  *
@@ -25,7 +27,7 @@ object An3ControllerHost {
         fun system(): String? = null
     }
 
-    private val empty = ControllerStatus(false, false, "", false, 0, 0, "", "")
+    private val empty = ControllerStatus(false, "off", false, "", false, 0, 0, "", "")
 
     @Volatile private var sink: Sink? = null
     @Volatile private var client: ControllerClient? = null
@@ -38,11 +40,10 @@ object An3ControllerHost {
     }
 
     @Synchronized
-    fun start(baseUrl: String) {
+    fun start() {
         if (status.running) return
         status = empty
         val created = ControllerClient(
-            baseUrl = baseUrl,
             onStatus = { update ->
                 status = update
                 if (!update.running && update.error.isNotEmpty()) {
@@ -58,6 +59,35 @@ object An3ControllerHost {
         )
         client = created
         created.start()
+    }
+
+    @Synchronized
+    fun join(code: String) {
+        if (status.running) return
+        status = empty
+        val created = ControllerClient(
+            onStatus = { update ->
+                status = update
+                if (!update.running && update.error.isNotEmpty()) client = null
+            },
+            shouldApply = { sink?.canApply() == true },
+            onButton = { index, pressed -> sink?.button(index, pressed) },
+            onAnalog = { x, y -> sink?.analog(x, y) },
+            systemProvider = { sink?.system() },
+            onTouch = { x, y, pressed -> sink?.touch(x, y, pressed) },
+            onUtility = { action -> sink?.utility(action) },
+        )
+        client = created
+        created.join(code)
+    }
+
+    fun send(state: String): ControllerStatus {
+        val current = client ?: return status.copy(error = "No direct controller session is active.")
+        return try {
+            current.sendState(JSONObject(state))
+        } catch (error: Exception) {
+            status.copy(error = error.message ?: "Invalid controller state.")
+        }
     }
 
     @Synchronized

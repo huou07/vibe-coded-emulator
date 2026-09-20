@@ -15,7 +15,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    net::{IpAddr, Shutdown, TcpListener, TcpStream, UdpSocket},
+    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
@@ -35,10 +35,7 @@ use sha2::{Digest, Sha256};
 
 use crate::azahar::{native_active_system, native_input_ready, set_native_input};
 use crate::controller_host::frame_input;
-
-pub const DISCOVERY_PORT: u16 = 47831;
-pub const CONTROL_PORT: u16 = 47832;
-const PROTOCOL_VERSION: u32 = 1;
+use crate::lan_peer::{advertisement_with_capabilities, parse_advertisement, CONTROL_PORT, DISCOVERY_ADDRESS, DISCOVERY_PORT, PROTOCOL_VERSION};
 const PAIRING_TTL: Duration = Duration::from_secs(120);
 const MAX_FAILURES_PER_MINUTE: usize = 6;
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
@@ -51,6 +48,7 @@ const DIR_HOST_TO_PHONE: u32 = 2;
 #[serde(rename_all = "camelCase")]
 pub struct LanStatus {
     pub running: bool,
+    pub role: String,
     pub code: String,
     pub code_expires_in_seconds: u64,
     pub paired: bool,
@@ -137,6 +135,16 @@ struct Host {
 }
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
+struct Client {
+    stream: TcpStream,
+    key: [u8; 32],
+    send_counter: u64,
+    peer_address: String,
+    peer_name: String,
+    system: String,
+}
+
+static CLIENT: Mutex<Option<Client>> = Mutex::new(None);
 static FAILURES: OnceLock<Mutex<HashMap<IpAddr, Vec<Instant>>>> = OnceLock::new();
 
 /// Test seam: -1 uses the platform runtime, 0 forces "no game", 1 forces
@@ -305,8 +313,100 @@ pub fn start() -> Result<LanStatus, String> {
     Ok(status())
 }
 
+/// Discover one direct controller-capable peer and pair as its controller.
+/// The source address comes from the multicast datagram; no fixed IP is used.
+pub fn join(code: String) -> Result<LanStatus, String> {
+    let code = code.trim().to_string();
+    if code.len() != 6 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Enter exactly six decimal digits.".into());
+    }
+    stop();
+    let (address, peer_name) = discover_controller()?;
+    let mut stream = TcpStream::connect_timeout(&address, IO_TIMEOUT)
+        .map_err(|error| format!("Could not connect to the AN3 peer: {error}"))?;
+    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+    let secret = EphemeralSecret::random(&mut OsRngCompat);
+    let public = secret.public_key().to_encoded_point(false);
+    let hello = serde_json::json!({
+        "k": "hello",
+        "v": PROTOCOL_VERSION,
+        "pub": B64.encode(public.as_bytes()),
+        "id": hex(&random_bytes::<8>()),
+        "name": default_host_name(),
+        "capability": "controller",
+    });
+    write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap_or_default())
+        .map_err(|error| format!("Could not start the direct peer handshake: {error}"))?;
+    let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream)
+        .map_err(|error| format!("The direct peer handshake failed: {error}"))?)
+        .map_err(|_| "The direct peer returned malformed handshake data.".to_string())?;
+    if response.get("k").and_then(|value| value.as_str()) != Some("hello")
+        || response.get("v").and_then(|value| value.as_u64()) != Some(PROTOCOL_VERSION as u64)
+    {
+        return Err("The direct peer uses an incompatible protocol.".into());
+    }
+    let host_public = response
+        .get("pub")
+        .and_then(|value| value.as_str())
+        .and_then(|value| B64.decode(value).ok())
+        .and_then(|value| PublicKey::from_sec1_bytes(&value).ok())
+        .ok_or("The direct peer returned an invalid public key.")?;
+    let shared = secret.diffie_hellman(&host_public);
+    let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| "Could not initialize peer encryption.")?;
+    let auth = seal(&cipher, DIR_PHONE_TO_HOST, 0, &serde_json::json!({"k": "auth"}));
+    write_frame(&mut stream, &auth).map_err(|error| format!("Could not authenticate the direct peer: {error}"))?;
+    let ready = open(&cipher, DIR_HOST_TO_PHONE, 0, &read_frame(&mut stream)
+        .map_err(|error| format!("The direct peer closed during pairing: {error}"))?)
+        .ok_or("The direct peer rejected the pairing code.")?;
+    if ready.get("k").and_then(|value| value.as_str()) != Some("ready") {
+        return Err("The direct peer did not confirm pairing.".into());
+    }
+    let system = ready.get("system").and_then(|value| value.as_str()).unwrap_or("auto").to_string();
+    CLIENT.lock().map_err(|_| "Controller lock unavailable".to_string())?.replace(Client {
+        stream,
+        key,
+        send_counter: 1,
+        peer_address: address.ip().to_string(),
+        peer_name,
+        system,
+    });
+    Ok(status())
+}
+
+fn discover_controller() -> Result<(SocketAddr, String), String> {
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, DISCOVERY_PORT))
+        .map_err(|error| format!("Direct LAN discovery is unavailable: {error}"))?;
+    let group = DISCOVERY_ADDRESS.parse::<Ipv4Addr>().map_err(|_| "Invalid AN3 discovery group.")?;
+    socket.join_multicast_v4(&group, &Ipv4Addr::UNSPECIFIED)
+        .map_err(|error| format!("Could not join AN3 LAN discovery: {error}"))?;
+    let _ = socket.set_read_timeout(Some(Duration::from_millis(250)));
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut payload = [0u8; 4096];
+    while Instant::now() < deadline {
+        match socket.recv_from(&mut payload) {
+            Ok((length, source)) if source.ip().is_ipv4() => {
+                let Ok(value) = serde_json::from_slice::<serde_json::Value>(&payload[..length]) else { continue };
+                let Ok(peer) = parse_advertisement(&value) else { continue };
+                if !peer.capabilities.iter().any(|capability| capability == "controller") { continue; }
+                return Ok((SocketAddr::new(source.ip(), peer.port), peer.name));
+            }
+            Ok(_) => {}
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(_) => {}
+        }
+    }
+    Err("No AN3 controller host was found on the local network.".into())
+}
+
 /// Stop hosting, close the listener, and release every held input.
 pub fn stop() {
+    stop_client();
+    stop_host();
+}
+
+fn stop_host() {
     let previous = HOST.lock().ok().and_then(|mut guard| guard.take());
     if let Some(host) = previous {
         host.stop.store(true, Ordering::Relaxed);
@@ -324,6 +424,28 @@ pub fn stop() {
     }
 }
 
+fn stop_client() {
+    let previous = CLIENT.lock().ok().and_then(|mut guard| guard.take());
+    if let Some(client) = previous {
+        let _ = client.stream.shutdown(Shutdown::Both);
+        let _ = set_native_input(frame_input(&serde_json::Value::Null));
+    }
+}
+
+/// Send one encrypted controller snapshot directly to the paired peer.
+pub fn send_state(mut state: serde_json::Value) -> Result<LanStatus, String> {
+    let mut guard = CLIENT.lock().map_err(|_| "Controller lock unavailable".to_string())?;
+    let client = guard.as_mut().ok_or("No direct controller session is active.")?;
+    let object = state.as_object_mut().ok_or("Controller state must be an object.")?;
+    object.insert("k".into(), serde_json::Value::String("state".into()));
+    let cipher = Aes256Gcm::new_from_slice(&client.key).map_err(|_| "Could not initialize peer encryption.")?;
+    let body = seal(&cipher, DIR_PHONE_TO_HOST, client.send_counter, &state);
+    write_frame(&mut client.stream, &body).map_err(|error| format!("Direct controller send failed: {error}"))?;
+    client.send_counter = client.send_counter.wrapping_add(1);
+    drop(guard);
+    Ok(status())
+}
+
 /// Rotate the pairing code and clear any paired session.
 pub fn refresh_code() -> LanStatus {
     if let Ok(guard) = HOST.lock() {
@@ -335,6 +457,24 @@ pub fn refresh_code() -> LanStatus {
 }
 
 pub fn status() -> LanStatus {
+    if let Ok(guard) = CLIENT.lock() {
+        if let Some(client) = guard.as_ref() {
+            return LanStatus {
+                running: true,
+                role: "controller".into(),
+                code: String::new(),
+                code_expires_in_seconds: 0,
+                paired: true,
+                controller_name: client.peer_name.clone(),
+                input_active: true,
+                input: String::new(),
+                system: client.system.clone(),
+                address: client.peer_address.clone(),
+                port: CONTROL_PORT,
+                error: String::new(),
+            };
+        }
+    }
     match HOST.lock() {
         Ok(guard) => match guard.as_ref() {
             Some(host) => {
@@ -346,6 +486,7 @@ pub fn status() -> LanStatus {
                     .unwrap_or(0);
                 LanStatus {
                     running: true,
+                    role: "host".into(),
                     code: host.state.code_value(),
                     code_expires_in_seconds: remaining,
                     paired: host.state.paired.load(Ordering::Relaxed),
@@ -360,6 +501,7 @@ pub fn status() -> LanStatus {
             }
             None => LanStatus {
                 running: false,
+                role: "off".into(),
                 code: String::new(),
                 code_expires_in_seconds: 0,
                 paired: false,
@@ -374,6 +516,7 @@ pub fn status() -> LanStatus {
         },
         Err(_) => LanStatus {
             running: false,
+            role: "off".into(),
             code: String::new(),
             code_expires_in_seconds: 0,
             paired: false,
@@ -390,34 +533,24 @@ pub fn status() -> LanStatus {
 
 /// Best-effort LAN address for diagnostics only.
 fn local_address() -> String {
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("8.8.8.8:80").is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                return addr.ip().to_string();
-            }
-        }
-    }
+    // The peer learns the source address from the direct discovery datagram.
+    // Do not probe an Internet address merely to render diagnostics.
     String::new()
 }
 
 fn spawn_discovery(stop: Arc<AtomicBool>, state: Arc<State>, name: String) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else { return };
-        let _ = socket.set_broadcast(true);
-        let mut counter = 0u64;
+        let _ = socket.set_multicast_loop_v4(true);
         while !stop.load(Ordering::Relaxed) {
-            counter = counter.wrapping_add(1);
-            let advertisement = serde_json::json!({
-                "an3": "ctrl",
-                "v": PROTOCOL_VERSION,
-                "id": state.instance_id,
-                "name": name,
-                "port": CONTROL_PORT,
-            });
-            let payload = serde_json::to_vec(&advertisement).unwrap_or_default();
-            let _ = socket.send_to(&payload, ("255.255.255.255", DISCOVERY_PORT));
-            // A second send to the subnet broadcast helps some Wi-Fi networks.
-            let _ = socket.send_to(&payload, ("192.168.0.255", DISCOVERY_PORT));
+            let payload = serde_json::to_vec(&advertisement_with_capabilities(
+                &state.instance_id,
+                &name,
+                CONTROL_PORT,
+                &["controller"],
+            ))
+                .unwrap_or_default();
+            let _ = socket.send_to(&payload, (DISCOVERY_ADDRESS, DISCOVERY_PORT));
             for _ in 0..20 {
                 if stop.load(Ordering::Relaxed) {
                     break;
@@ -732,7 +865,15 @@ mod tests {
         let code = status().code.clone();
         assert_eq!(code.len(), 6);
 
-        let mut stream = TcpStream::connect(("127.0.0.1", CONTROL_PORT)).expect("connect");
+        let mut stream = (0..50)
+            .find_map(|_| match TcpStream::connect(("127.0.0.1", CONTROL_PORT)) {
+                Ok(stream) => Some(stream),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    None
+                }
+            })
+            .expect("connect");
         stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let secret = EphemeralSecret::random(&mut OsRngCompat);
         let public = secret.public_key().to_encoded_point(false);

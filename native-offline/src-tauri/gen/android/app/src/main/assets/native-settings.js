@@ -240,26 +240,6 @@
       "pinned": false,
       "editable": true,
       "storageKey": null
-    },
-    {
-      "id": "controller-server",
-      "label": "Controller server",
-      "category": "network",
-      "type": "string",
-      "storage": "string",
-      "values": [],
-      "labels": {},
-      "min": null,
-      "max": null,
-      "default": "",
-      "legacyKeys": [],
-      "legacyResolve": null,
-      "restart": "none",
-      "note": null,
-      "external": false,
-      "pinned": false,
-      "editable": true,
-      "storageKey": null
     }
   ],
   "graphics": {

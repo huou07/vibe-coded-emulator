@@ -7,17 +7,17 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="theme-color" content="#07060c">
     <title>Vibe Coded Emulator</title>
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=2.3.0">
-    <link rel="stylesheet" href="/static/site.css?v=2.3.0">
-    <link rel="stylesheet" href="/static/theme-violet.css?v=2.3.0">
-    <link rel="stylesheet" href="/native.css?v=2.3.0">
-    <script src="/native-bootstrap.js?v=2.3.0"></script>
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.0.0">
+    <link rel="stylesheet" href="/static/site.css?v=3.0.0">
+    <link rel="stylesheet" href="/static/theme-violet.css?v=3.0.0">
+    <link rel="stylesheet" href="/native.css?v=3.0.0">
+    <script src="/native-bootstrap.js?v=3.0.0"></script>
   </head>
   <body class="reference-shell native-app-shell">
     <div class="native-app" id="nativeApp">
       <aside class="native-sidebar">
         <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
-          <img class="native-brand-logo" src="/static/brand-logo.png?v=2.3.0" alt="Vibe Coded Emulator">
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.0.0" alt="Vibe Coded Emulator">
           <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
         </button>
         <nav class="native-nav" aria-label="Main">
@@ -120,12 +120,28 @@
                 <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" role="status">Off</strong></div>
                 <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
               </div>
-              <button id="nativeControllerStart" type="button" class="button primary">Start Controller Session</button>
-              <details class="native-advanced" id="nativeControllerAdvanced">
-                <summary>Advanced</summary>
-                <label class="native-field"><span>Controller server</span><input id="nativeControllerServer" type="url" value="http://192.168.1.8:8092" spellcheck="false" autocomplete="off"></label>
-                <p class="native-muted">Technical detail for this session. Normal play never needs this.</p>
-              </details>
+              <button id="nativeControllerStart" type="button" class="button primary">Start Hosting</button>
+              <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeControllerJoin" type="button" class="button">Join Host</button>
+              <div id="nativeControllerPad" class="native-controller-pad" hidden aria-label="Direct LAN controller pad">
+                <div class="native-controller-pad-dpad" aria-label="Directions">
+                  <button type="button" data-native-controller-button="up">Up</button>
+                  <button type="button" data-native-controller-button="left">Left</button>
+                  <button type="button" data-native-controller-button="down">Down</button>
+                  <button type="button" data-native-controller-button="right">Right</button>
+                </div>
+                <div class="native-controller-pad-actions" aria-label="Buttons">
+                  <button type="button" data-native-controller-button="b">B</button>
+                  <button type="button" data-native-controller-button="a">A</button>
+                  <button type="button" data-native-controller-button="y">Y</button>
+                  <button type="button" data-native-controller-button="x">X</button>
+                  <button type="button" data-native-controller-button="select">Select</button>
+                  <button type="button" data-native-controller-button="start">Start</button>
+                  <button type="button" data-native-controller-button="l">L</button>
+                  <button type="button" data-native-controller-button="r">R</button>
+                </div>
+              </div>
+              <p class="native-muted">Start makes this device the game host. Enter a six-digit code when this device is joining another AN3 host.</p>
             </div>
           </section>
 
@@ -147,7 +163,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong>2.3.0</strong></div>
+                <div class="native-fact"><span>Version</span><strong>3.0.0</strong></div>
                 <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
@@ -166,16 +182,18 @@
 
     <div id="toast" role="status"></div>
 
-    <script src="/static/offline.js?v=2.3.0" defer></script>
-    <script src="/static/player-ui.js?v=2.3.0" defer></script>
-    <script src="/static/player-runtime.js?v=2.3.0" defer></script>
-    <script src="/static/renderer-worker.js?v=2.3.0" defer></script>
-    <script src="/static/nds-touch.js?v=2.3.0" defer></script>
-    <script src="/static/controller-utility.js?v=2.3.0" defer></script>
-    <script src="/static/player.js?v=2.3.0" defer></script>
-    <script src="/native-settings.js?v=2.3.0" defer></script>
-    <script src="/game-settings.js?v=2.3.0" defer></script>
-    <script src="/native-app.js?v=2.3.0" defer></script>
-    <script src="/android-staging.js?v=2.3.0" defer></script>
+    <script src="/static/offline.js?v=3.0.0" defer></script>
+    <script src="/static/player-ui.js?v=3.0.0" defer></script>
+    <script src="/static/player-runtime.js?v=3.0.0" defer></script>
+    <script src="/static/renderer-worker.js?v=3.0.0" defer></script>
+    <script src="/static/nds-touch.js?v=3.0.0" defer></script>
+    <script src="/static/controller-utility.js?v=3.0.0" defer></script>
+    <script src="/static/lan-peer.js?v=3.0.0" defer></script>
+    <script src="/static/sync-transfer.js?v=3.0.0" defer></script>
+    <script src="/static/player.js?v=3.0.0" defer></script>
+    <script src="/native-settings.js?v=3.0.0" defer></script>
+    <script src="/game-settings.js?v=3.0.0" defer></script>
+    <script src="/native-app.js?v=3.0.0" defer></script>
+    <script src="/android-staging.js?v=3.0.0" defer></script>
   </body>
 </html>

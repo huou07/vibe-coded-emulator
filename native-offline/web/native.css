@@ -162,6 +162,16 @@ body.native-app-shell{
   color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;min-height:44px;
 }
 .native-field input:focus,.native-field select:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+.native-controller-pad{display:grid;grid-template-columns:minmax(150px,220px) minmax(180px,1fr);gap:14px;margin-top:16px;padding-top:16px;border-top:1px solid var(--v-line,#282238)}
+.native-controller-pad button{min-height:44px;border:1px solid var(--v-line-2,#38304f);border-radius:10px;background:var(--v-bg-soft,#0b0912);color:var(--v-text,#f3f1fa);font-weight:700;touch-action:none;user-select:none;cursor:pointer}
+.native-controller-pad button:active,.native-controller-pad button[data-active="true"]{border-color:var(--v-violet,#8b5cf6);background:var(--v-violet,#8b5cf6);color:#fff}
+.native-controller-pad-dpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:center}
+.native-controller-pad-dpad button:nth-child(1){grid-column:2}
+.native-controller-pad-dpad button:nth-child(2){grid-column:1;grid-row:2}
+.native-controller-pad-dpad button:nth-child(3){grid-column:2;grid-row:2}
+.native-controller-pad-dpad button:nth-child(4){grid-column:3;grid-row:2}
+.native-controller-pad-actions{display:grid;grid-template-columns:repeat(4,minmax(56px,1fr));gap:8px}
+.native-controller-pad-actions button:nth-child(5),.native-controller-pad-actions button:nth-child(6){grid-column:span 2}
 .native-native-picker{justify-content:center;min-height:48px}
 .native-status{margin:0;padding:0 18px 16px;color:var(--v-muted,#a5a0b6);font-size:12px}
 .native-status:empty{display:none}

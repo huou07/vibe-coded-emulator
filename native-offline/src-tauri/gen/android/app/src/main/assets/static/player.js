@@ -288,6 +288,7 @@
     debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
     setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
     coreBooted = true;
+    updateSaveSyncButton();
     updatePlaybackReadiness();
     debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
     playerSession?.framePacing.start();
@@ -298,6 +299,7 @@
           ? `WebGPU was requested; the effective backend is ${status.effective}.`
           : `Đã yêu cầu WebGPU; backend thực tế là ${status.effective}.`);
       }).catch(error => showNotice(error.message || String(error), true));
+      restoreLocalGameSave();
     }
     if (config.mode !== "preload") queueTvDiscovery();
     reportPreload(true);
@@ -1034,6 +1036,109 @@
   }
 
   let gameStarted = false;
+  const syncSaveFileButton = document.getElementById("syncSaveFile");
+  const syncSaveConflictBox = document.getElementById("syncSaveConflicts");
+  const syncSaveIdentity = () => ({
+    core: config.roomSignature?.core || emulatorSystem,
+    gameId: config.slug,
+    romHash: config.roomSignature?.romHash || "",
+  });
+  const syncSaveSettings = async () => {
+    const transport = globalThis.AN3LanPeerTransport;
+    if (!transport) throw new Error(config.lang === "en" ? "Direct LAN sync is available in the installed AN3 app." : "Đồng bộ LAN trực tiếp cần ứng dụng AN3 đã cài đặt.");
+    return {mode: "lan", content: {save: true}, transport};
+  };
+  const updateSaveSyncButton = () => {
+    const manager = window.EJS_emulator?.gameManager;
+    const romHash = syncSaveIdentity().romHash;
+    const hasFullRomIdentity = /^(?:sha256:)?[a-f0-9]{64}$/i.test(String(romHash || ""));
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave || !globalThis.AN3LanPeerTransport;
+  };
+  const drawSaveSyncConflicts = conflicts => {
+    if (!syncSaveConflictBox) return;
+    syncSaveConflictBox.innerHTML = "";
+    if (!conflicts?.length) { syncSaveConflictBox.hidden = true; return; }
+    const title = document.createElement("h3");
+    title.textContent = config.lang === "en" ? "Save set conflict" : "Xung đột nhóm tệp save";
+    syncSaveConflictBox.appendChild(title);
+    conflicts.forEach(conflict => {
+      const card = document.createElement("div");
+      card.className = "sync-conflict";
+      const label = document.createElement("strong");
+      const set = conflict.local || conflict.remote || {};
+      const memberCount = Number(set.memberCount) || (Array.isArray(set.members) ? set.members.length : 1);
+      label.textContent = config.lang === "en"
+        ? `Save set · ${set.gameId || config.slug} · ${memberCount} file${memberCount === 1 ? "" : "s"}`
+        : `Nhóm save · ${set.gameId || config.slug} · ${memberCount} tệp`;
+      card.appendChild(label);
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      [["local", "Keep this device"], ["remote", "Use other device"], ["both", "Keep Both"]].forEach(choice => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button";
+        button.textContent = choice[1];
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              kind: "save",
+              deviceId: globalThis.AN3SyncTransfer.deviceId(),
+              manager: window.EJS_emulator?.gameManager,
+              identity: syncSaveIdentity(),
+              resolution: choice[0],
+              transport: globalThis.AN3LanPeerTransport,
+            });
+            drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
+            showNotice(config.lang === "en" ? "Save set conflict resolved." : "Đã xử lý xung đột nhóm tệp save.");
+          } catch (error) {
+            showNotice(error.message || String(error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.appendChild(button);
+      });
+      card.appendChild(actions);
+      syncSaveConflictBox.appendChild(card);
+    });
+    syncSaveConflictBox.hidden = false;
+  };
+  const syncGameSave = async () => {
+    const settings = await syncSaveSettings();
+    const result = await globalThis.AN3SyncTransfer.syncSave({
+      deviceId: globalThis.AN3SyncTransfer.deviceId(),
+      mode: settings.mode,
+      sameLan: true,
+      transport: settings.transport,
+      manager: window.EJS_emulator?.gameManager,
+      identity: syncSaveIdentity(),
+    });
+    drawSaveSyncConflicts(result.conflicts);
+    showNotice(config.lang === "en"
+      ? `Save set sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} set conflict(s) need a choice` : ""}.`
+      : `Đồng bộ nhóm save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột nhóm` : ""}.`);
+    return result;
+  };
+  const restoreLocalGameSave = async () => {
+    const manager = window.EJS_emulator?.gameManager;
+    if (!manager || !globalThis.AN3SyncTransfer?.restoreGameSave) return;
+    try {
+      const restored = await globalThis.AN3SyncTransfer.restoreGameSave({
+        manager,
+        identity: syncSaveIdentity(),
+      });
+      if (restored) showNotice(config.lang === "en" ? "Restored game save on this device." : "Đã khôi phục tệp save trên thiết bị.");
+    } catch (error) {
+      showNotice(error.message || String(error), true);
+    }
+  };
+  syncSaveFileButton?.addEventListener("click", () => {
+    syncSaveFileButton.disabled = true;
+    syncGameSave().catch(error => showNotice(error.message || String(error), true)).finally(updateSaveSyncButton);
+  });
+  updateSaveSyncButton();
   let threeDsGateStarted = false;
   const threeDsAudioContext = () => {
     const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
@@ -1873,7 +1978,7 @@
   // apart from "input actually reaching the game".
   const controllerPanel = document.getElementById("ctrlPhonePanel");
   const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
-  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null};
+  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null,direct:false};
   // Phone Controller utility actions reuse this host's existing operations and
   // the shared per-press dedup guard; no second save/speed/menu implementation.
   const controllerUtility = (window.AN3ControllerUtility || {createDispatcher:()=>({dispatch:()=>[],reset(){},get lastSequence(){return 0;}})}).createDispatcher({
@@ -1945,21 +2050,42 @@
     if (!payload.lastSequence) return en?"Connected — waiting for input":"Đã kết nối — chờ tín hiệu";
     return payload.inputActive ? (en?"Connected":"Đã kết nối") : (en?"Connected — input unavailable":"Đã kết nối — chưa vào game");
   };
+  const controllerDevRequest = (url, options) => {
+    const adapter = globalThis.AN3ControllerDevAdapter;
+    if (typeof adapter?.request === "function") return adapter.request(url, options);
+    if (typeof adapter?.fetch === "function") return adapter.fetch(url, options);
+    return Promise.reject(new Error("Direct LAN controller is available in the installed AN3 app."));
+  };
   const controllerAck = (sequence, utilitySequence) => {
+    if (controller.direct) return;
     if (!controller.code || !controller.hostToken || !sequence) return;
-    fetch("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
+    controllerDevRequest("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
   };
   const controllerStop = message => {
     controllerRelease();
     controllerUtility.reset();
     if (controller.timer) clearInterval(controller.timer);
-    controller.timer = 0; controller.code = ""; controller.hostToken = "";
+    controller.timer = 0; controller.code = ""; controller.hostToken = ""; controller.direct = false;
+    if (globalThis.AN3NativeController?.direct) globalThis.AN3NativeController.stop?.().catch?.(() => {});
     if (message) controllerStatus(message);
   };
   const controllerPoll = async () => {
+    if (globalThis.AN3NativeController?.direct) {
+      try {
+        const status = await globalThis.AN3NativeController.status();
+        controller.code = status.code || controller.code;
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = status.code || "—";
+        controllerStatus(status.error || (!status.running ? (config.lang === "en" ? "Off" : "Đã tắt") : status.paired ? (status.inputActive ? "Connected" : "Connected — input unavailable") : (config.lang === "en" ? "Waiting for a device…" : "Đang chờ thiết bị…")));
+      } catch (_) {}
+      return;
+    }
     if (!controller.code || !controller.hostToken) return;
+    if (!globalThis.AN3ControllerDevAdapter) {
+      controllerStatus(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      return;
+    }
     try {
-      const response = await fetch("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
+      const response = await controllerDevRequest("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
       if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Disconnected":"Đã ngắt kết nối"); return; }
       if (!response.ok) return;
       const payload = await response.json();
@@ -1982,7 +2108,17 @@
     controllerStop();
     controllerStatus(config.lang==="en"?"Starting…":"Đang bắt đầu…");
     try {
-      const response = await fetch("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
+      if (globalThis.AN3NativeController?.direct) {
+        const data = await globalThis.AN3NativeController.start();
+        controller.direct = true;
+        controller.code = data.code || "";
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = controller.code || "—";
+        controllerStatus(config.lang==="en"?"Waiting for a device…":"Đang chờ thiết bị…");
+        controller.timer = setInterval(controllerPoll, 700);
+        return;
+      }
+      if (!globalThis.AN3ControllerDevAdapter) throw new Error(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      const response = await controllerDevRequest("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       controller.code = data.code; controller.hostToken = data.hostToken;

@@ -90,17 +90,21 @@ window.AN3OfflineEmulatorOrigin = "";
       });
     };
     advertiseSwitch();
-    // Staging-only phone controller. The Rust host owns the session, the
-    // polling, and the input injection; this bridge only starts/stops it.
+    // Installed desktop clients use the common direct-LAN peer host. The
+    // legacy HTTP controller is deliberately not reachable from this bridge.
     const controllerInvoke = name => payload => {
       const invoke = nativeInvoke();
       if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
       return invoke(name, payload);
     };
     window.AN3NativeController = {
-      start: baseUrl => controllerInvoke("native_controller_start")({baseUrl: String(baseUrl || "")}),
-      stop: () => controllerInvoke("native_controller_stop")({}),
-      status: () => controllerInvoke("native_controller_status")({})
+      direct: true,
+      start: () => controllerInvoke("native_controller_lan_start")({}),
+      join: code => controllerInvoke("native_controller_lan_join")({code}),
+      send: state => controllerInvoke("native_controller_lan_send")({state}),
+      stop: () => controllerInvoke("native_controller_lan_stop")({}),
+      status: () => controllerInvoke("native_controller_lan_status")({}),
+      refreshCode: () => controllerInvoke("native_controller_lan_refresh")({}),
     };
   }
   if (/Android/i.test(navigator.userAgent)) {
@@ -110,7 +114,10 @@ window.AN3OfflineEmulatorOrigin = "";
     if (androidController?.start && androidController?.status) {
       const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
       window.AN3NativeController = {
-        start: baseUrl => Promise.resolve(parse(androidController.start(String(baseUrl || "")))),
+        direct: true,
+        start: () => Promise.resolve(parse(androidController.start())),
+        join: code => androidController.join ? Promise.resolve(parse(androidController.join(code))) : Promise.reject(new Error("Direct LAN joining is unavailable in this Android build.")),
+        send: state => androidController.send ? Promise.resolve(parse(androidController.send(JSON.stringify(state)))) : Promise.reject(new Error("Direct controller input is unavailable on this Android build.")),
         stop: () => { const result = parse(androidController.stop()); return Promise.resolve(result); },
         status: () => Promise.resolve(parse(androidController.status()))
       };

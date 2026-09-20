@@ -22,8 +22,10 @@ await cp(resolve(nativeRoot, "web"), destination, { recursive: true });
 // Package only the reviewed GBA, NDS and 3DS runtime files from staging, then
 // let the Rust loopback server deliver them with COOP/COEP.  `data-v2` is the
 // staging-only repaired Azahar path; the public EmulatorJS CDN has no such
-// path, which is why the former native 3DS launcher always failed.
-const patchedRuntimeOrigin = (process.env.AN3_OFFLINE_RUNTIME_SOURCE || "http://192.168.1.8:8092/emulatorjs").replace(/\/+$/, "");
+// path, which is why the former native 3DS launcher always failed. A source
+// must be provided by the local build/test environment when the frozen cache
+// is incomplete; the installed app never uses this origin at runtime.
+const patchedRuntimeOrigin = (process.env.AN3_OFFLINE_RUNTIME_SOURCE || "http://127.0.0.1:8092/emulatorjs").replace(/\/+$/, "");
 const standardRuntimeOrigin = "https://cdn.emulatorjs.org";
 const runtimeFiles = [
   "stable/data/loader.js", "stable/data/emulator.min.js", "stable/data/emulator.min.css",

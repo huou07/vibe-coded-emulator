@@ -781,6 +781,9 @@
     throw new Error("Atomic save-set persistence is unavailable.");
   };
 
+  // The HTTP adapter is intentionally opt-in. It exists for the browser
+  // development/test fixtures that exercise the pure sync engine; installed
+  // AN3 clients use the direct LAN peer adapter instead.
   var requestJson = async function (fetcher, url, options) {
     var response = await fetcher(url, options);
     var data = {};
@@ -797,6 +800,67 @@
       throw new Error(message);
     }
     return new Uint8Array(await response.arrayBuffer());
+  };
+
+  var createHttpTransport = function (fetcher) {
+    if (typeof fetcher !== "function") throw new Error("The development HTTP sync adapter needs fetch.");
+    return {
+      manifest: function (kind) {
+        return requestJson(fetcher, "/api/sync/lan/manifest?kind=" + encodeURIComponent(kind));
+      },
+      plan: function (payload) {
+        return requestJson(fetcher, "/api/sync/plan", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+      },
+      publish: function (payload) {
+        return requestJson(fetcher, "/api/sync/lan/publish", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+      },
+      blob: function (kind, item) {
+        return requestBytes(fetcher, "/api/sync/lan/blob?kind=" + encodeURIComponent(kind) + "&key=" + encodeURIComponent(item.key) + "&hash=" + encodeURIComponent(item.contentHash));
+      },
+      resolve: function (payload) {
+        return requestJson(fetcher, "/api/sync/resolve", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(payload),
+        });
+      },
+      // This adapter is deliberately limited to development/test fixtures. It
+      // is never selected implicitly by an installed app and cannot claim to
+      // prove a user account over the LAN.
+      development: true,
+    };
+  };
+
+  var syncPeerAuthorization = async function (transport, options, kind) {
+    if (transport.development === true) return;
+    if (typeof transport.sameAccount !== "function" || !(await transport.sameAccount({
+      capability: "sync",
+      kind: kind,
+      identity: options && options.identity ? options.identity : null,
+    }))) {
+      throw new Error("The LAN peer is not verified for this AN3 account.");
+    }
+  };
+
+  var transportFor = function (options) {
+    if (options && options.transport) return globalThis.AN3LanPeer?.asSyncTransport
+      ? globalThis.AN3LanPeer.asSyncTransport(options.transport)
+      : options.transport;
+    if (globalThis.AN3LanPeerTransport) return globalThis.AN3LanPeer?.asSyncTransport
+      ? globalThis.AN3LanPeer.asSyncTransport(globalThis.AN3LanPeerTransport)
+      : globalThis.AN3LanPeerTransport;
+    // Passing `fetch` is the explicit test/development escape hatch. There is
+    // no same-origin fallback in the installed product.
+    if (options && typeof options.fetch === "function") return createHttpTransport(options.fetch);
+    throw new Error("Direct LAN peer transport is unavailable in this build.");
   };
 
   var remoteItems = function (manifest, kind) {
@@ -857,20 +921,16 @@
     return legacySaveSet(manifest, identity);
   };
 
-  var publish = async function (fetcher, device, kind, item, keyOverride) {
+  var publish = async function (transport, device, kind, item, keyOverride) {
     var key = keyOverride || item.key;
-    return requestJson(fetcher, "/api/sync/lan/publish", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        deviceId: device,
-        kind: kind,
-        items: [{key: key, contentHash: item.contentHash, data: encodeBase64(item.bytes)}],
-      }),
+    return transport.publish({
+      deviceId: device,
+      kind: kind,
+      items: [{key: key, contentHash: item.contentHash, data: encodeBase64(item.bytes)}],
     });
   };
 
-  var publishSaveSet = async function (fetcher, device, identity, set, setIdOverride, replaceManifestHash) {
+  var publishSaveSet = async function (transport, device, identity, set, setIdOverride, replaceManifestHash) {
     var outgoing;
     if (setIdOverride) {
       outgoing = await buildSaveSet(identity, set.members, setIdOverride);
@@ -886,10 +946,7 @@
         throw new Error("The save set has no bytes to publish.");
       }
     }
-    return requestJson(fetcher, "/api/sync/lan/publish", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
+    return transport.publish({
         deviceId: device,
         kind: KIND_SAVE,
         replaceManifestHash: replaceManifestHash || "",
@@ -921,24 +978,23 @@
             data: encodeBase64(member.bytes),
           };
         }),
-      }),
     });
   };
 
-  var download = async function (fetcher, kind, item) {
-    var bytes = await requestBytes(fetcher, "/api/sync/lan/blob?kind=" + encodeURIComponent(kind) + "&key=" + encodeURIComponent(item.key) + "&hash=" + encodeURIComponent(item.contentHash));
+  var download = async function (transport, kind, item) {
+    var bytes = await transport.blob(kind, item);
     if (bytes.byteLength !== item.size || await digestBytes(bytes) !== item.contentHash) {
       throw new Error("Downloaded " + kind + " failed hash verification.");
     }
     return bytes;
   };
 
-  var downloadSaveSet = async function (fetcher, set, identity) {
+  var downloadSaveSet = async function (transport, set, identity) {
     var validated = await validateSaveSet(set, identity);
     var members = [];
     for (var index = 0; index < validated.members.length; index += 1) {
       var member = validated.members[index];
-      var bytes = await download(fetcher, KIND_SAVE, member);
+      var bytes = await download(transport, KIND_SAVE, member);
       members.push(Object.assign({}, member, {bytes: bytes}));
     }
     // Revalidate the complete aggregate after every member has been fetched.
@@ -953,12 +1009,13 @@
     options = options || {};
     var kind = String(options.kind || KIND_STATE);
     if (kind !== KIND_STATE && kind !== KIND_SAVE) throw new Error("Unsupported sync artifact kind.");
-    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var transport = transportFor(options);
+    await syncPeerAuthorization(transport, options, kind);
     var storage = storageFor(kind, options);
     var device = String(options.deviceId || deviceId());
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
     var local = await localItems(storage, kind);
-    var remote = remoteItems(await requestJson(fetcher, "/api/sync/lan/manifest?kind=" + encodeURIComponent(kind)), kind);
+    var remote = remoteItems(await transport.manifest(kind), kind);
     var localByKey = new Map(local.map(function (item) { return [item.key, item]; }));
     var remoteByKey = new Map(remote.map(function (item) { return [item.key, item]; }));
     var keys = Array.from(new Set(local.concat(remote).map(function (item) { return item.key; }))).sort();
@@ -971,11 +1028,7 @@
         remote: remoteItem ? {content_hash: remoteItem.contentHash, size: remoteItem.size, device_id: remoteItem.deviceId} : undefined,
       };
     });
-    var plan = await requestJson(fetcher, "/api/sync/plan", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: kind, records: records}),
-    });
+    var plan = await transport.plan({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: kind, records: records});
     var conflicts = [];
     var uploaded = 0;
     var downloaded = 0;
@@ -984,10 +1037,10 @@
       var localItem = localByKey.get(transfer.key);
       var remoteItem = remoteByKey.get(transfer.key);
       if (transfer.direction === "upload" && localItem) {
-        await publish(fetcher, device, kind, localItem);
+        await publish(transport, device, kind, localItem);
         uploaded += 1;
       } else if (transfer.direction === "download" && remoteItem) {
-        var incoming = await download(fetcher, kind, remoteItem);
+        var incoming = await download(transport, kind, remoteItem);
         await persistLocal(storage, kind, remoteItem.key, incoming, remoteItem.contentHash, remoteItem);
         downloaded += 1;
       } else if (transfer.direction === "conflict") {
@@ -1014,14 +1067,15 @@
 
   var syncSaveKind = async function (options) {
     options = options || {};
-    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var transport = transportFor(options);
+    await syncPeerAuthorization(transport, options, KIND_SAVE);
     var storage = storageFor(KIND_SAVE, options);
     var identity = normalizeSaveIdentity(options.identity || {});
     var device = String(options.deviceId || deviceId());
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
     var localItemsFound = await localItems(storage, KIND_SAVE);
     var localSet = localItemsFound.length ? await buildSaveSet(identity, localItemsFound) : null;
-    var manifest = await requestJson(fetcher, "/api/sync/lan/manifest?kind=" + encodeURIComponent(KIND_SAVE));
+    var manifest = await transport.manifest(KIND_SAVE);
     var remoteSet = await remoteSaveSet(manifest, identity);
     var setId = saveSetId(identity);
     var records = [];
@@ -1032,21 +1086,17 @@
         remote: remoteSet ? {content_hash: remoteSet.manifestHash, size: remoteSet.totalSize, device_id: remoteSet.deviceId || ""} : undefined,
       });
     }
-    var plan = await requestJson(fetcher, "/api/sync/plan", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: KIND_SAVE, records: records}),
-    });
+    var plan = await transport.plan({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: KIND_SAVE, records: records});
     var conflicts = [];
     var uploaded = 0;
     var downloaded = 0;
     for (var index = 0; index < (plan.transfers || []).length; index += 1) {
       var transfer = plan.transfers[index];
       if (transfer.direction === "upload" && localSet) {
-        await publishSaveSet(fetcher, device, identity, localSet);
+        await publishSaveSet(transport, device, identity, localSet);
         uploaded += 1;
       } else if (transfer.direction === "download" && remoteSet) {
-        var incoming = await downloadSaveSet(fetcher, remoteSet, identity);
+        var incoming = await downloadSaveSet(transport, remoteSet, identity);
         await persistSaveSets(storage, identity, [{set: incoming, asCopy: false}]);
         downloaded += 1;
       } else if (transfer.direction === "conflict" && localSet && remoteSet) {
@@ -1096,37 +1146,34 @@
     if (kind !== KIND_STATE && kind !== KIND_SAVE) throw new Error("Unsupported sync artifact kind.");
     var resolution = String(options.resolution || "").toLowerCase();
     if (!["local", "remote", "both"].includes(resolution)) throw new Error("Invalid conflict resolution.");
-    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var transport = transportFor(options);
+    await syncPeerAuthorization(transport, options, kind);
     var storage = storageFor(kind, options);
     var device = String(options.deviceId || deviceId());
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
     var local = conflict.local;
     var remote = conflict.remote;
     if (!local || !remote) throw new Error("The conflict is missing one side's bytes.");
-    var action = await requestJson(fetcher, "/api/sync/resolve", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
+    var action = await transport.resolve({
         kind: kind,
         key: conflict.key,
         resolution: resolution,
         localHash: local.manifestHash || local.contentHash,
         remoteHash: remote.manifestHash || remote.contentHash,
-      }),
     });
     if (kind === KIND_SAVE && conflict.setId && Array.isArray(local.members) && Array.isArray(remote.members)) {
       var identity = normalizeSaveIdentity(options.identity || local);
       if (resolution === "local") {
-        await publishSaveSet(fetcher, device, identity, local, undefined, remote.manifestHash);
+        await publishSaveSet(transport, device, identity, local, undefined, remote.manifestHash);
       } else {
         // Download and verify every remote member before either the canonical
         // set or a keep-both copy is handed to the storage adapter.
-        var incomingSet = await downloadSaveSet(fetcher, remote, identity);
+        var incomingSet = await downloadSaveSet(transport, remote, identity);
         var pending = [{set: incomingSet, asCopy: false}];
         if (resolution === "both") {
           var copySet = await buildSaveSet(identity, local.members, action.copyKey || conflict.copyKey || conflict.key + ".conflict");
           copySet.conflictOf = local.manifestHash;
-          await publishSaveSet(fetcher, device, identity, copySet, copySet.setId);
+          await publishSaveSet(transport, device, identity, copySet, copySet.setId);
           pending.unshift({set: copySet, asCopy: true});
         }
         await persistSaveSets(storage, identity, pending);
@@ -1134,10 +1181,10 @@
       return {action: action, resolution: resolution};
     }
     if (resolution === "local") {
-      await publish(fetcher, device, kind, local);
+      await publish(transport, device, kind, local);
     } else {
-      if (resolution === "both") await publish(fetcher, device, kind, local, action.copyKey || conflict.copyKey);
-      var incoming = await download(fetcher, kind, remote);
+      if (resolution === "both") await publish(transport, device, kind, local, action.copyKey || conflict.copyKey);
+      var incoming = await download(transport, kind, remote);
       if (resolution === "both") await persistLocal(storage, kind, action.copyKey || conflict.copyKey, local.bytes, local.contentHash, local);
       await persistLocal(storage, kind, conflict.key, incoming, remote.contentHash, remote);
     }
@@ -1159,5 +1206,6 @@
     validateSaveSet: validateSaveSet,
     deviceId: deviceId,
     digestBytes: digestBytes,
+    transportFor: transportFor,
   });
 })();

@@ -5,7 +5,11 @@
   var byId = function (id) { return document.getElementById(id); };
 
   var request = async function (url, options) {
-    var response = await fetch(url, options);
+    var adapter = window.AN3ControllerDevAdapter;
+    var response;
+    if (typeof adapter?.request === "function") response = await adapter.request(url, options);
+    else if (typeof adapter?.fetch === "function") response = await adapter.fetch(url, options);
+    else throw new Error("Direct LAN controller is available in the installed AN3 app.");
     var data = {};
     try { data = await response.json(); } catch (_) {}
     if (!response.ok) { var error = new Error(data.error || ("HTTP " + response.status)); error.status = response.status; throw error; }
