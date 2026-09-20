@@ -13,8 +13,9 @@
   var availability = byId("syncAvailability");
   var conflictBox = byId("syncConflicts");
   var romWarning = byId("syncRomWarning");
+  var transferButton = byId("syncTransfer");
   var contentIds = {save: "syncContentSave", state: "syncContentState", library: "syncContentLibrary", rom: "syncContentRom"};
-  var state = {mode: "off", content: {}, modes: [], contentOptions: []};
+  var state = {mode: "off", content: {}, modes: [], contentOptions: [], peers: [], conflicts: []};
 
   var setStatus = function (text) { statusNode.textContent = text; };
   var json = async function (url, options) {
@@ -25,7 +26,7 @@
     return data;
   };
 
-  var deviceId = (function () {
+  var fallbackDeviceId = (function () {
     try {
       var existing = localStorage.getItem("vibe-sync-device-v1");
       if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
@@ -36,6 +37,7 @@
       return created;
     } catch (_) { return "sync" + Date.now(); }
   })();
+  var deviceId = globalThis.AN3SyncTransfer?.deviceId?.() || fallbackDeviceId;
 
   var modeById = function (id) {
     for (var index = 0; index < state.modes.length; index += 1) if (state.modes[index].id === id) return state.modes[index];
@@ -49,6 +51,7 @@
   };
 
   var renderModes = function (data) {
+    state.mode = data.mode || "off";
     state.modes = data.modes || [];
     select.innerHTML = "";
     state.modes.forEach(function (mode) {
@@ -64,6 +67,7 @@
     availability.textContent = data.driveConfigured
       ? "Google Drive is connected for this build."
       : "Google Drive sync unavailable in this build.";
+    updateTransferButton();
   };
 
   var renderContent = function (data) {
@@ -73,9 +77,15 @@
       if (node) node.checked = Boolean(state.content[key]);
     });
     if (romWarning) romWarning.hidden = !state.content.rom;
+    updateTransferButton();
+  };
+
+  var updateTransferButton = function () {
+    if (transferButton) transferButton.disabled = state.mode === "off" || state.mode === "drive" || !state.content.state || !globalThis.AN3SyncTransfer;
   };
 
   var renderDevices = function (peers) {
+    state.peers = peers || [];
     list.innerHTML = "";
     var self = document.createElement("li");
     self.className = "sync-device sync-device-self";
@@ -98,18 +108,14 @@
     });
   };
 
-  // Real conflict resolution wiring. The web build has no wired local store
-  // yet, so this stays hidden until a plan returns an actual conflict; native
-  // clients and the future store integration call the same endpoint.
-  var renderConflicts = function (transfers) {
+  var drawConflicts = function () {
     if (!conflictBox) return;
-    var conflicts = (transfers || []).filter(function (transfer) { return transfer.direction === "conflict"; });
     conflictBox.innerHTML = "";
-    if (!conflicts.length) { conflictBox.hidden = true; return; }
+    if (!state.conflicts.length) { conflictBox.hidden = true; return; }
     var title = document.createElement("h3");
     title.textContent = "Save Conflict";
     conflictBox.appendChild(title);
-    conflicts.forEach(function (conflict) {
+    state.conflicts.forEach(function (conflict) {
       var card = document.createElement("div");
       card.className = "sync-conflict";
       var label = document.createElement("strong");
@@ -123,15 +129,18 @@
         button.className = "button";
         button.textContent = choice[1];
         button.addEventListener("click", async function () {
+          button.disabled = true;
           try {
-            await json("/api/sync/resolve", {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({kind: conflict.kind, key: conflict.key, resolution: choice[0]})
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              deviceId: deviceId,
+              resolution: choice[0],
             });
             setStatus("Conflict resolved.");
-            renderConflicts(transfers.filter(function (item) { return item !== conflict; }));
+            state.conflicts = state.conflicts.filter(function (item) { return item !== conflict; });
+            drawConflicts();
           } catch (error) { setStatus(error.message); }
+          finally { button.disabled = false; }
         });
         actions.appendChild(button);
       });
@@ -140,7 +149,41 @@
     });
     conflictBox.hidden = false;
   };
-  window.AN3Sync = {renderPlan: function (plan) { if (plan && plan.transfers) renderConflicts(plan.transfers); }};
+  var renderConflicts = function (transfers, context) {
+    var localByKey = context && context.local ? new Map(context.local.map(function (item) { return [item.key, item]; })) : new Map();
+    var remoteByKey = context && context.remote ? new Map(context.remote.map(function (item) { return [item.key, item]; })) : new Map();
+    state.conflicts = (transfers || []).filter(function (transfer) { return transfer.direction === "conflict"; }).map(function (transfer) {
+      return {
+        key: transfer.key,
+        kind: transfer.kind || "state",
+        copyKey: transfer.copyKey || transfer.key + ".conflict",
+        local: localByKey.get(transfer.key) || null,
+        remote: remoteByKey.get(transfer.key) || null,
+        reason: transfer.reason || "both-changed",
+      };
+    });
+    drawConflicts();
+  };
+
+  var syncSaveStates = async function () {
+    if (!globalThis.AN3SyncTransfer) throw new Error("LAN save-state transfer is unavailable.");
+    if (state.mode === "off") throw new Error("Turn on LAN or Automatic sync first.");
+    if (!state.content.state) throw new Error("Enable Save states before syncing.");
+    var result = await globalThis.AN3SyncTransfer.syncState({
+      deviceId: deviceId,
+      mode: state.mode,
+      // This explicit staging surface is the LAN transport. Peer discovery is
+      // still shown separately, while the server rendezvous carries the bytes.
+      sameLan: true,
+    });
+    renderConflicts((result.plan || {}).transfers, result);
+    setStatus("Sent " + result.counts.uploaded + ", received " + result.counts.downloaded + "." + (result.counts.conflicts ? " " + result.counts.conflicts + " conflict(s) need a choice." : ""));
+    return result;
+  };
+  window.AN3Sync = {
+    renderPlan: function (plan) { if (plan && plan.transfers) renderConflicts(plan.transfers); },
+    syncSaveStates: syncSaveStates,
+  };
 
   var load = async function () {
     try {
@@ -195,5 +238,10 @@
   });
   byId("syncSave").addEventListener("click", save);
   byId("syncRefreshPeers").addEventListener("click", announce);
+  transferButton?.addEventListener("click", function () {
+    transferButton.disabled = true;
+    setStatus("Syncing save-state bytes…");
+    syncSaveStates().catch(function (error) { setStatus(error.message || String(error)); }).finally(updateTransferButton);
+  });
   load().then(announce);
 })();

@@ -288,6 +288,7 @@
     debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
     setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
     coreBooted = true;
+    updateSaveSyncButton();
     updatePlaybackReadiness();
     debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
     playerSession?.framePacing.start();
@@ -1034,6 +1035,93 @@
   }
 
   let gameStarted = false;
+  const syncSaveFileButton = document.getElementById("syncSaveFile");
+  const syncSaveConflictBox = document.getElementById("syncSaveConflicts");
+  const syncSaveIdentity = () => ({
+    core: config.roomSignature?.core || emulatorSystem,
+    gameId: config.slug,
+    romHash: config.roomSignature?.romHash || "unknown-rom",
+  });
+  const syncSaveSettings = async () => {
+    const response = await fetch("/api/sync/settings");
+    let data = {};
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (data.mode === "off") throw new Error(config.lang === "en" ? "Turn on LAN or Automatic sync first." : "Hãy bật đồng bộ LAN hoặc Tự động trước.");
+    if (data.mode === "drive") throw new Error(config.lang === "en" ? "Google Drive-only sync is outside this LAN slice." : "Đồng bộ chỉ qua Google Drive nằm ngoài phạm vi LAN này.");
+    if (!data.content?.save) throw new Error(config.lang === "en" ? "Enable Save files on the Sync page first." : "Hãy bật Tệp save ở trang Đồng bộ trước.");
+    return data;
+  };
+  const updateSaveSyncButton = () => {
+    const manager = window.EJS_emulator?.gameManager;
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !globalThis.AN3SyncTransfer?.syncSave;
+  };
+  const drawSaveSyncConflicts = conflicts => {
+    if (!syncSaveConflictBox) return;
+    syncSaveConflictBox.innerHTML = "";
+    if (!conflicts?.length) { syncSaveConflictBox.hidden = true; return; }
+    const title = document.createElement("h3");
+    title.textContent = config.lang === "en" ? "Save file conflict" : "Xung đột tệp save";
+    syncSaveConflictBox.appendChild(title);
+    conflicts.forEach(conflict => {
+      const card = document.createElement("div");
+      card.className = "sync-conflict";
+      const label = document.createElement("strong");
+      label.textContent = conflict.key;
+      card.appendChild(label);
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      [["local", "Keep this device"], ["remote", "Use other device"], ["both", "Keep Both"]].forEach(choice => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button";
+        button.textContent = choice[1];
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              kind: "save",
+              deviceId: globalThis.AN3SyncTransfer.deviceId(),
+              manager: window.EJS_emulator?.gameManager,
+              identity: syncSaveIdentity(),
+              resolution: choice[0],
+            });
+            drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
+            showNotice(config.lang === "en" ? "Save conflict resolved." : "Đã xử lý xung đột tệp save.");
+          } catch (error) {
+            showNotice(error.message || String(error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.appendChild(button);
+      });
+      card.appendChild(actions);
+      syncSaveConflictBox.appendChild(card);
+    });
+    syncSaveConflictBox.hidden = false;
+  };
+  const syncGameSave = async () => {
+    const settings = await syncSaveSettings();
+    const result = await globalThis.AN3SyncTransfer.syncSave({
+      deviceId: globalThis.AN3SyncTransfer.deviceId(),
+      mode: settings.mode,
+      sameLan: true,
+      manager: window.EJS_emulator?.gameManager,
+      identity: syncSaveIdentity(),
+    });
+    drawSaveSyncConflicts(result.conflicts);
+    showNotice(config.lang === "en"
+      ? `Save sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} conflict(s) need a choice` : ""}.`
+      : `Đồng bộ tệp save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột` : ""}.`);
+    return result;
+  };
+  syncSaveFileButton?.addEventListener("click", () => {
+    syncSaveFileButton.disabled = true;
+    syncGameSave().catch(error => showNotice(error.message || String(error), true)).finally(updateSaveSyncButton);
+  });
+  updateSaveSyncButton();
   let threeDsGateStarted = false;
   const threeDsAudioContext = () => {
     const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];

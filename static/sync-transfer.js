@@ -1,0 +1,448 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+(function () {
+  "use strict";
+
+  // The transfer protocol is shared by save states and ordinary emulator save
+  // files. Each storage adapter owns discovery and persistence; this module
+  // owns identity, hashing, planning, transport, and conflict resolution.
+  var STATE_DATABASE_NAME = "an3-arcade-save-slots";
+  var STATE_STORE_NAME = "states";
+  var DEVICE_STORAGE_KEY = "vibe-sync-device-v1";
+  var KIND_STATE = "state";
+  var KIND_SAVE = "save";
+  var KEY_PATTERN = /^[A-Za-z0-9._:@/\\-]{1,256}$/;
+  var HASH_PATTERN = /^[a-f0-9]{64}$/;
+  var MAX_MANIFEST_ITEMS = 2000;
+
+  var hex = function (bytes) {
+    return Array.from(bytes).map(function (byte) {
+      return byte.toString(16).padStart(2, "0");
+    }).join("");
+  };
+
+  var digestBytes = async function (bytes) {
+    if (!globalThis.crypto || !globalThis.crypto.subtle) {
+      throw new Error("Secure Web Crypto is required for LAN byte sync.");
+    }
+    return hex(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)));
+  };
+
+  var encodeBase64 = function (bytes) {
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    var output = "";
+    for (var index = 0; index < bytes.length; index += 3) {
+      var first = bytes[index];
+      var second = index + 1 < bytes.length ? bytes[index + 1] : 0;
+      var third = index + 2 < bytes.length ? bytes[index + 2] : 0;
+      output += alphabet[first >> 2];
+      output += alphabet[((first & 3) << 4) | (second >> 4)];
+      output += index + 1 < bytes.length ? alphabet[((second & 15) << 2) | (third >> 6)] : "=";
+      output += index + 2 < bytes.length ? alphabet[third & 63] : "=";
+    }
+    return output;
+  };
+
+  var readBytes = async function (value) {
+    if (value && typeof value.arrayBuffer === "function") {
+      return new Uint8Array(await value.arrayBuffer());
+    }
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    throw new Error("Sync storage returned an unreadable byte value.");
+  };
+
+  var safeSegment = function (value, fallback, limit) {
+    var result = String(value || fallback || "unknown")
+      .trim()
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/^\.+$/, "")
+      .slice(0, limit || 48);
+    return result || String(fallback || "unknown");
+  };
+
+  var pathBaseName = function (path) {
+    var parts = String(path || "").split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : "save";
+  };
+
+  // Normal saves include the artifact kind, emulator core, game identity,
+  // ROM identity, and the core-selected save filename. The `kind` field in
+  // every API call provides a second server-side namespace from save states.
+  var saveArtifactKey = function (identity, savePath) {
+    identity = identity || {};
+    var relativePath = String(savePath || "").replace(/^\/data\/saves\/?/, "");
+    return [
+      KIND_SAVE,
+      safeSegment(identity.core || globalThis.EJS_core, "unknown-core", 48),
+      safeSegment(identity.gameId || identity.game || globalThis.EJS_gameID, "unknown-game", 48),
+      safeSegment(identity.romHash, "unknown-rom", 80),
+      safeSegment(identity.saveId || relativePath || pathBaseName(savePath), "save", 64),
+    ].join(":").slice(0, 256);
+  };
+
+  var deviceId = function () {
+    try {
+      var existing = globalThis.localStorage?.getItem(DEVICE_STORAGE_KEY);
+      if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
+      var created = globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : "sync" + Date.now() + Math.random().toString(36).slice(2, 10);
+      globalThis.localStorage?.setItem(DEVICE_STORAGE_KEY, created);
+      return created;
+    } catch (_) {
+      return "sync" + Date.now() + Math.random().toString(36).slice(2, 10);
+    }
+  };
+
+  var openDatabase = function (indexedDb) {
+    if (!indexedDb || typeof indexedDb.open !== "function") {
+      throw new Error("This browser does not support local save-state storage.");
+    }
+    return new Promise(function (resolve, reject) {
+      var request = indexedDb.open(STATE_DATABASE_NAME, 1);
+      request.onupgradeneeded = function () {
+        if (!request.result.objectStoreNames.contains(STATE_STORE_NAME)) {
+          request.result.createObjectStore(STATE_STORE_NAME, {keyPath: "id"});
+        }
+      };
+      request.onsuccess = function () { resolve(request.result); };
+      request.onerror = function () { reject(request.error || new Error("save-state storage unavailable")); };
+    });
+  };
+
+  var indexedStorage = function (indexedDb) {
+    indexedDb = indexedDb || globalThis.indexedDB;
+    return {
+      readAll: async function () {
+        var database = await openDatabase(indexedDb);
+        try {
+          return await new Promise(function (resolve, reject) {
+            var records = [];
+            var transaction = database.transaction(STATE_STORE_NAME, "readonly");
+            var request = transaction.objectStore(STATE_STORE_NAME).getAll();
+            request.onsuccess = function () { records = request.result || []; };
+            request.onerror = function () { reject(request.error || new Error("save-state storage failed")); };
+            transaction.oncomplete = function () { resolve(records); };
+            transaction.onerror = function () { reject(transaction.error || new Error("save-state storage failed")); };
+            transaction.onabort = function () { reject(transaction.error || new Error("save-state storage was interrupted")); };
+          });
+        } finally {
+          database.close();
+        }
+      },
+      put: async function (record) {
+        var database = await openDatabase(indexedDb);
+        try {
+          await new Promise(function (resolve, reject) {
+            var transaction = database.transaction(STATE_STORE_NAME, "readwrite");
+            transaction.objectStore(STATE_STORE_NAME).put(record);
+            transaction.oncomplete = resolve;
+            transaction.onerror = function () { reject(transaction.error || new Error("save-state storage failed")); };
+            transaction.onabort = function () { reject(transaction.error || new Error("save-state storage was interrupted")); };
+          });
+        } finally {
+          database.close();
+        }
+      },
+    };
+  };
+
+  var ensureSaveParent = function (fs, path) {
+    if (!fs || typeof fs.mkdir !== "function" || typeof fs.analyzePath !== "function") return;
+    var parent = path.slice(0, path.lastIndexOf("/"));
+    var current = "";
+    parent.split("/").filter(Boolean).forEach(function (part) {
+      current += "/" + part;
+      var exists = false;
+      try { exists = Boolean(fs.analyzePath(current).exists); } catch (_) {}
+      if (!exists) {
+        try { fs.mkdir(current); } catch (error) {
+          try { if (!fs.analyzePath(current).exists) throw error; } catch (_) { throw error; }
+        }
+      }
+    });
+  };
+
+  var syncFileSystem = function (fs) {
+    if (!fs || typeof fs.syncfs !== "function") return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      fs.syncfs(false, function (error) { error ? reject(error) : resolve(); });
+    });
+  };
+
+  // EmulatorJS owns the ordinary save-file store. It is an IDBFS-mounted
+  // Emscripten filesystem, so reads and writes go through gameManager.FS and
+  // are flushed with syncfs rather than creating a parallel IndexedDB schema.
+  var gameSaveStorage = function (options) {
+    options = options || {};
+    var manager = options.manager || globalThis.EJS_emulator?.gameManager;
+    var identity = options.identity || {};
+    var canonicalPath = "";
+    var canonicalKey = "";
+    var requireManager = function () {
+      if (!manager || !manager.FS || typeof manager.getSaveFilePath !== "function" || typeof manager.getSaveFile !== "function") {
+        throw new Error("The EmulatorJS save-file storage is unavailable until a game is running.");
+      }
+      return manager;
+    };
+    var resolvePath = function () {
+      var active = requireManager();
+      var path = String(active.getSaveFilePath() || "");
+      if (!/^\/data\/saves(?:\/|$)/.test(path) || path.length > 256) {
+        throw new Error("The emulator returned an unsafe save-file path.");
+      }
+      canonicalPath = path;
+      canonicalKey = saveArtifactKey(identity, path);
+      return path;
+    };
+    var conflictPath = function (path, contentHash) {
+      return path + ".an3-conflict-" + String(contentHash || "unknown").slice(0, 16);
+    };
+    return {
+      readAll: async function () {
+        var active = requireManager();
+        var path = resolvePath();
+        // EmulatorJS's saveSaveFiles asks the core to flush SRAM/RTC/etc. into
+        // the mounted save file before the bytes are read.
+        if (typeof active.saveSaveFiles === "function") active.saveSaveFiles();
+        var value = active.getSaveFile(false);
+        if (!value) return [];
+        var bytes = await readBytes(value);
+        if (!bytes.byteLength) return [];
+        return [{id: canonicalKey, key: canonicalKey, bytes: bytes, path: path, updatedAt: Date.now()}];
+      },
+      put: async function (record) {
+        var active = requireManager();
+        var path = canonicalPath || resolvePath();
+        var bytes = await readBytes(record?.bytes);
+        if (!bytes.byteLength) throw new Error("Refusing to persist an empty game save.");
+        var target = record?.isCopy ? conflictPath(path, record.contentHash) : path;
+        ensureSaveParent(active.FS, target);
+        active.FS.writeFile(target, bytes);
+        await syncFileSystem(active.FS);
+        // Refresh the running core only after the verified bytes are durable.
+        if (!record?.isCopy && typeof active.loadSaveFiles === "function") active.loadSaveFiles();
+      },
+      artifactKey: function () { return canonicalKey || saveArtifactKey(identity, resolvePath()); },
+    };
+  };
+
+  var storageFor = function (kind, options) {
+    if (options.storage) return options.storage;
+    return kind === KIND_STATE ? indexedStorage(options.indexedDB) : gameSaveStorage(options);
+  };
+
+  var localItems = async function (storage, kind) {
+    var records = await storage.readAll();
+    var items = [];
+    for (var index = 0; index < records.length; index += 1) {
+      var record = records[index] || {};
+      var key = String(record.id || record.key || "");
+      var value = kind === KIND_STATE ? record.state : record.bytes;
+      if (!KEY_PATTERN.test(key) || !value) continue;
+      var bytes = await readBytes(value);
+      if (!bytes.byteLength) continue;
+      items.push({
+        key: key,
+        bytes: bytes,
+        contentHash: await digestBytes(bytes),
+        size: bytes.byteLength,
+        updatedAt: Number(record.updatedAt) || 0,
+        path: record.path || "",
+      });
+    }
+    if (items.length > MAX_MANIFEST_ITEMS) throw new Error("Too many local sync artifacts in one pass.");
+    return items;
+  };
+
+  var persistLocal = async function (storage, kind, key, bytes, contentHash, source) {
+    var isCopy = Boolean(source && key !== source.key);
+    if (kind === KIND_STATE) {
+      await storage.put({
+        id: key,
+        state: new Blob([bytes], {type: "application/octet-stream"}),
+        updatedAt: Date.now(),
+        digest: contentHash,
+        auto: /:auto$/.test(key),
+      });
+      return;
+    }
+    await storage.put({
+      id: key,
+      key: key,
+      bytes: bytes,
+      contentHash: contentHash,
+      isCopy: isCopy,
+      source: source || null,
+      updatedAt: Date.now(),
+    });
+  };
+
+  var requestJson = async function (fetcher, url, options) {
+    var response = await fetcher(url, options);
+    var data = {};
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
+    return data;
+  };
+
+  var requestBytes = async function (fetcher, url) {
+    var response = await fetcher(url);
+    if (!response.ok) {
+      var message = "HTTP " + response.status;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  };
+
+  var remoteItems = function (manifest, kind) {
+    var items = manifest && Array.isArray(manifest.items) ? manifest.items : [];
+    if (items.length > MAX_MANIFEST_ITEMS) throw new Error("The LAN manifest is too large.");
+    var seen = new Set();
+    return items.map(function (item) {
+      var key = String(item && item.key || "");
+      var contentHash = String(item && item.contentHash || "").toLowerCase();
+      var size = Number(item && item.size);
+      if (!KEY_PATTERN.test(key) || seen.has(key) || !HASH_PATTERN.test(contentHash) || !Number.isSafeInteger(size) || size < 1) {
+        throw new Error("The LAN manifest contains an invalid " + kind + ".");
+      }
+      seen.add(key);
+      return {key: key, contentHash: contentHash, size: size, deviceId: String(item.deviceId || "")};
+    });
+  };
+
+  var publish = async function (fetcher, device, kind, item, keyOverride) {
+    var key = keyOverride || item.key;
+    return requestJson(fetcher, "/api/sync/lan/publish", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        deviceId: device,
+        kind: kind,
+        items: [{key: key, contentHash: item.contentHash, data: encodeBase64(item.bytes)}],
+      }),
+    });
+  };
+
+  var download = async function (fetcher, kind, item) {
+    var bytes = await requestBytes(fetcher, "/api/sync/lan/blob?kind=" + encodeURIComponent(kind) + "&key=" + encodeURIComponent(item.key) + "&hash=" + encodeURIComponent(item.contentHash));
+    if (bytes.byteLength !== item.size || await digestBytes(bytes) !== item.contentHash) {
+      throw new Error("Downloaded " + kind + " failed hash verification.");
+    }
+    return bytes;
+  };
+
+  var syncKind = async function (options) {
+    options = options || {};
+    var kind = String(options.kind || KIND_STATE);
+    if (kind !== KIND_STATE && kind !== KIND_SAVE) throw new Error("Unsupported sync artifact kind.");
+    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var storage = storageFor(kind, options);
+    var device = String(options.deviceId || deviceId());
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
+    var local = await localItems(storage, kind);
+    var remote = remoteItems(await requestJson(fetcher, "/api/sync/lan/manifest?kind=" + encodeURIComponent(kind)), kind);
+    var localByKey = new Map(local.map(function (item) { return [item.key, item]; }));
+    var remoteByKey = new Map(remote.map(function (item) { return [item.key, item]; }));
+    var keys = Array.from(new Set(local.concat(remote).map(function (item) { return item.key; }))).sort();
+    var records = keys.map(function (key) {
+      var localItem = localByKey.get(key);
+      var remoteItem = remoteByKey.get(key);
+      return {
+        key: key,
+        local: localItem ? {content_hash: localItem.contentHash, size: localItem.size, modified_at: localItem.updatedAt, device_id: device} : undefined,
+        remote: remoteItem ? {content_hash: remoteItem.contentHash, size: remoteItem.size, device_id: remoteItem.deviceId} : undefined,
+      };
+    });
+    var plan = await requestJson(fetcher, "/api/sync/plan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: kind, records: records}),
+    });
+    var conflicts = [];
+    var uploaded = 0;
+    var downloaded = 0;
+    for (var index = 0; index < (plan.transfers || []).length; index += 1) {
+      var transfer = plan.transfers[index];
+      var localItem = localByKey.get(transfer.key);
+      var remoteItem = remoteByKey.get(transfer.key);
+      if (transfer.direction === "upload" && localItem) {
+        await publish(fetcher, device, kind, localItem);
+        uploaded += 1;
+      } else if (transfer.direction === "download" && remoteItem) {
+        var incoming = await download(fetcher, kind, remoteItem);
+        await persistLocal(storage, kind, remoteItem.key, incoming, remoteItem.contentHash, remoteItem);
+        downloaded += 1;
+      } else if (transfer.direction === "conflict") {
+        conflicts.push({
+          key: transfer.key,
+          kind: kind,
+          copyKey: transfer.copyKey || transfer.key + ".conflict",
+          local: localItem || null,
+          remote: remoteItem || null,
+          reason: transfer.reason || "both-changed",
+        });
+      }
+    }
+    return {
+      kind: kind,
+      storage: storage,
+      plan: plan,
+      local: local,
+      remote: remote,
+      conflicts: conflicts,
+      counts: {uploaded: uploaded, downloaded: downloaded, conflicts: conflicts.length},
+    };
+  };
+
+  var syncState = function (options) {
+    return syncKind(Object.assign({}, options || {}, {kind: KIND_STATE}));
+  };
+
+  var syncSave = function (options) {
+    return syncKind(Object.assign({}, options || {}, {kind: KIND_SAVE}));
+  };
+
+  var resolveConflict = async function (options) {
+    options = options || {};
+    var conflict = options.conflict || {};
+    var kind = String(options.kind || conflict.kind || KIND_STATE);
+    if (kind !== KIND_STATE && kind !== KIND_SAVE) throw new Error("Unsupported sync artifact kind.");
+    var resolution = String(options.resolution || "").toLowerCase();
+    if (!["local", "remote", "both"].includes(resolution)) throw new Error("Invalid conflict resolution.");
+    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var storage = storageFor(kind, options);
+    var device = String(options.deviceId || deviceId());
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
+    var local = conflict.local;
+    var remote = conflict.remote;
+    if (!local || !remote) throw new Error("The conflict is missing one side's bytes.");
+    var action = await requestJson(fetcher, "/api/sync/resolve", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({kind: kind, key: conflict.key, resolution: resolution, localHash: local.contentHash, remoteHash: remote.contentHash}),
+    });
+    if (resolution === "local") {
+      await publish(fetcher, device, kind, local);
+    } else {
+      if (resolution === "both") await publish(fetcher, device, kind, local, action.copyKey || conflict.copyKey);
+      var incoming = await download(fetcher, kind, remote);
+      if (resolution === "both") await persistLocal(storage, kind, action.copyKey || conflict.copyKey, local.bytes, local.contentHash, local);
+      await persistLocal(storage, kind, conflict.key, incoming, remote.contentHash, remote);
+    }
+    return {action: action, resolution: resolution};
+  };
+
+  globalThis.AN3SyncTransfer = Object.freeze({
+    sync: syncKind,
+    syncState: syncState,
+    syncSave: syncSave,
+    resolveConflict: resolveConflict,
+    indexedStorage: indexedStorage,
+    gameSaveStorage: gameSaveStorage,
+    saveArtifactKey: saveArtifactKey,
+    deviceId: deviceId,
+    digestBytes: digestBytes,
+  });
+})();

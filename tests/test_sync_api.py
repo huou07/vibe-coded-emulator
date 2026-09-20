@@ -288,6 +288,24 @@ class SyncApiTests(unittest.TestCase):
         status, _ = self.request("GET", "/api/sync/lan/blob?kind=state&key=missing&hash=" + "0" * 64)
         self.assertEqual(status, 404)
 
+    def test_state_and_normal_save_namespaces_are_separate(self):
+        state_payload = b"state-bytes"
+        save_payload = b"normal-save-bytes"
+        save_key = "save:mgba:emerald:" + "a" * 64 + ":emerald.srm"
+        self.publish(state_payload)
+        status, _ = self.publish(save_payload, kind="save", key=save_key)
+        self.assertEqual(status, 200)
+        state_status, state_body = self.request("GET", "/api/sync/lan/manifest?kind=state")
+        save_status, save_body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(state_status, 200)
+        self.assertEqual(save_status, 200)
+        self.assertEqual(json.loads(state_body)["items"][0]["key"], "gba/pokemon-emerald/slot1.state")
+        self.assertEqual(json.loads(save_body)["items"][0]["key"], save_key)
+        save_hash = json.loads(save_body)["items"][0]["contentHash"]
+        status, downloaded = self.request("GET", f"/api/sync/lan/blob?kind=save&key={save_key}&hash={save_hash}")
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, save_payload)
+
     def test_lan_publish_rejects_ineligible_kinds_and_bad_hashes(self):
         payload = b"keys"
         status, _ = self.publish(payload, kind="firmware")
@@ -306,6 +324,12 @@ class SyncApiTests(unittest.TestCase):
         with patch.object(app, "LAN_BLOB_MAX_BYTES", 1024):
             status, _ = self.publish(b"x" * 2048)
         self.assertEqual(status, 413)
+
+    def test_lan_publish_allows_a_valid_blob_above_the_generic_json_limit(self):
+        payload = b"x" * (1024 * 1024)
+        status, body = self.publish(payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["items"][0]["size"], len(payload))
 
     def test_lan_transfer_is_disabled_in_production(self):
         with patch.object(app, "SYNC_ENABLED", False):
@@ -329,12 +353,22 @@ class SyncApiTests(unittest.TestCase):
 class SyncPageTests(unittest.TestCase):
     def test_page_markup_ships_the_mode_surface(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        for marker in ('id="syncMode"', 'id="syncSave"', 'id="syncRefreshPeers"', 'id="syncPeers"', "/static/sync.js"):
+        for marker in ('id="syncMode"', 'id="syncSave"', 'id="syncRefreshPeers"', 'id="syncTransfer"', 'id="syncPeers"', "/static/sync-transfer.js", "/static/sync.js"):
             self.assertIn(marker, source)
         script = (ROOT / "static/sync.js").read_text(encoding="utf-8")
         self.assertIn('"/api/sync/settings"', script)
         self.assertIn('"/api/sync/lan/announce"', script)
+        self.assertIn("AN3SyncTransfer.syncState", script)
         self.assertNotIn("eval(", script)
+
+    def test_player_page_exposes_the_real_game_save_sync_action(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn('id="syncSaveFile"', source)
+        self.assertIn('id="syncSaveConflicts"', source)
+        self.assertIn('versioned_player_asset("sync-transfer.js")', source)
+        player = (ROOT / "static/player.js").read_text(encoding="utf-8")
+        self.assertIn("AN3SyncTransfer.syncSave", player)
+        self.assertIn("getSaveFilePath", (ROOT / "static/sync-transfer.js").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

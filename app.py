@@ -63,7 +63,7 @@ def static_asset_version():
 
 
 ASSET_VERSION = static_asset_version()
-PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "player.js", "site.css"})
+PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "sync-transfer.js", "player.js", "site.css"})
 
 # The public source location for the GPL corresponding source. The owner sets
 # the real URL (via AN3_SOURCE_REPOSITORY or by editing this default) so the
@@ -222,6 +222,9 @@ SYNC_MANIFEST_LIMIT = 2000
 # kinds are accepted, and firmware/keys can never be published.
 LAN_BLOB_TTL_SECONDS = 900
 LAN_BLOB_MAX_BYTES = 16 * 1024 * 1024
+# A LAN item is base64-wrapped in the JSON envelope. Keep the generic API
+# payload limit small while allowing the documented per-item byte limit here.
+LAN_BLOB_MAX_JSON_BYTES = (LAN_BLOB_MAX_BYTES * 4 // 3) + 256 * 1024
 LAN_BLOB_MAX_ITEMS = 512
 LAN_BLOBS = {}
 LAN_BLOBS_LOCK = threading.Lock()
@@ -1907,7 +1910,7 @@ def sync_page(lang, user, csrf):
 <label class="check"><input type="checkbox" id="syncContentRom"> {tr(lang,"Tệp ROM","ROM files")}</label>
 <p id="syncRomWarning" class="sync-warning" hidden>{tr(lang,"Thư viện ROM có thể tốn nhiều dung lượng và băng thông.","ROM libraries may use significant storage and network bandwidth.")}</p>
 </fieldset>
-<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu","Save")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị","Find devices")}</button></div>
+<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu","Save")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị","Find devices")}</button><button id="syncTransfer" type="button" class="button" disabled>{tr(lang,"Đồng bộ save state","Sync save states")}</button></div>
 <p id="syncStatus" class="muted" role="status" aria-live="polite"></p>
 <small id="syncAvailability" class="muted"></small>
 <h2 class="sync-devices-title">{tr(lang,"Thiết bị","Devices")}</h2>
@@ -1915,7 +1918,7 @@ def sync_page(lang, user, csrf):
 <div id="syncConflicts" class="sync-conflicts" hidden></div>
 <p class="muted"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 </section>
-<script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
+<script src="/static/sync-transfer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
 
@@ -1981,7 +1984,7 @@ def player_page(game, lang, user, csrf):
         touch_toggle = f'<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="{tr(lang,"Ẩn phím ảo","Hide virtual controls")}" aria-label="{tr(lang,"Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>' if game["system"] in {"gb", "gba", "nds", "3ds"} else ""
         toolbar_extra = f'{touch_toggle}<button id="slotMenu" type="button" aria-expanded="false" title="{tr(lang,"Save slot","Save slots")}" aria-label="{tr(lang,"Mở save slot trên thiết bị","Open save slots on this device")}">{icon("save")}</button><button id="playerControls" type="button" aria-expanded="false" title="{tr(lang,"Tùy chọn khác","More options")}" aria-label="{tr(lang,"Mở tùy chọn trình phát","Open player options")}">{icon("more")}</button>'
         speed_settings = f'''<section class="player-settings-group player-speed-settings"><header><strong>{tr(lang,"Tốc độ","Speed")}</strong><small>{tr(lang,"Chỉ trong phiên","Session only")}</small></header><div class="player-speed-controls" role="group" aria-label="{tr(lang,"Tốc độ trò chơi","Game speed")}"><button id="speedDown" type="button" aria-label="{tr(lang,"Chậm hơn","Slower")}">−</button><output id="speedValue" aria-live="polite">1×</output><button id="speedUp" type="button" aria-label="{tr(lang,"Nhanh hơn","Faster")}">+</button></div><small id="speedHint" class="muted">{tr(lang,"Điều chỉnh tốc độ hoạt động sau khi game khởi động.","Speed controls become available after the game starts.")}</small></section>''' if game["system"] in {"gba", "nds"} else ""
-        game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div></section>'''
+        game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><button id="syncSaveFile" type="button" disabled>{tr(lang,"Đồng bộ tệp save","Sync game save")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div><div id="syncSaveConflicts" class="sync-conflicts" hidden></div></section>'''
         autosave_settings = f'''<section class="player-settings-group player-autosave-settings"><header><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><label><span>{tr(lang,"Chế độ","Mode")}</span><select id="autosaveMode"><option value="off">{tr(lang,"Tắt","Off")}</option><option value="exit">{tr(lang,"Khi thoát game","On game exit")}</option><option value="30">{tr(lang,"Mỗi 30 giây","Every 30 seconds")}</option><option value="10">{tr(lang,"Mỗi 10 giây","Every 10 seconds")}</option><option value="5">{tr(lang,"Mỗi 5 giây","Every 5 seconds")}</option></select></label><small class="muted">{tr(lang,"Autosave dùng slot riêng, không thay thế save thủ công.","Autosave uses its own slot and never replaces a manual save state.")}</small></section>'''
         exit_settings = f'''<section class="player-settings-group player-exit-settings"><header><strong>{tr(lang,"Thoát game","Exit game")}</strong></header><p class="player-setting-copy">{tr(lang,"Dừng phiên giả lập và quay về thư viện.","Stop this emulation session and return to the library.")}</p><div class="player-panel-actions"><button id="exitGame" type="button">{tr(lang,"Thoát game","Exit game")}</button></div></section>'''
         phone_controller_button = f'<button id="phoneController" type="button">{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</button>' if CONTROLLER_ENABLED else ""
@@ -2025,7 +2028,7 @@ def player_page(game, lang, user, csrf):
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
 {slot_panel}{pad_panel}{controller_panel}{multiplayer_panel}</main>
-<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
+<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("sync-transfer.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
 
@@ -2824,7 +2827,7 @@ class Handler(BaseHTTPRequestHandler):
         if not SYNC_ENABLED:
             return self.sync_unavailable()
         SYNC_LIMITER.check(self.client_address[0])
-        data = self.read_json()
+        data = self.read_json(maximum=LAN_BLOB_MAX_JSON_BYTES)
         device = str(data.get("deviceId") or "").strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", device):
             return self.send_json({"error": "invalid device id"}, 400)
@@ -3351,7 +3354,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 except Exception:
                     self.send_bytes(502, b"emulator asset unavailable\n", "text/plain; charset=utf-8")
         elif path.startswith("/static/v/"):
-            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|player\.js|site\.css)", path)
+            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|sync-transfer\.js|player\.js|site\.css)", path)
             if not match or match.group(1) != ASSET_VERSION:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:
