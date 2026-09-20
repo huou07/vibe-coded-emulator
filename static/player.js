@@ -1044,15 +1044,19 @@
     romHash: config.roomSignature?.romHash || "",
   });
   const syncSaveSettings = async () => {
+    const nativeSync = globalThis.AN3NativeSync;
+    if (nativeSync?.transport) {
+      return {mode: "lan", content: {save: true}, transport: nativeSync.transport, context: null};
+    }
     const transport = globalThis.AN3LanPeerTransport;
     if (!transport) throw new Error(config.lang === "en" ? "Direct LAN sync is available in the installed AN3 app." : "Đồng bộ LAN trực tiếp cần ứng dụng AN3 đã cài đặt.");
-    return {mode: "lan", content: {save: true}, transport};
+    return {mode: "lan", content: {save: true}, transport, context: null};
   };
   const updateSaveSyncButton = () => {
     const manager = window.EJS_emulator?.gameManager;
     const romHash = syncSaveIdentity().romHash;
     const hasFullRomIdentity = /^(?:sha256:)?[a-f0-9]{64}$/i.test(String(romHash || ""));
-    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave || !globalThis.AN3LanPeerTransport;
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave || (!globalThis.AN3LanPeerTransport && !globalThis.AN3NativeSync?.transport);
   };
   const drawSaveSyncConflicts = conflicts => {
     if (!syncSaveConflictBox) return;
@@ -1088,7 +1092,8 @@
               manager: window.EJS_emulator?.gameManager,
               identity: syncSaveIdentity(),
               resolution: choice[0],
-              transport: globalThis.AN3LanPeerTransport,
+              transport: globalThis.AN3LanPeerTransport || globalThis.AN3NativeSync?.transport,
+              context: globalThis.AN3NativeSync?.context || null,
             });
             drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
             showNotice(config.lang === "en" ? "Save set conflict resolved." : "Đã xử lý xung đột nhóm tệp save.");
@@ -1114,6 +1119,7 @@
       transport: settings.transport,
       manager: window.EJS_emulator?.gameManager,
       identity: syncSaveIdentity(),
+      context: settings.context,
     });
     drawSaveSyncConflicts(result.conflicts);
     showNotice(config.lang === "en"

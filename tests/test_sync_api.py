@@ -41,6 +41,7 @@ class SyncApiTests(unittest.TestCase):
             patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
+            patch.object(app, "AUTH_PEPPER", "sync-api-test-peer-proof-key"),
             patch.object(app, "LAN_PEERS", {}),
             patch.object(app, "LAN_BLOBS", {}),
         ]
@@ -52,6 +53,94 @@ class SyncApiTests(unittest.TestCase):
         self.thread.start()
         self.cookies = {}
 
+    def test_native_account_session_and_peer_proof_are_account_bound(self):
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"authenticated": False})
+
+        status, _ = self.request("POST", "/api/register", {
+            "name": "peer-proof-user",
+            "display_name": "Peer Proof User",
+            "password": "Peer-proof-pass-123",
+            "confirm": "Peer-proof-pass-123",
+        })
+        self.assertEqual(status, 201)
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        session = json.loads(body)
+        self.assertTrue(session["authenticated"])
+        self.assertEqual(session["name"], "Peer Proof User")
+        self.assertTrue(session["csrf"])
+
+        challenge = "a" * 32
+        status, body = self.request("POST", "/api/account/peer-proof", {"challenge": challenge})
+        self.assertEqual(status, 200)
+        proof = json.loads(body)["proof"]
+        self.assertNotIn("Peer-proof-pass-123", proof)
+        status, body = self.request("POST", "/api/account/peer-proof/verify", {"challenge": challenge, "proof": proof})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["sameAccount"])
+
+        status, body = self.request("POST", "/api/account/peer-proof/verify", {"challenge": "b" * 32, "proof": proof})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["sameAccount"])
+
+        # The native client must use the server-issued CSRF token when it
+        # logs out; the account cookie itself is never handed to a peer.
+        csrf = session["csrf"]
+        status, _ = self.request("POST", "/api/logout", None, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(status, 200)
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"authenticated": False})
+
+    def test_native_account_peer_proof_fails_closed_without_server_key(self):
+        with patch.object(app, "AUTH_PEPPER", ""):
+            status, body = self.request("POST", "/api/account/register", {})
+            self.assertEqual(status, 404)
+            status, body = self.request("POST", "/api/register", {
+                "name": "proof-unconfigured",
+                "display_name": "Proof Unconfigured",
+                "password": "Proof-unconfigured-123",
+                "confirm": "Proof-unconfigured-123",
+            })
+            self.assertEqual(status, 201)
+            status, body = self.request("POST", "/api/account/peer-proof", {"challenge": "c" * 32})
+            self.assertEqual(status, 503)
+            self.assertIn("not configured", json.loads(body)["error"])
+
+    def test_native_account_cors_is_limited_to_tauri_origins(self):
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://tauri.localhost"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "https://tauri.localhost")
+        self.assertEqual(headers.get("access-control-allow-credentials"), "true")
+
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://appassets.androidplatform.net"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "https://appassets.androidplatform.net")
+
+        status, _body, headers = self.request_with_headers(
+            "OPTIONS",
+            "/api/login",
+            {
+                "Origin": "https://tauri.localhost",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        self.assertEqual(status, 204)
+        self.assertEqual(headers.get("access-control-allow-methods"), "GET, POST, OPTIONS")
+
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://evil.example"}
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn("access-control-allow-origin", headers)
+
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
@@ -60,9 +149,9 @@ class SyncApiTests(unittest.TestCase):
             active.stop()
         self.temp.cleanup()
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, headers=None):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
-        headers = {}
+        headers = dict(headers or {})
         body = None
         if payload is not None:
             body = json.dumps(payload).encode()
@@ -80,6 +169,15 @@ class SyncApiTests(unittest.TestCase):
                     self.cookies[key] = raw
         connection.close()
         return status, data
+
+    def request_with_headers(self, method, path, headers=None):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        connection.request(method, path, headers=headers or {})
+        response = connection.getresponse()
+        status, data = response.status, response.read()
+        received = {name.lower(): value for name, value in response.getheaders()}
+        connection.close()
+        return status, data, received
 
     # -- settings ----------------------------------------------------------
 

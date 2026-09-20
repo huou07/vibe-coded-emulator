@@ -7,6 +7,14 @@ window.AN3NativeOfflineApp = true;
 // in-app portable host supports.
 const an3MobileNativeShell = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 window.AN3NativeRomStreaming = !an3MobileNativeShell;
+// Shared by the account/sync shell and by the controller bridge. Keeping the
+// lookup lazy matters on Android, where Tauri injects its bridge after the
+// bundled document starts evaluating.
+window.AN3NativeInvoke = () => {
+  const tauri = window.__TAURI__;
+  const internals = window.__TAURI_INTERNALS__;
+  return tauri?.core?.invoke || internals?.invoke;
+};
 // This is set from the shell platform, rather than the timing of Tauri's
 // injected bridge. The launcher itself still resolves the bridge at click
 // time, so the library cannot briefly advertise an external native player on

@@ -14,6 +14,7 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const DISCOVERY_ADDRESS: &str = "239.255.43.3";
 pub const DISCOVERY_PORT: u16 = 47831;
 pub const CONTROL_PORT: u16 = 47832;
+pub const SYNC_PORT: u16 = 47833;
 pub const CAPABILITIES: [&str; 2] = ["controller", "sync"];
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]

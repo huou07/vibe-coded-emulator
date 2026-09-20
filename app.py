@@ -484,6 +484,20 @@ def room_signature_from(data):
 
 
 AUTH_PEPPER = os.environ.get("AN3_AUTH_PEPPER", "")
+PEER_PROOF_TTL_SECONDS = 120
+PEER_PROOF_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9._:-]{16,256}$")
+# Native AN3 account requests originate from the Tauri WebView, not from the
+# website itself.  Keep this allow-list narrow: LAN payloads never use these
+# endpoints, and arbitrary web origins must not receive credentialed account
+# responses.
+NATIVE_ACCOUNT_ORIGINS = frozenset(
+    origin.strip()
+    for origin in os.environ.get(
+        "AN3_NATIVE_ACCOUNT_ORIGINS",
+        "https://tauri.localhost,http://tauri.localhost,tauri://localhost,https://appassets.androidplatform.net",
+    ).split(",")
+    if origin.strip()
+)
 EMULATOR_CDN = "https://cdn.emulatorjs.org"
 EMULATOR_CACHE_LOCK = threading.Lock()
 EMULATOR_ASSET_LOCKS = {}
@@ -1186,6 +1200,56 @@ class RateLimited(PermissionError):
 
 def auth_hash(value):
     return hashlib.sha256((AUTH_PEPPER + str(value)).encode("utf-8")).hexdigest()
+
+
+def make_peer_proof(user_id, challenge):
+    """Create a short-lived opaque proof for an already authenticated user.
+
+    The proof is only useful inside the freshly encrypted native peer session;
+    discovery never carries it, and the endpoint never returns a password or
+    reusable session bearer token.
+    """
+
+    if not AUTH_PEPPER:
+        raise RuntimeError("native peer account proof is not configured")
+    if not PEER_PROOF_CHALLENGE_RE.fullmatch(str(challenge or "")):
+        raise ValueError("invalid peer challenge")
+    payload = {
+        "v": 1,
+        "userId": int(user_id),
+        "challenge": str(challenge),
+        "expiresAt": int(time.time()) + PEER_PROOF_TTL_SECONDS,
+        "nonce": secrets.token_urlsafe(18),
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(AUTH_PEPPER.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+    return encoded + "." + base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+
+
+def verify_peer_proof(user_id, challenge, proof):
+    if not AUTH_PEPPER or not PEER_PROOF_CHALLENGE_RE.fullmatch(str(challenge or "")):
+        return False
+    try:
+        encoded, signature = str(proof or "").split(".", 1)
+        if not encoded or len(encoded) > 4096:
+            return False
+        supplied = base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+        expected = hmac.new(AUTH_PEPPER.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+        if not hmac.compare_digest(supplied, expected):
+            return False
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8"))
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    return (
+        payload.get("v") == 1
+        and int(payload.get("userId", -1)) == int(user_id)
+        and payload.get("challenge") == str(challenge)
+        and int(payload.get("expiresAt", 0)) >= int(time.time())
+        and isinstance(payload.get("nonce"), str)
+        and 12 <= len(payload["nonce"]) <= 128
+    )
 
 
 def clean_contribution(body, maximum, kind):
@@ -2426,7 +2490,18 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stdout.write("%s %s\n" % (self.address_string(), fmt % args))
 
+    def native_account_endpoint(self):
+        path = urlparse(self.path).path
+        return path in {"/api/login", "/api/logout"} or path.startswith("/api/account/")
+
+    def native_account_origin(self):
+        if not self.native_account_endpoint():
+            return ""
+        origin = self.headers.get("Origin", "").strip()
+        return origin if origin in NATIVE_ACCOUNT_ORIGINS else ""
+
     def common_headers(self, content_type, length=None, cache="no-store", csp=None, cross_origin_isolated=False):
+        account_origin = self.native_account_origin()
         self.send_header("Content-Type", content_type)
         if length is not None:
             self.send_header("Content-Length", str(length))
@@ -2436,13 +2511,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "cross-origin" if account_origin else "same-origin")
         if cross_origin_isolated:
             self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("X-Permitted-Cross-Domain-Policies", "none")
         if COOKIE_SECURE:
             self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         self.send_header("Content-Security-Policy", csp or "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+        if account_origin:
+            self.send_header("Access-Control-Allow-Origin", account_origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Origin")
         if getattr(self, "_visitor_cookie", ""):
             self.send_header("Set-Cookie", self._visitor_cookie)
 
@@ -2455,6 +2534,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, payload, status=200):
         self.send_bytes(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
+    def do_OPTIONS(self):
+        if not self.native_account_endpoint():
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
+        if not self.native_account_origin():
+            self.send_bytes(403, b"origin not allowed\n", "text/plain; charset=utf-8")
+            return
+        self.send_response(204)
+        self.common_headers("text/plain; charset=utf-8", 0)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
 
     def send_html(self, content, status=200, player=False):
         csp = None
@@ -2591,7 +2684,8 @@ class Handler(BaseHTTPRequestHandler):
         with db() as conn:
             conn.execute("DELETE FROM sessions WHERE expires_at<?", (int(time.time()),))
             conn.execute("INSERT INTO sessions(token_hash,user_id,csrf,expires_at) VALUES(?,?,?,?)", (hashlib.sha256(token.encode()).hexdigest(), user_id, csrf, expires))
-        flags = f"Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL}" + ("; Secure" if COOKIE_SECURE else "")
+        same_site = "None" if self.native_account_origin() and COOKIE_SECURE else "Lax"
+        flags = f"Path=/; HttpOnly; SameSite={same_site}; Max-Age={SESSION_TTL}" + ("; Secure" if COOKIE_SECURE else "")
         self.send_header("Set-Cookie", f"an3_session={token}; {flags}")
 
     def clear_session(self):
@@ -2600,7 +2694,8 @@ class Handler(BaseHTTPRequestHandler):
         if token:
             with db() as conn:
                 conn.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.value.encode()).hexdigest(),))
-        flags = "Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + ("; Secure" if COOKIE_SECURE else "")
+        same_site = "None" if self.native_account_origin() and COOKIE_SECURE else "Lax"
+        flags = f"Path=/; HttpOnly; SameSite={same_site}; Max-Age=0" + ("; Secure" if COOKIE_SECURE else "")
         self.send_header("Set-Cookie", f"an3_session=; {flags}")
 
     def find_game(self, slug, include_draft=True):
@@ -3622,6 +3717,17 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_json(system_metrics())
         elif path == "/health":
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
+        elif path == "/api/account/session":
+            account, _ = self.current_user()
+            if not account:
+                self.send_json({"authenticated": False})
+            else:
+                self.send_json({
+                    "authenticated": True,
+                    "userId": int(account["id"]),
+                    "name": account["display_name"] or account["name"],
+                    "csrf": csrf,
+                })
         elif path == "/api/multiplayer/room":
             self.multiplayer_room_status()
         elif path == "/api/multiplayer/qr.svg":
@@ -3731,6 +3837,26 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.wfile.write(payload)
                 if upgrade:
                     threading.Thread(target=upgrade_password_hash, args=(user["id"], password), daemon=True).start()
+            elif path == "/api/account/peer-proof":
+                user = self.require_user(csrf=False)
+                if not user: return
+                if not AUTH_PEPPER:
+                    self.send_json({"error": "native peer account proof is not configured"}, 503)
+                    return
+                data = self.read_json()
+                self.send_json({"proof": make_peer_proof(user["id"], data.get("challenge")), "expiresInSeconds": PEER_PROOF_TTL_SECONDS})
+            elif path == "/api/account/peer-proof/verify":
+                user = self.require_user(csrf=False)
+                if not user: return
+                if not AUTH_PEPPER:
+                    self.send_json({"error": "native peer account proof is not configured"}, 503)
+                    return
+                data = self.read_json()
+                challenge = str(data.get("challenge") or "")
+                proof = str(data.get("proof") or "")
+                if not PEER_PROOF_CHALLENGE_RE.fullmatch(challenge):
+                    raise ValueError("invalid peer challenge")
+                self.send_json({"sameAccount": verify_peer_proof(user["id"], challenge, proof)})
             elif path == "/api/logout":
                 if not self.require_user(): return
                 payload = b'{"ok":true}'

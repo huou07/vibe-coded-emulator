@@ -724,6 +724,7 @@
       contentHash: contentHash,
       isCopy: isCopy,
       source: source || null,
+      path: source?.path || "",
       updatedAt: Date.now(),
     });
   };
@@ -875,7 +876,18 @@
         throw new Error("The LAN manifest contains an invalid " + kind + ".");
       }
       seen.add(key);
-      return {key: key, contentHash: contentHash, size: size, deviceId: String(item.deviceId || "")};
+      // Native peer blobs are addressed by their validated storage path as
+      // well as by key/hash. Preserve these optional identity fields so the
+      // shared transfer layer works with both the direct peer and the
+      // development HTTP adapter.
+      return {
+        key: key,
+        path: String(item.path || ""),
+        memberId: String(item.memberId || ""),
+        contentHash: contentHash,
+        size: size,
+        deviceId: String(item.deviceId || ""),
+      };
     });
   };
 
@@ -921,16 +933,17 @@
     return legacySaveSet(manifest, identity);
   };
 
-  var publish = async function (transport, device, kind, item, keyOverride) {
+  var publish = async function (transport, device, kind, item, keyOverride, context) {
     var key = keyOverride || item.key;
     return transport.publish({
       deviceId: device,
       kind: kind,
-      items: [{key: key, contentHash: item.contentHash, data: encodeBase64(item.bytes)}],
+      context: context || null,
+      items: [{key: key, path: item.path || "", size: item.size, contentHash: item.contentHash, data: encodeBase64(item.bytes)}],
     });
   };
 
-  var publishSaveSet = async function (transport, device, identity, set, setIdOverride, replaceManifestHash) {
+  var publishSaveSet = async function (transport, device, identity, set, setIdOverride, replaceManifestHash, context) {
     var outgoing;
     if (setIdOverride) {
       outgoing = await buildSaveSet(identity, set.members, setIdOverride);
@@ -949,6 +962,7 @@
     return transport.publish({
         deviceId: device,
         kind: KIND_SAVE,
+        context: context || null,
         replaceManifestHash: replaceManifestHash || "",
         set: {
           setId: outgoing.setId,
@@ -981,20 +995,20 @@
     });
   };
 
-  var download = async function (transport, kind, item) {
-    var bytes = await transport.blob(kind, item);
+  var download = async function (transport, kind, item, context) {
+    var bytes = await transport.blob(kind, item, context);
     if (bytes.byteLength !== item.size || await digestBytes(bytes) !== item.contentHash) {
       throw new Error("Downloaded " + kind + " failed hash verification.");
     }
     return bytes;
   };
 
-  var downloadSaveSet = async function (transport, set, identity) {
+  var downloadSaveSet = async function (transport, set, identity, context) {
     var validated = await validateSaveSet(set, identity);
     var members = [];
     for (var index = 0; index < validated.members.length; index += 1) {
       var member = validated.members[index];
-      var bytes = await download(transport, KIND_SAVE, member);
+      var bytes = await download(transport, KIND_SAVE, member, context);
       members.push(Object.assign({}, member, {bytes: bytes}));
     }
     // Revalidate the complete aggregate after every member has been fetched.
@@ -1015,7 +1029,7 @@
     var device = String(options.deviceId || deviceId());
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
     var local = await localItems(storage, kind);
-    var remote = remoteItems(await transport.manifest(kind), kind);
+    var remote = remoteItems(await transport.manifest(kind, options.context || null), kind);
     var localByKey = new Map(local.map(function (item) { return [item.key, item]; }));
     var remoteByKey = new Map(remote.map(function (item) { return [item.key, item]; }));
     var keys = Array.from(new Set(local.concat(remote).map(function (item) { return item.key; }))).sort();
@@ -1037,10 +1051,10 @@
       var localItem = localByKey.get(transfer.key);
       var remoteItem = remoteByKey.get(transfer.key);
       if (transfer.direction === "upload" && localItem) {
-        await publish(transport, device, kind, localItem);
+        await publish(transport, device, kind, localItem, undefined, options.context);
         uploaded += 1;
       } else if (transfer.direction === "download" && remoteItem) {
-        var incoming = await download(transport, kind, remoteItem);
+        var incoming = await download(transport, kind, remoteItem, options.context);
         await persistLocal(storage, kind, remoteItem.key, incoming, remoteItem.contentHash, remoteItem);
         downloaded += 1;
       } else if (transfer.direction === "conflict") {
@@ -1075,7 +1089,7 @@
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
     var localItemsFound = await localItems(storage, KIND_SAVE);
     var localSet = localItemsFound.length ? await buildSaveSet(identity, localItemsFound) : null;
-    var manifest = await transport.manifest(KIND_SAVE);
+    var manifest = await transport.manifest(KIND_SAVE, options.context || null);
     var remoteSet = await remoteSaveSet(manifest, identity);
     var setId = saveSetId(identity);
     var records = [];
@@ -1093,10 +1107,10 @@
     for (var index = 0; index < (plan.transfers || []).length; index += 1) {
       var transfer = plan.transfers[index];
       if (transfer.direction === "upload" && localSet) {
-        await publishSaveSet(transport, device, identity, localSet);
+        await publishSaveSet(transport, device, identity, localSet, undefined, undefined, options.context);
         uploaded += 1;
       } else if (transfer.direction === "download" && remoteSet) {
-        var incoming = await downloadSaveSet(transport, remoteSet, identity);
+        var incoming = await downloadSaveSet(transport, remoteSet, identity, options.context);
         await persistSaveSets(storage, identity, [{set: incoming, asCopy: false}]);
         downloaded += 1;
       } else if (transfer.direction === "conflict" && localSet && remoteSet) {
@@ -1164,16 +1178,16 @@
     if (kind === KIND_SAVE && conflict.setId && Array.isArray(local.members) && Array.isArray(remote.members)) {
       var identity = normalizeSaveIdentity(options.identity || local);
       if (resolution === "local") {
-        await publishSaveSet(transport, device, identity, local, undefined, remote.manifestHash);
+        await publishSaveSet(transport, device, identity, local, undefined, remote.manifestHash, options.context);
       } else {
         // Download and verify every remote member before either the canonical
         // set or a keep-both copy is handed to the storage adapter.
-        var incomingSet = await downloadSaveSet(transport, remote, identity);
+        var incomingSet = await downloadSaveSet(transport, remote, identity, options.context);
         var pending = [{set: incomingSet, asCopy: false}];
         if (resolution === "both") {
           var copySet = await buildSaveSet(identity, local.members, action.copyKey || conflict.copyKey || conflict.key + ".conflict");
           copySet.conflictOf = local.manifestHash;
-          await publishSaveSet(transport, device, identity, copySet, copySet.setId);
+          await publishSaveSet(transport, device, identity, copySet, copySet.setId, undefined, options.context);
           pending.unshift({set: copySet, asCopy: true});
         }
         await persistSaveSets(storage, identity, pending);
@@ -1181,10 +1195,10 @@
       return {action: action, resolution: resolution};
     }
     if (resolution === "local") {
-      await publish(transport, device, kind, local);
+      await publish(transport, device, kind, local, undefined, options.context);
     } else {
-      if (resolution === "both") await publish(transport, device, kind, local, action.copyKey || conflict.copyKey);
-      var incoming = await download(transport, kind, remote);
+      if (resolution === "both") await publish(transport, device, kind, local, action.copyKey || conflict.copyKey, options.context);
+      var incoming = await download(transport, kind, remote, options.context);
       if (resolution === "both") await persistLocal(storage, kind, action.copyKey || conflict.copyKey, local.bytes, local.contentHash, local);
       await persistLocal(storage, kind, conflict.key, incoming, remote.contentHash, remote);
     }

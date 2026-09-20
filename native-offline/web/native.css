@@ -247,3 +247,14 @@ body.native-app-shell{
 .native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
 .native-settings-group{display:grid;gap:12px;margin-top:6px}
 .native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.native-sync-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.native-sync-mode label,.native-sync-background{display:flex;align-items:center;gap:8px;color:var(--v-text,#f3f1fa);font-size:13px}
+.native-sync-mode input,.native-sync-background input{width:18px;height:18px}
+.native-sync-login{display:grid;gap:10px;margin:10px 0}
+.native-sync-code{margin:12px 0 4px;color:var(--v-muted,#a5a0b6)}
+.native-sync-code strong{font-size:24px;letter-spacing:.16em;color:var(--v-text,#f3f1fa)}
+.native-sync-peers{display:grid;gap:8px;margin-top:14px}
+.native-sync-peer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912)}
+.native-sync-peer small{display:block;color:var(--v-muted,#a5a0b6)}
+.native-sync-peer-actions{display:flex;gap:6px;flex-wrap:wrap}
+.native-sync-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6);margin:10px 0 0}

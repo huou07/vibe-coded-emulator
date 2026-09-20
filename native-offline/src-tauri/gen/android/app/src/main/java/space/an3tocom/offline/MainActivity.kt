@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.webkit.JavascriptInterface
+import android.webkit.CookieManager
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import java.io.BufferedInputStream
@@ -118,6 +119,13 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     contentWebView = webView
+    // The installed shell keeps the optional AN3 session on the account
+    // provider's HTTPS origin.  Android treats the packaged app origin as a
+    // separate site, so explicitly enable the WebView's persistent,
+    // HttpOnly/Secure third-party cookie path for that account session.  LAN
+    // sync never uses this cookie or sends it to a peer.
+    CookieManager.getInstance().setAcceptCookie(true)
+    CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
     webView.addJavascriptInterface(AndroidNativeControllerBridge(), "AN3AndroidNativeController")
     webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")

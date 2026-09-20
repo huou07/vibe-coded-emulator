@@ -155,6 +155,49 @@ test("syncState publishes and downloads raw save-state bytes", async () => {
   assert.deepEqual(new Uint8Array(await writes[0].state.arrayBuffer()), remoteBytes);
 });
 
+test("direct peer state manifests preserve the native blob path", async () => {
+  const transfer = loadTransfer();
+  const remoteBytes = new Uint8Array(Buffer.from("native-peer-state"));
+  const remoteKey = "state:mgba:emerald:" + "a".repeat(64) + ":slot1";
+  const calls = [];
+  const writes = [];
+  const storage = {
+    async readAll() { return []; },
+    async put(record) { writes.push(record); },
+  };
+  const transport = {
+    development: false,
+    async sameAccount() { return true; },
+    async manifest() {
+      return {items: [{
+        key: remoteKey,
+        path: "/data/states/slot1",
+        contentHash: sha256(remoteBytes),
+        size: remoteBytes.byteLength,
+        deviceId: "peer-1234",
+      }]};
+    },
+    async plan() { return {transfers: [{key: remoteKey, direction: "download"}]}; },
+    async blob(kind, item) {
+      calls.push({kind, item});
+      return remoteBytes;
+    },
+    async publish() {},
+    async resolve() {},
+  };
+  await transfer.syncState({
+    transport,
+    storage,
+    identity: {core: "mgba", gameId: "emerald", romHash: "a".repeat(64)},
+    deviceId: "device-local",
+    context: {kind: "state"},
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].kind, "state");
+  assert.equal(calls[0].item.path, "/data/states/slot1");
+  assert.equal(writes.length, 1);
+});
+
 test("resolveConflict keep-both preserves local bytes and installs verified remote bytes", async () => {
   const transfer = loadTransfer();
   const localBytes = new Uint8Array(Buffer.from("local-conflict"));

@@ -7,17 +7,17 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="theme-color" content="#07060c">
     <title>Vibe Coded Emulator</title>
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.0.0">
-    <link rel="stylesheet" href="/static/site.css?v=3.0.0">
-    <link rel="stylesheet" href="/static/theme-violet.css?v=3.0.0">
-    <link rel="stylesheet" href="/native.css?v=3.0.0">
-    <script src="/native-bootstrap.js?v=3.0.0"></script>
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.1.0">
+    <link rel="stylesheet" href="/static/site.css?v=3.1.0">
+    <link rel="stylesheet" href="/static/theme-violet.css?v=3.1.0">
+    <link rel="stylesheet" href="/native.css?v=3.1.0">
+    <script src="/native-bootstrap.js?v=3.1.0"></script>
   </head>
   <body class="reference-shell native-app-shell">
     <div class="native-app" id="nativeApp">
       <aside class="native-sidebar">
         <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
-          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.0.0" alt="Vibe Coded Emulator">
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.1.0" alt="Vibe Coded Emulator">
           <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
         </button>
         <nav class="native-nav" aria-label="Main">
@@ -98,6 +98,35 @@
               <div id="nativeGameSettingsBody" class="native-settings-body"></div>
               <p id="nativeGameSettingsStatus" class="native-status" role="status"></p>
             </div>
+            <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync">
+              <h2>Account &amp; LAN Sync</h2>
+              <p class="native-muted">Sign in with your AN3 account, or play as a guest. Save data moves directly between remembered AN3 devices on the same LAN; it is not relayed through the AN3 server.</p>
+              <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
+                <label><input id="nativeSyncGuestMode" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
+                <label><input id="nativeSyncAccountMode" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
+              </div>
+              <form id="nativeAccountLogin" class="native-sync-login" hidden>
+                <label class="native-field"><span>AN3 username</span><input id="nativeAccountName" autocomplete="username"></label>
+                <label class="native-field"><span>Password</span><input id="nativeAccountPassword" type="password" autocomplete="current-password"></label>
+                <div class="native-settings-actions"><button id="nativeAccountLoginButton" class="button primary" type="submit">Sign in</button><button id="nativeAccountLogoutButton" class="button" type="button" hidden>Sign out</button></div>
+              </form>
+              <div class="native-facts">
+                <div class="native-fact"><span>Identity</span><strong id="nativeAccountStatus" role="status">Guest</strong></div>
+                <div class="native-fact"><span>LAN Sync</span><strong id="nativeSyncStatus" role="status">Starting</strong></div>
+              </div>
+              <div class="native-settings-actions">
+                <button id="nativeSyncStart" class="button primary" type="button">Start Hosting</button>
+                <button id="nativeSyncStop" class="button" type="button">Stop Hosting</button>
+              </div>
+              <p class="native-sync-code">LAN Sync pairing code: <strong id="nativeSyncCode">—</strong></p>
+              <label class="native-field"><span>Enter another device’s six-digit code</span><input id="nativeSyncPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeSyncJoin" class="button" type="button">Pair device</button>
+              <div id="nativeSyncPeers" class="native-sync-peers" aria-live="polite"></div>
+              <div id="nativeSyncConflicts" class="native-sync-peers" aria-live="polite"></div>
+              <label class="native-settings-field native-sync-background"><input id="nativeSyncBackground" type="checkbox"> <span>Allow LAN reconnection while this app is open</span></label>
+              <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
+              <p id="nativeSyncMessage" class="native-status" role="status"></p>
+            </div>
             <div class="native-card" id="nativeLicensesCard">
               <h2>Licenses &amp; open source</h2>
               <p class="native-muted">Vibe Coded Emulator is free software under the <strong>GNU General Public License v3.0-or-later</strong>. Commercial use, modification and redistribution are permitted; redistributors must keep the notices and provide the corresponding source. Forks do not have to keep this name, logo or UI.</p>
@@ -163,7 +192,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong>3.0.0</strong></div>
+                <div class="native-fact"><span>Version</span><strong>3.1.0</strong></div>
                 <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
@@ -182,18 +211,20 @@
 
     <div id="toast" role="status"></div>
 
-    <script src="/static/offline.js?v=3.0.0" defer></script>
-    <script src="/static/player-ui.js?v=3.0.0" defer></script>
-    <script src="/static/player-runtime.js?v=3.0.0" defer></script>
-    <script src="/static/renderer-worker.js?v=3.0.0" defer></script>
-    <script src="/static/nds-touch.js?v=3.0.0" defer></script>
-    <script src="/static/controller-utility.js?v=3.0.0" defer></script>
-    <script src="/static/lan-peer.js?v=3.0.0" defer></script>
-    <script src="/static/sync-transfer.js?v=3.0.0" defer></script>
-    <script src="/static/player.js?v=3.0.0" defer></script>
-    <script src="/native-settings.js?v=3.0.0" defer></script>
-    <script src="/game-settings.js?v=3.0.0" defer></script>
-    <script src="/native-app.js?v=3.0.0" defer></script>
-    <script src="/android-staging.js?v=3.0.0" defer></script>
+    <script src="/static/offline.js?v=3.1.0" defer></script>
+    <script src="/static/player-ui.js?v=3.1.0" defer></script>
+    <script src="/static/player-runtime.js?v=3.1.0" defer></script>
+    <script src="/static/renderer-worker.js?v=3.1.0" defer></script>
+    <script src="/static/nds-touch.js?v=3.1.0" defer></script>
+    <script src="/static/controller-utility.js?v=3.1.0" defer></script>
+    <script src="/static/lan-peer.js?v=3.1.0" defer></script>
+    <script src="/static/sync-transfer.js?v=3.1.0" defer></script>
+    <script src="/native-account.js?v=3.1.0" defer></script>
+    <script src="/native-sync.js?v=3.1.0" defer></script>
+    <script src="/static/player.js?v=3.1.0" defer></script>
+    <script src="/native-settings.js?v=3.1.0" defer></script>
+    <script src="/game-settings.js?v=3.1.0" defer></script>
+    <script src="/native-app.js?v=3.1.0" defer></script>
+    <script src="/android-staging.js?v=3.1.0" defer></script>
   </body>
 </html>

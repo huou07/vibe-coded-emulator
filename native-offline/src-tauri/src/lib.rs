@@ -6,11 +6,13 @@ mod azahar;
 mod controller_host;
 mod lan_peer;
 mod lan_host;
+mod sync_peer;
 mod switch_companion;
 // Test-only structured UI bridge; inert unless the `ui-control` feature is on.
 mod ui_control;
 use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
@@ -41,8 +43,21 @@ struct ImportedNativeRom {
     url: String,
     name: String,
     size: u64,
+    rom_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
+}
+
+fn file_sha256(path: &Path) -> Result<String, String> {
+    let mut input = File::open(path).map_err(|error| error.to_string())?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; COPY_BUFFER_BYTES];
+    loop {
+        let count = input.read(&mut buffer).map_err(|error| error.to_string())?;
+        if count == 0 { break; }
+        digest.update(&buffer[..count]);
+    }
+    Ok(digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn validate_rom_id(rom_id: &str) -> Result<(), String> {
@@ -630,6 +645,7 @@ fn import_native_rom(
         url: format!("/_an3/rom/{rom_id}.{extension}"),
         name,
         size: playable_size,
+        rom_hash: file_sha256(&destination)?,
         system: Some(system.to_owned()),
     })
 }
@@ -728,6 +744,100 @@ fn native_controller_lan_status() -> lan_host::LanStatus {
 #[tauri::command]
 fn native_controller_lan_refresh() -> lan_host::LanStatus {
     lan_host::refresh_code()
+}
+
+fn sync_app_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot find native sync storage: {error}"))
+}
+
+#[tauri::command]
+async fn native_sync_start(app: AppHandle, mode: String) -> Result<sync_peer::SyncStatus, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::start(directory, mode))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_join(app: AppHandle, code: String, mode: String, peer_id: Option<String>) -> Result<sync_peer::SyncStatus, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        sync_peer::start(directory, mode.clone())?;
+        sync_peer::join(code, mode, peer_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_sync_status() -> sync_peer::SyncStatus {
+    sync_peer::status()
+}
+
+#[tauri::command]
+fn native_sync_stop() {
+    sync_peer::stop();
+}
+
+#[tauri::command]
+fn native_sync_discover() -> Result<Vec<serde_json::Value>, String> {
+    sync_peer::discover_peers()
+}
+
+#[tauri::command]
+fn native_sync_forget(peer_id: String) -> Result<sync_peer::SyncStatus, String> {
+    sync_peer::forget(peer_id)
+}
+
+#[tauri::command]
+fn native_sync_request(method: String, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+    sync_peer::request(method, payload)
+}
+
+#[tauri::command]
+fn native_sync_identity() -> Result<serde_json::Value, String> {
+    sync_peer::identity()
+}
+
+#[tauri::command]
+fn native_sync_account_context() -> serde_json::Value {
+    sync_peer::account_context()
+}
+
+#[tauri::command]
+fn native_sync_set_account_proof(proof: String) -> Result<(), String> {
+    sync_peer::set_local_proof(proof)
+}
+
+#[tauri::command]
+fn native_sync_mark_account_verified(peer_id: String, verified: bool) -> Result<sync_peer::SyncStatus, String> {
+    sync_peer::mark_account_verified(peer_id, verified)
+}
+
+#[tauri::command]
+async fn native_sync_game_identity(app: AppHandle, system: String, rom_id: String) -> Result<serde_json::Value, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::game_identity(&directory, system, rom_id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_storage_read(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_read(&directory, payload))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_storage_write(app: AppHandle, payload: serde_json::Value) -> Result<(), String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_write(&directory, payload))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 // Nintendo Switch runs as a separate companion process (never linked into this
@@ -837,8 +947,8 @@ pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                controller_host::stop();
                 lan_host::stop();
+                sync_peer::stop();
                 switch_companion::stop();
             }
             #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -856,15 +966,26 @@ pub fn run() {
             start_native_game,
             stop_native_game,
             set_native_input,
-            native_controller_start,
-            native_controller_stop,
-            native_controller_status,
             native_controller_lan_start,
             native_controller_lan_join,
             native_controller_lan_send,
             native_controller_lan_stop,
             native_controller_lan_status,
             native_controller_lan_refresh,
+            native_sync_start,
+            native_sync_join,
+            native_sync_status,
+            native_sync_stop,
+            native_sync_discover,
+            native_sync_forget,
+            native_sync_request,
+            native_sync_identity,
+            native_sync_account_context,
+            native_sync_set_account_proof,
+            native_sync_mark_account_verified,
+            native_sync_game_identity,
+            native_sync_storage_read,
+            native_sync_storage_write,
             switch_companion_detect,
             switch_companion_launch,
             switch_companion_launch_rom,
