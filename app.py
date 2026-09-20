@@ -226,8 +226,136 @@ LAN_BLOB_MAX_BYTES = 16 * 1024 * 1024
 # payload limit small while allowing the documented per-item byte limit here.
 LAN_BLOB_MAX_JSON_BYTES = (LAN_BLOB_MAX_BYTES * 4 // 3) + 256 * 1024
 LAN_BLOB_MAX_ITEMS = 512
+LAN_SAVE_SET_MEMBER_LIMIT = 64
+LAN_SAVE_SET_MAX_BYTES = 64 * 1024 * 1024
+# Keep the existing request envelope ceiling for both legacy single blobs and
+# the set envelope. The per-member and aggregate caps below add constraints;
+# they never enlarge the generic LAN JSON budget.
+LAN_SAVE_SET_MAX_JSON_BYTES = LAN_BLOB_MAX_JSON_BYTES
 LAN_BLOBS = {}
 LAN_BLOBS_LOCK = threading.Lock()
+
+LAN_SAVE_MEMBER_RE = re.compile(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\Z")
+LAN_SAVE_HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
+
+
+def _sync_safe_segment(value, fallback, limit):
+    result = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or fallback).strip())
+    if re.fullmatch(r"\.+", result or ""):
+        result = ""
+    return (result or str(fallback))[:limit]
+
+
+def _sync_save_identity(data):
+    core = str(data.get("core") or "").strip()
+    game_id = str(data.get("gameId") or data.get("game_id") or "").strip()
+    rom_hash = str(data.get("romHash") or data.get("rom_hash") or "").strip().lower()
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", core):
+        raise ValueError("invalid save-set core")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", game_id):
+        raise ValueError("invalid save-set game identity")
+    if not re.fullmatch(r"(?:sha256:)?[a-f0-9]{64}", rom_hash):
+        raise ValueError("invalid save-set ROM hash")
+    set_id = ":".join((
+        "save",
+        _sync_safe_segment(core, "unknown-core", 48),
+        _sync_safe_segment(game_id, "unknown-game", 48),
+        _sync_safe_segment(rom_hash, "unknown-rom", 80),
+    ))
+    return {"core": core, "gameId": game_id, "romHash": rom_hash, "setId": set_id}
+
+
+def _sync_save_set_payload(save_set):
+    return {
+        "setId": save_set["setId"],
+        "core": save_set["core"],
+        "gameId": save_set["gameId"],
+        "romHash": save_set["romHash"],
+        "memberCount": save_set["memberCount"],
+        "totalSize": save_set["totalSize"],
+        "members": [
+            {
+                "memberId": member["memberId"],
+                "path": member["path"],
+                "size": member["size"],
+                "contentHash": member["contentHash"],
+            }
+            for member in save_set["members"]
+        ],
+    }
+
+
+def _sync_save_set_hash(save_set):
+    payload = json.dumps(_sync_save_set_payload(save_set), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sync_validate_save_set(data):
+    if not isinstance(data, dict):
+        raise ValueError("invalid save-set manifest")
+    identity = _sync_save_identity(data)
+    expected_set_id = identity["setId"]
+    set_id = str(data.get("setId") or "")
+    if set_id not in {expected_set_id, expected_set_id + ".conflict"}:
+        raise ValueError("invalid save-set identity")
+    members = data.get("members")
+    if not isinstance(members, list) or not members or len(members) > LAN_SAVE_SET_MEMBER_LIMIT:
+        raise ValueError("invalid save-set member list")
+    if data.get("memberCount") != len(members):
+        raise ValueError("save-set member count does not match")
+    total_size = data.get("totalSize")
+    if isinstance(total_size, bool) or not isinstance(total_size, int) or total_size < 1 or total_size > LAN_SAVE_SET_MAX_BYTES:
+        raise ValueError("invalid save-set total size")
+    seen = set()
+    normalized_members = []
+    calculated_total = 0
+    previous_member = None
+    for member in members:
+        if not isinstance(member, dict):
+            raise ValueError("invalid save-set member")
+        member_id = str(member.get("memberId") or "")
+        path = str(member.get("path") or "")
+        if not LAN_SAVE_MEMBER_RE.fullmatch(member_id) or member_id in seen or path != "/data/saves/" + member_id:
+            raise ValueError("invalid save-set member path")
+        if previous_member is not None and previous_member >= member_id:
+            raise ValueError("save-set members must be deterministically ordered")
+        size = member.get("size")
+        content_hash = str(member.get("contentHash") or "").lower()
+        key = str(member.get("key") or "")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+            raise ValueError("invalid save-set member size")
+        if not LAN_SAVE_HASH_RE.fullmatch(content_hash):
+            raise ValueError("invalid save-set member hash")
+        if key != set_id + ":" + member_id or not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
+            raise ValueError("invalid save-set member identity")
+        seen.add(member_id)
+        previous_member = member_id
+        calculated_total += size
+        normalized_members.append({
+            "key": key,
+            "memberId": member_id,
+            "path": path,
+            "size": size,
+            "contentHash": content_hash,
+        })
+    if calculated_total != total_size:
+        raise ValueError("save-set total size does not match its members")
+    normalized = {
+        "kind": "save",
+        "setId": set_id,
+        "core": identity["core"],
+        "gameId": identity["gameId"],
+        "romHash": identity["romHash"],
+        "memberCount": len(normalized_members),
+        "totalSize": total_size,
+        "members": normalized_members,
+        "manifestHash": str(data.get("manifestHash") or "").lower(),
+    }
+    if not LAN_SAVE_HASH_RE.fullmatch(normalized["manifestHash"]):
+        raise ValueError("invalid save-set aggregate hash")
+    if _sync_save_set_hash(normalized) != normalized["manifestHash"]:
+        raise ValueError("save-set aggregate hash does not match its members")
+    return normalized
 
 
 def lan_blob_reap(now=None):
@@ -2827,7 +2955,7 @@ class Handler(BaseHTTPRequestHandler):
         if not SYNC_ENABLED:
             return self.sync_unavailable()
         SYNC_LIMITER.check(self.client_address[0])
-        data = self.read_json(maximum=LAN_BLOB_MAX_JSON_BYTES)
+        data = self.read_json(maximum=LAN_SAVE_SET_MAX_JSON_BYTES)
         device = str(data.get("deviceId") or "").strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", device):
             return self.send_json({"error": "invalid device id"}, 400)
@@ -2842,29 +2970,85 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid item list"}, 400)
         now = time.monotonic()
         lan_blob_reap(now)
-        stored = []
+        prepared = []
+        seen_item_keys = set()
+        save_set = data.get("set") if kind is sync_engine.ItemKind.SAVE else None
+        replace_manifest_hash = str(data.get("replaceManifestHash") or "").strip().lower()
+        if replace_manifest_hash and not LAN_SAVE_HASH_RE.fullmatch(replace_manifest_hash):
+            return self.send_json({"error": "invalid replacement manifest hash"}, 400)
+        validated_set = None
+        member_by_key = {}
+        if save_set is not None:
+            try:
+                validated_set = _sync_validate_save_set(save_set)
+            except ValueError as error:
+                return self.send_json({"error": str(error)}, 400)
+            if len(items) != validated_set["memberCount"]:
+                return self.send_json({"error": "save-set item count does not match its manifest"}, 400)
+            member_by_key = {member["key"]: member for member in validated_set["members"]}
         for item in items:
             if not isinstance(item, dict):
                 return self.send_json({"error": "invalid item"}, 400)
             key = str(item.get("key") or "")
             if not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
                 return self.send_json({"error": "invalid item key"}, 400)
+            if key in seen_item_keys:
+                return self.send_json({"error": "duplicate item key"}, 400)
+            seen_item_keys.add(key)
             content_hash = str(item.get("contentHash") or "").strip().lower()
             if not re.fullmatch(r"[a-f0-9]{16,64}", content_hash):
                 return self.send_json({"error": "invalid content hash"}, 400)
+            if save_set is not None:
+                member = member_by_key.get(key)
+                if member is None:
+                    return self.send_json({"error": "unknown save-set member"}, 400)
+                if (str(item.get("memberId") or "") != member["memberId"]
+                        or str(item.get("path") or "") != member["path"]
+                        or content_hash != member["contentHash"]
+                        or item.get("size") != member["size"]):
+                    return self.send_json({"error": "save-set member metadata does not match its manifest"}, 400)
             try:
                 blob = base64.b64decode(str(item.get("data") or ""), validate=True)
             except (ValueError, binascii.Error):
                 return self.send_json({"error": "invalid item data"}, 400)
             if len(blob) > LAN_BLOB_MAX_BYTES:
                 return self.send_json({"error": "item too large"}, 413)
+            if save_set is not None and len(blob) != member["size"]:
+                return self.send_json({"error": "save-set member size does not match its manifest"}, 400)
             digest = hashlib.sha256(blob).hexdigest()
-            if digest[: len(content_hash)] != content_hash:
+            hash_matches = digest == content_hash if save_set is not None else digest[: len(content_hash)] == content_hash
+            if not hash_matches:
                 return self.send_json({"error": "content hash does not match the data"}, 400)
-            with LAN_BLOBS_LOCK:
-                LAN_BLOBS[(kind.value, key)] = {"hash": content_hash, "device": device, "data": blob, "updated": now}
-            stored.append({"key": key, "contentHash": content_hash, "size": len(blob)})
-        self.send_json({"ok": True, "stored": len(stored), "items": stored})
+            prepared.append({
+                "key": key,
+                "hash": content_hash,
+                "device": device,
+                "data": blob,
+                "updated": now,
+                "set": validated_set,
+                "setId": validated_set["setId"] if validated_set else None,
+            })
+        if validated_set and sum(len(item["data"]) for item in prepared) != validated_set["totalSize"]:
+            return self.send_json({"error": "save-set payload size does not match its manifest"}, 400)
+        with LAN_BLOBS_LOCK:
+            if validated_set:
+                set_id = validated_set["setId"]
+                existing = [record for (blob_kind, _), record in LAN_BLOBS.items()
+                            if blob_kind == kind.value and record.get("setId") == set_id]
+                existing_hashes = {record.get("set", {}).get("manifestHash") for record in existing}
+                if existing_hashes and existing_hashes != {validated_set["manifestHash"]} and replace_manifest_hash not in existing_hashes:
+                    return self.send_json({"error": "a different save set already owns this identity"}, 409)
+                for blob_key in [blob_key for blob_key, record in LAN_BLOBS.items()
+                                 if blob_key[0] == kind.value and record.get("setId") == set_id]:
+                    LAN_BLOBS.pop(blob_key, None)
+            for record in prepared:
+                LAN_BLOBS[(kind.value, record["key"])] = record
+        stored = [{"key": record["key"], "contentHash": record["hash"], "size": len(record["data"])} for record in prepared]
+        response = {"ok": True, "stored": len(stored), "items": stored}
+        if validated_set:
+            response["setId"] = validated_set["setId"]
+            response["manifestHash"] = validated_set["manifestHash"]
+        self.send_json(response)
 
     def sync_lan_manifest(self):
         if not SYNC_ENABLED:
@@ -2877,19 +3061,38 @@ class Handler(BaseHTTPRequestHandler):
         now = time.monotonic()
         lan_blob_reap(now)
         items = []
+        save_sets = {}
         with LAN_BLOBS_LOCK:
             for (blob_kind, key), record in LAN_BLOBS.items():
                 if blob_kind != kind.value:
                     continue
-                items.append({
+                item = {
                     "key": key,
                     "contentHash": record["hash"],
                     "size": len(record["data"]),
                     "deviceId": record["device"],
                     "ageSeconds": int(now - record["updated"]),
-                })
+                }
+                items.append(item)
+                if kind is sync_engine.ItemKind.SAVE and record.get("setId") and record.get("set"):
+                    group = save_sets.setdefault(record["setId"], {"set": record["set"], "records": []})
+                    group["records"].append(record)
         items.sort(key=lambda item: item["key"])
-        self.send_json({"kind": kind.value, "items": items})
+        sets = []
+        for set_id, group in sorted(save_sets.items()):
+            declared = dict(group["set"])
+            actual_by_key = {record["key"]: record for record in group["records"]}
+            members = []
+            for member in declared.get("members", []):
+                entry = dict(member)
+                record = actual_by_key.get(member["key"])
+                if record:
+                    entry["deviceId"] = record["device"]
+                members.append(entry)
+            declared["members"] = members
+            declared["deviceId"] = next(iter(actual_by_key.values()))["device"] if actual_by_key else ""
+            sets.append(declared)
+        self.send_json({"kind": kind.value, "items": items, "sets": sets})
 
     def sync_lan_blob(self):
         if not SYNC_ENABLED:
@@ -2901,6 +3104,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid item kind"}, 400)
         key = query.get("key", [""])[0]
         content_hash = query.get("hash", [""])[0].strip().lower()
+        if not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
+            return self.send_json({"error": "invalid item key"}, 400)
+        if not re.fullmatch(r"[a-f0-9]{16,64}", content_hash):
+            return self.send_json({"error": "invalid content hash"}, 400)
         lan_blob_reap()
         with LAN_BLOBS_LOCK:
             record = LAN_BLOBS.get((kind.value, key))

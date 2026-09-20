@@ -256,6 +256,34 @@ class SyncApiTests(unittest.TestCase):
             "deviceId": device, "kind": kind, "items": [item],
         })
 
+    @staticmethod
+    def save_set(payloads, *, core="mgba", game_id="emerald", rom_hash="a" * 64):
+        set_id = f"save:{core}:{game_id}:{rom_hash}"
+        members = []
+        items = []
+        for member_id, payload in sorted(payloads.items()):
+            digest = hashlib.sha256(payload).hexdigest()
+            member = {
+                "key": f"{set_id}:{member_id}",
+                "memberId": member_id,
+                "path": f"/data/saves/{member_id}",
+                "size": len(payload),
+                "contentHash": digest,
+            }
+            members.append(member)
+            items.append({**member, "data": base64.b64encode(payload).decode("ascii")})
+        save_set = {
+            "setId": set_id,
+            "core": core,
+            "gameId": game_id,
+            "romHash": rom_hash,
+            "memberCount": len(members),
+            "totalSize": sum(member["size"] for member in members),
+            "members": members,
+        }
+        save_set["manifestHash"] = app._sync_save_set_hash(save_set)
+        return save_set, items
+
     def test_lan_blob_publish_manifest_and_download_round_trip(self):
         payload = b"save-state-bytes" * 100
         status, body = self.publish(payload)
@@ -286,6 +314,88 @@ class SyncApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 404)
         status, _ = self.request("GET", "/api/sync/lan/blob?kind=state&key=missing&hash=" + "0" * 64)
+        self.assertEqual(status, 404)
+
+    def test_lan_save_set_publish_manifest_and_download_round_trip(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc-bytes", "emerald.srm": b"srm-bytes"})
+        status, body = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items,
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["stored"], 2)
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(status, 200)
+        manifest = json.loads(body)
+        self.assertEqual(len(manifest["sets"]), 1)
+        published = manifest["sets"][0]
+        self.assertEqual(published["setId"], save_set["setId"])
+        self.assertEqual([member["memberId"] for member in published["members"]], ["emerald.rtc", "emerald.srm"])
+        self.assertEqual(published["totalSize"], save_set["totalSize"])
+        self.assertEqual(published["manifestHash"], save_set["manifestHash"])
+        for item in items:
+            status, downloaded = self.request(
+                "GET", f"/api/sync/lan/blob?kind=save&key={item['key']}&hash={item['contentHash']}"
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(downloaded, base64.b64decode(item["data"]))
+
+    def test_lan_save_set_rejects_partial_or_corrupt_payload_without_storing_any_member(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc", "emerald.srm": b"srm"})
+        invalid_payloads = []
+        invalid_payloads.append({**save_set, "members": save_set["members"][:1]})
+        invalid_payloads.append({**save_set, "members": [save_set["members"][0], save_set["members"][0]]})
+        invalid_payloads.append(save_set)
+        for index, candidate in enumerate(invalid_payloads):
+            with self.subTest(index=index):
+                candidate_items = list(items)
+                if index == 2:
+                    candidate_items[1] = {**candidate_items[1], "data": base64.b64encode(b"tampered").decode("ascii")}
+                status, _ = self.request("POST", "/api/sync/lan/publish", {
+                    "deviceId": "device-aaaaaaaa", "kind": "save", "set": candidate, "items": candidate_items,
+                })
+                self.assertEqual(status, 400)
+                self.assertEqual(app.LAN_BLOBS, {})
+        unknown_item = {"key": f"{save_set['setId']}:unknown.sav", "memberId": "unknown.sav", "path": "/data/saves/unknown.sav", "size": 1, "contentHash": "b" * 64, "data": base64.b64encode(b"x").decode("ascii")}
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items + [unknown_item],
+        })
+        self.assertEqual(status, 400)
+        self.assertEqual(app.LAN_BLOBS, {})
+
+    def test_lan_save_set_replacement_requires_the_current_manifest_hash(self):
+        original_set, original_items = self.save_set({"emerald.rtc": b"rtc-v1", "emerald.srm": b"srm-v1"})
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": original_set, "items": original_items,
+        })
+        self.assertEqual(status, 200)
+        replacement_set, replacement_items = self.save_set({"emerald.rtc": b"rtc-v2", "emerald.srm": b"srm-v2"})
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-bbbbbbbb", "kind": "save", "set": replacement_set, "items": replacement_items,
+        })
+        self.assertEqual(status, 409)
+        status, body = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-bbbbbbbb", "kind": "save", "set": replacement_set, "items": replacement_items,
+            "replaceManifestHash": original_set["manifestHash"],
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["manifestHash"], replacement_set["manifestHash"])
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["sets"][0]["manifestHash"], replacement_set["manifestHash"])
+
+    def test_lan_save_set_rejects_malformed_member_identity_and_reports_missing_blob(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc", "emerald.srm": b"srm"})
+        malformed = {**save_set, "members": [{**save_set["members"][0], "path": "/data/saves/../escape"}, save_set["members"][1]]}
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": malformed, "items": items,
+        })
+        self.assertEqual(status, 400)
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items,
+        })
+        self.assertEqual(status, 200)
+        app.LAN_BLOBS.pop(("save", items[0]["key"]))
+        status, _ = self.request("GET", f"/api/sync/lan/blob?kind=save&key={items[0]['key']}&hash={items[0]['contentHash']}")
         self.assertEqual(status, 404)
 
     def test_state_and_normal_save_namespaces_are_separate(self):
@@ -368,6 +478,8 @@ class SyncPageTests(unittest.TestCase):
         self.assertIn('versioned_player_asset("sync-transfer.js")', source)
         player = (ROOT / "static/player.js").read_text(encoding="utf-8")
         self.assertIn("AN3SyncTransfer.syncSave", player)
+        self.assertIn("Save set conflict", player)
+        self.assertIn("memberCount", player)
         self.assertIn("getSaveFilePath", (ROOT / "static/sync-transfer.js").read_text(encoding="utf-8"))
 
 

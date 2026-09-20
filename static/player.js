@@ -1041,7 +1041,7 @@
   const syncSaveIdentity = () => ({
     core: config.roomSignature?.core || emulatorSystem,
     gameId: config.slug,
-    romHash: config.roomSignature?.romHash || "unknown-rom",
+    romHash: config.roomSignature?.romHash || "",
   });
   const syncSaveSettings = async () => {
     const response = await fetch("/api/sync/settings");
@@ -1055,20 +1055,26 @@
   };
   const updateSaveSyncButton = () => {
     const manager = window.EJS_emulator?.gameManager;
-    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !globalThis.AN3SyncTransfer?.syncSave;
+    const romHash = syncSaveIdentity().romHash;
+    const hasFullRomIdentity = /^(?:sha256:)?[a-f0-9]{64}$/i.test(String(romHash || ""));
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave;
   };
   const drawSaveSyncConflicts = conflicts => {
     if (!syncSaveConflictBox) return;
     syncSaveConflictBox.innerHTML = "";
     if (!conflicts?.length) { syncSaveConflictBox.hidden = true; return; }
     const title = document.createElement("h3");
-    title.textContent = config.lang === "en" ? "Save file conflict" : "Xung đột tệp save";
+    title.textContent = config.lang === "en" ? "Save set conflict" : "Xung đột nhóm tệp save";
     syncSaveConflictBox.appendChild(title);
     conflicts.forEach(conflict => {
       const card = document.createElement("div");
       card.className = "sync-conflict";
       const label = document.createElement("strong");
-      label.textContent = conflict.key;
+      const set = conflict.local || conflict.remote || {};
+      const memberCount = Number(set.memberCount) || (Array.isArray(set.members) ? set.members.length : 1);
+      label.textContent = config.lang === "en"
+        ? `Save set · ${set.gameId || config.slug} · ${memberCount} file${memberCount === 1 ? "" : "s"}`
+        : `Nhóm save · ${set.gameId || config.slug} · ${memberCount} tệp`;
       card.appendChild(label);
       const actions = document.createElement("div");
       actions.className = "form-actions";
@@ -1089,7 +1095,7 @@
               resolution: choice[0],
             });
             drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
-            showNotice(config.lang === "en" ? "Save conflict resolved." : "Đã xử lý xung đột tệp save.");
+            showNotice(config.lang === "en" ? "Save set conflict resolved." : "Đã xử lý xung đột nhóm tệp save.");
           } catch (error) {
             showNotice(error.message || String(error), true);
           } finally {
@@ -1114,8 +1120,8 @@
     });
     drawSaveSyncConflicts(result.conflicts);
     showNotice(config.lang === "en"
-      ? `Save sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} conflict(s) need a choice` : ""}.`
-      : `Đồng bộ tệp save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột` : ""}.`);
+      ? `Save set sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} set conflict(s) need a choice` : ""}.`
+      : `Đồng bộ nhóm save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột nhóm` : ""}.`);
     return result;
   };
   const restoreLocalGameSave = async () => {

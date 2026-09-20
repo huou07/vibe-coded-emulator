@@ -15,6 +15,10 @@
   var KEY_PATTERN = /^[A-Za-z0-9._:@/\\-]{1,256}$/;
   var HASH_PATTERN = /^[a-f0-9]{64}$/;
   var MAX_MANIFEST_ITEMS = 2000;
+  var SAVE_SET_MEMBER_LIMIT = 64;
+  var SAVE_SET_MAX_BYTES = 64 * 1024 * 1024;
+  var SAVE_MEMBER_PATTERN = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+  var compareMemberId = function (left, right) { return left < right ? -1 : left > right ? 1 : 0; };
 
   var hex = function (bytes) {
     return Array.from(bytes).map(function (byte) {
@@ -205,6 +209,49 @@
     return parts.length ? parts[parts.length - 1] : "save";
   };
 
+  var utf8Bytes = function (value) {
+    if (typeof TextEncoder === "function") return new TextEncoder().encode(String(value));
+    var encoded = encodeURIComponent(String(value));
+    var bytes = [];
+    for (var index = 0; index < encoded.length; index += 1) {
+      if (encoded[index] === "%") {
+        bytes.push(parseInt(encoded.slice(index + 1, index + 3), 16));
+        index += 2;
+      } else {
+        bytes.push(encoded.charCodeAt(index));
+      }
+    }
+    return new Uint8Array(bytes);
+  };
+
+  var normalizeSaveIdentity = function (identity) {
+    identity = identity || {};
+    var core = String(identity.core || globalThis.EJS_core || "").trim();
+    var gameId = String(identity.gameId || identity.game || globalThis.EJS_gameID || "").trim();
+    var romHash = String(identity.romHash || "").trim().toLowerCase();
+    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(core) || !/^[A-Za-z0-9_.-]{1,64}$/.test(gameId)) {
+      throw new Error("A save set needs a valid core and game identity.");
+    }
+    if (!/^(?:sha256:)?[a-f0-9]{64}$/.test(romHash)) {
+      throw new Error("A save set needs the complete ROM SHA-256 identity.");
+    }
+    return {core: core, gameId: gameId, romHash: romHash};
+  };
+
+  var normalizeSavePath = function (path) {
+    var value = String(path || "");
+    if (!/^\/data\/saves(?:\/|$)/.test(value) || value.length > 256) {
+      throw new Error("The emulator returned an unsafe save-file path.");
+    }
+    var memberId = value.replace(/^\/data\/saves\/?/, "");
+    if (!SAVE_MEMBER_PATTERN.test(memberId) || memberId.split("/").some(function (part) {
+      return part === "." || part === "..";
+    })) {
+      throw new Error("The emulator returned an unsafe save-set member path.");
+    }
+    return {memberId: memberId, path: "/data/saves/" + memberId};
+  };
+
   // Normal saves include the artifact kind, emulator core, game identity,
   // ROM identity, and the core-selected save filename. The `kind` field in
   // every API call provides a second server-side namespace from save states.
@@ -218,6 +265,162 @@
       safeSegment(identity.romHash, "unknown-rom", 80),
       safeSegment(identity.saveId || relativePath || pathBaseName(savePath), "save", 64),
     ].join(":").slice(0, 256);
+  };
+
+  var saveSetId = function (identity) {
+    identity = normalizeSaveIdentity(identity);
+    return [
+      KIND_SAVE,
+      safeSegment(identity.core, "unknown-core", 48),
+      safeSegment(identity.gameId, "unknown-game", 48),
+      safeSegment(identity.romHash, "unknown-rom", 80),
+    ].join(":").slice(0, 256);
+  };
+
+  var saveSetMemberKey = function (identity, savePath, setIdOverride) {
+    var path = normalizeSavePath(savePath);
+    return (setIdOverride || saveSetId(identity)) + ":" + path.memberId;
+  };
+
+  var saveSetCanonicalPayload = function (set) {
+    return JSON.stringify({
+      setId: set.setId,
+      core: set.core,
+      gameId: set.gameId,
+      romHash: set.romHash,
+      memberCount: set.memberCount,
+      totalSize: set.totalSize,
+      members: (set.members || []).map(function (member) {
+        return {
+          memberId: member.memberId,
+          path: member.path,
+          size: member.size,
+          contentHash: member.contentHash,
+        };
+      }),
+    });
+  };
+
+  var saveSetManifestHash = async function (set) {
+    return digestBytes(utf8Bytes(saveSetCanonicalPayload(set)));
+  };
+
+  var buildSaveSet = async function (identity, records, setIdOverride) {
+    var normalized = normalizeSaveIdentity(identity);
+    var setId = setIdOverride || saveSetId(normalized);
+    if (!/^save:[A-Za-z0-9._-]{1,48}:[A-Za-z0-9._-]{1,48}:[A-Za-z0-9._-]{1,80}(?:\.conflict)?$/.test(setId)) {
+      throw new Error("The save-set identity is invalid.");
+    }
+    if (!Array.isArray(records) || !records.length || records.length > SAVE_SET_MEMBER_LIMIT) {
+      throw new Error("A save set must contain one to " + SAVE_SET_MEMBER_LIMIT + " members.");
+    }
+    var members = [];
+    var seen = new Set();
+    var totalSize = 0;
+    for (var index = 0; index < records.length; index += 1) {
+      var record = records[index] || {};
+      var path = normalizeSavePath(record.path || record.memberPath || "");
+      if (seen.has(path.memberId)) throw new Error("The save set contains a duplicate member.");
+      seen.add(path.memberId);
+      var bytes = await readBytes(record.bytes);
+      if (!bytes.byteLength) throw new Error("A save-set member cannot be empty.");
+      var contentHash = await digestBytes(bytes);
+      var key = saveSetMemberKey(normalized, path.path, setId);
+      if (record.key && record.key !== key && !String(record.key).startsWith(saveSetId(normalized) + ":")) {
+        throw new Error("A save-set member identity does not match its path.");
+      }
+      totalSize += bytes.byteLength;
+      if (totalSize > SAVE_SET_MAX_BYTES) throw new Error("The save set is too large.");
+      members.push({
+        key: key,
+        memberId: path.memberId,
+        path: path.path,
+        bytes: bytes,
+        size: bytes.byteLength,
+        contentHash: contentHash,
+        updatedAt: Number(record.updatedAt) || 0,
+      });
+    }
+    members.sort(function (left, right) { return compareMemberId(left.memberId, right.memberId); });
+    var set = {
+      kind: KIND_SAVE,
+      setId: setId,
+      core: normalized.core,
+      gameId: normalized.gameId,
+      romHash: normalized.romHash,
+      memberCount: members.length,
+      totalSize: totalSize,
+      members: members,
+    };
+    set.manifestHash = await saveSetManifestHash(set);
+    return set;
+  };
+
+  var validateSaveSet = async function (candidate, expectedIdentity) {
+    var set = candidate && typeof candidate === "object" ? candidate : null;
+    if (!set) throw new Error("The LAN manifest is missing its save set.");
+    var normalized = normalizeSaveIdentity({core: set.core, gameId: set.gameId, romHash: set.romHash});
+    var expectedSetId = saveSetId(normalized);
+    var setId = String(set.setId || "");
+    var isConflict = setId === expectedSetId + ".conflict";
+    if (setId !== expectedSetId && !isConflict) throw new Error("The LAN manifest contains an invalid save-set identity.");
+    if (expectedIdentity && setId !== saveSetId(expectedIdentity)) {
+      throw new Error("The LAN manifest belongs to a different game or core.");
+    }
+    if (!Array.isArray(set.members) || !set.members.length || set.members.length > SAVE_SET_MEMBER_LIMIT) {
+      throw new Error("The LAN manifest contains an invalid save-set member list.");
+    }
+    if (Number(set.memberCount) !== set.members.length || !Number.isSafeInteger(Number(set.totalSize)) || Number(set.totalSize) < 1 || Number(set.totalSize) > SAVE_SET_MAX_BYTES) {
+      throw new Error("The LAN manifest contains an invalid save-set aggregate.");
+    }
+    var members = [];
+    var seen = new Set();
+    var totalSize = 0;
+    for (var index = 0; index < set.members.length; index += 1) {
+      var member = set.members[index] || {};
+      var memberId = String(member.memberId || "");
+      var path = String(member.path || "");
+      if (!SAVE_MEMBER_PATTERN.test(memberId) || seen.has(memberId) || path !== "/data/saves/" + memberId) {
+        throw new Error("The LAN manifest contains an invalid save-set member path.");
+      }
+      if (index > 0 && compareMemberId(members[index - 1].memberId, memberId) >= 0) {
+        throw new Error("The LAN manifest members are not deterministically ordered.");
+      }
+      var size = Number(member.size);
+      var contentHash = String(member.contentHash || "").toLowerCase();
+      var key = String(member.key || "");
+      if (!Number.isSafeInteger(size) || size < 1 || !HASH_PATTERN.test(contentHash) || key !== setId + ":" + memberId || !KEY_PATTERN.test(key)) {
+        throw new Error("The LAN manifest contains an invalid save-set member.");
+      }
+      seen.add(memberId);
+      totalSize += size;
+      members.push({
+        key: key,
+        memberId: memberId,
+        path: path,
+        size: size,
+        contentHash: contentHash,
+        deviceId: String(member.deviceId || set.deviceId || ""),
+      });
+    }
+    if (totalSize !== Number(set.totalSize)) throw new Error("The LAN manifest total size does not match its members.");
+    var normalizedSet = {
+      kind: KIND_SAVE,
+      setId: setId,
+      core: normalized.core,
+      gameId: normalized.gameId,
+      romHash: normalized.romHash,
+      memberCount: members.length,
+      totalSize: totalSize,
+      members: members,
+      manifestHash: String(set.manifestHash || "").toLowerCase(),
+      deviceId: String(set.deviceId || ""),
+      conflict: isConflict,
+    };
+    if (!HASH_PATTERN.test(normalizedSet.manifestHash) || await saveSetManifestHash(normalizedSet) !== normalizedSet.manifestHash) {
+      throw new Error("The LAN manifest aggregate hash is invalid.");
+    }
+    return normalizedSet;
   };
 
   var deviceId = function () {
@@ -328,15 +531,106 @@
     var resolvePath = function () {
       var active = requireManager();
       var path = String(active.getSaveFilePath() || "");
-      if (!/^\/data\/saves(?:\/|$)/.test(path) || path.length > 256) {
-        throw new Error("The emulator returned an unsafe save-file path.");
-      }
-      canonicalPath = path;
-      canonicalKey = saveArtifactKey(identity, path);
-      return path;
+      var normalized = normalizeSavePath(path);
+      canonicalPath = normalized.path;
+      canonicalKey = saveArtifactKey(identity, canonicalPath);
+      return normalized.path;
     };
     var conflictPath = function (path, contentHash) {
       return path + ".an3-conflict-" + String(contentHash || "unknown").slice(0, 16);
+    };
+    var readPath = async function (active, path) {
+      if (path === canonicalPath && typeof active.getSaveFile === "function") {
+        var primary = active.getSaveFile(false);
+        if (primary) return readBytes(primary);
+      }
+      if (typeof active.FS.readFile !== "function") return null;
+      try { return await readBytes(active.FS.readFile(path)); } catch (_) { return null; }
+    };
+    var listPaths = function (active, primaryPath) {
+      if (typeof active.FS.readdir !== "function" || typeof active.FS.readFile !== "function") return [primaryPath];
+      var paths = [];
+      var visit = function (directory) {
+        var entries;
+        try { entries = active.FS.readdir(directory) || []; } catch (_) { return; }
+        entries.forEach(function (entry) {
+          if (entry === "." || entry === "..") return;
+          var path = directory === "/" ? "/" + entry : directory + "/" + entry;
+          if (!/^\/data\/saves(?:\/|$)/.test(path) || path.length > 256) return;
+          var isDirectory = false;
+          try {
+            var stat = typeof active.FS.stat === "function" ? active.FS.stat(path) : null;
+            isDirectory = typeof active.FS.isDir === "function" && active.FS.isDir(stat?.mode);
+          } catch (_) {}
+          if (isDirectory) visit(path);
+          else {
+            try {
+              var normalized = normalizeSavePath(path);
+              if (!normalized.memberId.includes(".an3-conflict-")) paths.push(normalized.path);
+            } catch (_) {}
+          }
+        });
+      };
+      visit("/data/saves");
+      if (!paths.includes(primaryPath)) paths.push(primaryPath);
+      return Array.from(new Set(paths)).sort();
+    };
+    var targetPath = function (record) {
+      var path = normalizeSavePath(record?.path || canonicalPath || resolvePath()).path;
+      if (record?.targetPath) path = normalizeSavePath(record.targetPath).path;
+      else if (record?.isCopy) path = conflictPath(path, record.contentHash);
+      return path;
+    };
+    var putSet = async function (records) {
+      var active = requireManager();
+      if (!Array.isArray(records) || !records.length) throw new Error("The save set has no members to persist.");
+      var prepared = [];
+      var seen = new Set();
+      var canonicalWrite = false;
+      for (var index = 0; index < records.length; index += 1) {
+        var record = records[index] || {};
+        var bytes = await readBytes(record.bytes);
+        if (!bytes.byteLength) throw new Error("Refusing to persist an empty game save.");
+        var path = targetPath(record);
+        if (seen.has(path)) throw new Error("The save set contains duplicate persistence paths.");
+        seen.add(path);
+        prepared.push({record: record, path: path, bytes: bytes});
+        if (!record.isCopy && !record.targetPath) canonicalWrite = true;
+      }
+      var snapshots = [];
+      for (var snapshotIndex = 0; snapshotIndex < prepared.length; snapshotIndex += 1) {
+        var target = prepared[snapshotIndex].path;
+        var previous = await readPath(active, target);
+        snapshots.push({path: target, bytes: previous});
+      }
+      try {
+        prepared.forEach(function (entry) {
+          ensureSaveParent(active.FS, entry.path);
+          if (typeof active.FS.writeFile !== "function") throw new Error("The EmulatorJS save filesystem cannot write files.");
+          active.FS.writeFile(entry.path, entry.bytes);
+        });
+        await syncFileSystem(active.FS);
+      } catch (error) {
+        // IDBFS has no multi-file transaction. Restore every touched path when
+        // the underlying filesystem exposes the operations, so a failed set
+        // does not silently replace a previously valid save.
+        try {
+          snapshots.forEach(function (snapshot) {
+            if (snapshot.bytes?.byteLength) active.FS.writeFile(snapshot.path, snapshot.bytes);
+            else if (typeof active.FS.unlink === "function") active.FS.unlink(snapshot.path);
+          });
+          await syncFileSystem(active.FS);
+        } catch (_) {}
+        throw error;
+      }
+      for (var backupIndex = 0; backupIndex < prepared.length; backupIndex += 1) {
+        var entry = prepared[backupIndex];
+        if (!entry.record.isCopy && !entry.record.targetPath) {
+          var key = entry.record.key || saveArtifactKey(identity, entry.path);
+          writeSaveBackup(key, entry.bytes, await digestBytes(entry.bytes));
+        }
+      }
+      if (canonicalWrite && typeof active.loadSaveFiles === "function") active.loadSaveFiles();
     };
     return {
       readAll: async function () {
@@ -345,25 +639,23 @@
         // EmulatorJS's saveSaveFiles asks the core to flush SRAM/RTC/etc. into
         // the mounted save file before the bytes are read.
         if (typeof active.saveSaveFiles === "function") active.saveSaveFiles();
-        var value = active.getSaveFile(false);
-        if (!value) return [];
-        var bytes = await readBytes(value);
-        if (!bytes.byteLength) return [];
-        writeSaveBackup(canonicalKey, bytes, await digestBytes(bytes));
-        return [{id: canonicalKey, key: canonicalKey, bytes: bytes, path: path, updatedAt: Date.now()}];
+        var records = [];
+        var paths = listPaths(active, path);
+        for (var index = 0; index < paths.length; index += 1) {
+          var memberPath = paths[index];
+          var bytes = await readPath(active, memberPath);
+          if (!bytes?.byteLength) continue;
+          var key = saveArtifactKey(identity, memberPath);
+          writeSaveBackup(key, bytes, await digestBytes(bytes));
+          records.push({id: key, key: key, bytes: bytes, path: memberPath, updatedAt: Date.now()});
+        }
+        return records;
       },
       put: async function (record) {
-        var active = requireManager();
-        var path = canonicalPath || resolvePath();
-        var bytes = await readBytes(record?.bytes);
-        if (!bytes.byteLength) throw new Error("Refusing to persist an empty game save.");
-        var target = record?.isCopy ? conflictPath(path, record.contentHash) : path;
-        ensureSaveParent(active.FS, target);
-        active.FS.writeFile(target, bytes);
-        await syncFileSystem(active.FS);
-        if (!record?.isCopy) writeSaveBackup(canonicalKey, bytes, await digestBytes(bytes));
-        // Refresh the running core only after the verified bytes are durable.
-        if (!record?.isCopy && typeof active.loadSaveFiles === "function") active.loadSaveFiles();
+        await putSet([record]);
+      },
+      putSet: async function (records) {
+        await putSet(records);
       },
       restore: async function () {
         var active = requireManager();
@@ -436,6 +728,59 @@
     });
   };
 
+  var saveSetRecords = function (set, identity, asCopy) {
+    return (set.members || []).map(function (member) {
+      var conflictHash = set.conflictOf || set.manifestHash || "unknown";
+      var targetPath = asCopy
+        ? member.path + ".an3-conflict-" + String(conflictHash).slice(0, 16)
+        : member.path;
+      return {
+        id: asCopy ? saveArtifactKey(identity, targetPath) : member.key,
+        key: asCopy ? saveArtifactKey(identity, targetPath) : member.key,
+        bytes: member.bytes,
+        path: member.path,
+        targetPath: asCopy ? targetPath : undefined,
+        contentHash: member.contentHash,
+        isCopy: Boolean(asCopy),
+        source: set,
+        updatedAt: Date.now(),
+      };
+    });
+  };
+
+  var persistSaveSets = async function (storage, identity, sets) {
+    var records = [];
+    var targetPaths = new Set();
+    for (var index = 0; index < sets.length; index += 1) {
+      var entry = sets[index] || {};
+      var set = await validateSaveSet(entry.set, entry.asCopy ? undefined : identity);
+      var bytesByKey = new Map((entry.set.members || []).map(function (member) { return [member.key, member.bytes]; }));
+      set = Object.assign({}, set, {
+        members: set.members.map(function (member) {
+          return Object.assign({}, member, {bytes: bytesByKey.get(member.key)});
+        }),
+        conflictOf: entry.set.conflictOf || "",
+      });
+      var setRecords = saveSetRecords(set, identity, Boolean(entry.asCopy));
+      for (var recordIndex = 0; recordIndex < setRecords.length; recordIndex += 1) {
+        var record = setRecords[recordIndex];
+        var path = record.targetPath || record.path;
+        if (targetPaths.has(path)) throw new Error("The save-set persistence plan contains duplicate paths.");
+        targetPaths.add(path);
+        records.push(record);
+      }
+    }
+    if (typeof storage.putSet === "function") {
+      await storage.putSet(records);
+      return;
+    }
+    if (records.length === 1 && typeof storage.put === "function") {
+      await storage.put(records[0]);
+      return;
+    }
+    throw new Error("Atomic save-set persistence is unavailable.");
+  };
+
   var requestJson = async function (fetcher, url, options) {
     var response = await fetcher(url, options);
     var data = {};
@@ -470,6 +815,48 @@
     });
   };
 
+  var legacySaveSet = async function (manifest, identity) {
+    var expectedSetId = saveSetId(identity);
+    var items = remoteItems(manifest, KIND_SAVE).filter(function (item) {
+      return item.key.indexOf(expectedSetId + ":") === 0 && !item.key.endsWith(".conflict");
+    });
+    if (!items.length) return null;
+    var members = items.map(function (item) {
+      var memberId = item.key.slice(expectedSetId.length + 1);
+      return {
+        key: item.key,
+        memberId: memberId,
+        path: "/data/saves/" + memberId,
+        contentHash: item.contentHash,
+        size: item.size,
+        deviceId: item.deviceId,
+      };
+    }).sort(function (left, right) { return compareMemberId(left.memberId, right.memberId); });
+    var candidate = {
+      setId: expectedSetId,
+      core: normalizeSaveIdentity(identity).core,
+      gameId: normalizeSaveIdentity(identity).gameId,
+      romHash: normalizeSaveIdentity(identity).romHash,
+      memberCount: members.length,
+      totalSize: members.reduce(function (total, member) { return total + member.size; }, 0),
+      members: members,
+    };
+    candidate.manifestHash = await saveSetManifestHash(candidate);
+    return validateSaveSet(candidate, identity);
+  };
+
+  var remoteSaveSet = async function (manifest, identity) {
+    var sets = manifest && Array.isArray(manifest.sets) ? manifest.sets : [];
+    var seen = new Set();
+    for (var index = 0; index < sets.length; index += 1) {
+      var validated = await validateSaveSet(sets[index]);
+      if (seen.has(validated.setId)) throw new Error("The LAN manifest contains a duplicate save set.");
+      seen.add(validated.setId);
+      if (validated.setId === saveSetId(identity)) return validated;
+    }
+    return legacySaveSet(manifest, identity);
+  };
+
   var publish = async function (fetcher, device, kind, item, keyOverride) {
     var key = keyOverride || item.key;
     return requestJson(fetcher, "/api/sync/lan/publish", {
@@ -483,6 +870,61 @@
     });
   };
 
+  var publishSaveSet = async function (fetcher, device, identity, set, setIdOverride, replaceManifestHash) {
+    var outgoing;
+    if (setIdOverride) {
+      outgoing = await buildSaveSet(identity, set.members, setIdOverride);
+    } else {
+      var validated = await validateSaveSet(set, identity);
+      var bytesByKey = new Map((set.members || []).map(function (member) { return [member.key, member.bytes]; }));
+      outgoing = Object.assign({}, validated, {
+        members: validated.members.map(function (member) {
+          return Object.assign({}, member, {bytes: bytesByKey.get(member.key)});
+        }),
+      });
+      if (outgoing.members.some(function (member) { return !member.bytes; })) {
+        throw new Error("The save set has no bytes to publish.");
+      }
+    }
+    return requestJson(fetcher, "/api/sync/lan/publish", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        deviceId: device,
+        kind: KIND_SAVE,
+        replaceManifestHash: replaceManifestHash || "",
+        set: {
+          setId: outgoing.setId,
+          core: outgoing.core,
+          gameId: outgoing.gameId,
+          romHash: outgoing.romHash,
+          memberCount: outgoing.memberCount,
+          totalSize: outgoing.totalSize,
+          manifestHash: outgoing.manifestHash,
+          members: outgoing.members.map(function (member) {
+            return {
+              key: member.key,
+              memberId: member.memberId,
+              path: member.path,
+              size: member.size,
+              contentHash: member.contentHash,
+            };
+          }),
+        },
+        items: outgoing.members.map(function (member) {
+          return {
+            key: member.key,
+            memberId: member.memberId,
+            path: member.path,
+            size: member.size,
+            contentHash: member.contentHash,
+            data: encodeBase64(member.bytes),
+          };
+        }),
+      }),
+    });
+  };
+
   var download = async function (fetcher, kind, item) {
     var bytes = await requestBytes(fetcher, "/api/sync/lan/blob?kind=" + encodeURIComponent(kind) + "&key=" + encodeURIComponent(item.key) + "&hash=" + encodeURIComponent(item.contentHash));
     if (bytes.byteLength !== item.size || await digestBytes(bytes) !== item.contentHash) {
@@ -491,7 +933,23 @@
     return bytes;
   };
 
-  var syncKind = async function (options) {
+  var downloadSaveSet = async function (fetcher, set, identity) {
+    var validated = await validateSaveSet(set, identity);
+    var members = [];
+    for (var index = 0; index < validated.members.length; index += 1) {
+      var member = validated.members[index];
+      var bytes = await download(fetcher, KIND_SAVE, member);
+      members.push(Object.assign({}, member, {bytes: bytes}));
+    }
+    // Revalidate the complete aggregate after every member has been fetched.
+    var downloaded = Object.assign({}, validated, {members: members});
+    if (await saveSetManifestHash(downloaded) !== validated.manifestHash) {
+      throw new Error("Downloaded save set failed aggregate verification.");
+    }
+    return downloaded;
+  };
+
+  var syncStateKind = async function (options) {
     options = options || {};
     var kind = String(options.kind || KIND_STATE);
     if (kind !== KIND_STATE && kind !== KIND_SAVE) throw new Error("Unsupported sync artifact kind.");
@@ -554,12 +1012,77 @@
     };
   };
 
+  var syncSaveKind = async function (options) {
+    options = options || {};
+    var fetcher = options.fetch || globalThis.fetch.bind(globalThis);
+    var storage = storageFor(KIND_SAVE, options);
+    var identity = normalizeSaveIdentity(options.identity || {});
+    var device = String(options.deviceId || deviceId());
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(device)) throw new Error("Invalid sync device identity.");
+    var localItemsFound = await localItems(storage, KIND_SAVE);
+    var localSet = localItemsFound.length ? await buildSaveSet(identity, localItemsFound) : null;
+    var manifest = await requestJson(fetcher, "/api/sync/lan/manifest?kind=" + encodeURIComponent(KIND_SAVE));
+    var remoteSet = await remoteSaveSet(manifest, identity);
+    var setId = saveSetId(identity);
+    var records = [];
+    if (localSet || remoteSet) {
+      records.push({
+        key: setId,
+        local: localSet ? {content_hash: localSet.manifestHash, size: localSet.totalSize, modified_at: Date.now(), device_id: device} : undefined,
+        remote: remoteSet ? {content_hash: remoteSet.manifestHash, size: remoteSet.totalSize, device_id: remoteSet.deviceId || ""} : undefined,
+      });
+    }
+    var plan = await requestJson(fetcher, "/api/sync/plan", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode: options.mode || "lan", sameLan: options.sameLan !== false, kind: KIND_SAVE, records: records}),
+    });
+    var conflicts = [];
+    var uploaded = 0;
+    var downloaded = 0;
+    for (var index = 0; index < (plan.transfers || []).length; index += 1) {
+      var transfer = plan.transfers[index];
+      if (transfer.direction === "upload" && localSet) {
+        await publishSaveSet(fetcher, device, identity, localSet);
+        uploaded += 1;
+      } else if (transfer.direction === "download" && remoteSet) {
+        var incoming = await downloadSaveSet(fetcher, remoteSet, identity);
+        await persistSaveSets(storage, identity, [{set: incoming, asCopy: false}]);
+        downloaded += 1;
+      } else if (transfer.direction === "conflict" && localSet && remoteSet) {
+        conflicts.push({
+          key: setId,
+          setId: setId,
+          kind: KIND_SAVE,
+          copyKey: transfer.copyKey || setId + ".conflict",
+          local: localSet,
+          remote: remoteSet,
+          reason: transfer.reason || "both-changed",
+        });
+      }
+    }
+    return {
+      kind: KIND_SAVE,
+      storage: storage,
+      identity: identity,
+      plan: plan,
+      local: localSet,
+      remote: remoteSet,
+      conflicts: conflicts,
+      counts: {uploaded: uploaded, downloaded: downloaded, conflicts: conflicts.length},
+    };
+  };
+
+  var syncKind = async function (options) {
+    return String(options?.kind || KIND_STATE) === KIND_SAVE ? syncSaveKind(options) : syncStateKind(options);
+  };
+
   var syncState = function (options) {
     return syncKind(Object.assign({}, options || {}, {kind: KIND_STATE}));
   };
 
   var syncSave = function (options) {
-    return syncKind(Object.assign({}, options || {}, {kind: KIND_SAVE}));
+    return syncSaveKind(Object.assign({}, options || {}, {kind: KIND_SAVE}));
   };
 
   var restoreGameSave = function (options) {
@@ -583,8 +1106,33 @@
     var action = await requestJson(fetcher, "/api/sync/resolve", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({kind: kind, key: conflict.key, resolution: resolution, localHash: local.contentHash, remoteHash: remote.contentHash}),
+      body: JSON.stringify({
+        kind: kind,
+        key: conflict.key,
+        resolution: resolution,
+        localHash: local.manifestHash || local.contentHash,
+        remoteHash: remote.manifestHash || remote.contentHash,
+      }),
     });
+    if (kind === KIND_SAVE && conflict.setId && Array.isArray(local.members) && Array.isArray(remote.members)) {
+      var identity = normalizeSaveIdentity(options.identity || local);
+      if (resolution === "local") {
+        await publishSaveSet(fetcher, device, identity, local, undefined, remote.manifestHash);
+      } else {
+        // Download and verify every remote member before either the canonical
+        // set or a keep-both copy is handed to the storage adapter.
+        var incomingSet = await downloadSaveSet(fetcher, remote, identity);
+        var pending = [{set: incomingSet, asCopy: false}];
+        if (resolution === "both") {
+          var copySet = await buildSaveSet(identity, local.members, action.copyKey || conflict.copyKey || conflict.key + ".conflict");
+          copySet.conflictOf = local.manifestHash;
+          await publishSaveSet(fetcher, device, identity, copySet, copySet.setId);
+          pending.unshift({set: copySet, asCopy: true});
+        }
+        await persistSaveSets(storage, identity, pending);
+      }
+      return {action: action, resolution: resolution};
+    }
     if (resolution === "local") {
       await publish(fetcher, device, kind, local);
     } else {
@@ -605,6 +1153,10 @@
     indexedStorage: indexedStorage,
     gameSaveStorage: gameSaveStorage,
     saveArtifactKey: saveArtifactKey,
+    saveSetId: saveSetId,
+    saveSetMemberKey: saveSetMemberKey,
+    buildSaveSet: buildSaveSet,
+    validateSaveSet: validateSaveSet,
     deviceId: deviceId,
     digestBytes: digestBytes,
   });

@@ -33,17 +33,35 @@ const response = (payload, status = 200) => ({
 
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
-const makeGameManager = initialBytes => {
+const makeGameManager = (initialBytes, companionFiles = {}) => {
   const files = new Map([["/data", null], ["/data/saves", null]]);
   let current = initialBytes;
   let syncCount = 0;
   let loadCount = 0;
   const path = "/data/saves/emerald.srm";
+  for (const [memberPath, bytes] of Object.entries(companionFiles)) files.set(memberPath, new Uint8Array(bytes));
   const manager = {
     FS: {
       analyzePath(candidate) { return {exists: files.has(candidate)}; },
       mkdir(candidate) { files.set(candidate, null); },
       writeFile(candidate, bytes) { files.set(candidate, new Uint8Array(bytes)); },
+      readFile(candidate) {
+        if (!files.has(candidate) || !files.get(candidate)) throw new Error("missing file");
+        return new Uint8Array(files.get(candidate));
+      },
+      readdir(directory) {
+        const prefix = directory.endsWith("/") ? directory : `${directory}/`;
+        const entries = new Set();
+        for (const candidate of files.keys()) {
+          if (!candidate.startsWith(prefix)) continue;
+          const suffix = candidate.slice(prefix.length);
+          if (suffix && !suffix.includes("/")) entries.add(suffix);
+        }
+        return [".", "..", ...entries];
+      },
+      stat(candidate) { return {mode: files.get(candidate) === null ? "dir" : "file"}; },
+      isDir(mode) { return mode === "dir"; },
+      unlink(candidate) { files.delete(candidate); },
       syncfs(_populate, callback) { syncCount += 1; callback(null); },
     },
     getSaveFilePath() { return path; },
@@ -217,6 +235,161 @@ test("syncSave transfers EmulatorJS save bytes into the real IDBFS adapter", asy
   assert.deepEqual(new Uint8Array(managerB.inspect().files.get(managerB.inspect().path)), remoteBytes);
   assert.equal(managerB.inspect().syncCount, 1);
   assert.equal(managerB.inspect().loadCount, 1);
+});
+
+test("save-set manifests are deterministic and preserve member identity", async () => {
+  const transfer = loadTransfer();
+  const identity = {core: "mgba", gameId: "emerald", romHash: "e".repeat(64)};
+  const primary = new Uint8Array(Buffer.from("primary-save"));
+  const companion = new Uint8Array(Buffer.from("rtc-companion"));
+  const first = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.rtc", bytes: companion},
+    {path: "/data/saves/emerald.srm", bytes: primary},
+  ]);
+  const second = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.srm", bytes: primary},
+    {path: "/data/saves/emerald.rtc", bytes: companion},
+  ]);
+  assert.equal(first.setId, `save:mgba:emerald:${identity.romHash}`);
+  assert.deepEqual(Array.from(first.members, member => member.memberId), ["emerald.rtc", "emerald.srm"]);
+  assert.equal(first.totalSize, primary.byteLength + companion.byteLength);
+  assert.equal(first.memberCount, 2);
+  assert.equal(first.manifestHash, second.manifestHash);
+  assert.equal(first.members[0].key, `${first.setId}:emerald.rtc`);
+});
+
+test("multi-member save downloads validate the complete set before persistence", async () => {
+  const transfer = loadTransfer();
+  const identity = {core: "mgba", gameId: "emerald", romHash: "f".repeat(64)};
+  const localPrimary = new Uint8Array(Buffer.from("old-primary"));
+  const localCompanion = new Uint8Array(Buffer.from("old-companion"));
+  const remotePrimary = new Uint8Array(Buffer.from("new-primary"));
+  const remoteCompanion = new Uint8Array(Buffer.from("new-companion"));
+  const manager = makeGameManager(localPrimary, {"/data/saves/emerald.rtc": localCompanion});
+  const transferApi = loadTransfer();
+  const remoteSet = await transferApi.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.srm", bytes: remotePrimary},
+    {path: "/data/saves/emerald.rtc", bytes: remoteCompanion},
+  ]);
+  const publicSet = {
+    ...remoteSet,
+    members: remoteSet.members.map(({bytes, ...member}) => member),
+  };
+  const fetcher = async (url, options = {}) => {
+    if (url === "/api/sync/lan/manifest?kind=save") return response({sets: [publicSet], items: []});
+    if (url === "/api/sync/plan") return response({transfers: [{key: remoteSet.setId, direction: "download"}]});
+    if (url.startsWith("/api/sync/lan/blob?")) {
+      const key = decodeURIComponent(url.match(/key=([^&]+)/)[1]);
+      const member = remoteSet.members.find(item => item.key === key);
+      return response(member.bytes.buffer);
+    }
+    throw new Error(`unexpected request: ${url} ${JSON.stringify(options)}`);
+  };
+  const result = await transferApi.syncSave({deviceId: "device-local", mode: "lan", manager, identity, fetch: fetcher});
+  assert.equal(result.counts.downloaded, 1);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get("/data/saves/emerald.srm")), remotePrimary);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get("/data/saves/emerald.rtc")), remoteCompanion);
+  assert.equal(manager.inspect().syncCount, 1);
+  assert.equal(manager.inspect().loadCount, 1);
+});
+
+test("multi-member save failure leaves every previous member untouched", async () => {
+  const transfer = loadTransfer();
+  const identity = {core: "mgba", gameId: "emerald", romHash: "1".repeat(64)};
+  const originalPrimary = new Uint8Array(Buffer.from("keep-primary"));
+  const originalCompanion = new Uint8Array(Buffer.from("keep-companion"));
+  const remotePrimary = new Uint8Array(Buffer.from("incoming-primary"));
+  const remoteCompanion = new Uint8Array(Buffer.from("incoming-companion"));
+  const manager = makeGameManager(originalPrimary, {"/data/saves/emerald.rtc": originalCompanion});
+  const remoteSet = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.srm", bytes: remotePrimary},
+    {path: "/data/saves/emerald.rtc", bytes: remoteCompanion},
+  ]);
+  const publicSet = {...remoteSet, members: remoteSet.members.map(({bytes, ...member}) => member)};
+  const fetcher = async url => {
+    if (url === "/api/sync/lan/manifest?kind=save") return response({sets: [publicSet], items: []});
+    if (url === "/api/sync/plan") return response({transfers: [{key: remoteSet.setId, direction: "download"}]});
+    if (url.startsWith("/api/sync/lan/blob?")) {
+      const key = decodeURIComponent(url.match(/key=([^&]+)/)[1]);
+      const member = remoteSet.members.find(item => item.key === key);
+      return response(key.endsWith(".rtc") ? new Uint8Array(Buffer.from("tampered")) .buffer : member.bytes.buffer);
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  await assert.rejects(
+    transfer.syncSave({deviceId: "device-local", mode: "lan", manager, identity, fetch: fetcher}),
+    /hash verification/,
+  );
+  assert.deepEqual(new Uint8Array(manager.inspect().current), originalPrimary);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get("/data/saves/emerald.rtc")), originalCompanion);
+  assert.equal(manager.inspect().syncCount, 0);
+  assert.equal(manager.inspect().loadCount, 0);
+});
+
+test("save-set conflicts resolve once for the logical set and keep both safely", async () => {
+  const transfer = loadTransfer();
+  const identity = {core: "mgba", gameId: "emerald", romHash: "3".repeat(64)};
+  const localPrimary = new Uint8Array(Buffer.from("local-primary"));
+  const localCompanion = new Uint8Array(Buffer.from("local-companion"));
+  const remotePrimary = new Uint8Array(Buffer.from("remote-primary"));
+  const remoteCompanion = new Uint8Array(Buffer.from("remote-companion"));
+  const manager = makeGameManager(localPrimary, {"/data/saves/emerald.rtc": localCompanion});
+  const localSet = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.srm", bytes: localPrimary},
+    {path: "/data/saves/emerald.rtc", bytes: localCompanion},
+  ]);
+  const remoteSet = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.srm", bytes: remotePrimary},
+    {path: "/data/saves/emerald.rtc", bytes: remoteCompanion},
+  ]);
+  const published = [];
+  const fetcher = async (url, options = {}) => {
+    if (url === "/api/sync/resolve") return response({direction: "upload", copyKey: `${localSet.setId}.conflict`});
+    if (url === "/api/sync/lan/publish") {
+      published.push(JSON.parse(options.body));
+      return response({ok: true, stored: 2});
+    }
+    if (url.startsWith("/api/sync/lan/blob?")) {
+      const key = decodeURIComponent(url.match(/key=([^&]+)/)[1]);
+      return response(remoteSet.members.find(item => item.key === key).bytes.buffer);
+    }
+    throw new Error(`unexpected request: ${url}`);
+  };
+  await transfer.resolveConflict({
+    conflict: {key: localSet.setId, setId: localSet.setId, local: localSet, remote: remoteSet, copyKey: `${localSet.setId}.conflict`},
+    kind: "save",
+    resolution: "both",
+    deviceId: "device-local",
+    manager,
+    identity,
+    fetch: fetcher,
+  });
+  assert.equal(published.length, 1);
+  assert.equal(published[0].set.setId, `${localSet.setId}.conflict`);
+  assert.deepEqual(new Uint8Array(manager.inspect().current), remotePrimary);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get("/data/saves/emerald.rtc")), remoteCompanion);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get(`/data/saves/emerald.srm.an3-conflict-${localSet.manifestHash.slice(0, 16)}`)), localPrimary);
+  assert.deepEqual(new Uint8Array(manager.inspect().files.get(`/data/saves/emerald.rtc.an3-conflict-${localSet.manifestHash.slice(0, 16)}`)), localCompanion);
+  assert.equal(manager.inspect().syncCount, 1);
+  assert.equal(manager.inspect().loadCount, 1);
+});
+
+test("save-set validation rejects missing, unexpected, duplicate, hash, and size members", async () => {
+  const transfer = loadTransfer();
+  const identity = {core: "mgba", gameId: "emerald", romHash: "2".repeat(64)};
+  const base = await transfer.buildSaveSet(identity, [
+    {path: "/data/saves/emerald.rtc", bytes: new Uint8Array(Buffer.from("rtc"))},
+    {path: "/data/saves/emerald.srm", bytes: new Uint8Array(Buffer.from("srm"))},
+  ]);
+  const publicSet = set => ({...set, members: set.members.map(({bytes, ...member}) => member)});
+  const invalid = [
+    {...publicSet(base), members: [publicSet(base).members[0]]},
+    {...publicSet(base), members: [publicSet(base).members[0], publicSet(base).members[0]]},
+    {...publicSet(base), members: publicSet(base).members.map((member, index) => index ? {...member, contentHash: "0".repeat(64)} : member)},
+    {...publicSet(base), members: publicSet(base).members.map((member, index) => index ? {...member, size: member.size + 1} : member)},
+    {...publicSet(base), members: [...publicSet(base).members, {key: `${base.setId}:unexpected`, memberId: "unexpected.sav", path: "/data/saves/unexpected.sav", size: 1, contentHash: "3".repeat(64)}]},
+  ];
+  for (const candidate of invalid) await assert.rejects(transfer.validateSaveSet(candidate, identity));
 });
 
 test("syncSave refuses hash-mismatched bytes before EmulatorJS persistence", async () => {
