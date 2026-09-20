@@ -50,6 +50,7 @@ struct Options {
     std::string layout = "preserve";
     std::filesystem::path storage;
     bool control_stdin = false;
+    MelonDsNetplayConfig netplay;
     bool pick = false;
     bool no_controls = false;
     // Structured, agent-native test control plane (see docs/agent-control-plane.md).
@@ -67,6 +68,7 @@ struct Options {
 void usage() {
     std::cout << "VibeCodedEmulator native player\n"
               << "Usage: an3-offline-native --rom PATH [--system gba|nds|3ds] [--renderer auto|vulkan|opengl] [--layout left-right|top-bottom]\n"
+              << "       [--multiplayer host|join [--multiplayer-address HOST] [--multiplayer-port PORT]]\n"
               << "       an3-offline-native --pick [--no-controls]\n"
               << "       an3-offline-native --rom PATH --system gba --headless --frames N [--capture out.png] [--capture-raw out.rgba] [--status-json]\n"
               << "           [--load-state PATH] [--save-state PATH] [--input-seq \"A@0-30;Start@40-45\"] [--no-audio]\n"
@@ -179,6 +181,20 @@ std::optional<Options> parse_options(int argc, char** argv) {
         if (argument == "--pick") { options.pick = true; continue; }
         if (argument == "--no-controls") { options.no_controls = true; continue; }
         if (argument == "--control-stdin") { options.control_stdin = true; continue; }
+        if (argument == "--multiplayer") {
+            auto item = value();
+            if (!item || (*item != "host" && *item != "join")) return std::nullopt;
+            options.netplay.role = *item == "host" ? MelonDsNetplayRole::Host : MelonDsNetplayRole::Join;
+            continue;
+        }
+        if (argument == "--multiplayer-address") { if (auto item = value()) options.netplay.address = *item; else return std::nullopt; continue; }
+        if (argument == "--multiplayer-port") {
+            auto item = value();
+            if (!item) return std::nullopt;
+            try { const auto port = std::stoul(*item); if (port == 0 || port > 65535) return std::nullopt; options.netplay.port = static_cast<uint16_t>(port); }
+            catch (...) { return std::nullopt; }
+            continue;
+        }
         if (argument == "--headless") { options.headless = true; continue; }
         if (argument == "--no-audio") { options.no_audio = true; continue; }
         if (argument == "--status-json") { options.status_json = true; continue; }
@@ -350,6 +366,8 @@ int main(int argc, char** argv) {
     if (filesystem_error || !std::filesystem::is_regular_file(options.rom)) { std::cerr << "ROM is not a readable regular file.\n"; return 2; }
     if (options.system.empty()) options.system = infer_system(options.rom);
     if (options.system != "gba" && options.system != "nds" && options.system != "3ds") { std::cerr << "Could not identify GBA, NDS, or decrypted 3DS ROM content.\n"; return 2; }
+    if (options.netplay.role == MelonDsNetplayRole::Join && options.netplay.address.empty()) { std::cerr << "--multiplayer join requires --multiplayer-address HOST.\n"; return 2; }
+    if (options.netplay.role != MelonDsNetplayRole::Disabled && options.system != "nds") { std::cerr << "Only the integrated melonDS DS core supports LAN multiplayer.\n"; return 2; }
     if (options.renderer != "auto" && options.renderer != "vulkan" && options.renderer != "opengl") { std::cerr << "Renderer must be auto, vulkan, or opengl.\n"; return 2; }
     if (options.system == "3ds" && options.renderer == "opengl") { std::cerr << "3DS requires the portable Vulkan hardware renderer; OpenGL would require a prohibited GPU readback.\n"; return 2; }
     const auto core = bundled_core(options.system);
@@ -378,7 +396,8 @@ int main(int argc, char** argv) {
         std::string error;
         if (!capture_video.initialize(capture_surface, error)) { std::cerr << error << "\n"; return 1; }
         NativeCoreHost host;
-        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout)) {
+        if (options.netplay.role != MelonDsNetplayRole::Disabled) { std::cerr << "LAN multiplayer requires a live native game window, not headless mode.\n"; return 2; }
+        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout, "Vulkan", options.netplay)) {
             std::cerr << "Native core initialization failed: " << error << "\n";
             return 1;
         }
@@ -457,7 +476,7 @@ int main(int argc, char** argv) {
     if (!ready) { std::cerr << error << "\n"; SDL_Quit(); return 1; }
     LinuxSdlAudioBackend audio;
     NativeCoreHost host;
-    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *video, audio, error, options.layout)) {
+    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *video, audio, error, options.layout, "Vulkan", options.netplay)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
         video->shutdown(); SDL_Quit(); return 1;
     }

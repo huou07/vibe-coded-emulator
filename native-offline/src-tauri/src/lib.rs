@@ -10,7 +10,10 @@ mod sync_peer;
 mod switch_companion;
 // Test-only structured UI bridge; inert unless the `ui-control` feature is on.
 mod ui_control;
-use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
+use azahar::{
+    clear_multiplayer, configure_multiplayer, multiplayer_status, native_capabilities,
+    set_native_input, start_native_game, stop_native_game, NativeMultiplayerConfig,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -746,6 +749,21 @@ fn native_controller_lan_refresh() -> lan_host::LanStatus {
     lan_host::refresh_code()
 }
 
+#[tauri::command]
+fn native_multiplayer_configure(config: NativeMultiplayerConfig) -> Result<azahar::NativeMultiplayerStatus, String> {
+    configure_multiplayer(config)
+}
+
+#[tauri::command]
+fn native_multiplayer_status() -> azahar::NativeMultiplayerStatus {
+    multiplayer_status()
+}
+
+#[tauri::command]
+fn native_multiplayer_stop() {
+    clear_multiplayer();
+}
+
 fn sync_app_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
         .app_data_dir()
@@ -972,6 +990,9 @@ pub fn run() {
             native_controller_lan_stop,
             native_controller_lan_status,
             native_controller_lan_refresh,
+            native_multiplayer_configure,
+            native_multiplayer_status,
+            native_multiplayer_stop,
             native_sync_start,
             native_sync_join,
             native_sync_status,

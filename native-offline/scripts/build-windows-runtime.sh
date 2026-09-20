@@ -9,11 +9,12 @@ mkdir -p work/windows-runtime
 g++ -std=c++20 -O2 -DNDEBUG -DNOMINMAX -DSDL_MAIN_HANDLED -Wall -Wextra \
   -Inative-runtime \
   native-runtime/core/libretro_host.cpp \
+  native-runtime/core/melonds_netplay.cpp \
   native-runtime/video/vulkan/vulkan_backend.cpp \
   native-runtime/platform/linux/linux_runtime.cpp \
   native-runtime/platform/linux/linux_controls.cpp \
   native-runtime/platform/linux/sdl_audio_backend.cpp \
   native-runtime/platform/linux/sdl_gl_backend.cpp \
   $(pkg-config --cflags --libs sdl2 vulkan gtk+-3.0) \
-  -lopengl32 -pthread -o work/windows-runtime/an3-native-runtime.exe
+  -lopengl32 -lws2_32 -pthread -o work/windows-runtime/an3-native-runtime.exe
 pacman -Q > work/windows-runtime/toolchain-packages.txt

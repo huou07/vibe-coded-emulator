@@ -9,6 +9,7 @@ mkdir -p "$an3_output"
 node scripts/fetch-azahar-libretro-android.mjs
 "$an3_compiler" -std=c++20 -O2 -g -fPIC -shared -static-libstdc++ -Wl,-z,max-page-size=16384 \
   native-runtime/core/libretro_host.cpp \
+  native-runtime/core/melonds_netplay.cpp \
   native-runtime/video/vulkan/vulkan_backend.cpp \
   native-runtime/video/opengl/gles3_backend.cpp \
   native-runtime/platform/android/aaudio_backend.cpp \

@@ -20,6 +20,9 @@ int an3_native_start(void* content_view,
                      const char* system_directory,
                      const char* system,
                      const char* layout,
+                     const char* netplay_role,
+                     const char* netplay_address,
+                     uint16_t netplay_port,
                      char* details,
                      size_t details_length);
 

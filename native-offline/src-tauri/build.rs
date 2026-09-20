@@ -3,6 +3,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/azahar_host.h");
     println!("cargo:rerun-if-changed=src/vulkan_frontend.mm");
     println!("cargo:rerun-if-changed=src/vulkan_frontend.h");
+    println!("cargo:rerun-if-changed=../native-runtime/core/melonds_netplay.h");
+    println!("cargo:rerun-if-changed=../native-runtime/core/melonds_netplay.cpp");
     println!("cargo:rerun-if-changed=../vendor/moltenvk/macos-arm64/include/vulkan/vulkan.h");
 
     // Build scripts execute on the host; select native sources by target.
@@ -11,6 +13,7 @@ fn main() {
             .cpp(true)
             .file("src/azahar_host.mm")
             .file("src/vulkan_frontend.mm")
+            .file("../native-runtime/core/melonds_netplay.cpp")
             .include("../vendor/moltenvk/macos-arm64/include")
             .flag("-std=c++20")
             .flag("-fobjc-arc")
@@ -51,6 +54,9 @@ fn main() {
             "native_controller_lan_stop",
             "native_controller_lan_status",
             "native_controller_lan_refresh",
+            "native_multiplayer_configure",
+            "native_multiplayer_status",
+            "native_multiplayer_stop",
             "native_sync_start",
             "native_sync_join",
             "native_sync_status",

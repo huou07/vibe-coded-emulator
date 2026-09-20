@@ -8,6 +8,7 @@
 #include "../../shared/generated/player_ui.h"
 #include "../../shared/generated/native_layouts.h"
 #include "../../native-runtime/core/auto_save_mode.h"
+#include "../../native-runtime/core/melonds_netplay.h"
 
 #include <array>
 #include <atomic>
@@ -27,6 +28,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -84,6 +86,7 @@ constexpr unsigned RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER = 56;
 constexpr unsigned RETRO_ENVIRONMENT_SET_MESSAGE_EXT = 60;
 constexpr unsigned RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2 = 67;
 constexpr unsigned RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL = 68;
+constexpr unsigned RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE = 78;
 constexpr unsigned RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE = 41 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 constexpr unsigned RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE = 43 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 constexpr unsigned RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT = 73 | RETRO_ENVIRONMENT_EXPERIMENTAL;
@@ -154,6 +157,24 @@ struct retro_variable {
 struct retro_message {
     const char* msg;
     unsigned frames;
+};
+
+using retro_netpacket_send_t = void (*)(int, const void*, size_t, uint16_t);
+using retro_netpacket_poll_receive_t = void (*)();
+using retro_netpacket_start_t = void (*)(uint16_t, retro_netpacket_send_t, retro_netpacket_poll_receive_t);
+using retro_netpacket_receive_t = void (*)(const void*, size_t, uint16_t);
+using retro_netpacket_stop_t = void (*)();
+using retro_netpacket_connected_t = bool (*)(uint16_t);
+using retro_netpacket_disconnected_t = void (*)(uint16_t);
+
+struct retro_netpacket_callback {
+    retro_netpacket_start_t start;
+    retro_netpacket_receive_t receive;
+    retro_netpacket_stop_t stop;
+    retro_netpacket_poll_receive_t poll;
+    retro_netpacket_connected_t connected;
+    retro_netpacket_disconnected_t disconnected;
+    const char* protocol_version;
 };
 
 // ABI layout from libretro.h. A core can request this experimental writable
@@ -489,6 +510,24 @@ static std::string core_option_namespace_for_system(const std::string& system) {
 // Resolve the persisted Auto Save token from the shared model/parser below.
 static NSString* native_stored_auto_save_mode();
 
+static std::string native_rom_game_identity(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return {};
+    uint64_t hash = 1469598103934665603ull;
+    std::array<char, 1024 * 1024> buffer{};
+    while (input) {
+        input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const auto count = input.gcount();
+        for (std::streamsize index = 0; index < count; ++index) {
+            hash ^= static_cast<uint8_t>(buffer[static_cast<size_t>(index)]);
+            hash *= 1099511628211ull;
+        }
+    }
+    std::ostringstream output;
+    output << std::hex << hash;
+    return output.str();
+}
+
 class AzaharHost {
   public:
     bool start(const char* core_path,
@@ -499,6 +538,9 @@ class AzaharHost {
                const char* system_path,
                const char* system,
                const char* layout_path,
+               const char* netplay_role,
+               const char* netplay_address,
+               uint16_t netplay_port,
                CAMetalLayer* metal_layer,
                std::string& error) {
         core_path_ = core_path ?: "";
@@ -509,6 +551,16 @@ class AzaharHost {
         system_path_ = system_path ?: "";
         system_ = system ?: "";
         layout_ = layout_path ?: "preserve";
+        netplay_config_ = {};
+        const std::string requested_netplay_role = netplay_role ?: "disabled";
+        if (requested_netplay_role == "host") netplay_config_.role = MelonDsNetplayRole::Host;
+        else if (requested_netplay_role == "join") netplay_config_.role = MelonDsNetplayRole::Join;
+        else if (requested_netplay_role != "disabled" && !requested_netplay_role.empty()) {
+            error = "Unsupported melonDS LAN multiplayer role.";
+            return false;
+        }
+        netplay_config_.address = netplay_address ?: "";
+        netplay_config_.port = netplay_port ? netplay_port : 47834;
         if (core_path_.empty() || moltenvk_path_.empty() || rom_path_.empty() || rom_id_.empty() || save_path_.empty() ||
             system_path_.empty() || system_.empty() || !metal_layer) {
             error = "The native player did not receive a valid core, Vulkan runtime, ROM identity, save path, system path, and native view.";
@@ -523,6 +575,10 @@ class AzaharHost {
         }
         if (system_ != "gba" && system_ != "nds" && system_ != "3ds") {
             error = "Unsupported native system requested.";
+            return false;
+        }
+        if (netplay_config_.role != MelonDsNetplayRole::Disabled && system_ != "nds") {
+            error = "Only the integrated melonDS DS core supports LAN multiplayer.";
             return false;
         }
         layout_ = native_layout_preference(system_, layout_path);
@@ -595,6 +651,7 @@ class AzaharHost {
 
         retro_system_info info{};
         core_.get_system_info(&info);
+        core_version_ = info.library_version ? info.library_version : "";
         retro_game_info game{rom_path_.c_str(), nullptr, 0, nullptr};
         if (!info.need_fullpath) {
             std::ifstream input(rom_path_, std::ios::binary | std::ios::ate);
@@ -622,6 +679,26 @@ class AzaharHost {
             return false;
         }
         game_loaded_ = true;
+
+        if (netplay_config_.role != MelonDsNetplayRole::Disabled) {
+            if (!netpacket_interface_ || !netpacket_callbacks_.start || !netpacket_callbacks_.receive) {
+                error = "The integrated melonDS DS core did not expose libretro LAN netpacket support.";
+                stop();
+                return false;
+            }
+            netplay_config_.core_id = "melonds-ds";
+            netplay_config_.protocol_version = netpacket_protocol_.empty() ? core_version_ : netpacket_protocol_;
+            netplay_config_.game_identity = native_rom_game_identity(rom_path_);
+            if (netplay_config_.game_identity.empty() || !netplay_.open(netplay_config_, error)) {
+                if (error.empty()) error = "The selected ROM could not be identified for LAN multiplayer.";
+                stop();
+                return false;
+            }
+            if (netplay_config_.role == MelonDsNetplayRole::Host && !start_netplay_callbacks(error, 0)) {
+                stop();
+                return false;
+            }
+        }
 
         retro_system_av_info av_info{};
         core_.get_system_av_info(&av_info);
@@ -671,6 +748,9 @@ class AzaharHost {
             hardware_callbacks_.context_destroy();
         }
         renderer_initialized_ = false;
+        if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+        netpacket_started_ = false;
+        netplay_.close();
         if (game_loaded_ && core_.unload_game) core_.unload_game();
         game_loaded_ = false;
         if (initialized_ && core_.deinit) core_.deinit();
@@ -684,6 +764,11 @@ class AzaharHost {
         rom_data_.clear();
         rom_id_.clear();
         system_.clear();
+        core_version_.clear();
+        netpacket_callbacks_ = {};
+        netpacket_protocol_.clear();
+        netpacket_interface_ = false;
+        netpacket_client_id_ = 0;
         last_video_width_ = 0;
         last_video_height_ = 0;
         last_draw_time_ = {};
@@ -939,6 +1024,60 @@ class AzaharHost {
         touch_pressed_.store(pressed, std::memory_order_relaxed);
     }
 
+    bool start_netplay_callbacks(std::string& error, uint16_t client_id) {
+        if (!netpacket_callbacks_.start) {
+            error = "The melonDS core did not provide a LAN multiplayer start callback.";
+            return false;
+        }
+        netpacket_client_id_ = client_id;
+        netpacket_callbacks_.start(client_id, &AzaharHost::netpacket_send_callback,
+                                   &AzaharHost::netpacket_poll_callback);
+        netpacket_started_ = true;
+        return true;
+    }
+
+    bool pump_netplay(std::string& error) {
+        if (netplay_config_.role == MelonDsNetplayRole::Disabled) return true;
+        std::vector<MelonDsNetplayEvent> events;
+        if (!netplay_.pump(events, error)) return false;
+        for (const auto& event : events) {
+            switch (event.kind) {
+            case MelonDsNetplayEvent::Kind::Connected:
+                if (netplay_config_.role == MelonDsNetplayRole::Host) {
+                    if (netpacket_callbacks_.connected && !netpacket_callbacks_.connected(event.client_id)) {
+                        error = "The melonDS core rejected the LAN multiplayer peer.";
+                        netplay_.close();
+                        return false;
+                    }
+                } else if (!netpacket_started_ && !start_netplay_callbacks(error, 1)) {
+                    return false;
+                }
+                message_ = event.detail;
+                break;
+            case MelonDsNetplayEvent::Kind::Packet:
+                if (!netpacket_callbacks_.receive) {
+                    error = "The melonDS core no longer accepts LAN multiplayer packets.";
+                    return false;
+                }
+                netpacket_callbacks_.receive(event.payload.data(), event.payload.size(), event.client_id);
+                break;
+            case MelonDsNetplayEvent::Kind::Disconnected:
+                if (netplay_config_.role == MelonDsNetplayRole::Host &&
+                    netpacket_callbacks_.disconnected) {
+                    netpacket_callbacks_.disconnected(event.client_id);
+                }
+                if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+                netpacket_started_ = false;
+                message_ = event.detail;
+                break;
+            case MelonDsNetplayEvent::Kind::Rejected:
+                error = event.detail.empty() ? "The melonDS LAN multiplayer peer rejected this game." : event.detail;
+                return false;
+            }
+        }
+        return true;
+    }
+
     void draw() {
         if (!running_ || !core_.run || !vulkan_.ready()) return;
         // At normal speed preserve the historical scheduler: one core frame
@@ -960,7 +1099,11 @@ class AzaharHost {
         }
         for (unsigned index = 0; index < std::min(runs, 8u); ++index) {
             const auto began = std::chrono::steady_clock::now();
+            std::string netplay_error;
+            if (!pump_netplay(netplay_error)) { message_ = netplay_error; running_ = false; break; }
+            if (netpacket_started_ && netpacket_callbacks_.poll) netpacket_callbacks_.poll();
             core_.run();
+            if (!pump_netplay(netplay_error)) { message_ = netplay_error; running_ = false; break; }
             flush_pending_audio_samples();
             emulate_timings_.add(std::chrono::steady_clock::now() - began);
             active_game_seconds_ += 1.0 / kNominalCoreFps;
@@ -1075,6 +1218,20 @@ class AzaharHost {
         return host ? host->input_state(device, index, id) : 0;
     }
 
+    static void netpacket_send_callback(int flags, const void* data, size_t length, uint16_t client_id) {
+        auto* host = active_host();
+        if (!host) return;
+        std::string error;
+        if (!host->netplay_.send(flags, data, length, client_id, error)) host->message_ = error;
+    }
+
+    static void netpacket_poll_callback() {
+        auto* host = active_host();
+        if (!host) return;
+        std::string error;
+        if (!host->pump_netplay(error)) host->message_ = error;
+    }
+
     static void quiet_log(int, const char*, ...) {}
 
     bool environment(unsigned command, void* data) {
@@ -1091,6 +1248,15 @@ class AzaharHost {
         case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH:
             *static_cast<const char**>(data) = core_path_.c_str();
             return true;
+        case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE: {
+            if (system_ != "nds" || !data) return false;
+            const auto* callbacks = static_cast<const retro_netpacket_callback*>(data);
+            if (!callbacks->start || !callbacks->receive) return false;
+            netpacket_callbacks_ = *callbacks;
+            netpacket_protocol_ = callbacks->protocol_version ? callbacks->protocol_version : "";
+            netpacket_interface_ = true;
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             auto* variable = static_cast<retro_variable*>(data);
             if (!variable || !variable->key) return false;
@@ -1282,8 +1448,16 @@ class AzaharHost {
     std::string system_;
     std::string layout_;
     std::string message_;
+    std::string core_version_;
     std::vector<uint8_t> rom_data_;
     VulkanFrontend vulkan_;
+    MelonDsNetplayConfig netplay_config_;
+    MelonDsNetplayTransport netplay_;
+    retro_netpacket_callback netpacket_callbacks_{};
+    std::string netpacket_protocol_;
+    bool netpacket_interface_ = false;
+    bool netpacket_started_ = false;
+    uint16_t netpacket_client_id_ = 0;
     RetroHwRenderCallback hardware_callbacks_{};
     const void* negotiation_interface_ = nullptr;
     unsigned last_video_width_ = 0;
@@ -3195,6 +3369,9 @@ extern "C" int an3_native_start(void* content_view,
                                   const char* system_directory,
                                   const char* system,
                                   const char* layout,
+                                  const char* netplay_role,
+                                  const char* netplay_address,
+                                  uint16_t netplay_port,
                                   char* details,
                                   size_t details_length) {
     an3_native_stop();
@@ -3228,6 +3405,7 @@ extern "C" int an3_native_start(void* content_view,
                                       : nil;
     std::string error;
     if (!an3::g_host->start(core_path, moltenvk_path, rom_path, rom_id, save_directory, system_directory, system, layout,
+                             netplay_role, netplay_address, netplay_port,
                              metal_layer, error)) {
         an3_native_stop();
         if (details && details_length) std::snprintf(details, details_length, "%s", error.c_str());

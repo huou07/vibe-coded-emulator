@@ -21,6 +21,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / "native-offline/native-runtime/core/libretro_host.cpp"
+NETPLAY = ROOT / "native-offline/native-runtime/core/melonds_netplay.cpp"
 VULKAN = ROOT / "native-offline/native-runtime/video/vulkan/vulkan_backend.cpp"
 GLES = ROOT / "native-offline/native-runtime/video/opengl/gles3_backend.cpp"
 VULKAN_SOFTWARE = ROOT / "native-offline/native-runtime/video/vulkan/software_backend.h"
@@ -124,6 +125,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
                 "-I",
                 str(ROOT / "native-offline/src-tauri/src"),
                 str(HOST),
+                str(NETPLAY),
                 str(HARNESS),
                 "-pthread",
                 "-o",
@@ -188,7 +190,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn("std::make_unique<VulkanSoftwareBackend>()", selection)
         self.assertIn('requested=="auto" || requested=="opengl"', selection)
         self.assertIn('requested=="auto" || requested=="vulkan"', selection)
-        self.assertIn("s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api)", jni)
+        self.assertIn("s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api,netplay)", jni)
         self.assertIn('report("Native renderer failed: "+error', selection)
         for forbidden in ("WebGPU", "WebGL", "EmulatorJS", "OffscreenCanvas", "ImageBitmap", "HTML canvas"):
             self.assertNotIn(forbidden, selection)

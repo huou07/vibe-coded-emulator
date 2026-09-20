@@ -5,6 +5,7 @@ use std::{
     ffi::{CStr, CString},
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 use tauri::{AppHandle, Manager};
 
@@ -75,6 +76,75 @@ pub struct NativeStart {
     pub detail: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMultiplayerConfig {
+    pub role: String,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default = "default_multiplayer_port")]
+    pub port: u16,
+}
+
+fn default_multiplayer_port() -> u16 { 47834 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMultiplayerStatus {
+    pub available: bool,
+    pub configured: bool,
+    pub role: Option<String>,
+    pub address: Option<String>,
+    pub port: u16,
+    pub detail: String,
+}
+
+static PENDING_MULTIPLAYER: Mutex<Option<NativeMultiplayerConfig>> = Mutex::new(None);
+
+pub fn configure_multiplayer(config: NativeMultiplayerConfig) -> Result<NativeMultiplayerStatus, String> {
+    if config.role != "host" && config.role != "join" {
+        return Err("Choose Host or Join for LAN multiplayer.".into());
+    }
+    if config.role == "join" && config.address.trim().is_empty() {
+        return Err("Enter the host's current LAN address.".into());
+    }
+    if config.port == 0 { return Err("LAN multiplayer needs a non-zero port.".into()); }
+    let mut pending = PENDING_MULTIPLAYER.lock().map_err(|_| "LAN multiplayer state is unavailable.")?;
+    *pending = Some(config.clone());
+    Ok(NativeMultiplayerStatus {
+        available: true,
+        configured: true,
+        role: Some(config.role),
+        address: (!config.address.is_empty()).then_some(config.address),
+        port: config.port,
+        detail: "melonDS DS LAN multiplayer will attach to the next NDS launch.".into(),
+    })
+}
+
+pub fn multiplayer_status() -> NativeMultiplayerStatus {
+    let pending = PENDING_MULTIPLAYER.lock().ok().and_then(|value| value.clone());
+    NativeMultiplayerStatus {
+        available: true,
+        configured: pending.is_some(),
+        role: pending.as_ref().map(|value| value.role.clone()),
+        address: pending.as_ref().and_then(|value| (!value.address.is_empty()).then_some(value.address.clone())),
+        port: pending.as_ref().map(|value| value.port).unwrap_or(47834),
+        detail: if pending.is_some() {
+            "Direct melonDS LAN multiplayer is configured; launch an NDS game to start it.".into()
+        } else {
+            "Only the integrated melonDS DS libretro netpacket API is currently available.".into()
+        },
+    }
+}
+
+pub fn clear_multiplayer() {
+    if let Ok(mut pending) = PENDING_MULTIPLAYER.lock() { *pending = None; }
+}
+
+fn configured_multiplayer() -> Option<NativeMultiplayerConfig> {
+    PENDING_MULTIPLAYER.lock().ok().and_then(|value| value.clone())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeInput {
@@ -105,6 +175,9 @@ unsafe extern "C" {
         system_directory: *const std::ffi::c_char,
         system: *const std::ffi::c_char,
         layout: *const std::ffi::c_char,
+        netplay_role: *const std::ffi::c_char,
+        netplay_address: *const std::ffi::c_char,
+        netplay_port: u16,
         details: *mut std::ffi::c_char,
         details_length: usize,
     ) -> i32;
@@ -306,10 +379,11 @@ pub fn start_native_game(
     system: String,
     layout: Option<String>,
 ) -> Result<NativeStart, String> {
+    let netplay = configured_multiplayer();
     #[cfg(target_os = "windows")]
-    { return windows_runtime::start(&app, &rom_id, &system, layout.as_deref()); }
+    { return windows_runtime::start(&app, &rom_id, &system, layout.as_deref(), netplay); }
     #[cfg(target_os = "linux")]
-    { return linux_runtime::start(&app, &rom_id, &system, layout.as_deref()); }
+    { return linux_runtime::start(&app, &rom_id, &system, layout.as_deref(), netplay); }
     #[cfg(target_os = "macos")]
     {
         validate_rom_id(&rom_id)?;
@@ -345,6 +419,9 @@ pub fn start_native_game(
             Some("top-bottom") | Some("top_bottom") => "top-bottom",
             _ => "preserve",
         };
+        if netplay.is_some() && core_spec.system != "nds" {
+            return Err("Only the integrated melonDS DS core supports LAN multiplayer.".into());
+        }
         let core = c_string(&core, "native core path")?;
         let moltenvk = c_string(&moltenvk, "MoltenVK runtime path")?;
         let rom = c_string(&rom, "native ROM path")?;
@@ -353,6 +430,9 @@ pub fn start_native_game(
         let system_directory = c_string(&system_directory, "native system path")?;
         let system_text = c_text(core_spec.system, "native system")?;
         let layout = c_text(layout, "native screen layout")?;
+        let netplay_role = c_text(netplay.as_ref().map(|value| value.role.as_str()).unwrap_or("disabled"), "LAN multiplayer role")?;
+        let netplay_address = c_text(netplay.as_ref().map(|value| value.address.as_str()).unwrap_or_default(), "LAN multiplayer address")?;
+        let netplay_port = netplay.as_ref().map(|value| value.port).unwrap_or(47834);
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "VibeCodedEmulator main window is unavailable.".to_string())?;
@@ -374,6 +454,9 @@ pub fn start_native_game(
                     system_directory.as_ptr(),
                     system_text.as_ptr(),
                     layout.as_ptr(),
+                    netplay_role.as_ptr(),
+                    netplay_address.as_ptr(),
+                    netplay_port,
                     details.as_mut_ptr(),
                     details.len(),
                 ) != 0

@@ -455,6 +455,58 @@
       addEventListener("pagehide", () => { clearInterval(pollTimer); clearInterval(discoveryTimer); }, {once: true});
     }
 
+    const multiplayerCard = document.getElementById("nativeMultiplayerCard");
+    if (multiplayerCard && window.AN3NativeMultiplayer) {
+      const support = document.getElementById("nativeMultiplayerSupport");
+      const statusNode = document.getElementById("nativeMultiplayerStatus");
+      const messageNode = document.getElementById("nativeMultiplayerMessage");
+      const address = document.getElementById("nativeMultiplayerAddress");
+      const port = document.getElementById("nativeMultiplayerPort");
+      const hostButton = document.getElementById("nativeMultiplayerHost");
+      const joinButton = document.getElementById("nativeMultiplayerJoin");
+      const stopButton = document.getElementById("nativeMultiplayerStop");
+      const setMessage = message => { if (messageNode) messageNode.textContent = message || ""; };
+      const render = state => {
+        if (!state) return;
+        if (support) support.textContent = state.available === false ? "Unavailable" : "melonDS DS only";
+        if (statusNode) statusNode.textContent = state.configured ? (state.role === "host" ? "Host configured" : "Join configured") : "Off";
+        if (state.address && address && !address.value) address.value = state.address;
+        if (state.port && port) port.value = String(state.port);
+        if (state.detail && !state.error) setMessage(state.detail);
+      };
+      const configure = async role => {
+        const selectedPort = Number(String(port?.value || "47834").trim());
+        const selectedAddress = String(address?.value || "").trim();
+        if (!Number.isInteger(selectedPort) || selectedPort < 1 || selectedPort > 65535) {
+          setMessage("Enter a valid LAN port.");
+          port?.focus();
+          return;
+        }
+        if (role === "join" && !selectedAddress) {
+          setMessage("Enter the host's current LAN address.");
+          address?.focus();
+          return;
+        }
+        try {
+          setMessage(role === "host" ? "Preparing a direct melonDS LAN host…" : "Preparing a direct melonDS LAN join…");
+          render(await window.AN3NativeMultiplayer.configure(role, selectedAddress, selectedPort));
+          setMessage("Configuration saved. Launch the same NDS game on both devices.");
+        } catch (error) { setMessage(error?.message || "LAN multiplayer configuration failed."); }
+      };
+      hostButton?.addEventListener("click", () => configure("host"));
+      joinButton?.addEventListener("click", () => configure("join"));
+      stopButton?.addEventListener("click", async () => {
+        try { render(await window.AN3NativeMultiplayer.stop()); setMessage("LAN multiplayer left."); }
+        catch (error) { setMessage(error?.message || "Could not leave LAN multiplayer."); }
+      });
+      const refreshMultiplayer = async () => {
+        try { render(await window.AN3NativeMultiplayer.status()); } catch (error) { setMessage(error?.message || "LAN multiplayer status unavailable."); }
+      };
+      refreshMultiplayer();
+      const multiplayerTimer = setInterval(refreshMultiplayer, 2500);
+      addEventListener("pagehide", () => clearInterval(multiplayerTimer), {once: true});
+    }
+
     show("play");
   };
 

@@ -4,7 +4,7 @@
 //! library and import UI; gameplay runs in the bundled native SDL/GTK player.
 //! No shell, external emulator lookup, or browser frame transport participates
 //! in native gameplay.
-use super::{NativeCapabilities, NativeInput, NativeStart};
+use super::{NativeCapabilities, NativeInput, NativeMultiplayerConfig, NativeStart};
 use crate::{native_rom_path, validate_rom_id};
 use std::{
     fs,
@@ -101,7 +101,7 @@ pub(super) fn stop() -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>) -> Result<NativeStart, String> {
+pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>, netplay: Option<NativeMultiplayerConfig>) -> Result<NativeStart, String> {
     if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = Some(system.to_string()); }
     validate_rom_id(rom_id)?;
     let core = super::native_core(system)?;
@@ -130,6 +130,11 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(errors);
+    if let Some(config) = netplay {
+        command.args(["--multiplayer", config.role.as_str()]);
+        if config.role == "join" { command.args(["--multiplayer-address", config.address.as_str()]); }
+        command.args(["--multiplayer-port", &config.port.to_string()]);
+    }
     if let Some(schemas) = schemas_directory(&runtime) {
         command.env("GSETTINGS_SCHEMA_DIR", schemas);
     }

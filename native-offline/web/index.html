@@ -127,6 +127,23 @@
               <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
               <p id="nativeSyncMessage" class="native-status" role="status"></p>
             </div>
+            <div class="native-card" id="nativeMultiplayerCard" data-testid="lan-multiplayer">
+              <h2>LAN Multiplayer</h2>
+              <p class="native-muted">Uses the selected emulator core’s own LAN protocol. No AN3 server, lobby or relay is involved. The current embedded melonDS DS core is the only integrated LAN multiplayer core.</p>
+              <div class="native-facts">
+                <div class="native-fact"><span>Core support</span><strong id="nativeMultiplayerSupport" role="status">Checking</strong></div>
+                <div class="native-fact"><span>Session</span><strong id="nativeMultiplayerStatus" role="status">Off</strong></div>
+              </div>
+              <div class="native-settings-actions">
+                <button id="nativeMultiplayerHost" class="button primary" type="button">Host Game</button>
+                <button id="nativeMultiplayerStop" class="button" type="button">Leave</button>
+              </div>
+              <label class="native-field"><span>Host LAN address (private IPv4)</span><input id="nativeMultiplayerAddress" inputmode="url" autocomplete="off" placeholder="192.168.x.x"></label>
+              <label class="native-field"><span>Port</span><input id="nativeMultiplayerPort" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" value="47834"></label>
+              <button id="nativeMultiplayerJoin" class="button" type="button">Join Game</button>
+              <p id="nativeMultiplayerMessage" class="native-status" role="status"></p>
+              <p class="native-sync-hint">Start or join, then launch the same NDS game on both devices. mGBA has no upstream network link-cable API in this build; Azahar and Eden do not expose a local room API through AN3’s current embedded bridges.</p>
+            </div>
             <div class="native-card" id="nativeLicensesCard">
               <h2>Licenses &amp; open source</h2>
               <p class="native-muted">Vibe Coded Emulator is free software under the <strong>GNU General Public License v3.0-or-later</strong>. Commercial use, modification and redistribution are permitted; redistributors must keep the notices and provide the corresponding source. Forks do not have to keep this name, logo or UI.</p>

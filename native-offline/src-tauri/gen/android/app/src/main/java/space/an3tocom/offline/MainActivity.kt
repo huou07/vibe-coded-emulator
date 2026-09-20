@@ -31,11 +31,13 @@ class MainActivity : TauriActivity() {
     const val MAX_NATIVE_ROM_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_ENTRIES = 256
+    const val MULTIPLAYER_STORE = "an3-lan-multiplayer"
   }
 
   private var pendingRomId: String? = null
   private var contentWebView: WebView? = null
   private var pendingState: ByteArray? = null
+  private val multiplayerPreferences by lazy { getSharedPreferences(MULTIPLAYER_STORE, MODE_PRIVATE) }
 
   private class AndroidNativeRomBridge(private val activity: MainActivity) {
     @JavascriptInterface
@@ -52,6 +54,16 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun launchNativeSized(romId: String, system: String, expectedSize: Long): String =
       activity.launchNative(romId, system, expectedSize)
+
+    @JavascriptInterface
+    fun configureMultiplayer(role: String, address: String, port: Int): String =
+      activity.configureMultiplayer(role, address, port)
+
+    @JavascriptInterface
+    fun multiplayerStatus(): String = activity.multiplayerStatus()
+
+    @JavascriptInterface
+    fun stopMultiplayer(): String = activity.stopMultiplayer()
 
     @JavascriptInterface
     fun exportState(encoded: String) = activity.exportState(encoded)
@@ -147,9 +159,38 @@ class MainActivity : TauriActivity() {
     val rom = nativeRomFile(romId, system, expectedSize) ?: return "Native ROM is unavailable"
     runOnUiThread {
       startActivity(Intent(this, NativeGameActivity::class.java)
-        .putExtra("romId", romId).putExtra("system", system).putExtra("romFilename", rom.name))
+        .putExtra("romId", romId).putExtra("system", system).putExtra("romFilename", rom.name)
+        .putExtra("netplayRole", multiplayerPreferences.getString("role", "disabled"))
+        .putExtra("netplayAddress", multiplayerPreferences.getString("address", ""))
+        .putExtra("netplayPort", multiplayerPreferences.getInt("port", 47834)))
     }
     return ""
+  }
+
+  private fun configureMultiplayer(role: String, address: String, port: Int): String = try {
+    if (role != "host" && role != "join") throw IllegalArgumentException("Choose Host or Join for LAN multiplayer.")
+    if (role == "join" && address.trim().isEmpty()) throw IllegalArgumentException("Enter the host's current LAN address.")
+    if (port !in 1..65535) throw IllegalArgumentException("LAN multiplayer port is invalid.")
+    multiplayerPreferences.edit().putString("role", role).putString("address", address.trim()).putInt("port", port).commit()
+    multiplayerStatus()
+  } catch (error: Exception) {
+    JSONObject().put("available", true).put("configured", false).put("error", error.message ?: "Invalid LAN multiplayer configuration").toString()
+  }
+
+  private fun multiplayerStatus(): String {
+    val role = multiplayerPreferences.getString("role", "disabled") ?: "disabled"
+    val configured = role == "host" || role == "join"
+    return JSONObject().put("available", true).put("configured", configured)
+      .put("role", if (configured) role else JSONObject.NULL)
+      .put("address", multiplayerPreferences.getString("address", "") ?: "")
+      .put("port", multiplayerPreferences.getInt("port", 47834))
+      .put("detail", if (configured) "Direct melonDS LAN multiplayer will attach to the next NDS launch." else "Only the integrated melonDS DS libretro netpacket API is currently available.")
+      .toString()
+  }
+
+  private fun stopMultiplayer(): String {
+    multiplayerPreferences.edit().clear().commit()
+    return multiplayerStatus()
   }
 
   // Keep a supported ROM's suffix: libretro cores use it to distinguish

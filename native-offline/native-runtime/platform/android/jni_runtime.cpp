@@ -64,7 +64,7 @@ struct FinishGuard {
     std::atomic<bool>& flag;
     ~FinishGuard() { flag.store(true,std::memory_order_release); }
 };
-void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume) {
+void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume,std::string netplay_role,std::string netplay_address,uint16_t netplay_port) {
     FinishGuard finish_guard{s.finished};
     std::lock_guard runtime_lock(runtime_serial);
     const bool can_resume=resume && resumable_save_path==saves;
@@ -101,7 +101,13 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         if (is_three_ds && error.empty()) error="Native 3DS could not initialize an OpenGL ES or Vulkan renderer.";
         report("Native renderer failed: "+error+"\nVulkan: "+fallback);return;
     }
-    if (!s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api)) {
+    MelonDsNetplayConfig netplay;
+    if (netplay_role == "host" || netplay_role == "join") {
+        netplay.role = netplay_role == "host" ? MelonDsNetplayRole::Host : MelonDsNetplayRole::Join;
+        netplay.address = netplay_address;
+        netplay.port = netplay_port ? netplay_port : 47834;
+    }
+    if (!s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api,netplay)) {
         report("Native core failed: "+error);s.host.shutdown();video->shutdown();return;
     }
     if (resume) {
@@ -227,14 +233,14 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
 }
 }
 
-extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jstring autoSaveMode,jboolean resume) {
+extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jstring autoSaveMode,jboolean resume,jstring netplayRole,jstring netplayAddress,jint netplayPort) {
     std::lock_guard lock(lifecycle);stop_session();
     if (activity_owner) e->DeleteWeakGlobalRef(activity_owner);
     activity_owner=e->NewWeakGlobalRef(activity);
     ANativeWindow* window=ANativeWindow_fromSurface(e,surface);
     session=std::make_shared<Session>();
     if (!window) { session->diagnostics="Native surface unavailable";return; }
-    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume));
+    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume),string(e,netplayRole),string(e,netplayAddress),static_cast<uint16_t>(std::clamp(jint(netplayPort),jint(0),jint(65535))));
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStop(JNIEnv* e,jobject activity,jboolean suspend) { std::lock_guard lock(lifecycle);if(owns(e,activity)) {if(session) session->suspend=bool(suspend);stop_session();e->DeleteWeakGlobalRef(activity_owner);activity_owner=nullptr;} }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {

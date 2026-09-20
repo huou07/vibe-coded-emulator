@@ -133,6 +133,28 @@ std::string stable_rom_id(const std::filesystem::path& path) {
     return name.substr(0, 80) + "-" + suffix.str();
 }
 
+// Multiplayer peers must agree on the actual ROM bytes, not on a local path
+// or imported filename. This compact deterministic identity is only the game
+// compatibility key for the official melonDS libretro netpacket session; it
+// never leaves the direct LAN session and is not a save/sync identity.
+std::string rom_game_identity(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return {};
+    uint64_t hash = 1469598103934665603ull;
+    std::array<char, 1024 * 1024> buffer{};
+    while (input) {
+        input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const auto count = input.gcount();
+        for (std::streamsize index = 0; index < count; ++index) {
+            hash ^= static_cast<uint8_t>(buffer[static_cast<std::size_t>(index)]);
+            hash *= 1099511628211ull;
+        }
+    }
+    std::ostringstream output;
+    output << std::hex << hash;
+    return output.str();
+}
+
 NativeSystem detect_system(const std::filesystem::path& rom) {
     std::string extension=rom.extension().string();
     std::transform(extension.begin(),extension.end(),extension.begin(),[](unsigned char c){return static_cast<char>(std::tolower(c));});
@@ -189,12 +211,14 @@ public:
     bool initialize(const std::string& core_path, const std::string& rom_path,
                     const std::string& save_directory, NativeVideoBackend& video,
                     NativeAudioBackend& audio, std::string& error, const std::string& nds_layout,
-                    const std::string& graphics_api);
+                    const std::string& graphics_api, const MelonDsNetplayConfig& netplay);
     bool run_one(std::string& error, bool present);
     void shutdown();
     void shutdown_locked();
     bool state(bool save, const std::filesystem::path& path, std::string& error);
     bool environment(unsigned command, void* data);
+    bool pump_netplay(std::string& error);
+    bool start_netplay_callbacks(std::string& error, uint16_t client_id);
     void video(const void* data, unsigned width, unsigned height, std::size_t pitch);
     int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) const;
 
@@ -204,6 +228,16 @@ public:
     static std::size_t RETRO_CALLCONV audio_batch_cb(const int16_t* d, std::size_t n) { return active_ && active_->audio_ready_ ? active_->audio_->submit(d,n) : n; }
     static void RETRO_CALLCONV input_poll_cb() {}
     static int16_t RETRO_CALLCONV input_state_cb(unsigned p,unsigned d,unsigned i,unsigned id) { return active_ ? active_->input_state(p,d,i,id) : 0; }
+    static void RETRO_CALLCONV netpacket_send_cb(int flags, const void* data, std::size_t length, uint16_t client_id) {
+        if (!active_) return;
+        std::string error;
+        if (!active_->netplay_.send(flags, data, length, client_id, error)) active_->message_ = error;
+    }
+    static void RETRO_CALLCONV netpacket_poll_cb() {
+        if (!active_) return;
+        std::string error;
+        if (!active_->pump_netplay(error)) active_->message_ = error;
+    }
     // The core's own diagnostics (unimplemented features, texture/shader
     // errors) must not be discarded: on Android they are the only view into
     // the vendored core's behaviour. Forward them to logcat (tag AzaharCore)
@@ -249,6 +283,7 @@ public:
     NativeInput input_;
     CoreOptionsRegistry options_;
     std::string core_path_, rom_path_, save_path_, system_path_, content_path_, message_, rom_id_;
+    std::string rom_game_identity_;
     std::vector<std::uint8_t> rom_data_;
     std::atomic<std::int64_t> frame_duration_ns_{16666667};
     std::atomic<std::uint64_t> core_frames_{0};
@@ -270,6 +305,13 @@ public:
     unsigned last_width_ = 0, last_height_ = 0;
     bool initialized_ = false, loaded_ = false;
     bool audio_ready_ = false;
+    MelonDsNetplayConfig netplay_config_;
+    MelonDsNetplayTransport netplay_;
+    retro_netpacket_callback netpacket_callbacks_{};
+    std::string netpacket_protocol_;
+    bool netpacket_interface_ = false;
+    bool netpacket_started_ = false;
+    uint16_t netpacket_client_id_ = 0;
     bool present_frame_ = true;
     uint32_t sampled_buttons_=0;
     bool sampled_pointer_pressed_=false;
@@ -283,15 +325,21 @@ NativeCoreHost::Impl* NativeCoreHost::Impl::active_ = nullptr;
 bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::string& rom_path,
                                       const std::string& save_directory, NativeVideoBackend& video,
                                       NativeAudioBackend& audio, std::string& error, const std::string& nds_layout,
-                                      const std::string& graphics_api) {
+                                      const std::string& graphics_api, const MelonDsNetplayConfig& netplay) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) { error = "A native core is already running in this host."; return false; }
     if (active_ && active_ != this) { error = "Only one libretro core may be active in this process."; return false; }
     if (core_path.empty() || rom_path.empty() || save_directory.empty()) { error = "Core, ROM, and native save paths are required."; return false; }
-    core_path_ = core_path; rom_path_ = rom_path;
+    core_path_ = core_path; rom_path_ = rom_path; netplay_config_ = netplay;
     graphics_api_ = graphics_api;
     nds_layout_=nds_layout == "left-right" ? "left-right" : "top-bottom";
     system_ = detect_system(rom_path_);
+    rom_game_identity_ = rom_game_identity(rom_path_);
+    if (netplay_config_.role != MelonDsNetplayRole::Disabled &&
+        (system_ != NativeSystem::NDS || rom_game_identity_.empty())) {
+        error = "LAN multiplayer is currently supported only by the integrated melonDS DS core.";
+        return false;
+    }
     content_path_ = std::filesystem::path(rom_path_).parent_path().string();
     save_path_ = (std::filesystem::path(save_directory) / "native-libretro").string();
     system_path_ = (std::filesystem::path(save_path_) / "system").string();
@@ -330,6 +378,24 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
     }
     if (!core_.retro_load_game(&game)) { error = message_.empty() ? "The native core rejected this ROM or requested unsupported hardware rendering." : message_; shutdown_locked(); return false; }
     loaded_ = true;
+    if (netplay_config_.role != MelonDsNetplayRole::Disabled) {
+        if (!netpacket_interface_ || !netpacket_callbacks_.start || !netpacket_callbacks_.receive) {
+            error = "The integrated melonDS DS core did not expose libretro LAN netpacket support.";
+            shutdown_locked();
+            return false;
+        }
+        netplay_config_.core_id = "melonds-ds";
+        netplay_config_.protocol_version = netpacket_protocol_.empty() ? core_version_ : netpacket_protocol_;
+        netplay_config_.game_identity = rom_game_identity_;
+        if (!netplay_.open(netplay_config_, error)) {
+            shutdown_locked();
+            return false;
+        }
+        if (netplay_config_.role == MelonDsNetplayRole::Host && !start_netplay_callbacks(error, 0)) {
+            shutdown_locked();
+            return false;
+        }
+    }
     if (system_ == NativeSystem::ThreeDS) {
         if (gl_hardware_) {
             // OpenGL ES: the backend already owns the EGL context, so the core
@@ -387,7 +453,14 @@ bool NativeCoreHost::Impl::run_one(std::string& error, bool present) {
     sampled_pointer_pressed_=pending_pointer || input_.pointer_pressed_.load(std::memory_order_acquire);
     sampled_pointer_x_=input_.pointer_x_.load(std::memory_order_relaxed);
     sampled_pointer_y_=input_.pointer_y_.load(std::memory_order_relaxed);
+    if (!pump_netplay(error)) return false;
+    // RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE gives the frontend an
+    // optional per-frame callback for core-generated traffic. Keep it
+    // between the transport pump and retro_run, as required by libretro,
+    // without recursively invoking it from netpacket_poll_cb.
+    if (netpacket_started_ && netpacket_callbacks_.poll) netpacket_callbacks_.poll();
     core_.retro_run();
+    if (!pump_netplay(error)) return false;
     core_frames_.fetch_add(1,std::memory_order_relaxed);
     return true;
 }
@@ -399,6 +472,9 @@ void NativeCoreHost::Impl::shutdown() {
 
 void NativeCoreHost::Impl::shutdown_locked() {
     running_ = false;
+    if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+    netpacket_started_ = false;
+    netplay_.close();
     if (hardware_context_ready_ && hardware_callbacks_.context_destroy) hardware_callbacks_.context_destroy();
     hardware_context_ready_ = false;
     if (loaded_) core_.retro_unload_game();
@@ -410,6 +486,8 @@ void NativeCoreHost::Impl::shutdown_locked() {
     if (active_ == this) active_ = nullptr;
     library_.close(); core_ = {}; video_ = nullptr; audio_ = nullptr;
     rom_data_.clear(); options_.reset({}); input_.clear();
+    rom_game_identity_.clear(); netpacket_callbacks_ = {}; netpacket_protocol_.clear();
+    netpacket_interface_ = false; netpacket_client_id_ = 0;
     hardware_callbacks_ = {};
     hardware_negotiation_interface_ = nullptr;
     has_hardware_callbacks_ = false;
@@ -438,6 +516,15 @@ bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: if(!data)return false; *static_cast<const char**>(data) = save_path_.c_str(); return true;
     case RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY: if(!data)return false; *static_cast<const char**>(data) = content_path_.c_str(); return true;
     case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH: if(!data)return false; *static_cast<const char**>(data) = core_path_.c_str(); return true;
+    case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE: {
+        if (system_ != NativeSystem::NDS || !data) return false;
+        const auto* callbacks = static_cast<const retro_netpacket_callback*>(data);
+        if (!callbacks->start || !callbacks->receive) return false;
+        netpacket_callbacks_ = *callbacks;
+        netpacket_protocol_ = callbacks->protocol_version ? callbacks->protocol_version : "";
+        netpacket_interface_ = true;
+        return true;
+    }
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
         if (!data) return false;
         const auto format = *static_cast<const enum retro_pixel_format*>(data);
@@ -559,6 +646,59 @@ bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
     }
 }
 
+bool NativeCoreHost::Impl::start_netplay_callbacks(std::string& error, uint16_t client_id) {
+    if (!netpacket_callbacks_.start) {
+        error = "The melonDS core did not provide a LAN multiplayer start callback.";
+        return false;
+    }
+    netpacket_client_id_ = client_id;
+    netpacket_callbacks_.start(client_id, &Impl::netpacket_send_cb, &Impl::netpacket_poll_cb);
+    netpacket_started_ = true;
+    return true;
+}
+
+bool NativeCoreHost::Impl::pump_netplay(std::string& error) {
+    if (netplay_config_.role == MelonDsNetplayRole::Disabled) return true;
+    std::vector<MelonDsNetplayEvent> events;
+    if (!netplay_.pump(events, error)) return false;
+    for (const auto& event : events) {
+        switch (event.kind) {
+        case MelonDsNetplayEvent::Kind::Connected:
+            if (netplay_config_.role == MelonDsNetplayRole::Host) {
+                if (netpacket_callbacks_.connected && !netpacket_callbacks_.connected(event.client_id)) {
+                    error = "The melonDS core rejected the LAN multiplayer peer.";
+                    netplay_.close();
+                    return false;
+                }
+            } else if (!netpacket_started_ && !start_netplay_callbacks(error, 1)) {
+                return false;
+            }
+            message_ = event.detail;
+            break;
+        case MelonDsNetplayEvent::Kind::Packet:
+            if (!netpacket_callbacks_.receive) {
+                error = "The melonDS core no longer accepts LAN multiplayer packets.";
+                return false;
+            }
+            netpacket_callbacks_.receive(event.payload.data(), event.payload.size(), event.client_id);
+            break;
+        case MelonDsNetplayEvent::Kind::Disconnected:
+            if (netplay_config_.role == MelonDsNetplayRole::Host &&
+                netpacket_callbacks_.disconnected) {
+                netpacket_callbacks_.disconnected(event.client_id);
+            }
+            if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+            netpacket_started_ = false;
+            message_ = event.detail;
+            break;
+        case MelonDsNetplayEvent::Kind::Rejected:
+            error = event.detail.empty() ? "The melonDS LAN multiplayer peer rejected this game." : event.detail;
+            return false;
+        }
+    }
+    return true;
+}
+
 void NativeCoreHost::Impl::video(const void* data, unsigned width, unsigned height, std::size_t pitch) {
     if (!video_ || !present_frame_) return;
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
@@ -607,12 +747,12 @@ void NativeInput::clear() noexcept { buttons_=0;pending_buttons_=0;pointer_press
 
 NativeCoreHost::NativeCoreHost():impl_(std::make_unique<Impl>()) {}
 NativeCoreHost::~NativeCoreHost(){ shutdown(); }
-bool NativeCoreHost::initialize(const std::string&a,const std::string&b,const std::string&c,NativeVideoBackend&d,NativeAudioBackend&e,std::string&f,const std::string&layout,const std::string&graphics_api){return impl_->initialize(a,b,c,d,e,f,layout,graphics_api);}
+bool NativeCoreHost::initialize(const std::string&a,const std::string&b,const std::string&c,NativeVideoBackend&d,NativeAudioBackend&e,std::string&f,const std::string&layout,const std::string&graphics_api,const MelonDsNetplayConfig&netplay){return impl_->initialize(a,b,c,d,e,f,layout,graphics_api,netplay);}
 bool NativeCoreHost::run_one(std::string& e,bool p){return impl_->run_one(e,p);}
 void NativeCoreHost::shutdown(){if(impl_)impl_->shutdown();}
 bool NativeCoreHost::running()const noexcept{return impl_->running_.load(std::memory_order_relaxed);}
 std::chrono::nanoseconds NativeCoreHost::frame_duration()const noexcept{return std::chrono::nanoseconds(impl_->frame_duration_ns_.load(std::memory_order_relaxed));}
-NativeCoreStatus NativeCoreHost::status()const{std::lock_guard<std::mutex>l(impl_->mutex_);NativeCoreStatus s;s.system=impl_->system_;s.core_name=impl_->core_name_;s.core_version=impl_->core_version_;s.last_message=impl_->message_;s.core_fps=impl_->core_fps_;s.core_frames=impl_->core_frames_.load(std::memory_order_relaxed);s.hardware_render_rejected=impl_->hardware_render_rejected_;return s;}
+NativeCoreStatus NativeCoreHost::status()const{std::lock_guard<std::mutex>l(impl_->mutex_);NativeCoreStatus s;s.system=impl_->system_;s.core_name=impl_->core_name_;s.core_version=impl_->core_version_;s.last_message=impl_->message_;s.core_fps=impl_->core_fps_;s.core_frames=impl_->core_frames_.load(std::memory_order_relaxed);s.hardware_render_rejected=impl_->hardware_render_rejected_;s.netplay_available=impl_->netpacket_interface_;s.netplay_connected=impl_->netplay_.connected();s.netplay_listening=impl_->netplay_.listening();s.netplay_detail=impl_->netplay_.detail();return s;}
 NativeInput& NativeCoreHost::input()noexcept{return impl_->input_;}
 const NativeInput& NativeCoreHost::input()const noexcept{return impl_->input_;}
 bool NativeCoreHost::save_state(unsigned s,std::string&e){if(s<1||s>kMaxStateSlot){e="Quick-save slots range from 1 to 10.";return false;}return impl_->state(true,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".slot"+std::to_string(s)+".state"),e);}

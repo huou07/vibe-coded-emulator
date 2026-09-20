@@ -114,6 +114,17 @@ window.AN3OfflineEmulatorOrigin = "";
       status: () => controllerInvoke("native_controller_lan_status")({}),
       refreshCode: () => controllerInvoke("native_controller_lan_refresh")({}),
     };
+    const multiplayerInvoke = name => payload => {
+      const invoke = nativeInvoke();
+      if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      return invoke(name, payload);
+    };
+    window.AN3NativeMultiplayer = {
+      direct: true,
+      configure: (role, address, port) => multiplayerInvoke("native_multiplayer_configure")({config: {role, address, port}}),
+      status: () => multiplayerInvoke("native_multiplayer_status")({}),
+      stop: () => multiplayerInvoke("native_multiplayer_stop")({}),
+    };
   }
   if (/Android/i.test(navigator.userAgent)) {
     // Library Settings -> Phone Controller uses the same app-scoped host the
@@ -128,6 +139,16 @@ window.AN3OfflineEmulatorOrigin = "";
         send: state => androidController.send ? Promise.resolve(parse(androidController.send(JSON.stringify(state)))) : Promise.reject(new Error("Direct controller input is unavailable on this Android build.")),
         stop: () => { const result = parse(androidController.stop()); return Promise.resolve(result); },
         status: () => Promise.resolve(parse(androidController.status()))
+      };
+    }
+    const androidMultiplayer = window.AN3AndroidNative;
+    if (androidMultiplayer?.configureMultiplayer && androidMultiplayer?.multiplayerStatus) {
+      const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
+      window.AN3NativeMultiplayer = {
+        direct: true,
+        configure: (role, address, port) => Promise.resolve(parse(androidMultiplayer.configureMultiplayer(role, address || "", Number(port) || 47834))),
+        status: () => Promise.resolve(parse(androidMultiplayer.multiplayerStatus())),
+        stop: () => Promise.resolve(parse(androidMultiplayer.stopMultiplayer?.() || "{}")),
       };
     }
     window.AN3NativeLaunchGame = async (romId, system, _layout, size) => {

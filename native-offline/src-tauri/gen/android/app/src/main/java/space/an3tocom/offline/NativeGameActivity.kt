@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 /** The WebView owns the library only. This activity owns native gameplay. */
 class NativeGameActivity : Activity(), SurfaceHolder.Callback {
     companion object { init { System.loadLibrary("an3_runtime") } }
-    private external fun nativeStart(surface: Surface, core: String, rom: String, saves: String, backend: String, layout: String, system: String, autoSaveMode: String, resume: Boolean)
+    private external fun nativeStart(surface: Surface, core: String, rom: String, saves: String, backend: String, layout: String, system: String, autoSaveMode: String, resume: Boolean, netplayRole: String, netplayAddress: String, netplayPort: Int)
     private external fun nativeStop(suspend: Boolean)
     private external fun nativeButton(button: Int, pressed: Boolean)
     private external fun nativePointer(x: Int, y: Int, pressed: Boolean)
@@ -145,6 +145,9 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
     private var backend = "auto"
     private var system = ""
     private var romId = ""
+    private var netplayRole = "disabled"
+    private var netplayAddress = ""
+    private var netplayPort = 47834
     private var rom: File? = null
     private val tick = object : Runnable {
         override fun run() {
@@ -159,6 +162,9 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         romId = intent.getStringExtra("romId") ?: ""
         system = intent.getStringExtra("system") ?: ""
+        netplayRole = intent.getStringExtra("netplayRole") ?: "disabled"
+        netplayAddress = intent.getStringExtra("netplayAddress") ?: ""
+        netplayPort = intent.getIntExtra("netplayPort", 47834).coerceIn(1, 65535)
         if (!Regex("^[0-9a-f-]{36}$").matches(romId) || system !in listOf("gba", "nds", "3ds")) { finish(); return }
         val romFilename = intent.getStringExtra("romFilename") ?: ""
         if (!Regex("^$romId\\.[a-z0-9]{1,12}$").matches(romFilename)) { finish(); return }
@@ -206,7 +212,7 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
             else -> "libazahar_libretro_android.so"
         }
         val saves = File(filesDir, "native-states-v1/$system/$romId").apply { mkdirs() }
-        nativeStart(holder.surface, File(applicationInfo.nativeLibraryDir, core).path, rom!!.path, saves.path, backend, layout, system, NativeAutoSave.resolve(preferences), surfaceStarted)
+        nativeStart(holder.surface, File(applicationInfo.nativeLibraryDir, core).path, rom!!.path, saves.path, backend, layout, system, NativeAutoSave.resolve(preferences), surfaceStarted, netplayRole, netplayAddress, netplayPort)
         active = true
         surfaceStarted = true
         for ((command, value) in pendingCommands) nativeCommand(command, value)

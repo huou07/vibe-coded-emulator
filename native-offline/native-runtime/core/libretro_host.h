@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "melonds_netplay.h"
 #include "video_backend.h"
 
 #include <atomic>
@@ -23,6 +24,10 @@ struct NativeCoreStatus {
     double core_fps = 0.0;
     uint64_t core_frames = 0;
     bool hardware_render_rejected = false;
+    bool netplay_available = false;
+    bool netplay_connected = false;
+    bool netplay_listening = false;
+    std::string netplay_detail;
 };
 
 // Adapters render these copies in their own native controls. Keeping the
@@ -80,7 +85,8 @@ public:
                     NativeAudioBackend& audio,
                     std::string& error,
                     const std::string& nds_layout = "top-bottom",
-                    const std::string& graphics_api = "Vulkan");
+                    const std::string& graphics_api = "Vulkan",
+                    const MelonDsNetplayConfig& netplay = {});
 
     // Call from one adapter-owned emulation thread. Commands and callbacks are
     // serialized at this boundary; presentation/vsync never controls core speed.

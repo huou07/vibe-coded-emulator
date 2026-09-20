@@ -63,6 +63,7 @@ mkdir -p "$build" "$release"
 "$compiler" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
   -I"$root/native-runtime" \
   "$root/native-runtime/core/libretro_host.cpp" \
+  "$root/native-runtime/core/melonds_netplay.cpp" \
   "$root/native-runtime/video/vulkan/vulkan_backend.cpp" \
   "$root/native-runtime/platform/linux/linux_runtime.cpp" \
   "$root/native-runtime/platform/linux/linux_controls.cpp" \
