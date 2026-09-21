@@ -8,24 +8,6 @@ and read only the files it narrows down. Re-check with CodeGraph before every
 edit to get callers/callees/blast radius. Skip it only if the area is genuinely
 outside the index (config/CSS/HTML strings, non-code assets) and say why.
 
-## Parallel implementation
-
-For ordinary tasks, work directly in the current session.
-
-When a task contains genuinely independent implementation work that would
-benefit from concurrent execution, load the `parallelism` skill with the native
-skill tool. The current session is the Master and remains responsible for
-implementation, coordination, integration, testing, review, and reporting.
-
-Spawn helper sessions only for concrete independent implementation tasks with
-clear ownership and deliverables. Every helper must inherit the Master's actual
-effective provider/model; never hardcode a model or silently fall back.
-
-Do not create dedicated planner, tester, reviewer, integrator, auditor,
-security, documentation, or release sessions by default. Preserve Git ownership,
-required independent verification, regression gates, and deployment/release
-authorization. Detailed procedure lives in the `parallelism` SKILL.md.
-
 ## App versioning rule (owner-mandated)
 
 Every change to a packaged app must bump that app's version, and the bump size
@@ -74,7 +56,7 @@ version + filename.
 
 Before any push, release, or publication to a public GitHub repository, run the
 public-release-security workflow (`tools/publication-check.sh`, policy in
-`.opencode/skills/public-release-security/SKILL.md`). Do not publish if secret
+`.agents/skills/public-release-security/SKILL.md`). Do not publish if secret
 scanning, personal-data checks, licence checks, or relevant source-history
 checks are incomplete or failing. Never bypass the security gate without
 explicit user approval of the specific finding — and approval does not make an

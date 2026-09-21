@@ -1,7 +1,6 @@
 ---
 description: Read-only AN3 code explorer. Uses CodeGraph first to answer architecture, call-chain, file-ownership and blast-radius questions and returns a compact summary. Cannot edit files, run destructive commands, or spawn subagents.
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
 temperature: 0.1
 steps: 14
 permission:

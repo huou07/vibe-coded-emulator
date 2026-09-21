@@ -1,7 +1,6 @@
 ---
 description: Read-only AN3 test and log analyzer. Runs and inspects existing tests and logs, classifies failures, identifies the likely owning subsystem, and proposes a minimal reproduction. Does not modify product code or spawn subagents.
 mode: subagent
-model: opencode-go/deepseek-v4.1-flash
 temperature: 0.1
 steps: 16
 permission:
