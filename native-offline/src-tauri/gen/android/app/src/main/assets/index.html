@@ -7,17 +7,17 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="theme-color" content="#07060c">
     <title>Vibe Coded Emulator</title>
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.1.0">
-    <link rel="stylesheet" href="/static/site.css?v=3.1.0">
-    <link rel="stylesheet" href="/static/theme-violet.css?v=3.1.0">
-    <link rel="stylesheet" href="/native.css?v=3.1.0">
-    <script src="/native-bootstrap.js?v=3.1.0"></script>
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.2.0">
+    <link rel="stylesheet" href="/static/site.css?v=3.2.0">
+    <link rel="stylesheet" href="/static/theme-violet.css?v=3.2.0">
+    <link rel="stylesheet" href="/native.css?v=3.2.0">
+    <script src="/native-bootstrap.js?v=3.2.0"></script>
   </head>
   <body class="reference-shell native-app-shell">
     <div class="native-app" id="nativeApp">
       <aside class="native-sidebar">
         <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
-          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.1.0" alt="Vibe Coded Emulator">
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.2.0" alt="Vibe Coded Emulator">
           <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
         </button>
         <nav class="native-nav" aria-label="Main">
@@ -169,24 +169,56 @@
               <button id="nativeControllerStart" type="button" class="button primary">Start Hosting</button>
               <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
               <button id="nativeControllerJoin" type="button" class="button">Join Host</button>
-              <div id="nativeControllerPad" class="native-controller-pad" hidden aria-label="Direct LAN controller pad">
-                <div class="native-controller-pad-dpad" aria-label="Directions">
-                  <button type="button" data-native-controller-button="up">Up</button>
-                  <button type="button" data-native-controller-button="left">Left</button>
-                  <button type="button" data-native-controller-button="down">Down</button>
-                  <button type="button" data-native-controller-button="right">Right</button>
-                </div>
-                <div class="native-controller-pad-actions" aria-label="Buttons">
-                  <button type="button" data-native-controller-button="b">B</button>
-                  <button type="button" data-native-controller-button="a">A</button>
-                  <button type="button" data-native-controller-button="y">Y</button>
-                  <button type="button" data-native-controller-button="x">X</button>
-                  <button type="button" data-native-controller-button="select">Select</button>
-                  <button type="button" data-native-controller-button="start">Start</button>
-                  <button type="button" data-native-controller-button="l">L</button>
-                  <button type="button" data-native-controller-button="r">R</button>
-                </div>
+              <div class="ctrl-phone-head" id="nativeControllerPadHead" hidden>
+                <label class="ctrl-layout-picker">Layout<select id="nativeControllerLayout">
+                  <option value="auto">Automatic</option>
+                  <option value="gba">GBA</option>
+                  <option value="nds">NDS</option>
+                  <option value="3ds">3DS</option>
+                  <option value="custom">Custom</option>
+                </select></label>
+                <label class="ctrl-layout-picker">Movement<select id="nativeControllerMovement">
+                  <option value="dpad">D-Pad</option>
+                  <option value="joystick">Analog Joystick</option>
+                  <option value="circular">Circular D-pad</option>
+                </select></label>
               </div>
+              <section id="nativeControllerPad" class="ctrl-pad" hidden aria-label="Direct LAN controller pad">
+                <div class="ctrl-padbar"><span id="nativeControllerPadState" class="ctrl-state">Connected</span><button id="nativeControllerDisconnect" type="button">Disconnect</button></div>
+                <div class="ctrl-touchscreen" id="nativeControllerTouchscreen" data-role="touchscreen" hidden>Touch Screen</div>
+                <div class="ctrl-shoulders"><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="l">L</button><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="r">R</button></div>
+                <div class="ctrl-main">
+                  <div class="ctrl-dpad" data-role="dpad">
+                    <button type="button" class="ctrl-key dpad-up" data-native-controller-button="up" aria-label="Up">▲</button>
+                    <button type="button" class="ctrl-key dpad-left" data-native-controller-button="left" aria-label="Left">◀</button>
+                    <button type="button" class="ctrl-key dpad-right" data-native-controller-button="right" aria-label="Right">▶</button>
+                    <button type="button" class="ctrl-key dpad-down" data-native-controller-button="down" aria-label="Down">▼</button>
+                  </div>
+                  <div id="nativeControllerCircular" class="ctrl-circular" data-role="circular" role="group" aria-label="Circular D-pad" hidden>
+                    <span class="ctrl-circular-arrow up" data-dir="up">▲</span>
+                    <span class="ctrl-circular-arrow left" data-dir="left">◀</span>
+                    <span class="ctrl-circular-arrow right" data-dir="right">▶</span>
+                    <span class="ctrl-circular-arrow down" data-dir="down">▼</span>
+                  </div>
+                  <div class="ctrl-sticks" data-role="sticks">
+                    <span class="ctrl-stick" data-native-controller-stick="left" role="slider" aria-label="Left stick" tabindex="0"></span>
+                    <span class="ctrl-stick" data-native-controller-stick="right" role="slider" aria-label="Right stick" tabindex="0"></span>
+                  </div>
+                  <div class="ctrl-face">
+                    <button type="button" class="ctrl-key face-x" data-native-controller-button="x">X</button>
+                    <button type="button" class="ctrl-key face-y" data-native-controller-button="y">Y</button>
+                    <button type="button" class="ctrl-key face-a" data-native-controller-button="a">A</button>
+                    <button type="button" class="ctrl-key face-b" data-native-controller-button="b">B</button>
+                  </div>
+                </div>
+                <div class="ctrl-system"><button type="button" class="ctrl-key" data-native-controller-button="select">Select</button><button type="button" class="ctrl-key" data-native-controller-button="start">Start</button></div>
+                <div class="ctrl-utility">
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_down">Speed −</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_up">Speed +</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_save">Quick Save</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
+                </div>
+              </section>
               <p class="native-muted">Start makes this device the game host. Enter a six-digit code when this device is joining another AN3 host.</p>
             </div>
           </section>
@@ -209,7 +241,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong>3.1.0</strong></div>
+                <div class="native-fact"><span>Version</span><strong>3.2.0</strong></div>
                 <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
@@ -228,20 +260,21 @@
 
     <div id="toast" role="status"></div>
 
-    <script src="/static/offline.js?v=3.1.0" defer></script>
-    <script src="/static/player-ui.js?v=3.1.0" defer></script>
-    <script src="/static/player-runtime.js?v=3.1.0" defer></script>
-    <script src="/static/renderer-worker.js?v=3.1.0" defer></script>
-    <script src="/static/nds-touch.js?v=3.1.0" defer></script>
-    <script src="/static/controller-utility.js?v=3.1.0" defer></script>
-    <script src="/static/lan-peer.js?v=3.1.0" defer></script>
-    <script src="/static/sync-transfer.js?v=3.1.0" defer></script>
-    <script src="/native-account.js?v=3.1.0" defer></script>
-    <script src="/native-sync.js?v=3.1.0" defer></script>
-    <script src="/static/player.js?v=3.1.0" defer></script>
-    <script src="/native-settings.js?v=3.1.0" defer></script>
-    <script src="/game-settings.js?v=3.1.0" defer></script>
-    <script src="/native-app.js?v=3.1.0" defer></script>
-    <script src="/android-staging.js?v=3.1.0" defer></script>
+    <script src="/static/offline.js?v=3.2.0" defer></script>
+    <script src="/static/player-ui.js?v=3.2.0" defer></script>
+    <script src="/static/player-runtime.js?v=3.2.0" defer></script>
+    <script src="/static/renderer-worker.js?v=3.2.0" defer></script>
+    <script src="/static/nds-touch.js?v=3.2.0" defer></script>
+    <script src="/static/input-actions.js?v=3.2.0" defer></script>
+    <script src="/static/controller-utility.js?v=3.2.0" defer></script>
+    <script src="/static/lan-peer.js?v=3.2.0" defer></script>
+    <script src="/static/sync-transfer.js?v=3.2.0" defer></script>
+    <script src="/native-account.js?v=3.2.0" defer></script>
+    <script src="/native-sync.js?v=3.2.0" defer></script>
+    <script src="/static/player.js?v=3.2.0" defer></script>
+    <script src="/native-settings.js?v=3.2.0" defer></script>
+    <script src="/game-settings.js?v=3.2.0" defer></script>
+    <script src="/native-app.js?v=3.2.0" defer></script>
+    <script src="/android-staging.js?v=3.2.0" defer></script>
   </body>
 </html>

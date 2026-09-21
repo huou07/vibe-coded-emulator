@@ -75,6 +75,8 @@ struct State {
     // The last sequence the host acknowledged, and the latest it applied.
     last_sequence: AtomicU64,
     ack_sequence: AtomicU64,
+    // Newest utility sequence already applied, so a replayed frame is ignored.
+    last_utility: AtomicU64,
 }
 
 impl State {
@@ -92,6 +94,7 @@ impl State {
             instance_id,
             last_sequence: AtomicU64::new(0),
             ack_sequence: AtomicU64::new(0),
+            last_utility: AtomicU64::new(0),
         }
     }
 
@@ -109,6 +112,7 @@ impl State {
         self.last_sequence.store(0, Ordering::Relaxed);
         self.ack_sequence.store(0, Ordering::Relaxed);
         self.input_active.store(false, Ordering::Relaxed);
+        self.last_utility.store(0, Ordering::Relaxed);
     }
 
     fn code_value(&self) -> String {
@@ -156,6 +160,26 @@ fn input_ready() -> bool {
         0 => false,
         1 => true,
         _ => native_input_ready(),
+    }
+}
+
+/// Executes canonical utility actions on the running game host. A test seam
+/// lets a unit test observe dispatch without a real emulator.
+static UTILITY_SINK_OVERRIDE: OnceLock<Mutex<Option<crate::controller_host::UtilitySink>>> = OnceLock::new();
+
+fn controller_utility_sink() -> crate::controller_host::UtilitySink {
+    UTILITY_SINK_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .unwrap_or_else(crate::controller_host::utility_sink_default)
+}
+
+#[cfg(test)]
+pub(crate) fn set_utility_sink_for_test(sink: Option<crate::controller_host::UtilitySink>) {
+    if let Ok(mut guard) = UTILITY_SINK_OVERRIDE.get_or_init(|| Mutex::new(None)).lock() {
+        *guard = sink;
     }
 }
 
@@ -767,6 +791,12 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
     let shaped = serde_json::json!({ "state": frame });
     if input_ready() {
         let _ = set_native_input(frame_input(&shaped));
+        // Canonical Phone Controller utility actions (Speed/Quick Save/Menu) are
+        // executed on the running host. The sink reports whether each action was
+        // actually performed, so an unsupported action is never treated as done.
+        let mut last_utility = state.last_utility.load(Ordering::Relaxed) as i64;
+        let _ = crate::controller_host::dispatch_utilities(frame, &mut last_utility, &controller_utility_sink());
+        state.last_utility.store(last_utility as u64, Ordering::Relaxed);
         if let Some(system) = native_active_system() {
             if let Ok(mut slot) = state.system.lock() {
                 *slot = system;
@@ -823,6 +853,13 @@ impl p256::elliptic_curve::rand_core::CryptoRng for OsRngCompat {}
 mod tests {
     use super::*;
 
+    // The transport tests bind the shared CONTROL_PORT and the module-level
+    // HOST, so they must not run concurrently.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn serialize() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
     #[test]
     fn pairing_codes_are_six_digits_including_leading_zeroes() {
         for _ in 0..300 {
@@ -858,6 +895,7 @@ mod tests {
     /// input frames reach the host's input sink, with acknowledgement.
     #[test]
     fn direct_transport_pairs_and_injects_input() {
+        let _guard = serialize();
         READY_OVERRIDE.store(1, Ordering::Relaxed);
         // The sink is the production `set_native_input`; assert on the host
         // state instead of a real core.
@@ -912,5 +950,76 @@ mod tests {
         stop();
         READY_OVERRIDE.store(-1, Ordering::Relaxed);
         assert!(!status().running);
+    }
+
+    /// End-to-end: the app's canonical utility frame (`u:[{action,sequence}]`)
+    /// reaches the host's utility sink exactly once, and a replayed frame does
+    /// not repeat the side effect.
+    #[test]
+    fn direct_transport_executes_canonical_utility_frames() {
+        let _guard = serialize();
+        READY_OVERRIDE.store(1, Ordering::Relaxed);
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink: crate::controller_host::UtilitySink = {
+            let seen = seen.clone();
+            Arc::new(move |action| {
+                seen.lock().unwrap().push(action.to_string());
+                true
+            })
+        };
+        set_utility_sink_for_test(Some(sink));
+
+        let _ = start().expect("host start");
+        let code = status().code.clone();
+
+        let mut stream = (0..50)
+            .find_map(|_| match TcpStream::connect(("127.0.0.1", CONTROL_PORT)) {
+                Ok(stream) => Some(stream),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    None
+                }
+            })
+            .expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let secret = EphemeralSecret::random(&mut OsRngCompat);
+        let public = secret.public_key().to_encoded_point(false);
+        let hello = serde_json::json!({"k":"hello","v":1,"pub": B64.encode(public.as_bytes()), "name":"Test phone"});
+        write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap()).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream).unwrap()).unwrap();
+        let host_public = PublicKey::from_sec1_bytes(
+            &B64.decode(response.get("pub").unwrap().as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let shared = secret.diffie_hellman(&host_public);
+        let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 0, &serde_json::json!({"k":"auth"}))).unwrap();
+        let _ = open(&cipher, DIR_HOST_TO_PHONE, 0, &read_frame(&mut stream).unwrap()).unwrap();
+
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 1, &serde_json::json!({
+            "k":"state","s":2,"b":[],"a":[0,0,0,0],
+            "u":[{"action":"QUICK_SAVE","sequence":4}]
+        }))).unwrap();
+        for _ in 0..20 {
+            if !seen.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        assert_eq!(seen.lock().unwrap().clone(), vec!["QUICK_SAVE"]);
+
+        // The same state sequence is ignored, so a retry cannot re-run it.
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 2, &serde_json::json!({
+            "k":"state","s":2,"b":[],"a":[0,0,0,0],
+            "u":[{"action":"QUICK_SAVE","sequence":4}]
+        }))).unwrap();
+        std::thread::sleep(Duration::from_millis(120));
+        assert_eq!(seen.lock().unwrap().len(), 1);
+
+        let _ = stream.shutdown(Shutdown::Both);
+        stop();
+        set_utility_sink_for_test(None);
+        READY_OVERRIDE.store(-1, Ordering::Relaxed);
     }
 }

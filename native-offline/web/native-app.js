@@ -81,35 +81,114 @@
     const controllerCode = document.getElementById("nativeControllerCode");
     const controllerStatus = document.getElementById("nativeControllerStatus");
     const controllerPad = document.getElementById("nativeControllerPad");
+    const controllerPadHead = document.getElementById("nativeControllerPadHead");
+    const controllerLayout = document.getElementById("nativeControllerLayout");
+    const controllerMovement = document.getElementById("nativeControllerMovement");
+    const controllerPadState = document.getElementById("nativeControllerPadState");
+    const controllerDisconnect = document.getElementById("nativeControllerDisconnect");
+    const controllerTouchscreen = document.getElementById("nativeControllerTouchscreen");
+    const controllerCircular = document.getElementById("nativeControllerCircular");
+    const controllerDpad = controllerPad ? controllerPad.querySelector(".ctrl-dpad") : null;
     const controllerPadButtons = [...document.querySelectorAll("[data-native-controller-button]")];
+    const controllerSticks = [...document.querySelectorAll("[data-native-controller-stick]")];
+    const controllerUtilities = [...document.querySelectorAll("[data-native-controller-util]")];
     if (controllerCard && controllerButton && window.AN3NativeController) {
       controllerCard.hidden = false;
+      // The pad reuses the web Phone Controller structure and the shared
+      // canonical input action model, so the packaged app and the web pad
+      // cannot drift. Only the transport differs (direct LAN frames here).
+      const inputActions = window.AN3InputActions || null;
       let timer = 0;
       let sequence = 0;
-      const pressed = new Set();
+      let utilitySequence = 0;
       let controllerMode = false;
+      let system = "auto";
+      let manualLayout = false;
+      let movement = "dpad";
+      let circularRegion = null;
+      const pressed = new Set();
+      const axes = {lx: 0, ly: 0, rx: 0, ry: 0};
+      const touch = {active: false, x: 0, y: 0};
+      try {
+        const storedMovement = localStorage.getItem("an3-controller-movement");
+        if (storedMovement) movement = storedMovement;
+      } catch (_) {}
+      if (controllerMovement) controllerMovement.value = movement;
       const setStatus = text => { if (controllerStatus) controllerStatus.textContent = text; };
+      const setPadState = text => { if (controllerPadState) controllerPadState.textContent = text; };
       const words = status => {
         if (!status.running) return "Off";
-        if (status.role === "controller") return status.inputActive ? "Connected to host" : "Connected — waiting for host";
+        if (status.role === "controller") return status.inputActive ? "Connected" : "Connected — waiting for host";
         if (!status.paired) return "Waiting for device";
         return status.inputActive ? "Connected" : "Connected — input unavailable";
+      };
+      const layoutFor = value => {
+        if (value !== "auto") return value;
+        if (system === "nds" || system === "3ds" || system === "switch") return system;
+        if (system === "gba" || system === "gbc") return "gba";
+        return "custom";
+      };
+      const applyLayout = () => {
+        const layout = layoutFor(manualLayout && controllerLayout ? controllerLayout.value : "auto");
+        if (controllerPad) controllerPad.dataset.layout = layout;
+        if (controllerTouchscreen) controllerTouchscreen.hidden = !(layout === "nds" || layout === "3ds" || layout === "custom");
+        if (controllerLayout && !manualLayout) controllerLayout.value = layoutFor("auto");
+      };
+      const releaseCircular = () => {
+        let changed = false;
+        ["up", "down", "left", "right"].forEach(dir => { if (pressed.delete(dir)) changed = true; });
+        circularRegion = null;
+        if (controllerCircular) controllerCircular.removeAttribute("data-active");
+        if (changed) sendSnapshot();
+      };
+      const applyMovement = () => {
+        if (controllerMovement) movement = controllerMovement.value;
+        if (controllerDpad) controllerDpad.hidden = movement !== "dpad";
+        if (controllerCircular) controllerCircular.hidden = movement !== "circular";
+        if (movement !== "circular") releaseCircular();
+      };
+      const sendState = payload => {
+        if (!controllerMode || !window.AN3NativeController?.send) return;
+        sequence += 1;
+        const frame = Object.assign({s: sequence, b: [...pressed], a: [axes.lx, axes.ly, axes.rx, axes.ry]}, payload || {});
+        if (touch.active) frame.t = [touch.x, touch.y];
+        Promise.resolve(window.AN3NativeController.send(frame)).catch(error => {
+          setStatus(error?.message || "Direct controller session ended");
+        });
+      };
+      const sendSnapshot = () => sendState();
+      const sendUtility = action => {
+        if (!controllerMode || !action) return;
+        utilitySequence += 1;
+        sendState({u: [{action, sequence: utilitySequence}]});
+      };
+      const releaseAll = () => {
+        pressed.clear();
+        axes.lx = 0; axes.ly = 0; axes.rx = 0; axes.ry = 0;
+        touch.active = false; touch.x = 0; touch.y = 0;
+        circularRegion = null;
+        if (controllerCircular) controllerCircular.removeAttribute("data-active");
+        controllerSticks.forEach(stick => {
+          stick.classList.remove("active");
+          stick.style.setProperty("--sx", "0px");
+          stick.style.setProperty("--sy", "0px");
+        });
+        sendSnapshot();
       };
       const renderPad = status => {
         const visible = status?.role === "controller" && status.running;
         controllerMode = visible;
         if (controllerPad) controllerPad.hidden = !visible;
-        if (!visible) {
-          pressed.clear();
+        if (controllerPadHead) controllerPadHead.hidden = !visible;
+        if (status && status.system) system = status.system;
+        if (visible) {
+          applyLayout();
+          applyMovement();
+          setPadState(words(status));
+        } else {
+          releaseAll();
           controllerPadButtons.forEach(button => button.dataset.active = "false");
         }
-      };
-      const sendSnapshot = async () => {
-        if (!controllerMode || !window.AN3NativeController?.send) return;
-        sequence += 1;
-        try {
-          await window.AN3NativeController.send({s: sequence, b: [...pressed], a: [0, 0, 0, 0]});
-        } catch (error) { setStatus(error?.message || "Direct controller session ended"); }
       };
       const releaseButton = button => {
         const name = button.dataset.nativeControllerButton;
@@ -130,8 +209,151 @@
         button.addEventListener("pointerup", event => { event.preventDefault(); releaseButton(button); });
         button.addEventListener("pointercancel", () => releaseButton(button));
         button.addEventListener("pointerleave", () => releaseButton(button));
+        button.addEventListener("contextmenu", event => event.preventDefault());
       });
-      window.addEventListener("blur", () => controllerPadButtons.forEach(releaseButton));
+      controllerSticks.forEach(stick => {
+        const side = stick.dataset.nativeControllerStick;
+        let pointerId = null;
+        const update = event => {
+          const rect = stick.getBoundingClientRect();
+          const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+          let dx = event.clientX - (rect.left + rect.width / 2);
+          let dy = event.clientY - (rect.top + rect.height / 2);
+          const distance = Math.hypot(dx, dy);
+          if (distance > radius) { dx = dx * radius / distance; dy = dy * radius / distance; }
+          stick.style.setProperty("--sx", dx.toFixed(1) + "px");
+          stick.style.setProperty("--sy", dy.toFixed(1) + "px");
+          const nx = dx / radius, ny = dy / radius;
+          if (side === "left") { axes.lx = nx; axes.ly = ny; } else { axes.rx = nx; axes.ry = ny; }
+          sendSnapshot();
+        };
+        stick.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          pointerId = event.pointerId;
+          stick.classList.add("active");
+          try { stick.setPointerCapture(pointerId); } catch (_) {}
+          update(event);
+        });
+        stick.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          update(event);
+        });
+        const releaseStick = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          stick.classList.remove("active");
+          stick.style.setProperty("--sx", "0px");
+          stick.style.setProperty("--sy", "0px");
+          if (side === "left") { axes.lx = 0; axes.ly = 0; } else { axes.rx = 0; axes.ry = 0; }
+          sendSnapshot();
+        };
+        stick.addEventListener("pointerup", releaseStick);
+        stick.addEventListener("pointercancel", releaseStick);
+      });
+      if (controllerCircular && inputActions) {
+        let pointerId = null;
+        const update = event => {
+          const rect = controllerCircular.getBoundingClientRect();
+          const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+          const dx = (event.clientX - (rect.left + rect.width / 2)) / radius;
+          const dy = (event.clientY - (rect.top + rect.height / 2)) / radius;
+          const result = inputActions.circularDirections(dx, dy, circularRegion);
+          circularRegion = result.region;
+          const next = result.actions.map(action => action.toLowerCase());
+          let changed = false;
+          ["up", "down", "left", "right"].forEach(dir => {
+            const want = next.indexOf(dir) >= 0;
+            const has = pressed.has(dir);
+            if (want && !has) { pressed.add(dir); changed = true; }
+            else if (!want && has) { pressed.delete(dir); changed = true; }
+          });
+          if (next.length) controllerCircular.setAttribute("data-active", next.join(" "));
+          else controllerCircular.removeAttribute("data-active");
+          if (changed) sendSnapshot();
+        };
+        controllerCircular.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          pointerId = event.pointerId;
+          controllerCircular.classList.add("active");
+          try { controllerCircular.setPointerCapture(pointerId); } catch (_) {}
+          update(event);
+        });
+        controllerCircular.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          update(event);
+        });
+        const release = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          controllerCircular.classList.remove("active");
+          releaseCircular();
+        };
+        controllerCircular.addEventListener("pointerup", release);
+        controllerCircular.addEventListener("pointercancel", release);
+      }
+      if (controllerTouchscreen) {
+        let pointerId = null;
+        const map = event => {
+          const rect = controllerTouchscreen.getBoundingClientRect();
+          if (!(rect.width > 0 && rect.height > 0)) return null;
+          return {
+            x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+            y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
+          };
+        };
+        controllerTouchscreen.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          if (pointerId !== null) return;
+          pointerId = event.pointerId;
+          controllerTouchscreen.classList.add("active");
+          try { controllerTouchscreen.setPointerCapture(pointerId); } catch (_) {}
+          const point = map(event);
+          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendSnapshot(); }
+        });
+        controllerTouchscreen.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          const point = map(event);
+          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendSnapshot(); }
+        });
+        const release = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          controllerTouchscreen.classList.remove("active");
+          touch.active = false; touch.x = 0; touch.y = 0;
+          sendSnapshot();
+        };
+        controllerTouchscreen.addEventListener("pointerup", release);
+        controllerTouchscreen.addEventListener("pointercancel", release);
+      }
+      controllerUtilities.forEach(button => {
+        button.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          const wire = button.dataset.nativeControllerUtil;
+          const action = inputActions && inputActions.utilityWireToAction ? inputActions.utilityWireToAction[wire] : null;
+          if (!action) return;
+          button.dataset.active = "true";
+          sendUtility(action);
+          setTimeout(() => { button.dataset.active = "false"; }, 120);
+        });
+        button.addEventListener("contextmenu", event => event.preventDefault());
+      });
+      window.addEventListener("blur", () => { if (controllerMode) releaseAll(); });
+      if (controllerMovement) controllerMovement.addEventListener("change", () => {
+        movement = controllerMovement.value;
+        try { localStorage.setItem("an3-controller-movement", movement); } catch (_) {}
+        applyMovement();
+      });
+      if (controllerLayout) controllerLayout.addEventListener("change", () => { manualLayout = true; applyLayout(); });
+      if (controllerDisconnect) controllerDisconnect.addEventListener("click", async () => {
+        try { await window.AN3NativeController.stop(); } catch (_) {}
+        clearInterval(timer);
+        renderPad(null);
+        if (controllerCode) controllerCode.textContent = "\u2014";
+        setStatus("Off");
+      });
       const refresh = async () => {
         try {
           const status = await window.AN3NativeController.status();

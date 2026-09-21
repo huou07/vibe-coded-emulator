@@ -20,6 +20,8 @@ SCHEMA = ROOT / "native-offline" / "shared" / "input-actions-schema.json"
 UTILITY_JS = ROOT / "static" / "controller-utility.js"
 PLAYER = ROOT / "static" / "player.js"
 DESKTOP_HOST = ROOT / "native-offline" / "src-tauri" / "src" / "controller_host.rs"
+LAN_HOST = ROOT / "native-offline" / "src-tauri" / "src" / "lan_host.rs"
+AZAHAR = ROOT / "native-offline" / "src-tauri" / "src" / "azahar.rs"
 ANDROID_CLIENT = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt"
 ANDROID_HOST = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/An3ControllerHost.kt"
 NETCODE = ROOT / "netcode.py"
@@ -88,16 +90,37 @@ class BrowserHostTests(unittest.TestCase):
 class DesktopHostTests(unittest.TestCase):
     def test_shared_host_dispatches_utilities_once(self):
         host = source(DESKTOP_HOST)
-        self.assertIn("type UtilitySink = Arc<dyn Fn(&str) + Send + Sync>", host)
+        self.assertIn("pub(crate) type UtilitySink = Arc<dyn Fn(&str) -> bool + Send + Sync>", host)
         self.assertIn("pub(crate) fn dispatch_utilities(", host)
         self.assertIn("if sequence <= *last", host)
         self.assertIn("dispatch_utilities(&payload, &mut last_utility, &utility_sink)", host)
         self.assertIn("utilitySequence", host)
         self.assertIn("{utility_sequence}", host)
 
-    def test_shared_host_reports_unwired_actions_instead_of_pretending(self):
+    def test_shared_host_acknowledges_only_executed_actions(self):
         host = source(DESKTOP_HOST)
-        self.assertIn("is not wired on this desktop host yet", host)
+        # The sink reports whether the platform actually ran the action, so an
+        # unsupported action can never advance the acknowledged sequence.
+        self.assertIn("crate::azahar::apply_controller_utility(action)", host)
+        self.assertIn("if !action.is_empty() && sink(action)", host)
+        self.assertIn("executed = executed.max(sequence)", host)
+
+    def test_direct_lan_host_executes_utility_frames(self):
+        lan = source(LAN_HOST)
+        self.assertIn("dispatch_utilities(frame, &mut last_utility, &controller_utility_sink())", lan)
+        self.assertIn("last_utility", lan)
+        # The app's direct-LAN frame carries the canonical `u` array.
+        self.assertIn('"u"', lan)
+
+    def test_macos_platform_maps_canonical_utility_actions(self):
+        platform = source(AZAHAR)
+        for action in ("SPEED_UP", "SPEED_DOWN", "QUICK_SAVE", "OPEN_MENU"):
+            self.assertIn(f'"{action}"', platform)
+        self.assertIn("an3_native_controller_speed", platform)
+        self.assertIn("an3_native_controller_quick_save", platform)
+        self.assertIn("an3_native_controller_open_menu", platform)
+        # Unavailable actions must report false instead of pretending success.
+        self.assertIn("is unavailable on this host build", platform)
 
     def test_shared_host_still_owns_input_and_authentication(self):
         host = source(DESKTOP_HOST)

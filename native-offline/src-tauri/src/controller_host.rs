@@ -67,7 +67,10 @@ pub struct ControllerStatus {
 }
 
 type InputSink = Arc<dyn Fn(NativeInput) + Send + Sync>;
-type UtilitySink = Arc<dyn Fn(&str) + Send + Sync>;
+/// Executes one canonical utility action and reports whether the host actually
+/// performed it. Returning `false` keeps an unsupported action from being
+/// acknowledged as successful.
+pub(crate) type UtilitySink = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
 struct Host {
     stop: Arc<AtomicBool>,
@@ -100,24 +103,32 @@ fn sink_default() -> InputSink {
     })
 }
 
-fn utility_sink_default() -> UtilitySink {
+pub(crate) fn utility_sink_default() -> UtilitySink {
     Arc::new(|action| {
-        // The desktop player's quick-save/speed/menu live in the platform host
-        // (the macOS Cocoa panel, or the Windows/Linux child runtime). Until a
-        // platform maps a canonical action, report it on stderr instead of
-        // pretending the action succeeded.
-        eprintln!("AN3 controller utility '{action}' is not wired on this desktop host yet");
+        // Route the canonical action into the platform host so Speed/Quick Save/
+        // Menu drive the running native game. The platform returns false when it
+        // cannot perform the action, which keeps the acknowledgement truthful.
+        crate::azahar::apply_controller_utility(action)
     })
 }
 
-/// Apply each not-yet-seen utility action once and return the newest sequence.
-/// The per-press sequence makes retries and replayed frames idempotent.
+/// Apply each not-yet-seen utility action once and return the newest sequence
+/// that the host actually executed. The per-press sequence makes retries and
+/// replayed frames idempotent; only executed actions advance the returned
+/// sequence so an unsupported action is never acknowledged as successful.
+///
+/// Both direct-LAN (`u`) and staging-server (`utilities`) frame shapes carry
+/// `{action, sequence}` entries.
 pub(crate) fn dispatch_utilities(
     payload: &serde_json::Value,
     last: &mut i64,
     sink: &UtilitySink,
 ) -> i64 {
-    if let Some(entries) = payload.get("utilities").and_then(|value| value.as_array()) {
+    let mut executed = 0i64;
+    for key in ["utilities", "u"] {
+        let Some(entries) = payload.get(key).and_then(|value| value.as_array()) else {
+            continue;
+        };
         for entry in entries {
             let sequence = entry.get("sequence").and_then(|value| value.as_i64()).unwrap_or(0);
             if sequence <= *last {
@@ -125,13 +136,13 @@ pub(crate) fn dispatch_utilities(
             }
             *last = sequence;
             if let Some(action) = entry.get("action").and_then(|value| value.as_str()) {
-                if !action.is_empty() {
-                    sink(action);
+                if !action.is_empty() && sink(action) {
+                    executed = executed.max(sequence);
                 }
             }
         }
     }
-    *last
+    executed
 }
 
 fn set_error(slot: &Arc<Mutex<String>>, message: impl Into<String>) {
@@ -588,7 +599,10 @@ mod tests {
     fn utilities_dispatch_once_and_track_the_newest_sequence() {
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
-        let sink: UtilitySink = Arc::new(move |action| collector.lock().unwrap().push(action.to_string()));
+        let sink: UtilitySink = Arc::new(move |action| {
+            collector.lock().unwrap().push(action.to_string());
+            true
+        });
         let payload = serde_json::json!({
             "utilities": [
                 {"action": "quick_save", "sequence": 2},
@@ -604,6 +618,53 @@ mod tests {
         // A retried/duplicated frame must not repeat the side effects.
         dispatch_utilities(&payload, &mut last, &sink);
         assert_eq!(seen.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn an_unsupported_utility_action_is_never_acknowledged() {
+        let calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let sink: UtilitySink = Arc::new(move |action| {
+            seen.lock().unwrap().push(action.to_string());
+            // Simulate a platform that can only perform speed_up.
+            action == "speed_up"
+        });
+        let payload = serde_json::json!({
+            "u": [
+                {"action": "quick_save", "sequence": 1},
+                {"action": "speed_up", "sequence": 2}
+            ]
+        });
+        let mut last = 0i64;
+        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 2);
+        assert_eq!(calls.lock().unwrap().len(), 2, "both actions are attempted once");
+
+        // A fully unsupported action must not be reported as executed, while the
+        // replay guard still advances so a retry cannot re-run it.
+        let mut last = 0i64;
+        let payload = serde_json::json!({ "u": [{"action": "open_menu", "sequence": 5}] });
+        let refusing: UtilitySink = Arc::new(|_| false);
+        assert_eq!(dispatch_utilities(&payload, &mut last, &refusing), 0);
+        assert_eq!(last, 5);
+    }
+
+    #[test]
+    fn the_direct_lan_utility_frame_shape_is_accepted() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: UtilitySink = Arc::new(move |action| {
+            collector.lock().unwrap().push(action.to_string());
+            true
+        });
+        let payload = serde_json::json!({
+            "s": 4,
+            "b": [],
+            "a": [0, 0, 0, 0],
+            "u": [{"action": "QUICK_SAVE", "sequence": 1}]
+        });
+        let mut last = 0i64;
+        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 1);
+        assert_eq!(seen.lock().unwrap().clone(), vec!["QUICK_SAVE"]);
     }
 
     #[test]

@@ -194,6 +194,11 @@ unsafe extern "C" {
         touch_y: i16,
         touch_pressed: i32,
     );
+    /// Phone-controller utility entry points. They reuse the Cocoa panel's own
+    /// speed/quick-save/menu actions; each returns 1 only if it ran.
+    fn an3_native_controller_speed(direction: i32) -> i32;
+    fn an3_native_controller_quick_save(slot: u32) -> i32;
+    fn an3_native_controller_open_menu() -> i32;
 }
 
 fn native_moltenvk_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -525,6 +530,35 @@ pub fn native_input_ready() -> bool {
     { return unsafe { an3_native_is_running() != 0 }; }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     { false }
+}
+
+/// Execute one canonical Phone Controller utility action on the running native
+/// game. Returns true only when the host actually performed the action, so the
+/// controller never reports an unsupported action as successful.
+///
+/// The macOS Cocoa host owns Speed, Quick Save, and the in-game Menu, so those
+/// are wired there. The Windows/Linux portable runtime has no stdin command for
+/// them yet and reports the action as unavailable rather than pretending.
+pub fn apply_controller_utility(action: &str) -> bool {
+    if !native_input_ready() {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return match action {
+            // Canonical ids from native-offline/shared/input-actions-schema.json.
+            "SPEED_UP" => an3_native_controller_speed(1) != 0,
+            "SPEED_DOWN" => an3_native_controller_speed(-1) != 0,
+            "QUICK_SAVE" => an3_native_controller_quick_save(1) != 0,
+            "OPEN_MENU" => an3_native_controller_open_menu() != 0,
+            _ => false,
+        };
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        eprintln!("AN3 controller utility '{action}' is unavailable on this host build");
+        false
+    }
 }
 
 /// The system the active native game is running, for the phone pad layout.

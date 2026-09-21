@@ -313,6 +313,11 @@ AzaharHost* active_host();
 - (void)saveSettings:(id)sender;
 - (void)discardSettingsDraft;
 - (void)closeMenuDiscardingDraft;
+// Phone-controller utility entry points. They reuse the toolbar's own host
+// actions so a remote controller cannot diverge from the in-app UI.
+- (BOOL)applyControllerSpeedStep:(int)direction;
+- (BOOL)performControllerQuickSave:(unsigned)slot;
+- (BOOL)openControllerMenu;
 @end
 
 @interface AN3InputButton : NSButton
@@ -2596,6 +2601,36 @@ static NSString* native_player_ui_text(std::string_view value) {
     }
 }
 
+// Phone-controller utility hooks. Each returns YES only when the running host
+// actually performed the action; the Rust sink maps that to a truthful ack.
+- (BOOL)applyControllerSpeedStep:(int)direction {
+    auto* host = an3::active_host();
+    if (!host) return NO;
+    const double speed = host->speed();
+    double next;
+    if (direction > 0) {
+        next = speed < 1.0 ? 1.0 : speed < 2.0 ? 2.0 : speed < 4.0 ? 4.0 : 8.0;
+    } else {
+        next = speed > 4.0 ? 4.0 : speed > 2.0 ? 2.0 : speed > 1.0 ? 1.0 : 0.5;
+    }
+    [self applyNativeSpeed:next];
+    return YES;
+}
+
+- (BOOL)performControllerQuickSave:(unsigned)slot {
+    if (!an3::active_host()) return NO;
+    char details[256]{};
+    const int saved = an3_native_save_state(slot, details, sizeof(details));
+    [self updateQuickStateStatus:details success:saved != 0];
+    return saved != 0;
+}
+
+- (BOOL)openControllerMenu {
+    if (!an3::active_host()) return NO;
+    if (_menu_panel.hidden) [self toggleMenu:nil];
+    return YES;
+}
+
 - (void)toggleStartFullscreen:(NSButton*)sender {
     _draft_start_fullscreen = sender.state == NSControlStateValueOn;
     _settings_dirty = YES;
@@ -3554,4 +3589,21 @@ extern "C" void an3_native_set_input(uint32_t buttons,
     if (an3::g_host) {
         an3::g_host->set_input(buttons, circle_x, circle_y, cstick_x, cstick_y, touch_x, touch_y, touch_pressed != 0);
     }
+}
+
+// Phone-controller utilities execute through the same Cocoa host actions the
+// toolbar uses. Return 1 only when the running game actually performed them.
+extern "C" int an3_native_controller_speed(int direction) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view applyControllerSpeedStep:direction] ? 1 : 0;
+}
+
+extern "C" int an3_native_controller_quick_save(unsigned slot) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view performControllerQuickSave:slot] ? 1 : 0;
+}
+
+extern "C" int an3_native_controller_open_menu(void) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view openControllerMenu] ? 1 : 0;
 }

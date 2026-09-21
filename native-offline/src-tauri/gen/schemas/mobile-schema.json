@@ -243,6 +243,24 @@
           "markdownDescription": "Enables the native_controller_stop command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_multiplayer_configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-configure",
+          "markdownDescription": "Enables the native_multiplayer_configure command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_multiplayer_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-status",
+          "markdownDescription": "Enables the native_multiplayer_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_multiplayer_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-stop",
+          "markdownDescription": "Enables the native_multiplayer_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the direct-LAN native sync peer commands.",
           "type": "string",
           "const": "allow-native-sync",
@@ -505,6 +523,24 @@
           "type": "string",
           "const": "deny-native-controller-stop",
           "markdownDescription": "Denies the native_controller_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-configure",
+          "markdownDescription": "Denies the native_multiplayer_configure command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-status",
+          "markdownDescription": "Denies the native_multiplayer_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-stop",
+          "markdownDescription": "Denies the native_multiplayer_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the direct-LAN native sync peer commands.",
