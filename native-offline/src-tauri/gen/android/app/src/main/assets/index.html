@@ -1,0 +1,314 @@
+<!-- SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#07060c">
+    <!-- Configurable anonymous support server. Empty disables the anonymous
+         path and keeps the copy-the-report fallback. This is a plain origin,
+         never a secret or token; prepare-web injects the packaged value. -->
+    <meta name="an3-support-origin" content="">
+    <title>Vibe Coded Emulator</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.3.0">
+    <link rel="stylesheet" href="/static/site.css?v=3.3.0">
+    <link rel="stylesheet" href="/static/theme-violet.css?v=3.3.0">
+    <link rel="stylesheet" href="/native.css?v=3.3.0">
+    <script src="/native-bootstrap.js?v=3.3.0"></script>  </head>
+  <body class="reference-shell native-app-shell">
+    <div class="native-app" id="nativeApp">
+      <aside class="native-sidebar">
+        <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.3.0" alt="Vibe Coded Emulator">          <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
+        </button>
+        <nav class="native-nav" aria-label="Main">
+          <button type="button" class="native-nav-item active" data-nav="play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
+          <button type="button" class="native-nav-item" data-nav="library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
+          <button type="button" class="native-nav-item" data-nav="settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
+          <button type="button" class="native-nav-item" data-nav="help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
+          <button type="button" class="native-nav-item" data-nav="about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>
+        </nav>
+      </aside>
+
+      <div class="native-main">
+        <header class="native-topbar">
+          <button class="native-icon-button native-back" type="button" data-nav="play" aria-label="Back to Play" hidden><span class="ui-mask ui-ref-arrow-right" aria-hidden="true"></span></button>
+          <h1 class="native-title" data-section-title>Play</h1>
+          <div class="native-topbar-actions">
+            <label class="native-search" id="nativeSearchWrap" hidden>
+              <span class="ui-mask ui-search" aria-hidden="true"></span>
+              <input id="nativeSearch" data-testid="search" type="search" placeholder="Search games" autocomplete="off" aria-label="Search games">
+            </label>
+            <button class="button primary native-open-rom" type="button" data-open-rom data-testid="open-rom"><span class="ui-mask ui-ref-folder-open" aria-hidden="true"></span>Open ROM</button>
+          </div>
+        </header>
+
+        <div class="native-content">
+          <section class="native-panel native-panel-play" data-panel="play">
+            <button class="native-play-card" type="button" data-open-rom>
+              <span class="native-play-icon"><span class="ui-mask ui-play" aria-hidden="true"></span></span>
+              <span class="native-play-copy"><strong>Play</strong><span>Open a ROM from this device</span></span>
+            </button>
+            <div class="native-quick-links">
+              <button type="button" data-nav="library" data-testid="quick-library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span>Library</button>
+              <button type="button" data-nav="settings" data-testid="quick-settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span>Settings</button>
+              <button type="button" data-nav="help" data-testid="quick-help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span>Help</button>
+              <button type="button" data-nav="about" data-testid="quick-about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span>About</button>
+            </div>
+          </section>
+
+          <section class="native-panel" data-panel="library" hidden>
+            <details class="native-add" id="nativeAddRom" data-testid="add-rom">
+              <summary><span class="ui-mask ui-ref-folder-open" aria-hidden="true"></span><strong>Add ROM</strong><span class="native-add-hint">GBA · NDS · 3DS</span></summary>
+              <form id="offlineGameForm" class="native-form">
+                <label id="offlineBrowserDropzone" class="native-dropzone" for="offlineFile">
+                  <span class="ui-mask ui-ref-monitor-down" aria-hidden="true"></span>
+                  <strong>Choose a ROM file</strong>
+                  <input id="offlineFile" name="file" type="file" required>
+                </label>
+                <button id="offlineNativePicker" data-testid="choose-rom" class="button primary native-native-picker" type="button" hidden><span class="ui-mask ui-ref-folder-open" aria-hidden="true"></span>Choose ROM from this device</button>
+                <label class="native-field">Title<input id="offlineTitle" name="title" maxlength="120" required autocomplete="off"></label>
+                <label class="native-field">System<select id="offlineSystem" name="system"></select></label>
+                <button id="offlineBrowserImport" data-testid="import-rom" class="button primary" type="submit">Add to device</button>
+              </form>
+              <p id="offlineDetection" class="native-status" role="status"></p>
+            </details>
+            <div id="offlineGameGrid" data-testid="game-grid" class="native-grid" aria-live="polite"></div>
+          </section>
+
+          <section class="native-panel" data-panel="settings" hidden>
+            <div class="native-settings-tabbar" role="tablist" aria-label="Settings sections">
+              <button type="button" class="native-settings-tab active" data-settings-tab="emulator" role="tab" aria-selected="true" data-testid="settings-tab-emulator">Emulator</button>
+              <button type="button" class="native-settings-tab" data-settings-tab="sync" role="tab" aria-selected="false" data-testid="settings-tab-sync">Sync</button>
+              <button type="button" class="native-settings-tab" data-settings-tab="controller" role="tab" aria-selected="false" data-testid="settings-tab-controller">Phone Controller</button>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="emulator" role="tabpanel">
+            <div class="native-card">
+              <h2>Storage &amp; runtime</h2>
+              <div class="native-facts">
+                <div class="native-fact"><span>Local games</span><strong id="offlineGameCount">0</strong></div>
+                <div class="native-fact"><span>Cores</span><strong id="offlineCoreState">Bundled</strong></div>
+                <div class="native-fact"><span>Interface</span><strong id="offlineShellState">Bundled with the app</strong></div>
+                <div class="native-fact"><span>Secure context</span><strong id="offlineSecureState">Checking</strong></div>
+                <div class="native-fact"><span>Network</span><strong id="offlineNetworkState">Checking</strong></div>
+              </div>
+            </div>
+            <div class="native-card" id="nativeApplicationSettingsCard" data-testid="application-settings">
+              <h2>Application settings</h2>
+              <p class="native-muted">Shared by every system on this device. Core-specific settings live under Game Settings.</p>
+              <div id="nativeApplicationSettingsBody" class="native-settings-body"></div>
+            </div>
+            <div class="native-card" id="nativeGameSettingsCard" data-testid="game-settings">
+              <h2>Game Settings</h2>
+              <p class="native-muted">GBA, NDS, 3DS and Switch each keep their own Emulation and Graphics settings. Changing one system never changes another. Renderer changes apply on the next launch.</p>
+              <div id="nativeGameSettingsSystems" class="native-system-tabs" role="tablist" aria-label="Game system"></div>
+              <div id="nativeGameSettingsBody" class="native-settings-body"></div>
+              <p id="nativeGameSettingsStatus" class="native-status" role="status"></p>
+            </div>
+            <div class="native-card" id="nativeBugReportCard" data-testid="bug-report">
+              <h2>Report a bug</h2>
+              <p class="native-muted">Diagnostics are collected from a fixed allowlist and stripped of tokens, paths and device identifiers on this device before you preview or send. Nothing is sent until you consent.</p>
+              <label class="native-field"><span>Describe the problem</span><textarea id="nativeBugDescription" data-testid="bug-description" maxlength="4000" rows="5" placeholder="What happened, and what were you doing?"></textarea></label>
+              <label class="native-field"><span>Game name (optional)</span><input id="nativeBugGame" data-testid="bug-game" maxlength="200" autocomplete="off"></label>
+              <div class="native-settings-actions">
+                <button id="nativeBugPreview" data-testid="bug-preview" type="button" class="button">Preview sanitized report</button>
+                <button id="nativeBugCopy" data-testid="bug-copy" type="button" class="button">Copy</button>
+                <button id="nativeBugCancel" data-testid="bug-cancel" type="button" class="button">Cancel</button>
+              </div>
+              <pre id="nativeBugPreviewOutput" class="native-bug-preview" data-testid="bug-preview-output" role="status"></pre>
+              <label class="native-settings-field"><input id="nativeBugConsent" data-testid="bug-consent" type="checkbox"> I consent to sending this sanitized report to the maintainers.</label>
+              <div class="native-settings-actions">
+                <button id="nativeBugSubmit" data-testid="bug-submit" type="button" class="button primary" disabled>Send report</button>
+              </div>
+              <p id="nativeBugStatus" class="native-muted" role="status"></p>
+            </div>
+            <div class="native-card" id="nativeLicensesCard">
+              <h2>Licenses &amp; open source</h2>
+              <p class="native-muted">Vibe Coded Emulator is free software under the <strong>GNU General Public License v3.0-or-later</strong>. Commercial use, modification and redistribution are permitted; redistributors must keep the notices and provide the corresponding source. Forks do not have to keep this name, logo or UI.</p>
+              <p class="native-muted">Copyright (C) 2026 Vibe Coded Emulator contributors. Full text: <code>LICENSE</code> (GPL-3.0). Third-party notices: <code>THIRD_PARTY_NOTICES.md</code> and <code>native-core-licenses/</code>, bundled with this app.</p>
+              <ul class="native-facts">
+                <li class="native-fact"><span>Azahar libretro</span><strong>GPL-2.0-or-later</strong></li>
+                <li class="native-fact"><span>melonDS DS libretro</span><strong>GPL-3.0-or-later</strong></li>
+                <li class="native-fact"><span>mGBA libretro</span><strong>MPL-2.0</strong></li>
+                <li class="native-fact"><span>EmulatorJS</span><strong>GPL-3.0</strong></li>
+                <li class="native-fact"><span>MoltenVK</span><strong>Apache-2.0</strong></li>
+                <li class="native-fact"><span>Tauri / Rust crates</span><strong>Apache-2.0 / MIT</strong></li>
+                <li class="native-fact"><span>Lucide icons</span><strong>ISC</strong></li>
+                <li class="native-fact"><span>Pixelify Sans, Roboto Condensed</span><strong>SIL OFL 1.1</strong></li>
+              </ul>
+            </div>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="sync" role="tabpanel" hidden>
+            <div class="native-card" id="nativeSyncCard" data-testid="sync-settings" hidden>
+              <h2>LAN Sync</h2>
+              <p class="native-muted">Content sync between remembered AN3 devices on the same LAN. This switch records your preference on this device; nothing is advertised until a sync service is running.</p>
+              <label class="native-settings-field"><input id="nativeLanSyncToggle" data-testid="lan-sync-toggle" type="checkbox"> <span>Enable LAN Sync on this device</span></label>
+              <p id="nativeLanSyncStatus" class="native-muted" role="status">LAN Sync off</p>
+            </div>
+            <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync">
+              <h2>Account &amp; LAN Sync</h2>
+              <p class="native-muted">Sign in with your AN3 account, or play as a guest. Save data moves directly between remembered AN3 devices on the same LAN; it is not relayed through the AN3 server.</p>
+              <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
+                <label><input id="nativeSyncGuestMode" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
+                <label><input id="nativeSyncAccountMode" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
+              </div>
+              <form id="nativeAccountLogin" class="native-sync-login" hidden>
+                <label class="native-field"><span>AN3 username</span><input id="nativeAccountName" autocomplete="username"></label>
+                <label class="native-field"><span>Password</span><input id="nativeAccountPassword" type="password" autocomplete="current-password"></label>
+                <div class="native-settings-actions"><button id="nativeAccountLoginButton" class="button primary" type="submit">Sign in</button><button id="nativeAccountLogoutButton" class="button" type="button" hidden>Sign out</button></div>
+              </form>
+              <div class="native-facts">
+                <div class="native-fact"><span>Identity</span><strong id="nativeAccountStatus" role="status">Guest</strong></div>
+                <div class="native-fact"><span>LAN Sync</span><strong id="nativeSyncStatus" role="status">Starting</strong></div>
+              </div>
+              <div class="native-settings-actions">
+                <button id="nativeSyncStart" class="button primary" type="button">Start Hosting</button>
+                <button id="nativeSyncStop" class="button" type="button">Stop Hosting</button>
+              </div>
+              <p class="native-sync-code">LAN Sync pairing code: <strong id="nativeSyncCode">—</strong></p>
+              <label class="native-field"><span>Enter another device’s six-digit code</span><input id="nativeSyncPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeSyncJoin" class="button" type="button">Pair device</button>
+              <div id="nativeSyncPeers" class="native-sync-peers" aria-live="polite"></div>
+              <div id="nativeSyncConflicts" class="native-sync-peers" aria-live="polite"></div>
+              <div class="native-settings-actions">
+                <button id="nativeSyncLibrary" class="button primary" type="button">Sync library</button>
+                <span id="nativeSyncLibraryStatus" class="native-muted" role="status" aria-live="polite"></span>
+              </div>
+              <label class="native-settings-field native-sync-background"><input id="nativeSyncBackground" type="checkbox"> <span>Allow LAN reconnection while this app is open</span></label>
+              <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
+              <p id="nativeSyncMessage" class="native-status" role="status"></p>
+            </div>
+            <div class="native-card">
+              <h2>Cloud Sync</h2>
+              <p class="native-muted">Google Sync <strong>Coming later</strong>. Cloud accounts are not connected in this build; no cloud provider or credential is configured.</p>
+            </div>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="controller" role="tabpanel" hidden>
+            <div class="native-card" id="nativeControllerCard">
+              <h2>Phone Controller</h2>
+              <p class="native-muted">Use a phone on the same network as a controller for the running game. The phone never receives the game or its saves.</p>
+              <div class="native-facts">
+                <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" role="status">Off</strong></div>
+                <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
+              </div>
+              <button id="nativeControllerStart" type="button" class="button primary">Start Hosting</button>
+              <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeControllerJoin" type="button" class="button">Join Host</button>
+              <div class="ctrl-phone-head" id="nativeControllerPadHead" hidden>
+                <label class="ctrl-layout-picker">Layout<select id="nativeControllerLayout">
+                  <option value="auto">Automatic</option>
+                  <option value="gba">GBA</option>
+                  <option value="nds">NDS</option>
+                  <option value="3ds">3DS</option>
+                  <option value="custom">Custom</option>
+                </select></label>
+                <label class="ctrl-layout-picker">Movement<select id="nativeControllerMovement">
+                  <option value="dpad">D-Pad</option>
+                  <option value="joystick">Analog Joystick</option>
+                  <option value="circular">Circular D-pad</option>
+                </select></label>
+              </div>
+              <section id="nativeControllerPad" class="ctrl-pad" hidden aria-label="Direct LAN controller pad">
+                <div class="ctrl-padbar"><span id="nativeControllerPadState" class="ctrl-state">Connected</span><button id="nativeControllerDisconnect" type="button">Disconnect</button></div>
+                <div class="ctrl-touchscreen" id="nativeControllerTouchscreen" data-role="touchscreen" hidden>Touch Screen</div>
+                <div class="ctrl-shoulders"><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="l">L</button><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="r">R</button></div>
+                <div class="ctrl-main">
+                  <div class="ctrl-dpad" data-role="dpad">
+                    <button type="button" class="ctrl-key dpad-up" data-native-controller-button="up" aria-label="Up">▲</button>
+                    <button type="button" class="ctrl-key dpad-left" data-native-controller-button="left" aria-label="Left">◀</button>
+                    <button type="button" class="ctrl-key dpad-right" data-native-controller-button="right" aria-label="Right">▶</button>
+                    <button type="button" class="ctrl-key dpad-down" data-native-controller-button="down" aria-label="Down">▼</button>
+                  </div>
+                  <div id="nativeControllerCircular" class="ctrl-circular" data-role="circular" role="group" aria-label="Circular D-pad" hidden>
+                    <span class="ctrl-circular-arrow up" data-dir="up">▲</span>
+                    <span class="ctrl-circular-arrow left" data-dir="left">◀</span>
+                    <span class="ctrl-circular-arrow right" data-dir="right">▶</span>
+                    <span class="ctrl-circular-arrow down" data-dir="down">▼</span>
+                  </div>
+                  <div class="ctrl-sticks" data-role="sticks">
+                    <span class="ctrl-stick" data-native-controller-stick="left" role="slider" aria-label="Left stick" tabindex="0"></span>
+                    <span class="ctrl-stick" data-native-controller-stick="right" role="slider" aria-label="Right stick" tabindex="0"></span>
+                  </div>
+                  <div class="ctrl-face">
+                    <button type="button" class="ctrl-key face-x" data-native-controller-button="x">X</button>
+                    <button type="button" class="ctrl-key face-y" data-native-controller-button="y">Y</button>
+                    <button type="button" class="ctrl-key face-a" data-native-controller-button="a">A</button>
+                    <button type="button" class="ctrl-key face-b" data-native-controller-button="b">B</button>
+                  </div>
+                </div>
+                <div class="ctrl-system"><button type="button" class="ctrl-key" data-native-controller-button="select">Select</button><button type="button" class="ctrl-key" data-native-controller-button="start">Start</button></div>
+                <div class="ctrl-utility">
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_down">Speed −</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_up">Speed +</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_save">Quick Save</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_load">Quick Load</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
+                  <label class="ctrl-layout-picker ctrl-save-slot">Save slot<select id="nativeControllerSaveSlot"><option value="1">Slot 1</option><option value="2">Slot 2</option><option value="3">Slot 3</option><option value="4">Slot 4</option><option value="5">Slot 5</option><option value="6">Slot 6</option><option value="7">Slot 7</option><option value="8">Slot 8</option><option value="9">Slot 9</option><option value="10">Slot 10</option></select></label>
+                </div>
+              </section>
+              <p class="native-muted">Start makes this device the game host. Enter a six-digit code when this device is joining another AN3 host.</p>
+            </div>
+            </div>
+          </section>
+
+          <section class="native-panel" data-panel="help" hidden>
+            <div class="native-card">
+              <h2>Play a game</h2>
+              <ol class="native-steps">
+                <li><strong>Add a ROM</strong><span>Choose a GBA, NDS or 3DS file from this device.</span></li>
+                <li><strong>Open it from Library</strong><span>Select the game, then choose Play.</span></li>
+                <li><strong>Use your controls</strong><span>Touch controls, a gamepad or the keyboard.</span></li>
+              </ol>
+              <p class="native-note"><span class="ui-mask ui-ref-shield-check" aria-hidden="true"></span>ROMs and saves stay on this device.</p>
+            </div>
+          </section>
+
+          <section class="native-panel" data-panel="about" hidden>
+            <div class="native-card">
+              <h2>Vibe Coded Emulator</h2>
+              <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
+              <div class="native-facts">
+                <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
+                <div class="native-fact"><span>Version</span><strong data-app-version="3.3.0">3.3.0</strong></div>                <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <nav class="native-bottomnav" aria-label="Main">
+      <button type="button" class="active" data-nav="play" data-testid="nav-play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
+      <button type="button" data-nav="library" data-testid="nav-library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
+      <button type="button" data-nav="settings" data-testid="nav-settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
+      <button type="button" data-nav="help" data-testid="nav-help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
+      <button type="button" data-nav="about" data-testid="nav-about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>
+    </nav>
+
+    <div id="toast" role="status"></div>
+
+    <script src="/static/offline.js?v=3.3.0" defer></script>
+    <script src="/static/player-ui.js?v=3.3.0" defer></script>
+    <script src="/static/player-runtime.js?v=3.3.0" defer></script>
+    <script src="/static/renderer-worker.js?v=3.3.0" defer></script>
+    <script src="/static/nds-touch.js?v=3.3.0" defer></script>
+    <script src="/static/input-actions.js?v=3.3.0" defer></script>
+    <script src="/static/controller-utility.js?v=3.3.0" defer></script>
+    <script src="/static/lan-peer.js?v=3.3.0" defer></script>
+    <!-- Keep the transfer boundary cache-busted independently of the product
+         version when a native bridge response shape changes. -->
+    <script src="/static/sync-transfer.js?v=3.3.0-sync2" defer></script>
+    <script src="/native-account.js?v=3.3.0" defer></script>
+    <script src="/native-sync.js?v=3.3.0-sync2" defer></script>
+    <script src="/static/player.js?v=3.3.0" defer></script>
+    <script src="/native-settings.js?v=3.3.0" defer></script>
+    <script src="/game-settings.js?v=3.3.0" defer></script>
+    <script src="/static/bug-report.js?v=3.3.0" defer></script>
+    <script src="/native-support.js?v=3.3.0" defer></script>
+    <script src="/native-app.js?v=3.3.0" defer></script>
+    <script src="/android-staging.js?v=3.3.0" defer></script>  </body>
+</html>

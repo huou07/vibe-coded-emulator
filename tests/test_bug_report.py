@@ -134,11 +134,12 @@ class BuildReportTests(unittest.TestCase):
         bug_report.assert_no_forbidden(report)
 
     def test_game_identifier_is_anonymous_and_stable(self):
-        first = bug_report.build_report({"gameTitle": "~/<REDACTED_PATH> Emerald.gba"})
+        personal_path = "/Users/" + "player" + "/ROMs/" + "Pokemon Emerald.gba"
+        first = bug_report.build_report({"gameTitle": personal_path})
         second = bug_report.build_report({"gameTitle": "Pokemon Emerald"})
         self.assertEqual(first["gameIdentifier"], second["gameIdentifier"])
         self.assertTrue(first["gameIdentifier"].startswith("game-"))
-        self.assertNotIn("developer", json.dumps(first))
+        self.assertNotIn("player", json.dumps(first))
         self.assertNotIn("Emerald", first["gameIdentifier"])
 
     def test_explicit_slug_identifier_is_kept_but_path_is_not(self):

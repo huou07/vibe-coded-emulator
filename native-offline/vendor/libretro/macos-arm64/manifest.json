@@ -1,0 +1,37 @@
+{
+  "platform": "macOS arm64",
+  "presentation": "Vulkan 1.1 -> bundled MoltenVK -> Metal",
+  "cores": [
+    {
+      "system": "gba",
+      "engine": "mGBA libretro",
+      "version": "0.11-219-e31759b",
+      "archiveName": "mgba_libretro.dylib.zip",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/mgba_libretro.dylib.zip",
+      "archiveSha256": "1c1679f1f62c5c1bef6e9f5de111555f7600976b8a67df4d960e41e189ef9d96",
+      "coreName": "mgba_libretro.dylib",
+      "coreSha256": "085350861044d9d2ef37634a7c201f57b4816fd343bdf29cdcd09bfb754b9218",
+      "licenseName": "mGBA-MPL-2.0.txt",
+      "licenseUrl": "https://raw.githubusercontent.com/mgba-emu/mgba/e31759b24e7a4e3899285ff720d7b573ac328ae7/LICENSE",
+      "licenseSha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
+      "sourceUrl": "https://github.com/mgba-emu/mgba/tree/e31759b24e7a4e3899285ff720d7b573ac328ae7",
+      "license": "MPL-2.0"
+    },
+    {
+      "system": "nds",
+      "engine": "melonDS DS libretro",
+      "version": "1.3.1",
+      "archiveName": "melondsds_libretro.dylib.zip",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/melondsds_libretro.dylib.zip",
+      "archiveSha256": "cc1667f1f0e50a06fcb2c5583d9ea38cfb8e1457cab247ee2c21c943b3275486",
+      "archiveCorePath": "melondsds_libretro.dylib",
+      "coreName": "melondsds_libretro.dylib",
+      "coreSha256": "028c1d65db6eeafef33b29a90018fe037fcf0f643965031f3eb4a8b1ca23b57a",
+      "licenseName": "melonDS-DS-GPL-3.0-or-later.txt",
+      "licenseUrl": "https://raw.githubusercontent.com/JesseTG/melonds-ds/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/LICENSE",
+      "licenseSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "sourceUrl": "https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "license": "GPL-3.0-or-later"
+    }
+  ]
+}

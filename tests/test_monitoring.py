@@ -195,7 +195,10 @@ class MonitoringTests(unittest.TestCase):
         self.assertEqual(all_totals, {"visits": 2, "downloads": 2})
 
     def test_staging_release_path_is_strictly_staging_only(self):
-        with open(os.path.join(ROOT, "deploy-stage.sh"), encoding="utf-8") as handle:
+        release_path = os.path.join(ROOT, "deploy-stage.sh")
+        if not os.path.isfile(release_path):
+            self.skipTest("sanitized public source omits the private staging deploy entrypoint")
+        with open(release_path, encoding="utf-8") as handle:
             release = handle.read()
         self.assertIn('source "$ROOT/tools/ssh/staging-common.sh"', release)
         self.assertIn('"$ROOT/tools/ssh/check-staging-key.sh"', release)
@@ -207,6 +210,8 @@ class MonitoringTests(unittest.TestCase):
         self.assertNotIn("update-production.sh", release)
         self.assertNotIn("PRODUCTION_RELEASE", release)
         self.assertNotIn("an3-production-release", release)
+
+    def test_production_update_keeps_database_backup_and_rollback(self):
         with open(os.path.join(ROOT, "deploy", "update-production.sh"), encoding="utf-8") as handle:
             production_update = handle.read()
         self.assertIn('"$TMP/deploy/rollback-production.sh"', production_update)

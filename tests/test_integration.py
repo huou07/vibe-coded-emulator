@@ -648,8 +648,13 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
         self.assertIn(b'nav-download-app', public.request("GET", "/")[2])
 
         import app
-        available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
-        self.assertTrue(available)
+        artifacts = app.native_artifact_manifest()["artifacts"]
+        self.assertTrue(artifacts)
+        available = [item for item in artifacts if item["status"] == "available"]
+        blocked = [item for item in artifacts if item["status"] == "blocked"]
+        self.assertTrue(all(item["download_url"] is None for item in blocked))
+        if not available:
+            self.assertEqual(len(blocked), len(artifacts))
         for item in available:
             with self.subTest(installer=item["filename"]):
                 status, headers, _ = public.raw("HEAD", f"/download-app/release/{item['filename']}?sha256={item['sha256']}")

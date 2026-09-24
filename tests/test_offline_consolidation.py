@@ -207,7 +207,12 @@ console.log(JSON.stringify(result));
         with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
             names = bundle.namelist()
         self.assertIn("an3-offline-native/src-tauri/Cargo.toml", names)
-        self.assertIn("an3-offline-native/src-tauri/gen/android/gradlew", names)
+        wrapper = native_root / "src-tauri" / "gen" / "android" / "gradlew"
+        if wrapper.is_file():
+            self.assertIn("an3-offline-native/src-tauri/gen/android/gradlew", names)
+        else:
+            package = json.loads((native_root / "package.json").read_text(encoding="utf-8"))
+            self.assertIn("android:init", package["scripts"])
         self.assertFalse(any("/.signing/" in name or "/releases/" in name or "/target/" in name or name.endswith("local.properties") for name in names))
 
     def test_library_render_discards_a_stale_async_snapshot(self):
