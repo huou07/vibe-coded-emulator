@@ -27,9 +27,23 @@ use std::{
 /// Executable name of the companion on every desktop platform.
 const COMPANION_BINARY: &str = "an3_switch_companion";
 /// Bundled location inside the app resources (mirrors the other native cores).
+#[cfg(target_os = "macos")]
 const COMPANION_RESOURCE_PATH: &str = "switch/macos-arm64/an3_switch_companion";
+#[cfg(target_os = "linux")]
+const COMPANION_RESOURCE_PATH: &str = "switch/linux-x86_64/an3_switch_companion";
+#[cfg(target_os = "windows")]
+const COMPANION_RESOURCE_PATH: &str = "switch/windows-x64/an3_switch_companion.exe";
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+const COMPANION_RESOURCE_PATH: &str = "switch/an3_switch_companion";
 /// Development fallback next to the (gitignored) prepared vendor artifacts.
+#[cfg(target_os = "macos")]
 const COMPANION_DEVELOPMENT_PATH: &str = "../vendor/switch/macos-arm64/an3_switch_companion";
+#[cfg(target_os = "linux")]
+const COMPANION_DEVELOPMENT_PATH: &str = "../vendor/switch/linux-x86_64/an3_switch_companion";
+#[cfg(target_os = "windows")]
+const COMPANION_DEVELOPMENT_PATH: &str = "../vendor/switch/windows-x64/an3_switch_companion.exe";
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+const COMPANION_DEVELOPMENT_PATH: &str = "../vendor/switch/an3_switch_companion";
 /// MoltenVK the companion's Eden backend loads on macOS.
 const MOLTENVK_RESOURCE_PATH: &str = "azahar/macos-arm64/libMoltenVK.dylib";
 const MOLTENVK_DEVELOPMENT_PATH: &str = "../vendor/moltenvk/macos-arm64/libMoltenVK.dylib";
@@ -75,6 +89,47 @@ pub struct CompanionAudio {
     pub volume: Option<f64>,
 }
 
+/// The producer's hosted-frame ring location, published by the companion as
+/// `AN3CTL_HOSTED {"shm":"...","slots":N,"epoch":...}`. This is the handle the
+/// native consumer needs to attach to the cross-process ring; AN3 never links
+/// Eden and never receives pixels over this channel.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedFrameInfo {
+    pub shm: String,
+    pub slots: u32,
+    pub epoch: u64,
+}
+
+/// Latest hosted-frame ring published by the running companion. Written by the
+/// stdout reader thread as soon as the line arrives, cleared on launch/stop.
+static HOSTED_FRAME: Mutex<Option<HostedFrameInfo>> = Mutex::new(None);
+
+/// Parses `AN3CTL_HOSTED {"shm":...,"slots":...,"epoch":...}`. Returns None for
+/// any other line so the reader thread can forward it untouched.
+fn hosted_from_line(line: &str) -> Option<HostedFrameInfo> {
+    let marker = "AN3CTL_HOSTED ";
+    let start = line.find(marker)? + marker.len();
+    let value: serde_json::Value = serde_json::from_str(line[start..].trim()).ok()?;
+    Some(HostedFrameInfo {
+        shm: value.get("shm")?.as_str()?.to_string(),
+        slots: u32::try_from(value.get("slots")?.as_u64()?).ok()?,
+        epoch: value.get("epoch")?.as_u64()?,
+    })
+}
+
+fn hosted_lock() -> std::sync::MutexGuard<'static, Option<HostedFrameInfo>> {
+    match HOSTED_FRAME.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// The hosted-frame ring of the running companion, if it has published one yet.
+pub fn hosted_frame() -> Option<HostedFrameInfo> {
+    hosted_lock().clone()
+}
+
 /// Argv for a companion run. Kept pure so it is testable. The control channel
 /// stays open (no `--no-stdin`) so AN3 can send input and stop commands.
 pub(crate) fn build_args(content: &str, visible: bool) -> Vec<String> {
@@ -90,6 +145,22 @@ fn existing_file(path: &Path) -> Option<PathBuf> {
         Some(path.to_path_buf())
     } else {
         None
+    }
+}
+
+/// Resolves source-tree development fallbacks without embedding the absolute
+/// checkout path in release binaries. During development the process is
+/// launched from either `native-offline` or `native-offline/src-tauri`.
+fn development_manifest_dir() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if cwd.file_name().and_then(|name| name.to_str()) == Some("src-tauri") {
+        cwd
+    } else if cwd.join("src-tauri").is_dir() {
+        cwd.join("src-tauri")
+    } else if cwd.join("native-offline/src-tauri").is_dir() {
+        cwd.join("native-offline/src-tauri")
+    } else {
+        cwd.join("src-tauri")
     }
 }
 
@@ -111,9 +182,9 @@ pub(crate) fn resolve_from(resource_dir: Option<&Path>, allow_dev_fallback: bool
         }
     }
     if allow_dev_fallback {
-        if let Some(path) =
-            existing_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join(COMPANION_DEVELOPMENT_PATH))
-        {
+        if let Some(path) = existing_file(
+            &development_manifest_dir().join(COMPANION_DEVELOPMENT_PATH),
+        ) {
             return Ok(path);
         }
     }
@@ -141,7 +212,7 @@ fn resolve_moltenvk(app: &tauri::AppHandle) -> Option<PathBuf> {
             return Some(path);
         }
     }
-    existing_file(&Path::new(env!("CARGO_MANIFEST_DIR")).join(MOLTENVK_DEVELOPMENT_PATH))
+    existing_file(&development_manifest_dir().join(MOLTENVK_DEVELOPMENT_PATH))
 }
 
 /// Reports whether the companion can be launched on this machine.
@@ -279,6 +350,7 @@ pub(crate) fn launch_with(
         return Err("The Switch content file does not exist".to_string());
     }
     stop();
+    *hosted_lock() = None;
     let mut command = Command::new(binary);
     command
         .args(build_args(content, visible))
@@ -299,6 +371,9 @@ pub(crate) fn launch_with(
         for line in reader.lines() {
             match line {
                 Ok(line) => {
+                    if let Some(info) = hosted_from_line(&line) {
+                        *hosted_lock() = Some(info);
+                    }
                     if sender.send(line).is_err() {
                         break;
                     }
@@ -457,6 +532,7 @@ pub fn audio() -> Result<CompanionAudio, String> {
 
 /// Stops the companion if it is running. Safe to call when nothing is running.
 pub fn stop() {
+    *hosted_lock() = None;
     let mut guard = lock();
     let Some(mut process) = guard.take() else {
         return;
@@ -497,6 +573,22 @@ mod tests {
         let line = "AN3CTL_STATUS {\"target\":\"switch\",\"frames\":3821,\"result\":\"PASS\"}";
         assert_eq!(frames_from_line(line), Some(3821));
         assert_eq!(frames_from_line("AN3CTL_ACK {\"focus\":true}"), None);
+    }
+
+    #[test]
+    fn hosted_frame_line_is_parsed() {
+        let line = "AN3CTL_HOSTED {\"shm\":\"/an3hf_123_ab12cd34\",\"slots\":3,\"epoch\":42}";
+        assert_eq!(
+            hosted_from_line(line),
+            Some(HostedFrameInfo {
+                shm: "/an3hf_123_ab12cd34".to_string(),
+                slots: 3,
+                epoch: 42,
+            })
+        );
+        assert_eq!(hosted_from_line("AN3CTL_STATUS {\"frames\":3}"), None);
+        assert_eq!(hosted_from_line("AN3CTL_HOSTED not-json"), None);
+        assert_eq!(hosted_from_line("AN3CTL_HOSTED {\"slots\":3}"), None);
     }
 
     #[test]
@@ -546,6 +638,39 @@ mod tests {
         assert!(resolved.to_string_lossy().ends_with("an3_switch_companion"));
     }
 
+    /// End-to-end: the companion publishes its cross-process ring and AN3
+    /// captures the name. Ignored by default (launches a real process).
+    #[test]
+    #[ignore = "requires AN3_SWITCH_COMPANION and AN3_SWITCH_HOMEBREW"]
+    fn e2e_hosted_frame_ring_is_captured() {
+        let binary = PathBuf::from(std::env::var("AN3_SWITCH_COMPANION").expect("binary"));
+        let content = std::env::var("AN3_SWITCH_HOMEBREW").expect("homebrew nro");
+        let moltenvk = std::env::var("AN3_SWITCH_MOLTENVK").ok().map(PathBuf::from);
+
+        let started = launch_with(&binary, moltenvk.as_deref(), &content, false).expect("launch");
+        assert!(started.running);
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut hosted = None;
+        while Instant::now() < deadline {
+            if let Some(info) = hosted_frame() {
+                hosted = Some(info);
+                break;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        stop();
+
+        let hosted = hosted.expect("the companion never published a hosted-frame ring");
+        assert!(hosted.shm.starts_with("/an3hf_"), "unexpected shm name {}", hosted.shm);
+        assert_eq!(hosted.slots, 3);
+        assert_ne!(hosted.epoch, 0);
+        assert!(
+            hosted_frame().is_none(),
+            "stop() must clear the published hosted-frame handle"
+        );
+    }
+
     /// End-to-end CompanionSystem lifecycle against the real bundled companion.
     /// Ignored by default (it launches a process and needs a legal homebrew
     /// fixture); run with `--ignored` when both env vars are set.
@@ -573,6 +698,22 @@ mod tests {
             thread::sleep(Duration::from_millis(200));
         }
         assert!(frames > 0, "the companion never rendered a frame");
+
+        // The companion publishes its cross-process hosted-frame ring. AN3
+        // captures the name so the native consumer can attach to it.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut hosted = None;
+        while Instant::now() < deadline {
+            if let Some(info) = hosted_frame() {
+                hosted = Some(info);
+                break;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        let hosted = hosted.expect("the companion never published a hosted-frame ring");
+        assert!(hosted.shm.starts_with("/an3hf_"), "unexpected shm name {}", hosted.shm);
+        assert_eq!(hosted.slots, 3);
+        assert_ne!(hosted.epoch, 0);
 
         // Input reaches Eden through the control channel.
         input_button("A", true).expect("button down");

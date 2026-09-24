@@ -222,12 +222,19 @@ test("an unavailable backend does not crash and keeps the user's description", a
 test("a successful submit posts a sanitized payload to /api/bug-reports", async () => {
   let received = null;
   let receivedPath = "";
+  let receivedCapability = null;
   const server = http.createServer((request, response) => {
     receivedPath = request.url;
     let body = "";
     request.on("data", chunk => { body += chunk; });
     request.on("end", () => {
+      if (request.url === "/api/support/capability") {
+        response.writeHead(200, {"Content-Type": "application/json"});
+        response.end(JSON.stringify({capability: "cap-test", expiresAt: Date.now() + 60000}));
+        return;
+      }
       received = JSON.parse(body);
+      receivedCapability = request.headers["x-an3-support-capability"];
       response.writeHead(201, {"Content-Type": "application/json"});
       response.end(JSON.stringify({ok: true, id: 42, issue: {attempted: true, created: false, reason: "not configured"}}));
     });
@@ -242,6 +249,7 @@ test("a successful submit posts a sanitized payload to /api/bug-reports", async 
     assert.equal(result.ok, true);
     assert.equal(result.id, 42);
     assert.equal(receivedPath, "/api/bug-reports");
+    assert.equal(receivedCapability, "cap-test");
     assert.ok(received.description.includes("crash"));
     assert.doesNotMatch(JSON.stringify(received), /ghp_/);
     assert.equal("romPath" in received, false);

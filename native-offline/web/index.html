@@ -6,19 +6,21 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="theme-color" content="#07060c">
+    <!-- Configurable anonymous support server. Empty disables the anonymous
+         path and keeps the copy-the-report fallback. This is a plain origin,
+         never a secret or token; prepare-web injects the packaged value. -->
+    <meta name="an3-support-origin" content="__AN3_SUPPORT_ORIGIN__">
     <title>Vibe Coded Emulator</title>
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=__AN3_VERSION__">
     <link rel="stylesheet" href="/static/site.css?v=__AN3_VERSION__">
     <link rel="stylesheet" href="/static/theme-violet.css?v=__AN3_VERSION__">
     <link rel="stylesheet" href="/native.css?v=__AN3_VERSION__">
-    <script src="/native-bootstrap.js?v=__AN3_VERSION__"></script>
-  </head>
+    <script src="/native-bootstrap.js?v=__AN3_VERSION__"></script>  </head>
   <body class="reference-shell native-app-shell">
     <div class="native-app" id="nativeApp">
       <aside class="native-sidebar">
         <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
-          <img class="native-brand-logo" src="/static/brand-logo.png?v=__AN3_VERSION__" alt="Vibe Coded Emulator">
-          <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=__AN3_VERSION__" alt="Vibe Coded Emulator">          <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
         </button>
         <nav class="native-nav" aria-label="Main">
           <button type="button" class="native-nav-item active" data-nav="play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
@@ -76,6 +78,13 @@
           </section>
 
           <section class="native-panel" data-panel="settings" hidden>
+            <div class="native-settings-tabbar" role="tablist" aria-label="Settings sections">
+              <button type="button" class="native-settings-tab active" data-settings-tab="emulator" role="tab" aria-selected="true" data-testid="settings-tab-emulator">Emulator</button>
+              <button type="button" class="native-settings-tab" data-settings-tab="sync" role="tab" aria-selected="false" data-testid="settings-tab-sync">Sync</button>
+              <button type="button" class="native-settings-tab" data-settings-tab="controller" role="tab" aria-selected="false" data-testid="settings-tab-controller">Phone Controller</button>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="emulator" role="tabpanel">
             <div class="native-card">
               <h2>Storage &amp; runtime</h2>
               <div class="native-facts">
@@ -97,16 +106,6 @@
               <div id="nativeGameSettingsSystems" class="native-system-tabs" role="tablist" aria-label="Game system"></div>
               <div id="nativeGameSettingsBody" class="native-settings-body"></div>
               <p id="nativeGameSettingsStatus" class="native-status" role="status"></p>
-            </div>
-            <div class="native-card" id="nativeSyncCard" data-testid="sync-settings" hidden>
-              <h2>Sync</h2>
-              <p class="native-muted">LAN Sync is a device-wide switch stored with the other application settings. It is never per-core and never stops the Phone Controller.</p>
-              <label class="native-settings-field"><input id="nativeLanSyncToggle" data-testid="lan-sync-toggle" type="checkbox"> LAN Sync</label>
-              <p class="native-muted">This offline app ships no LAN content-sync service yet, so no content type is advertised over the network. The switch gates native LAN sync when it is added and does not change the separate Phone Controller.</p>
-              <div class="native-facts">
-                <div class="native-fact"><span>Google Sync</span><strong>Coming later</strong></div>
-              </div>
-              <p id="nativeLanSyncStatus" class="native-muted" role="status"></p>
             </div>
             <div class="native-card" id="nativeBugReportCard" data-testid="bug-report">
               <h2>Report a bug</h2>
@@ -140,19 +139,119 @@
                 <li class="native-fact"><span>Pixelify Sans, Roboto Condensed</span><strong>SIL OFL 1.1</strong></li>
               </ul>
             </div>
-            <div class="native-card" id="nativeControllerCard" hidden>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="sync" role="tabpanel" hidden>
+            <div class="native-card" id="nativeSyncCard" data-testid="sync-settings" hidden>
+              <h2>LAN Sync</h2>
+              <p class="native-muted">Content sync between remembered AN3 devices on the same LAN. This switch records your preference on this device; nothing is advertised until a sync service is running.</p>
+              <label class="native-settings-field"><input id="nativeLanSyncToggle" data-testid="lan-sync-toggle" type="checkbox"> <span>Enable LAN Sync on this device</span></label>
+              <p id="nativeLanSyncStatus" class="native-muted" role="status">LAN Sync off</p>
+            </div>
+            <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync">
+              <h2>Account &amp; LAN Sync</h2>
+              <p class="native-muted">Sign in with your AN3 account, or play as a guest. Save data moves directly between remembered AN3 devices on the same LAN; it is not relayed through the AN3 server.</p>
+              <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
+                <label><input id="nativeSyncGuestMode" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
+                <label><input id="nativeSyncAccountMode" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
+              </div>
+              <form id="nativeAccountLogin" class="native-sync-login" hidden>
+                <label class="native-field"><span>AN3 username</span><input id="nativeAccountName" autocomplete="username"></label>
+                <label class="native-field"><span>Password</span><input id="nativeAccountPassword" type="password" autocomplete="current-password"></label>
+                <div class="native-settings-actions"><button id="nativeAccountLoginButton" class="button primary" type="submit">Sign in</button><button id="nativeAccountLogoutButton" class="button" type="button" hidden>Sign out</button></div>
+              </form>
+              <div class="native-facts">
+                <div class="native-fact"><span>Identity</span><strong id="nativeAccountStatus" role="status">Guest</strong></div>
+                <div class="native-fact"><span>LAN Sync</span><strong id="nativeSyncStatus" role="status">Starting</strong></div>
+              </div>
+              <div class="native-settings-actions">
+                <button id="nativeSyncStart" class="button primary" type="button">Start Hosting</button>
+                <button id="nativeSyncStop" class="button" type="button">Stop Hosting</button>
+              </div>
+              <p class="native-sync-code">LAN Sync pairing code: <strong id="nativeSyncCode">—</strong></p>
+              <label class="native-field"><span>Enter another device’s six-digit code</span><input id="nativeSyncPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeSyncJoin" class="button" type="button">Pair device</button>
+              <div id="nativeSyncPeers" class="native-sync-peers" aria-live="polite"></div>
+              <div id="nativeSyncConflicts" class="native-sync-peers" aria-live="polite"></div>
+              <div class="native-settings-actions">
+                <button id="nativeSyncLibrary" class="button primary" type="button">Sync library</button>
+                <span id="nativeSyncLibraryStatus" class="native-muted" role="status" aria-live="polite"></span>
+              </div>
+              <label class="native-settings-field native-sync-background"><input id="nativeSyncBackground" type="checkbox"> <span>Allow LAN reconnection while this app is open</span></label>
+              <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
+              <p id="nativeSyncMessage" class="native-status" role="status"></p>
+            </div>
+            <div class="native-card">
+              <h2>Cloud Sync</h2>
+              <p class="native-muted">Google Sync <strong>Coming later</strong>. Cloud accounts are not connected in this build; no cloud provider or credential is configured.</p>
+            </div>
+            </div>
+
+            <div class="native-settings-pane" data-settings-pane="controller" role="tabpanel" hidden>
+            <div class="native-card" id="nativeControllerCard">
               <h2>Phone Controller</h2>
               <p class="native-muted">Use a phone on the same network as a controller for the running game. The phone never receives the game or its saves.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" role="status">Off</strong></div>
                 <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
               </div>
-              <button id="nativeControllerStart" type="button" class="button primary">Start Controller Session</button>
-              <details class="native-advanced" id="nativeControllerAdvanced">
-                <summary>Advanced</summary>
-                <label class="native-field"><span>Controller server</span><input id="nativeControllerServer" type="url" value="http://192.0.2.8:8092" spellcheck="false" autocomplete="off"></label>
-                <p class="native-muted">Technical detail for this session. Normal play never needs this.</p>
-              </details>
+              <button id="nativeControllerStart" type="button" class="button primary">Start Hosting</button>
+              <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeControllerJoin" type="button" class="button">Join Host</button>
+              <div class="ctrl-phone-head" id="nativeControllerPadHead" hidden>
+                <label class="ctrl-layout-picker">Layout<select id="nativeControllerLayout">
+                  <option value="auto">Automatic</option>
+                  <option value="gba">GBA</option>
+                  <option value="nds">NDS</option>
+                  <option value="3ds">3DS</option>
+                  <option value="custom">Custom</option>
+                </select></label>
+                <label class="ctrl-layout-picker">Movement<select id="nativeControllerMovement">
+                  <option value="dpad">D-Pad</option>
+                  <option value="joystick">Analog Joystick</option>
+                  <option value="circular">Circular D-pad</option>
+                </select></label>
+              </div>
+              <section id="nativeControllerPad" class="ctrl-pad" hidden aria-label="Direct LAN controller pad">
+                <div class="ctrl-padbar"><span id="nativeControllerPadState" class="ctrl-state">Connected</span><button id="nativeControllerDisconnect" type="button">Disconnect</button></div>
+                <div class="ctrl-touchscreen" id="nativeControllerTouchscreen" data-role="touchscreen" hidden>Touch Screen</div>
+                <div class="ctrl-shoulders"><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="l">L</button><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="r">R</button></div>
+                <div class="ctrl-main">
+                  <div class="ctrl-dpad" data-role="dpad">
+                    <button type="button" class="ctrl-key dpad-up" data-native-controller-button="up" aria-label="Up">▲</button>
+                    <button type="button" class="ctrl-key dpad-left" data-native-controller-button="left" aria-label="Left">◀</button>
+                    <button type="button" class="ctrl-key dpad-right" data-native-controller-button="right" aria-label="Right">▶</button>
+                    <button type="button" class="ctrl-key dpad-down" data-native-controller-button="down" aria-label="Down">▼</button>
+                  </div>
+                  <div id="nativeControllerCircular" class="ctrl-circular" data-role="circular" role="group" aria-label="Circular D-pad" hidden>
+                    <span class="ctrl-circular-arrow up" data-dir="up">▲</span>
+                    <span class="ctrl-circular-arrow left" data-dir="left">◀</span>
+                    <span class="ctrl-circular-arrow right" data-dir="right">▶</span>
+                    <span class="ctrl-circular-arrow down" data-dir="down">▼</span>
+                  </div>
+                  <div class="ctrl-sticks" data-role="sticks">
+                    <span class="ctrl-stick" data-native-controller-stick="left" role="slider" aria-label="Left stick" tabindex="0"></span>
+                    <span class="ctrl-stick" data-native-controller-stick="right" role="slider" aria-label="Right stick" tabindex="0"></span>
+                  </div>
+                  <div class="ctrl-face">
+                    <button type="button" class="ctrl-key face-x" data-native-controller-button="x">X</button>
+                    <button type="button" class="ctrl-key face-y" data-native-controller-button="y">Y</button>
+                    <button type="button" class="ctrl-key face-a" data-native-controller-button="a">A</button>
+                    <button type="button" class="ctrl-key face-b" data-native-controller-button="b">B</button>
+                  </div>
+                </div>
+                <div class="ctrl-system"><button type="button" class="ctrl-key" data-native-controller-button="select">Select</button><button type="button" class="ctrl-key" data-native-controller-button="start">Start</button></div>
+                <div class="ctrl-utility">
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_down">Speed −</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_up">Speed +</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_save">Quick Save</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_load">Quick Load</button>
+                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
+                  <label class="ctrl-layout-picker ctrl-save-slot">Save slot<select id="nativeControllerSaveSlot"><option value="1">Slot 1</option><option value="2">Slot 2</option><option value="3">Slot 3</option><option value="4">Slot 4</option><option value="5">Slot 5</option><option value="6">Slot 6</option><option value="7">Slot 7</option><option value="8">Slot 8</option><option value="9">Slot 9</option><option value="10">Slot 10</option></select></label>
+                </div>
+              </section>
+              <p class="native-muted">Start makes this device the game host. Enter a six-digit code when this device is joining another AN3 host.</p>
+            </div>
             </div>
           </section>
 
@@ -174,8 +273,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong data-app-version="__AN3_VERSION__">__AN3_VERSION__</strong></div>
-                <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
+                <div class="native-fact"><span>Version</span><strong data-app-version="__AN3_VERSION__">__AN3_VERSION__</strong></div>                <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
           </section>
@@ -198,13 +296,19 @@
     <script src="/static/player-runtime.js?v=__AN3_VERSION__" defer></script>
     <script src="/static/renderer-worker.js?v=__AN3_VERSION__" defer></script>
     <script src="/static/nds-touch.js?v=__AN3_VERSION__" defer></script>
+    <script src="/static/input-actions.js?v=__AN3_VERSION__" defer></script>
     <script src="/static/controller-utility.js?v=__AN3_VERSION__" defer></script>
+    <script src="/static/lan-peer.js?v=__AN3_VERSION__" defer></script>
+    <!-- Keep the transfer boundary cache-busted independently of the product
+         version when a native bridge response shape changes. -->
+    <script src="/static/sync-transfer.js?v=__AN3_VERSION__-sync2" defer></script>
+    <script src="/native-account.js?v=__AN3_VERSION__" defer></script>
+    <script src="/native-sync.js?v=__AN3_VERSION__-sync2" defer></script>
     <script src="/static/player.js?v=__AN3_VERSION__" defer></script>
     <script src="/native-settings.js?v=__AN3_VERSION__" defer></script>
     <script src="/game-settings.js?v=__AN3_VERSION__" defer></script>
     <script src="/static/bug-report.js?v=__AN3_VERSION__" defer></script>
     <script src="/native-support.js?v=__AN3_VERSION__" defer></script>
     <script src="/native-app.js?v=__AN3_VERSION__" defer></script>
-    <script src="/android-staging.js?v=__AN3_VERSION__" defer></script>
-  </body>
+    <script src="/android-staging.js?v=__AN3_VERSION__" defer></script>  </body>
 </html>

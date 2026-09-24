@@ -85,10 +85,14 @@ int an3_native_load_state(unsigned slot, char* details, size_t details_length);
 int an3_native_export_state(const char* path, char* details, size_t details_length);
 int an3_native_import_state(const char* path, char* details, size_t details_length);
 
-// Applies one canonical Phone Controller utility action (QUICK_SAVE, SPEED_UP,
-// SPEED_DOWN, OPEN_MENU) to the running host by reusing the same operations the
-// on-screen controls invoke. Returns non-zero on success; `details` receives a
-// short human-readable status. Unknown actions fail instead of being ignored.
+// Applies one canonical Phone Controller utility action to the running host by
+// reusing the same operations the on-screen controls invoke. Quick save/load
+// use an explicit slot in the inclusive range 1..10.
+int an3_native_apply_utility_at_slot(const char* action,
+                                     unsigned slot,
+                                     char* details,
+                                     size_t details_length);
+// Compatibility wrapper for existing keyboard/UI callers: slot 1.
 int an3_native_apply_utility(const char* action, char* details, size_t details_length);
 
 void an3_native_set_input(uint32_t buttons,

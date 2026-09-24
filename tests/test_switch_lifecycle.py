@@ -33,9 +33,16 @@ def _first(candidates):
     return None
 
 
-def _running_companions():
-    result = subprocess.run(["pgrep", "-f", "an3_switch_companion"], capture_output=True, text=True)
-    return [line for line in result.stdout.split() if line.strip()]
+def _running_companions(path):
+    """Return only this checkout's companion processes."""
+
+    command_path = str(path)
+    resolved_path = str(path.resolve())
+    result = subprocess.run(["pgrep", "-af", "an3_switch_companion"], capture_output=True, text=True)
+    return [
+        line for line in result.stdout.splitlines()
+        if command_path in line or resolved_path in line
+    ]
 
 
 class SwitchLifecycleStressTests(unittest.TestCase):
@@ -70,20 +77,20 @@ class SwitchLifecycleStressTests(unittest.TestCase):
         return process.returncode, stdout
 
     def test_60_repeated_cycles_exit_cleanly_and_leave_no_orphans(self):
-        before = len(_running_companions())
+        before = len(_running_companions(self.companion))
         for index in range(5):
             code, stdout = self._session("status\nquit\n")
             self.assertEqual(code, 0, f"cycle {index} exited {code}")
             self.assertIn('"result":"PASS"', stdout)
-        self.assertEqual(len(_running_companions()), before, "a companion process was orphaned")
+        self.assertEqual(len(_running_companions(self.companion)), before, "a companion process was orphaned")
 
     def test_61_rapid_start_stop_is_safe(self):
         # Quitting immediately exercises the Eden early-shutdown race.
-        before = len(_running_companions())
+        before = len(_running_companions(self.companion))
         for _ in range(3):
             code, _ = self._session("quit\n")
             self.assertEqual(code, 0, "an immediate quit aborted or hung")
-        self.assertEqual(len(_running_companions()), before, "a companion process was orphaned")
+        self.assertEqual(len(_running_companions(self.companion)), before, "a companion process was orphaned")
 
     def test_62_companion_crash_then_restart(self):
         env = dict(os.environ)

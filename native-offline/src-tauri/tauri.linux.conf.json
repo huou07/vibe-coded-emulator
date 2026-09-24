@@ -1,7 +1,8 @@
 {
   "bundle": {
     "resources": {
-      "../vendor/runtime/linux-x86_64/": "runtime/linux-x86_64/"
+      "../vendor/runtime/linux-x86_64/": "runtime/linux-x86_64/",
+      "../vendor/switch/linux-x86_64/": "switch/linux-x86_64/"
     },
     "linux": {
       "deb": {
@@ -9,9 +10,17 @@
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
           "libsdl2-2.0-0",
+          "libusb-1.0-0",
+          "libsdl3-0",
+          "libssl3 | libssl3t64",
+          "zlib1g",
+          "libbrotli1",
+          "libavcodec61",
+          "libavutil59",
+          "libswresample5",
+          "libasound2 | libasound2t64",
           "libvulkan1",
-          "libgl1",
-          "libasound2"
+          "libgl1"
         ]
       }
     }

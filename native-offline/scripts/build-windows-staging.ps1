@@ -33,6 +33,15 @@ foreach ($name in @('mgba_libretro.dll', 'melondsds_libretro.dll', 'azahar_libre
   if ($offset -lt 0 -or $offset + 6 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $offset) -ne 0x4550 -or [BitConverter]::ToUInt16($bytes, $offset + 4) -ne 0x8664) { throw "WINDOWS_EXE=BLOCKED: $name is not a Windows x64 PE binary." }
 }
 Write-Output 'WINDOWS_SDK_AND_CORE_INTEGRITY=PASS'
+$edenRoot = Join-Path $nativeRoot 'vendor/switch/windows-x64'
+if (!(Test-Path "$edenRoot/manifest.json") -or !(Test-Path "$edenRoot/an3_switch_companion.exe")) {
+  throw 'WINDOWS_EXE=BLOCKED: verified Eden Windows companion has not been staged.'
+}
+$edenManifest = Get-Content "$edenRoot/manifest.json" -Raw | ConvertFrom-Json
+if ($edenManifest.platform -ne 'Windows x64' -or $edenManifest.bridgeAbi -ne 3) { throw 'WINDOWS_EXE=BLOCKED: wrong Eden Windows manifest.' }
+$edenBinary = Join-Path $edenRoot 'an3_switch_companion.exe'
+if ((Get-FileHash $edenBinary -Algorithm SHA256).Hash.ToLowerInvariant() -ne $edenManifest.sha256) { throw 'WINDOWS_EXE=BLOCKED: Eden Windows companion integrity failed.' }
+Write-Output 'WINDOWS_EDEN_COMPANION_INTEGRITY=PASS'
 # Core assets and a source branch alone cannot establish native integration.
 # Verify the built player, its dependency closure, and the source it used.
 $runtimeRoot = Join-Path $nativeRoot 'vendor/runtime/windows-x64'

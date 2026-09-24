@@ -17,6 +17,9 @@
   // Blob payload unchanged. Extending the public range makes previously
   // hidden slot-5 records readable again without deleting or rewriting them.
   const QUICK_SAVE_SLOTS = Object.freeze(Array.from({length: 10}, (_, index) => index + 1));
+  // Mirrors the native host's 64 MiB safety limit so one runaway record cannot
+  // consume the whole device quota. Empty states are always rejected.
+  const MAX_STATE_BYTES = 64 * 1024 * 1024;
   const rendererValues = new Set(["webgpu", "webgl2"]);
   const rendererStorageKey = "an3-presentation-renderer-v1";
   const saveRendererPreference = value => {
@@ -215,6 +218,42 @@
     }
   }
 
+  // Shared state-byte validation. The native host enforces the same 64 MiB
+  // ceiling before it serialises a state, so a core cannot persist a record
+  // that the native path would refuse to read back.
+  const validateStateBytes = (bytes, label = "Save state") => {
+    if (!bytes || !bytes.byteLength) throw new Error(`${label} is empty`);
+    if (bytes.byteLength > MAX_STATE_BYTES) throw new Error(`${label} exceeds the 64 MiB safety limit.`);
+    return bytes;
+  };
+
+  // The autosave record stores this digest beside the bytes so a truncated or
+  // otherwise corrupted record can be rejected before it reaches loadState.
+  const stateDigest = async bytes => {
+    validateStateBytes(bytes, "Save state");
+    try {
+      if (globalThis.crypto?.subtle?.digest) {
+        const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+        return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+      }
+    } catch (_) {}
+    // Bounded fallback: length plus byte samples, never a full O(n) scan.
+    let hash = bytes.length >>> 0;
+    const step = Math.max(1, Math.floor(bytes.length / 256));
+    for (let index = 0; index < bytes.length; index += step) hash = (hash * 31 + bytes[index]) >>> 0;
+    return `s${bytes.length}:${hash.toString(16)}`;
+  };
+
+  const verifyAutoRecord = async record => {
+    if (!record?.state) throw new Error("Autosave is unavailable");
+    const bytes = validateStateBytes(new Uint8Array(await record.state.arrayBuffer()), "Autosave");
+    if (record.digest) {
+      const digest = await stateDigest(bytes);
+      if (digest !== record.digest) throw new Error("Autosave is corrupted");
+    }
+    return bytes;
+  };
+
   class QuickSaveManager {
     constructor(slug, databaseName = QUICK_SAVE_DATABASE, storeName = QUICK_SAVE_STORE) {
       this.slug = String(slug || "");
@@ -290,6 +329,7 @@
 
     async put(slot, bytes, updatedAt = Date.now()) {
       slot = this.assertSlot(slot);
+      validateStateBytes(bytes);
       const database = await this.open();
       try {
         await new Promise((resolve, reject) => {
@@ -326,6 +366,7 @@
     // A single IndexedDB put is atomic per record, so the previous valid
     // autosave is only replaced after the new bytes are fully committed.
     async putAuto(bytes, updatedAt = Date.now(), digest = null) {
+      validateStateBytes(bytes, "Autosave");
       const database = await this.open();
       try {
         await new Promise((resolve, reject) => {
@@ -533,6 +574,10 @@
     SaveStateManager,
     QuickSaveManager,
     QUICK_SAVE_SLOTS,
+    MAX_STATE_BYTES,
+    validateStateBytes,
+    stateDigest,
+    verifyAutoRecord,
     FramePacingMonitor,
     queryRendererPreference,
     saveRendererPreference,

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package space.an3tocom.offline
 
+import org.json.JSONObject
+
 /**
  * App-scoped phone-controller host shared by every surface.
  *
@@ -13,19 +15,19 @@ package space.an3tocom.offline
  */
 object An3ControllerHost {
     interface Sink {
-        /** False while the game cannot accept input (not running, menu open). */
+        /** False while the game cannot accept input (for example, not running). */
         fun canApply(): Boolean
         fun button(index: Int, pressed: Boolean)
         fun analog(x: Float, y: Float)
         /** Normalized 0..1 stylus position; pressed=false is a release. */
         fun touch(x: Float, y: Float, pressed: Boolean) {}
-        /** One-shot canonical utility action (QUICK_SAVE/SPEED_UP/SPEED_DOWN/OPEN_MENU). */
-        fun utility(action: String) {}
+        /** One-shot canonical utility action (QUICK_SAVE/QUICK_LOAD/SPEED_UP/SPEED_DOWN/OPEN_MENU). */
+        fun utility(action: String, slot: Int) {}
         /** The running system (gba/nds/3ds) so the phone picks the right layout. */
         fun system(): String? = null
     }
 
-    private val empty = ControllerStatus(false, false, "", false, 0, 0, "", "")
+    private val empty = ControllerStatus(false, "off", false, "", false, 0, 0, "", "")
 
     @Volatile private var sink: Sink? = null
     @Volatile private var client: ControllerClient? = null
@@ -38,11 +40,10 @@ object An3ControllerHost {
     }
 
     @Synchronized
-    fun start(baseUrl: String) {
+    fun start() {
         if (status.running) return
         status = empty
         val created = ControllerClient(
-            baseUrl = baseUrl,
             onStatus = { update ->
                 status = update
                 if (!update.running && update.error.isNotEmpty()) {
@@ -54,10 +55,39 @@ object An3ControllerHost {
             onAnalog = { x, y -> sink?.analog(x, y) },
             systemProvider = { sink?.system() },
             onTouch = { x, y, pressed -> sink?.touch(x, y, pressed) },
-            onUtility = { action -> sink?.utility(action) },
+            onUtility = { action, slot -> sink?.utility(action, slot) },
         )
         client = created
         created.start()
+    }
+
+    @Synchronized
+    fun join(code: String) {
+        if (status.running) return
+        status = empty
+        val created = ControllerClient(
+            onStatus = { update ->
+                status = update
+                if (!update.running && update.error.isNotEmpty()) client = null
+            },
+            shouldApply = { sink?.canApply() == true },
+            onButton = { index, pressed -> sink?.button(index, pressed) },
+            onAnalog = { x, y -> sink?.analog(x, y) },
+            systemProvider = { sink?.system() },
+            onTouch = { x, y, pressed -> sink?.touch(x, y, pressed) },
+            onUtility = { action, slot -> sink?.utility(action, slot) },
+        )
+        client = created
+        created.join(code)
+    }
+
+    fun send(state: String): ControllerStatus {
+        val current = client ?: return status.copy(error = "No direct controller session is active.")
+        return try {
+            current.sendState(JSONObject(state))
+        } catch (error: Exception) {
+            status.copy(error = error.message ?: "Invalid controller state.")
+        }
     }
 
     @Synchronized

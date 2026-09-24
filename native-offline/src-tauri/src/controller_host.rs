@@ -1,16 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Staging-only phone-controller host for the desktop shells.
+//! Legacy development/test phone-controller client for the desktop shells.
 //!
-//! The desktop app is the pairing host: it creates a session on the configured
-//! staging controller server, polls the host-state endpoint, and feeds the
-//! phone's frame into the same `set_native_input` path the in-app controls use.
+//! This module is retained only for explicit development/test adapters. The
+//! installed desktop app uses `lan_host` for direct peer sessions.
 //! The same module serves macOS, Linux, and Windows; the platform difference is
 //! already handled by `set_native_input`.
 //!
-//! The controller service is a LAN HTTP origin, so this client speaks plain
-//! HTTP/1.1 over a TCP socket and never carries TLS. The raw host token stays
-//! inside this module and is never logged or persisted.
+//! Its plain HTTP implementation must not be selected by normal product UI.
 
 use serde::Serialize;
 use std::{
@@ -25,6 +22,7 @@ use std::{
 };
 
 use crate::azahar::{set_native_input, NativeInput};
+use crate::host_actions::{self, HostAction, ReplayGuard};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 const IO_TIMEOUT: Duration = Duration::from_secs(4);
@@ -70,7 +68,10 @@ pub struct ControllerStatus {
 }
 
 type InputSink = Arc<dyn Fn(NativeInput) + Send + Sync>;
-type UtilitySink = Arc<dyn Fn(&str) + Send + Sync>;
+/// Executes one canonical utility action and reports whether the host actually
+/// performed it. Returning `false` keeps an unsupported action from being
+/// acknowledged as successful.
+pub(crate) type UtilitySink = Arc<dyn Fn(&HostAction) -> bool + Send + Sync>;
 
 struct Host {
     stop: Arc<AtomicBool>,
@@ -103,39 +104,34 @@ fn sink_default() -> InputSink {
     })
 }
 
-fn utility_sink_default() -> UtilitySink {
-    Arc::new(|action| {
+pub(crate) fn utility_sink_default() -> UtilitySink {
+    Arc::new(|command| {
         // Route the canonical action to the platform host's existing native
-        // operation (quick save, speed step, menu). A host that cannot apply it
-        // reports the reason on stderr instead of pretending the action worked.
-        if let Err(reason) = crate::azahar::apply_utility(action) {
-            eprintln!("AN3 controller utility '{action}' failed: {reason}");
+        // operation (quick save/load, speed step, menu). The host reports
+        // whether it applied the action, so an unsupported action is never
+        // acknowledged as successful.
+        match crate::azahar::apply_utility_at_slot(&command.action, command.slot) {
+            Ok(()) => true,
+            Err(reason) => {
+                eprintln!("AN3 controller utility '{}' failed: {reason}", command.action);
+                false
+            }
         }
     })
 }
 
-/// Apply each not-yet-seen utility action once and return the newest sequence.
-/// The per-press sequence makes retries and replayed frames idempotent.
+/// Apply each not-yet-seen host action once and return the newest sequence that
+/// the host actually executed. Direct peers identify commands with
+/// `command_id`; legacy staging frames fall back to their numeric sequence.
+///
+/// Both direct-LAN (`u`) and staging-server (`utilities`) frame shapes carry
+/// `{action, command_id, slot, sequence}` entries.
 pub(crate) fn dispatch_utilities(
     payload: &serde_json::Value,
-    last: &mut i64,
+    replay: &mut ReplayGuard,
     sink: &UtilitySink,
 ) -> i64 {
-    if let Some(entries) = payload.get("utilities").and_then(|value| value.as_array()) {
-        for entry in entries {
-            let sequence = entry.get("sequence").and_then(|value| value.as_i64()).unwrap_or(0);
-            if sequence <= *last {
-                continue;
-            }
-            *last = sequence;
-            if let Some(action) = entry.get("action").and_then(|value| value.as_str()) {
-                if !action.is_empty() {
-                    sink(action);
-                }
-            }
-        }
-    }
-    *last
+    host_actions::dispatch(payload, replay, &|command| sink(command))
 }
 
 fn set_error(slot: &Arc<Mutex<String>>, message: impl Into<String>) {
@@ -231,7 +227,7 @@ mod button_map_tests {
 fn parse_base(base: &str) -> Result<(String, u16), String> {
     let trimmed = base.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err("Set the controller server URL (for example http://192.0.2.8:8092).".into());
+        return Err("Set an explicit development controller fixture URL.".into());
     }
     let rest = trimmed
         .strip_prefix("http://")
@@ -330,7 +326,7 @@ pub(crate) fn start_with(base_url: String, sink: InputSink, utility_sink: Utilit
     let ack_token = host_token.clone();
     let handle = std::thread::spawn(move || {
         let mut last_acked: i64 = -1;
-        let mut last_utility: i64 = 0;
+        let mut last_utility = ReplayGuard::default();
         let mut last_utility_acked: i64 = 0;
         while !thread_stop.load(Ordering::Relaxed) {
             match http_request(&thread_base, "GET", &query, None) {
@@ -389,7 +385,7 @@ pub(crate) fn start_with(base_url: String, sink: InputSink, utility_sink: Utilit
                         sink(frame_input(&serde_json::Value::Null));
                         thread_input_active.store(false, Ordering::Relaxed);
                         last_acked = -1;
-                        last_utility = 0;
+                        last_utility.reset();
                         last_utility_acked = 0;
                     }
                 }
@@ -592,7 +588,10 @@ mod tests {
     fn utilities_dispatch_once_and_track_the_newest_sequence() {
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
-        let sink: UtilitySink = Arc::new(move |action| collector.lock().unwrap().push(action.to_string()));
+        let sink: UtilitySink = Arc::new(move |action| {
+            collector.lock().unwrap().push(action.action.clone());
+            true
+        });
         let payload = serde_json::json!({
             "utilities": [
                 {"action": "quick_save", "sequence": 2},
@@ -601,10 +600,10 @@ mod tests {
                 {"action": "open_menu", "sequence": 1}
             ]
         });
-        let mut last = 0i64;
+        let mut last = ReplayGuard::default();
         let newest = dispatch_utilities(&payload, &mut last, &sink);
         assert_eq!(newest, 3);
-        assert_eq!(seen.lock().unwrap().clone(), vec!["quick_save", "speed_up"]);
+        assert_eq!(seen.lock().unwrap().clone(), vec!["QUICK_SAVE", "SPEED_UP"]);
         // A retried/duplicated frame must not repeat the side effects.
         dispatch_utilities(&payload, &mut last, &sink);
         assert_eq!(seen.lock().unwrap().len(), 2);
@@ -616,7 +615,7 @@ mod tests {
     fn only_canonical_utility_actions_are_dispatchable() {
         assert_eq!(
             crate::azahar::UTILITY_ACTIONS,
-            &["QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"]
+            &["QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"]
         );
         for action in crate::azahar::UTILITY_ACTIONS {
             assert!(crate::azahar::is_known_utility(action));
@@ -632,23 +631,24 @@ mod tests {
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
         let sink: UtilitySink =
-            Arc::new(move |action| collector.lock().unwrap().push(action.to_string()));
+            Arc::new(move |action| { collector.lock().unwrap().push(action.action.clone()); true });
         let payload = serde_json::json!({
             "utilities": [
                 {"action": "QUICK_SAVE", "sequence": 1},
-                {"action": "SPEED_UP", "sequence": 2},
-                {"action": "SPEED_DOWN", "sequence": 3},
-                {"action": "OPEN_MENU", "sequence": 4}
+                {"action": "QUICK_LOAD", "sequence": 2},
+                {"action": "SPEED_UP", "sequence": 3},
+                {"action": "SPEED_DOWN", "sequence": 4},
+                {"action": "OPEN_MENU", "sequence": 5}
             ]
         });
-        let mut last = 0i64;
-        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 4);
+        let mut last = ReplayGuard::default();
+        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 5);
         assert_eq!(
             seen.lock().unwrap().clone(),
-            vec!["QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"]
+            vec!["QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"]
         );
         dispatch_utilities(&payload, &mut last, &sink);
-        assert_eq!(seen.lock().unwrap().len(), 4, "a retry must not repeat a one-shot action");
+        assert_eq!(seen.lock().unwrap().len(), 5, "a retry must not repeat a one-shot action");
     }
 
     #[test]
@@ -656,23 +656,47 @@ mod tests {
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
         let sink: UtilitySink =
-            Arc::new(move |action| collector.lock().unwrap().push(action.to_string()));
+            Arc::new(move |action| { collector.lock().unwrap().push(action.action.clone()); true });
         let payload = serde_json::json!({
             "utilities": [
                 {"action": "QUICK_SAVE", "sequence": 5},
                 {"action": "SPEED_UP", "sequence": 5}
             ]
         });
-        let mut last = 0i64;
+        let mut last = ReplayGuard::default();
         dispatch_utilities(&payload, &mut last, &sink);
         assert_eq!(seen.lock().unwrap().clone(), vec!["QUICK_SAVE"]);
+    }
+
+    #[test]
+    fn command_ids_allow_same_sequence_and_preserve_save_slots() {
+        let seen: Arc<Mutex<Vec<(String, u8)>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: UtilitySink = Arc::new(move |action| {
+            collector.lock().unwrap().push((action.action.clone(), action.slot));
+            true
+        });
+        let payload = serde_json::json!({
+            "u": [
+                {"action": "QUICK_SAVE", "sequence": 7, "command_id": "phone-a", "slot": 3},
+                {"action": "QUICK_LOAD", "sequence": 7, "command_id": "phone-b", "slot": 10}
+            ]
+        });
+        let mut replay = ReplayGuard::default();
+        assert_eq!(dispatch_utilities(&payload, &mut replay, &sink), 7);
+        assert_eq!(
+            seen.lock().unwrap().clone(),
+            vec![("QUICK_SAVE".into(), 3), ("QUICK_LOAD".into(), 10)]
+        );
+        assert_eq!(dispatch_utilities(&payload, &mut replay, &sink), 0);
+        assert_eq!(seen.lock().unwrap().len(), 2);
     }
 
     fn utility_collector() -> (UtilitySink, Arc<Mutex<Vec<String>>>) {
         let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let collector = seen.clone();
         (
-            Arc::new(move |action| collector.lock().unwrap().push(action.to_string())),
+            Arc::new(move |action| { collector.lock().unwrap().push(action.action.clone()); true }),
             seen,
         )
     }
@@ -788,12 +812,64 @@ mod tests {
     }
 
     #[test]
+    fn an_unsupported_utility_action_is_never_acknowledged() {
+        let calls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let sink: UtilitySink = Arc::new(move |action| {
+            seen.lock().unwrap().push(action.action.clone());
+            // Simulate a platform that can only perform speed_up.
+            action.action == "SPEED_UP"
+        });
+        let payload = serde_json::json!({
+            "u": [
+                {"action": "quick_save", "sequence": 1},
+                {"action": "speed_up", "sequence": 2}
+            ]
+        });
+        let mut last = ReplayGuard::default();
+        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 2);
+        assert_eq!(calls.lock().unwrap().len(), 2, "both actions are attempted once");
+
+        // A fully unsupported action must not be reported as executed, while the
+        // replay guard still advances so a retry cannot re-run it.
+        let mut last = ReplayGuard::default();
+        let payload = serde_json::json!({ "u": [{"action": "open_menu", "sequence": 5}] });
+        let refusing: UtilitySink = Arc::new(|_| false);
+        assert_eq!(dispatch_utilities(&payload, &mut last, &refusing), 0);
+        let accepting: UtilitySink = Arc::new(|_| true);
+        assert_eq!(
+            dispatch_utilities(&payload, &mut last, &accepting),
+            0,
+            "a refused command is still consumed by the replay guard"
+        );
+    }
+
+    #[test]
+    fn the_direct_lan_utility_frame_shape_is_accepted() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let collector = seen.clone();
+        let sink: UtilitySink = Arc::new(move |action| {
+            collector.lock().unwrap().push(action.action.clone());
+            true
+        });
+        let payload = serde_json::json!({
+            "s": 4,
+            "b": [],
+            "a": [0, 0, 0, 0],
+            "u": [{"action": "QUICK_SAVE", "sequence": 1}]
+        });
+        let mut last = ReplayGuard::default();
+        assert_eq!(dispatch_utilities(&payload, &mut last, &sink), 1);
+        assert_eq!(seen.lock().unwrap().clone(), vec!["QUICK_SAVE"]);
+    }
+
+    #[test]
     fn parse_base_requires_plain_http_and_keeps_the_port() {
-        assert_eq!(parse_base("http://192.0.2.8:8092").unwrap(), ("192.0.2.8".into(), 8092));
+        assert_eq!(parse_base("http://127.0.0.1:8092").unwrap(), ("127.0.0.1".into(), 8092));
         assert_eq!(parse_base("http://host").unwrap(), ("host".into(), 80));
         assert!(parse_base("https://relay.example").is_err());
         assert!(parse_base("").is_err());
-        assert!(parse_base("192.0.2.8:8092").is_err());
+        assert!(parse_base("127.0.0.1:8092").is_err());
     }
 
     #[test]
@@ -900,7 +976,7 @@ mod tests {
 
     /// Live probe against a real controller server (staging). Ignored by default
     /// because it needs the network; run with:
-    ///   AN3_CONTROLLER_TEST_BASE=http://192.0.2.8:8092 \
+    ///   AN3_CONTROLLER_TEST_BASE=http://127.0.0.1:8092 \
     ///     cargo test --lib live_staging -- --ignored --nocapture
     #[test]
     #[ignore]

@@ -36,6 +36,7 @@ native-offline/src-tauri/gen/android/local.properties
 
 # Release installer binaries (published via the catalog, not source commits)
 native-offline/releases/*.apk
+native-offline/releases/*.aab
 native-offline/releases/*.deb
 native-offline/releases/*.dmg
 native-offline/releases/*.flatpak

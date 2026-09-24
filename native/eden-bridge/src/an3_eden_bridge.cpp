@@ -97,9 +97,28 @@ an3_eden_status an3_eden_create(an3_eden_core** out_core) {
     core->magic = AN3_EDEN_CORE_MAGIC;
     core->state = State::Created;
     core->backend_state = nullptr;
+    core->platform_surface = nullptr;
     core->last_error[0] = '\0';
     *out_core = core;
     return AN3_EDEN_OK;
+}
+
+an3_eden_status an3_eden_set_android_surface(an3_eden_core* core,
+                                              void* native_window) {
+    if (!valid(core)) {
+        return AN3_EDEN_ERR_INVALID_HANDLE;
+    }
+    if (core->state != State::Created || native_window == nullptr) {
+        return core->state != State::Created ? AN3_EDEN_ERR_BUSY
+                                              : AN3_EDEN_ERR_INVALID_ARGUMENT;
+    }
+#if defined(__ANDROID__)
+    core->platform_surface = native_window;
+    return AN3_EDEN_OK;
+#else
+    (void)native_window;
+    return AN3_EDEN_ERR_UNSUPPORTED;
+#endif
 }
 
 void an3_eden_destroy(an3_eden_core* core) {

@@ -53,7 +53,7 @@ class InputActionSchemaTests(unittest.TestCase):
 
     def test_utility_actions_are_one_shot_and_disjoint(self):
         actions = set(self.schema["utility"])
-        self.assertEqual(actions, {"QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"})
+        self.assertEqual(actions, {"QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"})
         self.assertFalse(actions & set(self.schema["buttons"]))
         for entry in self.schema["utility"].values():
             self.assertTrue(entry["wire"])
@@ -89,7 +89,7 @@ class AndroidInputWiringTests(unittest.TestCase):
     def test_kotlin_adapter_exposes_canonical_data(self):
         kotlin = source(KOTLIN)
         self.assertIn("const val UP = 4", kotlin)
-        self.assertIn('val utilityActions: List<String> = listOf("QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU")', kotlin)
+        self.assertIn('val utilityActions: List<String> = listOf("QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU")', kotlin)
         self.assertIn("fun circularDirections(dx: Float, dy: Float, previous: String?): CircularResult", kotlin)
         self.assertIn("pressedCardinals", kotlin)
 
@@ -98,18 +98,20 @@ class AndroidInputWiringTests(unittest.TestCase):
         self.assertIn("NativeCircularDpad(activity)", overlay)
         self.assertIn("NativeInputActions.circularDirections", source(CIRCULAR))
         self.assertIn("circularMode", overlay)
-        self.assertIn("fun utility(action: String)", overlay)
-        self.assertIn('"QUICK_SAVE" -> send("save", quickSaveSlot().toString())', overlay)
+        self.assertIn("fun utility(action: String, slot: Int = quickSaveSlot())", overlay)
+        self.assertIn('send("save", selected.toString())', overlay)
+        self.assertIn('"QUICK_LOAD" -> send("load", slot.coerceIn(1, 10).toString())', overlay)
+        self.assertIn("KEYCODE_DPAD_UP", overlay)
         self.assertNotIn('if (k == "pad")', overlay)
 
     def test_phone_sink_dispatches_utilities_to_the_existing_overlay(self):
         host = source(HOST)
-        self.assertIn("fun utility(action: String)", host)
+        self.assertIn("fun utility(action: String, slot: Int)", host)
         service = source(SERVICE)
         self.assertIn('putString(KEY_KIND, "utility")', service)
         activity = source(ACTIVITY)
         self.assertIn('"utility" ->', activity)
-        self.assertIn("overlay.utility(it)", activity)
+        self.assertIn("overlay.utility(it, data.getInt(ControllerHostService.KEY_SLOT, 1))", activity)
 
     def test_controller_client_deduplicates_utilities(self):
         client = source(CLIENT)
@@ -117,12 +119,15 @@ class AndroidInputWiringTests(unittest.TestCase):
         self.assertIn("dispatchUtilities", client)
         self.assertIn('put("utilitySequence", lastUtility)', client)
         self.assertIn("if (sequence <= lastUtility) continue", client)
+        self.assertIn("command_id", client)
+        self.assertIn("slot !in 1..10", client)
 
 
 class PhoneControllerWiringTests(unittest.TestCase):
     def test_phone_page_has_utility_buttons_and_no_pad_toggle(self):
         page = source(APP)
         self.assertIn('data-util="quick_save"', page)
+        self.assertIn('data-util="quick_load"', page)
         self.assertIn('data-util="speed_up"', page)
         self.assertIn('data-util="speed_down"', page)
         self.assertIn('data-util="open_menu"', page)
@@ -153,13 +158,34 @@ class ControllerUtilityNetcodeTests(unittest.TestCase):
         return session, token
 
     def test_utility_round_trips_on_the_wire(self):
-        state = nc.ControllerState(sequence=4, buttons=frozenset(), utility_action="quick_save", utility_sequence=2)
+        state = nc.ControllerState(
+            sequence=4,
+            buttons=frozenset(),
+            utility_action="quick_save",
+            utility_sequence=2,
+            utility_command_id="phone-session-2",
+            utility_slot=10,
+        )
         wire = state.to_wire()
         self.assertEqual(wire["u"], "quick_save")
         self.assertEqual(wire["us"], 2)
+        self.assertEqual(wire["command_id"], "phone-session-2")
+        self.assertEqual(wire["slot"], 10)
         restored = nc.ControllerState.from_wire(wire)
         self.assertEqual(restored.utility_action, "quick_save")
         self.assertEqual(restored.utility_sequence, 2)
+        self.assertEqual(restored.utility_command_id, "phone-session-2")
+        self.assertEqual(restored.utility_slot, 10)
+
+    def test_explicit_command_ids_are_replay_identity(self):
+        session, token = self._paired()
+        session.accept_state({"s": 1, "b": [], "u": "quick_save", "us": 4, "command_id": "phone-a", "slot": 3}, token=token)
+        session.accept_state({"s": 2, "b": [], "u": "quick_load", "us": 4, "command_id": "phone-b", "slot": 10}, token=token)
+        session.accept_state({"s": 3, "b": [], "u": "quick_save", "us": 4, "command_id": "phone-a", "slot": 3}, token=token)
+        pending = session.pending_utilities()
+        self.assertEqual([(item["action"], item["slot"], item["command_id"]) for item in pending], [
+            ("quick_save", 3, "phone-a"), ("quick_load", 10, "phone-b")
+        ])
 
     def test_unknown_utility_names_are_ignored(self):
         state = nc.ControllerState.from_wire({"s": 1, "b": [], "u": "evil_command", "us": 9})

@@ -34,6 +34,7 @@ class ControllerHostService : Service() {
         const val KEY_BUTTON = "button"
         const val KEY_PRESSED = "pressed"
         const val KEY_ACTION = "action"
+        const val KEY_SLOT = "slot"
         const val KEY_X = "x"
         const val KEY_Y = "y"
         const val KEY_MENU = "menu"
@@ -47,7 +48,9 @@ class ControllerHostService : Service() {
     private var activeSystem: String? = null
 
     private val sink = object : An3ControllerHost.Sink {
-        override fun canApply(): Boolean = game != null && !menuOpen
+        // Menu navigation is also delivered through the game process; the
+        // overlay consumes those button events while it is open.
+        override fun canApply(): Boolean = game != null
         override fun button(index: Int, pressed: Boolean) = forward(
             Bundle().apply { putString(KEY_KIND, "button"); putInt(KEY_BUTTON, index); putBoolean(KEY_PRESSED, pressed) },
         )
@@ -57,8 +60,8 @@ class ControllerHostService : Service() {
         override fun touch(x: Float, y: Float, pressed: Boolean) = forward(
             Bundle().apply { putString(KEY_KIND, "touch"); putFloat(KEY_X, x); putFloat(KEY_Y, y); putBoolean(KEY_PRESSED, pressed) },
         )
-        override fun utility(action: String) = forward(
-            Bundle().apply { putString(KEY_KIND, "utility"); putString(KEY_ACTION, action) },
+        override fun utility(action: String, slot: Int) = forward(
+            Bundle().apply { putString(KEY_KIND, "utility"); putString(KEY_ACTION, action); putInt(KEY_SLOT, slot) },
         )
         override fun system(): String? = if (game != null) activeSystem else null
     }
@@ -106,8 +109,7 @@ class ControllerHostService : Service() {
             MSG_DETACH -> { game = null; activeSystem = null }
             MSG_MENU -> menuOpen = message.data?.getBoolean(KEY_MENU) ?: false
             MSG_START -> {
-                val server = message.data?.getString("server") ?: ""
-                if (server.isNotBlank()) An3ControllerHost.start(server)
+                An3ControllerHost.start()
                 sendStatus()
             }
             MSG_STOP -> {

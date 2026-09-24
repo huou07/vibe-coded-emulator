@@ -1,6 +1,6 @@
 [package]
 name = "an3-offline-native"
-version = "2.3.0"
+version = "3.3.0"
 description = "VibeCodedEmulator local-ROM offline player"
 authors = ["Vibe Coded Emulator"]
 edition = "2021"
@@ -8,6 +8,12 @@ edition = "2021"
 [lib]
 name = "an3_offline_native"
 crate-type = ["lib", "cdylib", "staticlib"]
+
+# Release artifacts must not embed local Rust checkout paths in DWARF data.
+# Keep the native ABI and symbols needed by the app, but strip debuginfo in the
+# Cargo-produced shared library before it is copied into desktop/Android apps.
+[profile.release]
+strip = "debuginfo"
 
 [features]
 # Test-only structured UI control bridge (loopback, token-gated). Never enabled
@@ -32,3 +38,4 @@ hkdf = "0.12"
 hmac = "0.12"
 p256 = { version = "0.13", features = ["ecdh"] }
 sha2 = "0.10"
+socket2 = { version = "0.6", features = ["all"] }

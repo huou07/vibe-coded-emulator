@@ -288,6 +288,7 @@
     debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
     setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
     coreBooted = true;
+    updateSaveSyncButton();
     updatePlaybackReadiness();
     debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
     playerSession?.framePacing.start();
@@ -298,6 +299,7 @@
           ? `WebGPU was requested; the effective backend is ${status.effective}.`
           : `Đã yêu cầu WebGPU; backend thực tế là ${status.effective}.`);
       }).catch(error => showNotice(error.message || String(error), true));
+      restoreLocalGameSave();
     }
     if (config.mode !== "preload") queueTvDiscovery();
     reportPreload(true);
@@ -1036,6 +1038,115 @@
   }
 
   let gameStarted = false;
+  const syncSaveFileButton = document.getElementById("syncSaveFile");
+  const syncSaveConflictBox = document.getElementById("syncSaveConflicts");
+  const syncSaveIdentity = () => ({
+    core: config.roomSignature?.core || emulatorSystem,
+    gameId: config.slug,
+    romHash: config.roomSignature?.romHash || "",
+  });
+  const syncSaveSettings = async () => {
+    const nativeSync = globalThis.AN3NativeSync;
+    if (nativeSync?.transport) {
+      return {mode: "lan", content: {save: true}, transport: nativeSync.transport, context: null};
+    }
+    const transport = globalThis.AN3LanPeerTransport;
+    if (!transport) throw new Error(config.lang === "en" ? "Direct LAN sync is available in the installed AN3 app." : "Đồng bộ LAN trực tiếp cần ứng dụng AN3 đã cài đặt.");
+    return {mode: "lan", content: {save: true}, transport, context: null};
+  };
+  const updateSaveSyncButton = () => {
+    const manager = window.EJS_emulator?.gameManager;
+    const romHash = syncSaveIdentity().romHash;
+    const hasFullRomIdentity = /^(?:sha256:)?[a-f0-9]{64}$/i.test(String(romHash || ""));
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave || (!globalThis.AN3LanPeerTransport && !globalThis.AN3NativeSync?.transport);
+  };
+  const drawSaveSyncConflicts = conflicts => {
+    if (!syncSaveConflictBox) return;
+    syncSaveConflictBox.innerHTML = "";
+    if (!conflicts?.length) { syncSaveConflictBox.hidden = true; return; }
+    const title = document.createElement("h3");
+    title.textContent = config.lang === "en" ? "Save set conflict" : "Xung đột nhóm tệp save";
+    syncSaveConflictBox.appendChild(title);
+    conflicts.forEach(conflict => {
+      const card = document.createElement("div");
+      card.className = "sync-conflict";
+      const label = document.createElement("strong");
+      const set = conflict.local || conflict.remote || {};
+      const memberCount = Number(set.memberCount) || (Array.isArray(set.members) ? set.members.length : 1);
+      label.textContent = config.lang === "en"
+        ? `Save set · ${set.gameId || config.slug} · ${memberCount} file${memberCount === 1 ? "" : "s"}`
+        : `Nhóm save · ${set.gameId || config.slug} · ${memberCount} tệp`;
+      card.appendChild(label);
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      [["local", "Keep this device"], ["remote", "Use other device"], ["both", "Keep Both"]].forEach(choice => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button";
+        button.textContent = choice[1];
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              kind: "save",
+              deviceId: globalThis.AN3SyncTransfer.deviceId(),
+              manager: window.EJS_emulator?.gameManager,
+              identity: syncSaveIdentity(),
+              resolution: choice[0],
+              transport: globalThis.AN3LanPeerTransport || globalThis.AN3NativeSync?.transport,
+              context: globalThis.AN3NativeSync?.context || null,
+            });
+            drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
+            showNotice(config.lang === "en" ? "Save set conflict resolved." : "Đã xử lý xung đột nhóm tệp save.");
+          } catch (error) {
+            showNotice(error.message || String(error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.appendChild(button);
+      });
+      card.appendChild(actions);
+      syncSaveConflictBox.appendChild(card);
+    });
+    syncSaveConflictBox.hidden = false;
+  };
+  const syncGameSave = async () => {
+    const settings = await syncSaveSettings();
+    const result = await globalThis.AN3SyncTransfer.syncSave({
+      deviceId: globalThis.AN3SyncTransfer.deviceId(),
+      mode: settings.mode,
+      sameLan: true,
+      transport: settings.transport,
+      manager: window.EJS_emulator?.gameManager,
+      identity: syncSaveIdentity(),
+      context: settings.context,
+    });
+    drawSaveSyncConflicts(result.conflicts);
+    showNotice(config.lang === "en"
+      ? `Save set sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} set conflict(s) need a choice` : ""}.`
+      : `Đồng bộ nhóm save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột nhóm` : ""}.`);
+    return result;
+  };
+  const restoreLocalGameSave = async () => {
+    const manager = window.EJS_emulator?.gameManager;
+    if (!manager || !globalThis.AN3SyncTransfer?.restoreGameSave) return;
+    try {
+      const restored = await globalThis.AN3SyncTransfer.restoreGameSave({
+        manager,
+        identity: syncSaveIdentity(),
+      });
+      if (restored) showNotice(config.lang === "en" ? "Restored game save on this device." : "Đã khôi phục tệp save trên thiết bị.");
+    } catch (error) {
+      showNotice(error.message || String(error), true);
+    }
+  };
+  syncSaveFileButton?.addEventListener("click", () => {
+    syncSaveFileButton.disabled = true;
+    syncGameSave().catch(error => showNotice(error.message || String(error), true)).finally(updateSaveSyncButton);
+  });
+  updateSaveSyncButton();
   let threeDsGateStarted = false;
   const threeDsAudioContext = () => {
     const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
@@ -1203,7 +1314,7 @@
     try {
       const file = event.target.files[0];
       if (!file) return;
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bytes = playerRuntime.validateStateBytes(new Uint8Array(await file.arrayBuffer()));
       if (playerSession) playerSession.saveStateManager.importBytes(bytes);
       else {
         const manager = window.EJS_emulator?.gameManager;
@@ -1253,7 +1364,7 @@
   const loadSlot = async slot => {
     const saved = await slotGet(slot);
     if (!saved?.state) throw new Error(config.lang === "en" ? "Save slot is unavailable" : "Save slot chưa sẵn sàng");
-    const bytes = new Uint8Array(await saved.state.arrayBuffer());
+    const bytes = playerRuntime.validateStateBytes(new Uint8Array(await saved.state.arrayBuffer()));
     if (playerSession) playerSession.saveStateManager.importBytes(bytes);
     else window.EJS_emulator?.gameManager?.loadState?.(bytes);
     writeQuickSlot(slot);
@@ -1287,19 +1398,9 @@
     if(!state?.byteLength)return null;
     return state instanceof Uint8Array?state:new Uint8Array(state);
   };
-  const digestBytes=async bytes=>{
-    try{
-      if(globalThis.crypto?.subtle?.digest){
-        const hash=await crypto.subtle.digest("SHA-256",bytes);
-        return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
-      }
-    }catch(_){}
-    // Bounded fallback: length plus byte samples, never a full O(n) scan.
-    let hash=bytes.length>>>0;
-    const step=Math.max(1,Math.floor(bytes.length/256));
-    for(let index=0;index<bytes.length;index+=step)hash=(hash*31+bytes[index])>>>0;
-    return `s${bytes.length}:${hash.toString(16)}`;
-  };
+  // The digest algorithm lives with the storage manager so the bytes written
+  // and the bytes verified on load can never drift apart.
+  const digestBytes=bytes=>playerRuntime.stateDigest(bytes);
   const runAutosave=async()=>{
     const bytes=readStateBytes();
     if(!bytes)return false;
@@ -1317,7 +1418,9 @@
     if(!gameStarted||!/^(30|10|5)$/.test(autosaveMode))return;
     autosaveTimer=setInterval(()=>{runAutosave().catch(()=>{});},Number(autosaveMode)*1000);
   }
+  let mpTeardown=null; // assigned by the multiplayer bridge below; closes any room.
   function exitGame(){
+    try{mpTeardown?.();}catch(_){}
     const back=document.querySelector(".player-back")?.getAttribute("href")||"/";
     const finish=()=>{window.location.href=back;};
     if(autosaveMode!=="off"){
@@ -1351,7 +1454,7 @@
     try{
       const saved=await requireQuickSaves().getAuto();
       if(!saved?.state)throw new Error(config.lang==="en"?"Autosave is unavailable":"Autosave chưa sẵn sàng");
-      const bytes=new Uint8Array(await saved.state.arrayBuffer());
+      const bytes=await playerRuntime.verifyAutoRecord(saved);
       if(playerSession)playerSession.saveStateManager.importBytes(bytes);
       else window.EJS_emulator?.gameManager?.loadState?.(bytes);
       showNotice(config.lang==="en"?"Autosave loaded":"Đã nạp autosave");
@@ -1936,11 +2039,12 @@
   // apart from "input actually reaching the game".
   const controllerPanel = document.getElementById("ctrlPhonePanel");
   const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
-  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null};
+  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null,direct:false};
   // Phone Controller utility actions reuse this host's existing operations and
   // the shared per-press dedup guard; no second save/speed/menu implementation.
   const controllerUtility = (window.AN3ControllerUtility || {createDispatcher:()=>({dispatch:()=>[],reset(){},get lastSequence(){return 0;}})}).createDispatcher({
-    QUICK_SAVE: () => saveSlot(readQuickSlot()),
+    QUICK_SAVE: entry => saveSlot(entry?.slot || readQuickSlot()),
+    QUICK_LOAD: entry => loadSlot(entry?.slot || readQuickSlot()),
     SPEED_UP: () => shiftSpeed(1),
     SPEED_DOWN: () => shiftSpeed(-1),
     OPEN_MENU: () => openPlayerOptions(),
@@ -2008,21 +2112,42 @@
     if (!payload.lastSequence) return en?"Connected — waiting for input":"Đã kết nối — chờ tín hiệu";
     return payload.inputActive ? (en?"Connected":"Đã kết nối") : (en?"Connected — input unavailable":"Đã kết nối — chưa vào game");
   };
+  const controllerDevRequest = (url, options) => {
+    const adapter = globalThis.AN3ControllerDevAdapter;
+    if (typeof adapter?.request === "function") return adapter.request(url, options);
+    if (typeof adapter?.fetch === "function") return adapter.fetch(url, options);
+    return Promise.reject(new Error("Direct LAN controller is available in the installed AN3 app."));
+  };
   const controllerAck = (sequence, utilitySequence) => {
+    if (controller.direct) return;
     if (!controller.code || !controller.hostToken || !sequence) return;
-    fetch("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
+    controllerDevRequest("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
   };
   const controllerStop = message => {
     controllerRelease();
     controllerUtility.reset();
     if (controller.timer) clearInterval(controller.timer);
-    controller.timer = 0; controller.code = ""; controller.hostToken = "";
+    controller.timer = 0; controller.code = ""; controller.hostToken = ""; controller.direct = false;
+    if (globalThis.AN3NativeController?.direct) globalThis.AN3NativeController.stop?.().catch?.(() => {});
     if (message) controllerStatus(message);
   };
   const controllerPoll = async () => {
+    if (globalThis.AN3NativeController?.direct) {
+      try {
+        const status = await globalThis.AN3NativeController.status();
+        controller.code = status.code || controller.code;
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = status.code || "—";
+        controllerStatus(status.error || (!status.running ? (config.lang === "en" ? "Off" : "Đã tắt") : status.paired ? (status.inputActive ? "Connected" : "Connected — input unavailable") : (config.lang === "en" ? "Waiting for a device…" : "Đang chờ thiết bị…")));
+      } catch (_) {}
+      return;
+    }
     if (!controller.code || !controller.hostToken) return;
+    if (!globalThis.AN3ControllerDevAdapter) {
+      controllerStatus(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      return;
+    }
     try {
-      const response = await fetch("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
+      const response = await controllerDevRequest("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
       if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Disconnected":"Đã ngắt kết nối"); return; }
       if (!response.ok) return;
       const payload = await response.json();
@@ -2045,7 +2170,17 @@
     controllerStop();
     controllerStatus(config.lang==="en"?"Starting…":"Đang bắt đầu…");
     try {
-      const response = await fetch("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
+      if (globalThis.AN3NativeController?.direct) {
+        const data = await globalThis.AN3NativeController.start();
+        controller.direct = true;
+        controller.code = data.code || "";
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = controller.code || "—";
+        controllerStatus(config.lang==="en"?"Waiting for a device…":"Đang chờ thiết bị…");
+        controller.timer = setInterval(controllerPoll, 700);
+        return;
+      }
+      if (!globalThis.AN3ControllerDevAdapter) throw new Error(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      const response = await controllerDevRequest("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       controller.code = data.code; controller.hostToken = data.hostToken;
@@ -2069,6 +2204,22 @@
   // netplay client as the relay room name. Hosting and joining both go through
   // the official netplay object; nothing is re-implemented here.
   const mpPanel = document.getElementById("mpPlayerPanel");
+  // Stable per-browser identity so a room member can be re-admitted on resume
+  // and two browsers never share one device identity.
+  const mpDeviceId = (() => {
+    try {
+      const existing = localStorage.getItem("an3-mp-device");
+      if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
+      const fresh = "web-" + (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+      localStorage.setItem("an3-mp-device", fresh);
+      return fresh;
+    } catch (_) { return "web-player"; }
+  })();
+  const MP_STORE = "an3-mp-player-room";
+  let mpRoom = {code: "", token: "", role: ""};
+  const mpStore = () => { try { sessionStorage.setItem(MP_STORE, JSON.stringify(Object.assign({}, mpRoom, {slug: config.slug}))); } catch (_) {} };
+  const mpReadStore = () => { try { return JSON.parse(sessionStorage.getItem(MP_STORE) || "null"); } catch (_) { return null; } };
+  const mpClearStore = () => { try { sessionStorage.removeItem(MP_STORE); } catch (_) {} };
   const mpPost = async (url, payload) => {
     const response = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     let data = {}; try { data = await response.json(); } catch (_) {}
@@ -2092,14 +2243,16 @@
     return netplay;
   };
   const mpShowRoom = data => {
+    mpRoom = {code: data.code, token: data.token, role: data.role || mpRoom.role || "host"};
     const codeNode = document.getElementById("mpPlayerCode"); if (codeNode) codeNode.textContent = data.code;
     const linkNode = document.getElementById("mpPlayerLink");
     if (linkNode) { linkNode.href = `/play/${encodeURIComponent(config.slug)}?room=${encodeURIComponent(data.code)}`; linkNode.textContent = linkNode.href; }
     const joinInput = document.getElementById("mpPlayerJoinCode"); if (joinInput && !joinInput.value) joinInput.value = data.code;
     const qrNode = document.getElementById("mpPlayerQr");
     if (qrNode) { qrNode.src = `/api/multiplayer/qr.svg?slug=${encodeURIComponent(config.slug)}&code=${encodeURIComponent(data.code)}`; qrNode.hidden = false; }
+    mpStore();
   };
-  const mpSignature = () => Object.assign({}, config.roomSignature || {}, {deviceId: "web-player"});
+  const mpSignature = () => Object.assign({}, config.roomSignature || {}, {deviceId: mpDeviceId});
   const mpCreateRoom = async () => {
     if (!config.multiplayerEnabled) return "";
     mpStatus(config.lang==="en"?"Creating room…":"Đang tạo phòng…");
@@ -2136,13 +2289,46 @@
       netplay.joinRoom(key, data.code);
     } catch (error) { mpStatus(error.message || String(error)); }
   };
-  const mpLeaveRelay = () => { try { mpNetplay()?.leaveRoom?.(); mpStatus(config.lang==="en"?"Left the relay room.":"Đã rời phòng relay."); } catch (error) { mpStatus(error.message || String(error)); } };
+  const mpRelayLeave = () => { try { mpNetplay()?.leaveRoom?.(); } catch (_) {} };
+  const mpAn3Leave = keepalive => {
+    const code = mpRoom.code, token = mpRoom.token;
+    mpRoom = {code: "", token: "", role: ""};
+    mpClearStore();
+    if (!code || !token) return;
+    try {
+      fetch("/api/multiplayer/leave", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({code, token}),
+        keepalive: !!keepalive
+      }).catch(() => {});
+    } catch (_) {}
+  };
+  const mpLeaveRelay = () => { mpRelayLeave(); mpAn3Leave(false); mpStatus(config.lang==="en"?"Left the room.":"Đã rời phòng."); };
+  // Re-admit a member after a back/forward-cache restore instead of losing the room.
+  const mpResume = async () => {
+    const saved = mpReadStore();
+    if (!saved || !saved.code || !saved.token) return;
+    try {
+      const response = await fetch("/api/multiplayer/reconnect", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({code: saved.code, token: saved.token})
+      });
+      let data = {}; try { data = await response.json(); } catch (_) {}
+      if (!response.ok) { mpClearStore(); return; }
+      mpShowRoom(data);
+      mpStatus((config.lang==="en"?"Reconnected to room: ":"Đã kết nối lại phòng: ") + data.code);
+    } catch (_) { /* transient */ }
+  };
+  mpTeardown = () => { mpRelayLeave(); mpAn3Leave(true); };
   const mpOpen = () => {
     if (!mpPanel) return;
     mpPanel.hidden = false;
     const prefill = new URLSearchParams(location.search).get("room");
     const joinInput = document.getElementById("mpPlayerJoinCode");
     if (prefill && joinInput && !joinInput.value) joinInput.value = prefill.trim().toUpperCase();
+    mpResume().catch(() => {});
     document.getElementById("closeMpPanel")?.focus();
   };
   document.getElementById("playerMultiplayer")?.addEventListener("click",()=>{showHints();closePlayerOptions();closeSlotOptions();mpOpen();});
@@ -2151,7 +2337,9 @@
   document.getElementById("mpPlayerHost")?.addEventListener("click",()=>mpHostOnRelay());
   document.getElementById("mpPlayerJoin")?.addEventListener("click",()=>mpJoinRelay());
   document.getElementById("mpPlayerLeave")?.addEventListener("click",()=>mpLeaveRelay());
-  addEventListener("pagehide",()=>mpLeaveRelay(),{once:true});
+  // A real unload closes the room; a bfcache pagehide keeps it for resume.
+  addEventListener("pagehide",event=>{mpRelayLeave();if(!event.persisted)mpAn3Leave(true);});
+  addEventListener("pageshow",event=>{if(event.persisted)mpResume().catch(()=>{});});
 
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
   const togglePad=()=>{if(castConsoleAutoPad){padRoot.classList.remove("cast-console-show");castConsoleAutoPad=false;}const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};

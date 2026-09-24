@@ -51,6 +51,7 @@ class LanSyncSettingTests(unittest.TestCase):
             patch.object(app, "LAN_BLOBS", {}),
             patch.object(app, "CONTROLLERS", {}),
             patch.object(app, "CONTROLLER_LIMITER", netcode.SlidingRateLimiter(limit=200, window_seconds=60)),
+            patch.object(app, "SYNC_LIMITER", netcode.SlidingRateLimiter(limit=200, window_seconds=60)),
         ]
         for active in self.patches:
             active.start()

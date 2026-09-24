@@ -53,6 +53,7 @@ struct an3_eden_core {
     uint32_t magic;
     an3::eden::State state;
     void* backend_state;
+    void* platform_surface;
     char last_error[512];
 };
 

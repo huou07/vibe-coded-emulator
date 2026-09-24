@@ -37,6 +37,10 @@ namespace {
 constexpr std::uintmax_t kMaxStateBytes = 64u * 1024u * 1024u;
 constexpr std::uintmax_t kMaxRomBytes = 512ull * 1024u * 1024u;
 constexpr unsigned kMaxStateSlot = 10;
+// Largest battery-save buffer a libretro core may expose. mGBA reports 128 KiB
+// for GBA saves (GBA_SIZE_FLASH1M) before the game's save type is detected;
+// other cores report their own (smaller) sizes. Anything larger is a core bug.
+constexpr std::size_t kMaxSaveRamBytes = 16u * 1024u * 1024u;
 
 class DynamicLibrary {
 public:
@@ -194,6 +198,12 @@ public:
     void shutdown();
     void shutdown_locked();
     bool state(bool save, const std::filesystem::path& path, std::string& error);
+    // Battery save (SRAM/Flash/EEPROM) is owned by the frontend. The core only
+    // exposes the buffer; it never writes the .srm itself.
+    std::string save_ram_path() const;
+    bool write_save_ram(std::string& error);
+    void load_save_ram();
+    bool flush_save_ram(std::string& error);
     bool environment(unsigned command, void* data);
     void video(const void* data, unsigned width, unsigned height, std::size_t pitch);
     int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) const;
@@ -330,6 +340,10 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
     }
     if (!core_.retro_load_game(&game)) { error = message_.empty() ? "The native core rejected this ROM or requested unsupported hardware rendering." : message_; shutdown_locked(); return false; }
     loaded_ = true;
+    // Restore a previous battery save before the first frame. The buffer exists
+    // even while the save type is still AUTODETECT, so a saved .srm can be
+    // placed before the core's deferred save setup runs on the first tick.
+    load_save_ram();
     if (system_ == NativeSystem::ThreeDS) {
         if (gl_hardware_) {
             // OpenGL ES: the backend already owns the EGL context, so the core
@@ -401,6 +415,8 @@ void NativeCoreHost::Impl::shutdown_locked() {
     running_ = false;
     if (hardware_context_ready_ && hardware_callbacks_.context_destroy) hardware_callbacks_.context_destroy();
     hardware_context_ready_ = false;
+    // Flush the battery save before unload_game frees the core's save buffer.
+    if (loaded_) { std::string flush_error; (void)write_save_ram(flush_error); }
     if (loaded_) core_.retro_unload_game();
     loaded_ = false;
     if (initialized_) core_.retro_deinit();
@@ -430,6 +446,44 @@ bool NativeCoreHost::Impl::state(bool save, const std::filesystem::path& path, s
     if (!read_bounded(path, bytes, error)) return false;
     if (!core_.retro_unserialize(bytes.data(), bytes.size())) { error = "The core rejected this incompatible save state."; return false; }
     return true;
+}
+
+std::string NativeCoreHost::Impl::save_ram_path() const {
+    return (std::filesystem::path(save_path_) / (rom_id_ + ".srm")).string();
+}
+
+// libretro exposes cartridge battery memory through
+// retro_get_memory_data(RETRO_MEMORY_SAVE_RAM); the core never writes the .srm
+// itself, the frontend does. mGBA returns a full 0xFF-filled buffer even while
+// the GBA save type is still AUTODETECT, so the buffer is valid to read/write
+// before the game's first save access resolves SRAM/Flash/EEPROM.
+bool NativeCoreHost::Impl::write_save_ram(std::string& error) {
+    if (!initialized_ || !loaded_) return true;
+    void* data = core_.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    const std::size_t size = core_.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (!data || size == 0 || size > kMaxSaveRamBytes) return true;
+    const auto* begin = static_cast<const std::uint8_t*>(data);
+    const std::vector<std::uint8_t> bytes(begin, begin + size);
+    return write_atomic(save_ram_path(), bytes, error);
+}
+
+void NativeCoreHost::Impl::load_save_ram() {
+    void* data = core_.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
+    const std::size_t size = core_.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    if (!data || size == 0 || size > kMaxSaveRamBytes) return;
+    std::error_code ec;
+    const auto path = save_ram_path();
+    const auto file_size = std::filesystem::file_size(path, ec);
+    if (ec || file_size == 0) return;
+    const std::size_t copy = std::min<std::size_t>(size, static_cast<std::size_t>(file_size));
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return;
+    input.read(static_cast<char*>(data), static_cast<std::streamsize>(copy));
+}
+
+bool NativeCoreHost::Impl::flush_save_ram(std::string& error) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return write_save_ram(error);
 }
 
 bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
@@ -619,6 +673,7 @@ bool NativeCoreHost::save_state(unsigned s,std::string&e){if(s<1||s>kMaxStateSlo
 bool NativeCoreHost::load_state(unsigned s,std::string&e){if(s<1||s>kMaxStateSlot){e="Quick-save slots range from 1 to 10.";return false;}return impl_->state(false,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".slot"+std::to_string(s)+".state"),e);}
 bool NativeCoreHost::save_auto(std::string&e){return impl_->state(true,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".autosave.state"),e);}
 bool NativeCoreHost::load_auto(std::string&e){return impl_->state(false,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".autosave.state"),e);}
+bool NativeCoreHost::flush_save_ram(std::string&e){return impl_?impl_->flush_save_ram(e):true;}
 bool NativeCoreHost::export_state(const std::string&p,std::string&e){return impl_->state(true,p,e);}
 bool NativeCoreHost::import_state(const std::string&p,std::string&e){return impl_->state(false,p,e);}
 bool NativeCoreHost::set_core_option(const std::string&k,const std::string&v,std::string&e){std::lock_guard<std::mutex>l(impl_->mutex_);if(!impl_->options_.set(k,v)){e="Unknown core option or unsupported value.";return false;}return true;}

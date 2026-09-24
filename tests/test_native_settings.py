@@ -70,11 +70,9 @@ class NativeSettingsSchemaTests(unittest.TestCase):
         self.assertEqual(schema["screenLayout"]["valuesFrom"], "native-layout-schema")
         self.assertEqual(set(layouts["systems"].keys()), {"nds", "3ds"})
 
-    def test_switch_is_declared_unavailable_on_android(self):
+    def test_switch_is_declared_available_on_android(self):
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
-        entry = schema["platformAvailability"]["switch"]["android"]
-        self.assertFalse(entry["available"])
-        self.assertIn("Android", entry["reason"])
+        self.assertNotIn("android", schema["platformAvailability"]["switch"])
 
     def test_runtime_pinned_options_are_declared(self):
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))

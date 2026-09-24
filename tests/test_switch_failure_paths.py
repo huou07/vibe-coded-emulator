@@ -39,6 +39,23 @@ def _first(candidates):
     return None
 
 
+def _running_companions(path):
+    """Return only processes for this checkout's companion executable.
+
+    Multiple AN3 checkouts can legitimately have an Eden companion running at
+    once. A broad name-only pgrep makes one checkout's lifecycle test fail on
+    another checkout's process.
+    """
+
+    command_path = str(path)
+    resolved_path = str(path.resolve())
+    result = subprocess.run(["pgrep", "-af", "an3_switch_companion"], capture_output=True, text=True)
+    return [
+        line for line in result.stdout.splitlines()
+        if command_path in line or resolved_path in line
+    ]
+
+
 class SwitchFailurePathTests(unittest.TestCase):
     def setUp(self):
         self.companion = _first(COMPANION_CANDIDATES)
@@ -109,8 +126,7 @@ class SwitchFailurePathTests(unittest.TestCase):
         bad.write_bytes(b"\x00" * 4096)
         self._run(bad)
         # No leftover companion process from the failed attempt.
-        result = subprocess.run(["pgrep", "-f", "an3_switch_companion"], capture_output=True, text=True)
-        self.assertEqual([line for line in result.stdout.split() if line.strip()], [])
+        self.assertEqual(_running_companions(self.companion), [])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "source_commit": "70f5d9821220311e14be96786b196a2662565b94",
+  "source_fingerprint": "f98989bd2f662d4e93bb99392dd8ea53bc0c65862f624daba83c79c227d0f51a",
+  "release_candidate": "3.3.0-staging",
+  "build_id": "source-f98989bd2f662d4e",
+  "artifacts": [
+    {
+      "version": "3.3.0",
+      "platform": "macOS",
+      "architecture": "arm64",
+      "format": "DMG",
+      "filename": "vibecodedemulator-3.3.0-macos-aarch64.dmg",
+      "size": 66482395,
+      "sha256": "7f128cc7ba7c81f89181b55866c117ea231ec7c0175567e2dc9528292e71b901",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Ad-hoc signed native staging package; not notarized.",
+      "runtime_status": "Fresh arm64 3.3.0 DMG; hdiutil checksum validation passed. Gameplay acceptance for this exact DMG is unverified."
+    },
+    {
+      "version": "3.3.0",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "APK",
+      "filename": "vibecodedemulator-3.3.0-android-arm64-staging.apk",
+      "size": 63574966,
+      "sha256": "3fba0a93bca648d6f1d45df23b9838849fedafdae74da4de66b656d36a5c9c29",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Android APK signed with the existing debug identity.",
+      "runtime_status": "Exact release APK package/version and MainActivity launch verified on API 35 emulator. 3.3.0 smoke, Settings, GBA import/launch and two-run SRAM assertions completed; test-runner teardown hits the documented BLOCKED_UPSTREAM issue."
+    },
+    {
+      "version": "3.3.0",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "AAB",
+      "filename": "vibecodedemulator-3.3.0-android-arm64-staging.aab",
+      "size": 62978973,
+      "sha256": "a734c95c0d6f17c8c49b488e3a62e3e60bd5b1ca362707418c5e14abcdf4799f",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Android App Bundle signed with the existing debug identity.",
+      "runtime_status": "Signature verification passed. The bundle was not installed from AAB; runtime acceptance for this exact bundle is unverified."
+    },
+    {
+      "version": "3.3.0",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "DEB",
+      "filename": "vibecodedemulator-3.3.0-linux-amd64.deb",
+      "size": 58204314,
+      "sha256": "5c261b7321b58f27a195b1ce66de99b2ac557c516be31a0edc8a83281467bc0b",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Unsigned staging Debian package built on the authorized Linux builder.",
+      "runtime_status": "Fresh 3.3.0 DEB built on the authorized Debian builder; package name, version and architecture metadata verified. Gameplay/runtime acceptance for this exact package is unverified."
+    },
+    {
+      "version": "3.3.0",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "Flatpak",
+      "filename": "an3-offline-3.3.0-linux-amd64-staging.flatpak",
+      "size": 37596488,
+      "sha256": "338519f40c4710675cfe5dbf74c459368d5e5b4018855a8687bd8d5323169dad",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Unsigned staging Flatpak built on the authorized Linux builder.",
+      "runtime_status": "Fresh 3.3.0 Flatpak bundle built on the authorized Linux builder with the pinned Eden companion; gameplay/runtime acceptance for this exact bundle is unverified."
+    },
+    {
+      "version": "3.3.0",
+      "platform": "Windows",
+      "architecture": "x64",
+      "format": "EXE",
+      "filename": "vibecodedemulator-3.3.0-windows-x64-staging.exe",
+      "size": 57886141,
+      "sha256": "81a9600b2ad47058518bebab1797315acaea8cec59ebf3065a5867207eaa8b3b",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Windows staging NSIS installer; unsigned staging artifact.",
+      "runtime_status": "Fresh 3.3.0 x64 NSIS installer built on the authorized Windows builder. Native runtime dependencies and 47 PE files passed integrity checks; gameplay/runtime acceptance for this exact installer is unverified.",
+      "release_gate": "PASS"
+    }
+  ]
+}

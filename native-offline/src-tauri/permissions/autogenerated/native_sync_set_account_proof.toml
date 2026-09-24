@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-sync-set-account-proof"
+description = "Enables the native_sync_set_account_proof command without any pre-configured scope."
+commands.allow = ["native_sync_set_account_proof"]
+
+[[permission]]
+identifier = "deny-native-sync-set-account-proof"
+description = "Denies the native_sync_set_account_proof command without any pre-configured scope."
+commands.deny = ["native_sync_set_account_proof"]

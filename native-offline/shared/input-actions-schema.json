@@ -17,6 +17,7 @@
   },
   "utility": {
     "QUICK_SAVE": {"wire": "quick_save", "label": "Quick Save"},
+    "QUICK_LOAD": {"wire": "quick_load", "label": "Quick Load"},
     "SPEED_UP": {"wire": "speed_up", "label": "Speed Up"},
     "SPEED_DOWN": {"wire": "speed_down", "label": "Speed Down"},
     "OPEN_MENU": {"wire": "open_menu", "label": "Menu"}

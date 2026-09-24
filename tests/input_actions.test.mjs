@@ -35,7 +35,7 @@ test("gameplay actions map to the existing libretro ids", () => {
 });
 
 test("utility actions are distinct from held buttons", () => {
-  assert.equal(model.utilityActions.slice().sort().join(","), "OPEN_MENU,QUICK_SAVE,SPEED_DOWN,SPEED_UP");
+  assert.equal(model.utilityActions.slice().sort().join(","), "OPEN_MENU,QUICK_LOAD,QUICK_SAVE,SPEED_DOWN,SPEED_UP");
   for (const action of model.utilityActions) assert.equal(model.buttons[action], undefined);
   assert.equal(model.utilityWireToAction.speed_up, "SPEED_UP");
 });

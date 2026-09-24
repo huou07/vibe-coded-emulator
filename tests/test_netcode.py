@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
+import threading
 import unittest
 
 import netcode as nc
@@ -80,6 +81,53 @@ class RateLimiterTests(unittest.TestCase):
     def test_requires_positive_configuration(self):
         with self.assertRaises(nc.NetcodeError):
             nc.SlidingRateLimiter(limit=0, window_seconds=1)
+        with self.assertRaises(nc.NetcodeError):
+            nc.SlidingRateLimiter(limit=1, window_seconds=1, max_keys=0)
+
+    def test_idle_buckets_are_evicted_once_the_key_cap_is_reached(self):
+        clock = Clock()
+        limiter = nc.SlidingRateLimiter(limit=5, window_seconds=10, clock=clock, max_keys=2)
+        limiter.check("idle")
+        clock.advance(11)
+        limiter.check("first")
+        limiter.check("second")
+        self.assertNotIn("idle", limiter._buckets)
+        self.assertIn("first", limiter._buckets)
+        self.assertIn("second", limiter._buckets)
+        self.assertLessEqual(len(limiter._buckets), 2)
+
+    def test_least_recently_seen_bucket_is_evicted_when_nothing_expired(self):
+        clock = Clock()
+        limiter = nc.SlidingRateLimiter(limit=5, window_seconds=60, clock=clock, max_keys=2)
+        limiter.check("oldest")
+        clock.advance(1)
+        limiter.check("middle")
+        clock.advance(1)
+        limiter.check("newest")
+        self.assertNotIn("oldest", limiter._buckets)
+        self.assertIn("middle", limiter._buckets)
+        self.assertIn("newest", limiter._buckets)
+        self.assertLessEqual(len(limiter._buckets), 2)
+
+    def test_the_key_being_checked_is_preserved_by_the_sweep(self):
+        clock = Clock()
+        limiter = nc.SlidingRateLimiter(limit=5, window_seconds=60, clock=clock, max_keys=1)
+        limiter.check("a")
+        clock.advance(1)
+        limiter.check("b")
+        # "b" is the request under check and must not evict itself.
+        self.assertIn("b", limiter._buckets)
+        self.assertLessEqual(len(limiter._buckets), 1)
+
+    def test_below_the_cap_behaviour_is_unchanged(self):
+        clock = Clock()
+        limiter = nc.SlidingRateLimiter(limit=2, window_seconds=10, clock=clock, max_keys=8)
+        for name in ("a", "b", "c", "d"):
+            limiter.check(name)
+        self.assertEqual(set(limiter._buckets), {"a", "b", "c", "d"})
+        limiter.check("a")
+        with self.assertRaises(nc.RateLimitedError):
+            limiter.check("a")
 
 
 class ControllerWireTests(unittest.TestCase):
@@ -116,6 +164,41 @@ class ControllerWireTests(unittest.TestCase):
         self.assertFalse(nc.ControllerState.from_wire({"s": 4, "b": []}).touch_active)
         with self.assertRaises(nc.NetcodeError):
             nc.ControllerState.from_wire({"s": 5, "b": [], "t": [0.1]})
+
+    def test_track_b1_capture_time_round_trips_and_is_omitted_at_zero(self):
+        """Track B1: the phone's own capture clock is echoed back unchanged.
+
+        The server must never reinterpret it, so a frame that omits `t0` must
+        not gain one, and a frame that carries it must return the same value.
+        """
+
+        plain = nc.ControllerState(sequence=1, buttons=frozenset({"a"}))
+        self.assertNotIn("t0", plain.to_wire(), "a frame without capture time must not invent one")
+        stamped = nc.ControllerState(sequence=2, buttons=frozenset({"a"}), capture_ms=123456)
+        wire = stamped.to_wire()
+        self.assertEqual(wire["t0"], 123456)
+        self.assertEqual(nc.ControllerState.from_wire(wire).capture_ms, 123456)
+
+    def test_track_b1_capture_time_echoes_only_the_acknowledged_frame(self):
+        """The echoed capture time belongs to the frame the host applied."""
+
+        clock = Clock()
+        session = nc.ControllerSession(code="ABC123", host_device_id="tv", created_at=clock(), clock=clock)
+        token = session.pair("phone")
+        session.accept_state({"s": 3, "b": ["a"], "t0": 1000}, token=token)
+        self.assertEqual(session.acked_capture_ms(), 0, "nothing acknowledged yet")
+        session.ack(3)
+        self.assertEqual(session.acked_capture_ms(), 1000, "the acknowledged frame's capture time is echoed")
+        session.accept_state({"s": 4, "b": ["a"], "t0": 1042}, token=token)
+        session.ack(4)
+        self.assertEqual(session.acked_capture_ms(), 1042)
+        # A stale acknowledgement must not overwrite the echo for a newer frame.
+        session.ack(1)
+        self.assertEqual(session.acked_capture_ms(), 1042)
+        # A frame with no capture time must not inherit the previous one.
+        session.accept_state({"s": 5, "b": ["a"]}, token=token)
+        session.ack(5)
+        self.assertEqual(session.acked_capture_ms(), 0, "an unstamped frame echoes nothing")
 
 
 class ControllerSessionTests(unittest.TestCase):
@@ -274,6 +357,163 @@ class RoomServiceTests(unittest.TestCase):
         self.assertFalse(signature().compatible_with(signature(rom_hash="other")))
         self.assertFalse(signature().compatible_with(signature(core="other-core")))
         self.assertFalse(signature().compatible_with(signature(system="nds")))
+
+    # -- lifecycle hardening ----------------------------------------------
+
+    def test_create_supersedes_only_the_same_hosts_previous_room(self):
+        clock = Clock()
+        service = self._service(clock)
+        first, _ = service.create_room(signature(), "tv")
+        second, _ = service.create_room(signature(), "tv")
+        self.assertNotIn(first.code, service.rooms)
+        self.assertIn(second.code, service.rooms)
+        # Another host's room is untouched.
+        other, _ = service.create_room(signature(), "tablet")
+        self.assertIn(second.code, service.rooms)
+        self.assertIn(other.code, service.rooms)
+        # Anonymous hosts are never attributed, so they never supersede.
+        anon_a, _ = service.create_room(signature(), "")
+        anon_b, _ = service.create_room(signature(), "")
+        self.assertIn(anon_a.code, service.rooms)
+        self.assertIn(anon_b.code, service.rooms)
+
+    def test_same_device_rejoin_rotates_instead_of_reporting_full(self):
+        clock = Clock()
+        service = self._service(clock)
+        room, _ = service.create_room(signature(), "tv")
+        _, first = service.join_room(room.code, signature(), "phone")
+        _, second = service.join_room(room.code, signature(), "phone")
+        self.assertNotEqual(first, second)
+        self.assertEqual(service.authenticate(room.code, second), nc.RoomRole.GUEST)
+        with self.assertRaises(nc.NotPairedError):
+            service.authenticate(room.code, first)
+        # A genuinely different second device is still refused.
+        with self.assertRaises(nc.NetcodeError):
+            service.join_room(room.code, signature(), "tablet")
+
+    def test_resume_rotates_and_requires_the_previous_token(self):
+        clock = Clock()
+        service = self._service(clock)
+        room, host_token = service.create_room(signature(), "tv")
+        _, guest_token = service.join_room(room.code, signature(), "phone")
+        _, role, fresh = service.resume(room.code, guest_token)
+        self.assertEqual(role, nc.RoomRole.GUEST)
+        self.assertEqual(service.authenticate(room.code, fresh), nc.RoomRole.GUEST)
+        with self.assertRaises(nc.NotPairedError):
+            service.authenticate(room.code, guest_token)
+        with self.assertRaises(nc.NotPairedError):
+            service.resume(room.code, "guessed")
+        # The host resumes too, without losing the room.
+        _, host_role, fresh_host = service.resume(room.code, host_token)
+        self.assertEqual(host_role, nc.RoomRole.HOST)
+        self.assertEqual(service.authenticate(room.code, fresh_host), nc.RoomRole.HOST)
+        # A closed room cannot be resumed.
+        service.leave(room.code, nc.RoomRole.HOST)
+        with self.assertRaises(nc.ExpiredError):
+            service.resume(room.code, fresh)
+
+    def test_reconnect_requires_a_device_identity(self):
+        clock = Clock()
+        service = self._service(clock)
+        room, _ = service.create_room(signature(), "tv")
+        with self.assertRaises(nc.NotPairedError):
+            service.reconnect(room.code, signature(), "")
+
+    def test_any_operation_reaps_all_expired_rooms(self):
+        clock = Clock()
+        service = self._service(clock)
+        stale_a, _ = service.create_room(signature(), "tv")
+        stale_b, _ = service.create_room(signature(), "tablet")
+        clock.advance(101)
+        self.assertEqual(len(service.rooms), 2)
+        fresh, _ = service.create_room(signature(), "console")
+        self.assertNotIn(stale_a.code, service.rooms)
+        self.assertNotIn(stale_b.code, service.rooms)
+        self.assertIn(fresh.code, service.rooms)
+
+    def test_create_and_join_limiters_are_independent(self):
+        clock = Clock()
+        service = nc.RoomService(
+            clock=clock, room_ttl_seconds=100,
+            create_limiter=nc.SlidingRateLimiter(limit=1, window_seconds=60, clock=clock),
+            join_limiter=nc.SlidingRateLimiter(limit=5, window_seconds=60, clock=clock),
+        )
+        service.create_room(signature(), "tv-a", client_key="1.2.3.4")
+        with self.assertRaises(nc.RateLimitedError):
+            service.create_room(signature(), "tv-b", client_key="1.2.3.4")
+        # The create budget is per client key, never global.
+        room, _ = service.create_room(signature(), "tv-c", client_key="5.6.7.8")
+        # An exhausted create budget must not consume the join budget.
+        service.join_room(room.code, signature(), "phone", client_key="1.2.3.4")
+
+    def test_concurrent_joins_admit_exactly_one_guest(self):
+        clock = Clock()
+        service = self._service(clock)
+        room, _ = service.create_room(signature(), "tv")
+        results = []
+        barrier = threading.Barrier(8)
+
+        def attempt(name):
+            barrier.wait()
+            try:
+                _, token = service.join_room(room.code, signature(), name)
+                results.append((name, token))
+            except nc.NetcodeError as error:
+                results.append((name, error))
+
+        threads = [threading.Thread(target=attempt, args=(f"guest-{index}",)) for index in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        admitted = [entry for entry in results if isinstance(entry[1], str)]
+        self.assertEqual(len(admitted), 1, results)
+        self.assertTrue(room.full)
+
+    # -- member input / state channel -------------------------------------
+
+    def test_publish_input_dedups_validates_and_is_role_scoped(self):
+        clock = Clock()
+        service = self._service(clock)
+        room, host_token = service.create_room(signature(), "tv")
+        _, guest_token = service.join_room(room.code, signature(), "phone")
+
+        _, role, applied = service.publish_input(room.code, guest_token, {"s": 3, "b": ["a"], "a": [0.5, 0, 0, 0]})
+        self.assertEqual(role, nc.RoomRole.GUEST)
+        self.assertIsNotNone(applied)
+        self.assertEqual(applied.sequence, 3)
+
+        # Duplicate and stale frames are dropped, not stored twice.
+        for sequence in (3, 1):
+            _, _, dropped = service.publish_input(room.code, guest_token, {"s": sequence, "b": ["b"]})
+            self.assertIsNone(dropped)
+
+        # Malformed and unauthorized frames never enter the channel.
+        with self.assertRaises(nc.NetcodeError):
+            service.publish_input(room.code, guest_token, {"s": 9, "a": [0, 0]})
+        with self.assertRaises(nc.NotPairedError):
+            service.publish_input(room.code, "not-a-member", {"s": 10, "b": []})
+
+        # The two roles keep separate streams.
+        service.publish_input(room.code, host_token, {"s": 7, "b": ["start"]})
+        state_room, state_role = service.member_state(room.code, host_token)
+        self.assertEqual(state_role, nc.RoomRole.HOST)
+        self.assertEqual(state_room.latest_input(nc.RoomRole.HOST).sequence, 7)
+        self.assertEqual(state_room.latest_input(nc.RoomRole.GUEST).sequence, 3)
+
+        # A departing guest drops only its own checkpoint; the host's survives.
+        service.leave(room.code, nc.RoomRole.GUEST)
+        after_room, _ = service.member_state(room.code, host_token)
+        self.assertIsNone(after_room.latest_input(nc.RoomRole.GUEST))
+        self.assertEqual(after_room.latest_input(nc.RoomRole.HOST).sequence, 7)
+
+    def test_unknown_room_is_rejected_on_the_input_channel(self):
+        clock = Clock()
+        service = self._service(clock)
+        with self.assertRaises(nc.ExpiredError):
+            service.publish_input("ZZZZZZ", "token", {"s": 1, "b": []})
+        with self.assertRaises(nc.NetcodeError):
+            service.member_state("ZZZZZZ", "token")
 
 
 class TransportChoiceTests(unittest.TestCase):

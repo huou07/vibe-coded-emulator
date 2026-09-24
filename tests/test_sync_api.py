@@ -15,11 +15,13 @@ import os
 import pathlib
 import tempfile
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 
 import app
+import netcode
 import sync_engine
 
 
@@ -41,8 +43,10 @@ class SyncApiTests(unittest.TestCase):
             patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
+            patch.object(app, "AUTH_PEPPER", "sync-api-test-peer-proof-key"),
             patch.object(app, "LAN_PEERS", {}),
             patch.object(app, "LAN_BLOBS", {}),
+            patch.object(app, "SYNC_LIMITER", netcode.SlidingRateLimiter(limit=200, window_seconds=60)),
         ]
         for active in self.patches:
             active.start()
@@ -52,6 +56,94 @@ class SyncApiTests(unittest.TestCase):
         self.thread.start()
         self.cookies = {}
 
+    def test_native_account_session_and_peer_proof_are_account_bound(self):
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"authenticated": False})
+
+        status, _ = self.request("POST", "/api/register", {
+            "name": "peer-proof-user",
+            "display_name": "Peer Proof User",
+            "password": "Peer-proof-pass-123",
+            "confirm": "Peer-proof-pass-123",
+        })
+        self.assertEqual(status, 201)
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        session = json.loads(body)
+        self.assertTrue(session["authenticated"])
+        self.assertEqual(session["name"], "Peer Proof User")
+        self.assertTrue(session["csrf"])
+
+        challenge = "a" * 32
+        status, body = self.request("POST", "/api/account/peer-proof", {"challenge": challenge})
+        self.assertEqual(status, 200)
+        proof = json.loads(body)["proof"]
+        self.assertNotIn("Peer-proof-pass-123", proof)
+        status, body = self.request("POST", "/api/account/peer-proof/verify", {"challenge": challenge, "proof": proof})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["sameAccount"])
+
+        status, body = self.request("POST", "/api/account/peer-proof/verify", {"challenge": "b" * 32, "proof": proof})
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["sameAccount"])
+
+        # The native client must use the server-issued CSRF token when it
+        # logs out; the account cookie itself is never handed to a peer.
+        csrf = session["csrf"]
+        status, _ = self.request("POST", "/api/logout", None, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(status, 200)
+        status, body = self.request("GET", "/api/account/session")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"authenticated": False})
+
+    def test_native_account_peer_proof_fails_closed_without_server_key(self):
+        with patch.object(app, "AUTH_PEPPER", ""):
+            status, body = self.request("POST", "/api/account/register", {})
+            self.assertEqual(status, 404)
+            status, body = self.request("POST", "/api/register", {
+                "name": "proof-unconfigured",
+                "display_name": "Proof Unconfigured",
+                "password": "Proof-unconfigured-123",
+                "confirm": "Proof-unconfigured-123",
+            })
+            self.assertEqual(status, 201)
+            status, body = self.request("POST", "/api/account/peer-proof", {"challenge": "c" * 32})
+            self.assertEqual(status, 503)
+            self.assertIn("not configured", json.loads(body)["error"])
+
+    def test_native_account_cors_is_limited_to_tauri_origins(self):
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://tauri.localhost"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "https://tauri.localhost")
+        self.assertEqual(headers.get("access-control-allow-credentials"), "true")
+
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://appassets.androidplatform.net"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("access-control-allow-origin"), "https://appassets.androidplatform.net")
+
+        status, _body, headers = self.request_with_headers(
+            "OPTIONS",
+            "/api/login",
+            {
+                "Origin": "https://tauri.localhost",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        self.assertEqual(status, 204)
+        self.assertEqual(headers.get("access-control-allow-methods"), "GET, POST, OPTIONS")
+
+        status, _body, headers = self.request_with_headers(
+            "GET", "/api/account/session", {"Origin": "https://evil.example"}
+        )
+        self.assertEqual(status, 200)
+        self.assertNotIn("access-control-allow-origin", headers)
+
     def tearDown(self):
         self.server.shutdown()
         self.server.server_close()
@@ -60,9 +152,9 @@ class SyncApiTests(unittest.TestCase):
             active.stop()
         self.temp.cleanup()
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, headers=None):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
-        headers = {}
+        headers = dict(headers or {})
         body = None
         if payload is not None:
             body = json.dumps(payload).encode()
@@ -80,6 +172,15 @@ class SyncApiTests(unittest.TestCase):
                     self.cookies[key] = raw
         connection.close()
         return status, data
+
+    def request_with_headers(self, method, path, headers=None):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        connection.request(method, path, headers=headers or {})
+        response = connection.getresponse()
+        status, data = response.status, response.read()
+        received = {name.lower(): value for name, value in response.getheaders()}
+        connection.close()
+        return status, data, received
 
     # -- settings ----------------------------------------------------------
 
@@ -256,6 +357,34 @@ class SyncApiTests(unittest.TestCase):
             "deviceId": device, "kind": kind, "items": [item],
         })
 
+    @staticmethod
+    def save_set(payloads, *, core="mgba", game_id="emerald", rom_hash="a" * 64):
+        set_id = f"save:{core}:{game_id}:{rom_hash}"
+        members = []
+        items = []
+        for member_id, payload in sorted(payloads.items()):
+            digest = hashlib.sha256(payload).hexdigest()
+            member = {
+                "key": f"{set_id}:{member_id}",
+                "memberId": member_id,
+                "path": f"/data/saves/{member_id}",
+                "size": len(payload),
+                "contentHash": digest,
+            }
+            members.append(member)
+            items.append({**member, "data": base64.b64encode(payload).decode("ascii")})
+        save_set = {
+            "setId": set_id,
+            "core": core,
+            "gameId": game_id,
+            "romHash": rom_hash,
+            "memberCount": len(members),
+            "totalSize": sum(member["size"] for member in members),
+            "members": members,
+        }
+        save_set["manifestHash"] = app._sync_save_set_hash(save_set)
+        return save_set, items
+
     def test_lan_blob_publish_manifest_and_download_round_trip(self):
         payload = b"save-state-bytes" * 100
         status, body = self.publish(payload)
@@ -288,6 +417,190 @@ class SyncApiTests(unittest.TestCase):
         status, _ = self.request("GET", "/api/sync/lan/blob?kind=state&key=missing&hash=" + "0" * 64)
         self.assertEqual(status, 404)
 
+    def test_lan_publish_cannot_overwrite_another_devices_blob(self):
+        original = b"owner-save-state"
+        status, _ = self.publish(original, device="device-aaaaaaaa")
+        self.assertEqual(status, 200)
+
+        # A different device may not silently replace the same (kind, key).
+        status, body = self.publish(b"attacker-save-state", device="device-bbbbbbbb")
+        self.assertEqual(status, 409)
+        self.assertEqual(json.loads(body)["reason"], "lan-blob-owner-conflict")
+
+        # The original bytes and their owner survive the refused overwrite.
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=state")
+        entry = json.loads(body)["items"][0]
+        self.assertEqual(entry["deviceId"], "device-aaaaaaaa")
+        status, downloaded = self.request(
+            "GET", f"/api/sync/lan/blob?kind=state&key={entry['key']}&hash={entry['contentHash']}"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, original)
+
+        # The same device may still refresh its own record.
+        status, _ = self.publish(b"owner-save-state-v2", device="device-aaaaaaaa")
+        self.assertEqual(status, 200)
+
+    def test_lan_publish_rejects_a_spoofed_owner_from_another_address(self):
+        payload = b"owned-state"
+        item = self.blob(payload)
+        app.LAN_BLOBS[("state", item["key"])] = {
+            "hash": item["contentHash"],
+            "device": "device-aaaaaaaa",
+            "ip": "192.0.2.6",
+            "data": payload,
+            "updated": time.monotonic(),
+        }
+        # Same device id, but this request's source address is not the owner's.
+        status, body = self.publish(b"spoofed-state", device="device-aaaaaaaa")
+        self.assertEqual(status, 409)
+        self.assertEqual(json.loads(body)["reason"], "lan-blob-owner-conflict")
+        self.assertEqual(app.LAN_BLOBS[("state", item["key"])]["data"], payload)
+
+    def test_lan_publish_refuses_a_mixed_batch_without_a_partial_write(self):
+        item = self.blob(b"owned-state")
+        self.publish(b"owned-state")
+        owned_key = item["key"]
+        new_key = "gba/another-game/slot1.state"
+        new_payload = b"fresh-state"
+        new_item = {
+            "key": new_key,
+            "contentHash": hashlib.sha256(new_payload).hexdigest(),
+            "data": base64.b64encode(new_payload).decode("ascii"),
+        }
+        # One item is owned by another device; the whole batch must be refused
+        # so a rejected item can never leave a half-published list behind.
+        status, body = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-bbbbbbbb",
+            "kind": "state",
+            "items": [new_item, item],
+        })
+        self.assertEqual(status, 409)
+        self.assertEqual(json.loads(body)["reason"], "lan-blob-owner-conflict")
+        self.assertEqual(json.loads(body)["key"], owned_key)
+        self.assertNotIn(("state", new_key), app.LAN_BLOBS)
+
+    def test_lan_manifest_does_not_expose_the_owner_address(self):
+        payload = b"private-owner-address"
+        self.publish(payload)
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=state")
+        self.assertEqual(status, 200)
+        entry = json.loads(body)["items"][0]
+        # The manifest exposes the owner device id (needed to filter peers) but
+        # never the request source address used for the ownership tie-break.
+        self.assertNotIn("ip", entry)
+        self.assertNotIn("127.0.0.1", body.decode())
+
+    def test_lan_blob_ownership_lapses_with_the_ttl(self):
+        payload = b"owner-state"
+        item = self.blob(payload)
+        self.publish(payload)
+        # Age the record past its TTL; the reaper runs on the next publish and
+        # the key becomes claimable by whichever device publishes next.
+        app.LAN_BLOBS[("state", item["key"])]["updated"] = time.monotonic() - app.LAN_BLOB_TTL_SECONDS - 1
+        status, body = self.publish(b"new-owner-state", device="device-bbbbbbbb")
+        self.assertEqual(status, 200, body)
+        self.assertEqual(app.LAN_BLOBS[("state", item["key"])]["device"], "device-bbbbbbbb")
+    def test_lan_save_set_publish_manifest_and_download_round_trip(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc-bytes", "emerald.srm": b"srm-bytes"})
+        status, body = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items,
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["stored"], 2)
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(status, 200)
+        manifest = json.loads(body)
+        self.assertEqual(len(manifest["sets"]), 1)
+        published = manifest["sets"][0]
+        self.assertEqual(published["setId"], save_set["setId"])
+        self.assertEqual([member["memberId"] for member in published["members"]], ["emerald.rtc", "emerald.srm"])
+        self.assertEqual(published["totalSize"], save_set["totalSize"])
+        self.assertEqual(published["manifestHash"], save_set["manifestHash"])
+        for item in items:
+            status, downloaded = self.request(
+                "GET", f"/api/sync/lan/blob?kind=save&key={item['key']}&hash={item['contentHash']}"
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(downloaded, base64.b64decode(item["data"]))
+
+    def test_lan_save_set_rejects_partial_or_corrupt_payload_without_storing_any_member(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc", "emerald.srm": b"srm"})
+        invalid_payloads = []
+        invalid_payloads.append({**save_set, "members": save_set["members"][:1]})
+        invalid_payloads.append({**save_set, "members": [save_set["members"][0], save_set["members"][0]]})
+        invalid_payloads.append(save_set)
+        for index, candidate in enumerate(invalid_payloads):
+            with self.subTest(index=index):
+                candidate_items = list(items)
+                if index == 2:
+                    candidate_items[1] = {**candidate_items[1], "data": base64.b64encode(b"tampered").decode("ascii")}
+                status, _ = self.request("POST", "/api/sync/lan/publish", {
+                    "deviceId": "device-aaaaaaaa", "kind": "save", "set": candidate, "items": candidate_items,
+                })
+                self.assertEqual(status, 400)
+                self.assertEqual(app.LAN_BLOBS, {})
+        unknown_item = {"key": f"{save_set['setId']}:unknown.sav", "memberId": "unknown.sav", "path": "/data/saves/unknown.sav", "size": 1, "contentHash": "b" * 64, "data": base64.b64encode(b"x").decode("ascii")}
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items + [unknown_item],
+        })
+        self.assertEqual(status, 400)
+        self.assertEqual(app.LAN_BLOBS, {})
+
+    def test_lan_save_set_replacement_requires_the_current_manifest_hash(self):
+        original_set, original_items = self.save_set({"emerald.rtc": b"rtc-v1", "emerald.srm": b"srm-v1"})
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": original_set, "items": original_items,
+        })
+        self.assertEqual(status, 200)
+        replacement_set, replacement_items = self.save_set({"emerald.rtc": b"rtc-v2", "emerald.srm": b"srm-v2"})
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-bbbbbbbb", "kind": "save", "set": replacement_set, "items": replacement_items,
+        })
+        self.assertEqual(status, 409)
+        status, body = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-bbbbbbbb", "kind": "save", "set": replacement_set, "items": replacement_items,
+            "replaceManifestHash": original_set["manifestHash"],
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["manifestHash"], replacement_set["manifestHash"])
+        status, body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["sets"][0]["manifestHash"], replacement_set["manifestHash"])
+
+    def test_lan_save_set_rejects_malformed_member_identity_and_reports_missing_blob(self):
+        save_set, items = self.save_set({"emerald.rtc": b"rtc", "emerald.srm": b"srm"})
+        malformed = {**save_set, "members": [{**save_set["members"][0], "path": "/data/saves/../escape"}, save_set["members"][1]]}
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": malformed, "items": items,
+        })
+        self.assertEqual(status, 400)
+        status, _ = self.request("POST", "/api/sync/lan/publish", {
+            "deviceId": "device-aaaaaaaa", "kind": "save", "set": save_set, "items": items,
+        })
+        self.assertEqual(status, 200)
+        app.LAN_BLOBS.pop(("save", items[0]["key"]))
+        status, _ = self.request("GET", f"/api/sync/lan/blob?kind=save&key={items[0]['key']}&hash={items[0]['contentHash']}")
+        self.assertEqual(status, 404)
+
+    def test_state_and_normal_save_namespaces_are_separate(self):
+        state_payload = b"state-bytes"
+        save_payload = b"normal-save-bytes"
+        save_key = "save:mgba:emerald:" + "a" * 64 + ":emerald.srm"
+        self.publish(state_payload)
+        status, _ = self.publish(save_payload, kind="save", key=save_key)
+        self.assertEqual(status, 200)
+        state_status, state_body = self.request("GET", "/api/sync/lan/manifest?kind=state")
+        save_status, save_body = self.request("GET", "/api/sync/lan/manifest?kind=save")
+        self.assertEqual(state_status, 200)
+        self.assertEqual(save_status, 200)
+        self.assertEqual(json.loads(state_body)["items"][0]["key"], "gba/pokemon-emerald/slot1.state")
+        self.assertEqual(json.loads(save_body)["items"][0]["key"], save_key)
+        save_hash = json.loads(save_body)["items"][0]["contentHash"]
+        status, downloaded = self.request("GET", f"/api/sync/lan/blob?kind=save&key={save_key}&hash={save_hash}")
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, save_payload)
+
     def test_lan_publish_rejects_ineligible_kinds_and_bad_hashes(self):
         payload = b"keys"
         status, _ = self.publish(payload, kind="firmware")
@@ -306,6 +619,12 @@ class SyncApiTests(unittest.TestCase):
         with patch.object(app, "LAN_BLOB_MAX_BYTES", 1024):
             status, _ = self.publish(b"x" * 2048)
         self.assertEqual(status, 413)
+
+    def test_lan_publish_allows_a_valid_blob_above_the_generic_json_limit(self):
+        payload = b"x" * (1024 * 1024)
+        status, body = self.publish(payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["items"][0]["size"], len(payload))
 
     def test_lan_transfer_is_disabled_in_production(self):
         with patch.object(app, "SYNC_ENABLED", False):
@@ -329,12 +648,24 @@ class SyncApiTests(unittest.TestCase):
 class SyncPageTests(unittest.TestCase):
     def test_page_markup_ships_the_mode_surface(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
-        for marker in ('id="syncMode"', 'id="syncSave"', 'id="syncRefreshPeers"', 'id="syncPeers"', "/static/sync.js"):
+        for marker in ('id="syncMode"', 'id="syncSave"', 'id="syncRefreshPeers"', 'id="syncTransfer"', 'id="syncPeers"', "/static/sync-transfer.js", "/static/sync.js"):
             self.assertIn(marker, source)
         script = (ROOT / "static/sync.js").read_text(encoding="utf-8")
         self.assertIn('"/api/sync/settings"', script)
         self.assertIn('"/api/sync/lan/announce"', script)
+        self.assertIn("AN3SyncTransfer.syncState", script)
         self.assertNotIn("eval(", script)
+
+    def test_player_page_exposes_the_real_game_save_sync_action(self):
+        source = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertIn('id="syncSaveFile"', source)
+        self.assertIn('id="syncSaveConflicts"', source)
+        self.assertIn('versioned_player_asset("sync-transfer.js")', source)
+        player = (ROOT / "static/player.js").read_text(encoding="utf-8")
+        self.assertIn("AN3SyncTransfer.syncSave", player)
+        self.assertIn("Save set conflict", player)
+        self.assertIn("memberCount", player)
+        self.assertIn("getSaveFilePath", (ROOT / "static/sync-transfer.js").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

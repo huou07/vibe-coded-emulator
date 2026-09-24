@@ -23,6 +23,9 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        // Instrumentation tests drive the real WebView shell instead of
+        // coordinate taps (which the search field / IME made unreliable).
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     packaging { jniLibs.useLegacyPackaging = true }
     buildTypes {
@@ -73,8 +76,16 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.4")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+    // Espresso-Web drives elements inside the packaged AN3 WebView by stable
+    // DOM selector, replacing fragile coordinate tapping.
+    androidTestImplementation("androidx.test.espresso:espresso-web:3.5.0")
+    // UiAutomator drives system UI that is outside the app process, such as the
+    // Storage Access Framework ROM picker.
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
 
 apply(from = "tauri.build.gradle.kts")

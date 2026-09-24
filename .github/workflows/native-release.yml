@@ -1,0 +1,76 @@
+# Native installers release (tags only).
+#
+# This is the ONLY workflow with a write scope. It runs on tags, builds the
+# five packages through the reusable `native-build.yml` workflow (read-only),
+# and then creates a DRAFT GitHub release with the built-in `GITHUB_TOKEN`.
+#
+# Security posture for maintainers:
+#   - Triggered only by a pushed tag (`v*`); it never runs on pull requests.
+#   - The build jobs are read-only because `native-build.yml` declares
+#     `contents: read`. Only the final job raises a single, minimal
+#     `contents: write` scope, which `gh release create` needs.
+#   - The release is created as a draft, so a human decides whether to publish
+#     it; this workflow never publishes automatically and never deploys.
+#   - No signing identity and no `secrets.*` are referenced anywhere.
+#   - Third-party actions are pinned to immutable full commit SHAs.
+name: native-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/native-build.yml
+
+  draft-release:
+    name: Draft release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built installers
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+      - name: Collect files and labels
+        run: |
+          set -euo pipefail
+          # Each artifact keeps its own directory so its BUILD_LABELS.txt is
+          # preserved instead of being overwritten by a sibling platform.
+          find dist -type f | sort
+          echo '--- labels ---'
+          find dist -name BUILD_LABELS.txt -exec sh -c 'echo "[$1] $(cat "$1")"' _ {} \;
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'NOTES'
+          Native installers built from source by GitHub Actions.
+
+          **The attached installers are UNSIGNED staging builds.** macOS bundles
+          are ad-hoc signed only and not notarized, Android APKs use the
+          auto-generated Android debug key, and the Linux DEB/Flatpak and
+          Windows NSIS packages carry no distribution or Authenticode
+          signature. Treat them as test builds. Each artifact directory ships a
+          `BUILD_LABELS.txt` that records this.
+
+          Verify the downloaded files against the adjacent `.sha256` sidecars
+          before running them.
+          NOTES
+          shopt -s nullglob
+          files=(dist/*/*)
+          ((${#files[@]})) || { echo 'No installer artifacts were downloaded.' >&2; exit 1; }
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "Vibe Coded Emulator $TAG (unsigned staging builds)" \
+            --notes-file release-notes.md \
+            "${files[@]}"

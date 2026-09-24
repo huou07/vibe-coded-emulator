@@ -253,10 +253,10 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         manifest = source(ANDROID_MANIFEST)
         library = source(OFFLINE_LIBRARY)
 
-        self.assertIn('? ["gba", "nds", "3ds"] :', bootstrap)
+        self.assertIn('? ["gba", "nds", "3ds", "switch"] :', bootstrap)
         self.assertNotIn("AN3AndroidLaunchThreeDs", bootstrap)
         self.assertNotIn("launchThreeDs", activity)
-        self.assertIn('system !in listOf("gba", "nds", "3ds")', activity)
+        self.assertIn('system !in listOf("gba", "nds", "3ds", "switch")', activity)
         self.assertIn('"libazahar_libretro_android.so"', source(GAME_ACTIVITY))
         self.assertNotIn("org.azahar_emu.azahar", manifest)
         self.assertNotIn("An3RomContentProvider", manifest)
@@ -297,9 +297,9 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn("e->NewWeakGlobalRef(activity)", jni)
         self.assertIn("e->DeleteWeakGlobalRef(activity_owner)", jni)
 
-        stop = between(jni, "Java_space_an3tocom_offline_NativeGameActivity_nativeStop", "Java_space_an3tocom_offline_NativeGameActivity_nativeButton")
+        stop = between(jni, "Java_space_an3tocom_offline_NativeGameActivity_nativeStop", "Java_space_an3tocom_offline_NativeGameActivity_nativeLibretroButton")
         self.assertRegex(stop, r"if\s*\(owns\(e,activity\)\)")
-        for method in ("nativeButton", "nativePointer", "nativeCommand", "nativeDiagnostics"):
+        for method in ("nativeLibretroButton", "nativePointer", "nativeCommand", "nativeDiagnostics"):
             body = jni[jni.index(f"Java_space_an3tocom_offline_NativeGameActivity_{method}") :]
             body = body[: body.find("\nextern \"C\"", 1)] if "\nextern \"C\"" in body else body
             self.assertIn("owns(e,activity)", body, method)

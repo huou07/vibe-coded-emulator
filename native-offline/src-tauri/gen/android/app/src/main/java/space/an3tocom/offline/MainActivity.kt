@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.webkit.JavascriptInterface
+import android.webkit.CookieManager
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import java.io.BufferedInputStream
@@ -23,7 +24,6 @@ import org.json.JSONObject
 
 class MainActivity : TauriActivity() {
   private companion object {
-    const val OFFLINE_ORIGIN = "https://appassets.androidplatform.net/index.html"
     const val ROM_IMPORT_REQUEST = 0xA31
     const val STATE_EXPORT_REQUEST = 0xA32
     const val COPY_BUFFER_BYTES = 1024 * 1024
@@ -53,18 +53,36 @@ class MainActivity : TauriActivity() {
       activity.launchNative(romId, system, expectedSize)
 
     @JavascriptInterface
+    fun switchAvailable(): Boolean {
+      // Probe packaging only; loading Eden is deferred to an actual Switch launch
+      // so GBA/NDS/3DS launches never initialize the Eden/SDL core.
+      val packaged = java.io.File(activity.applicationInfo.nativeLibraryDir, "liban3_eden_android.so").exists()
+      NativeGameActivity.noteEdenPackaged(packaged)
+      return packaged
+    }
+
+    @JavascriptInterface
     fun exportState(encoded: String) = activity.exportState(encoded)
   }
 
   // Library Settings -> Phone Controller. It shares the one app-scoped host
   // with in-game play, so a session started before a game keeps working when a
   // game launches. Returns the current status as JSON; never the raw token.
-  private class AndroidNativeControllerBridge {
+  private class AndroidNativeControllerBridge(private val activity: MainActivity) {
     @JavascriptInterface
-    fun start(baseUrl: String): String {
-      An3ControllerHost.start(baseUrl)
+    fun start(): String {
+      An3ControllerHost.start()
       return An3ControllerHost.statusJson()
     }
+
+    @JavascriptInterface
+    fun join(code: String): String {
+      An3ControllerHost.join(code)
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun send(state: String): String = An3ControllerHost.send(state).toJson()
 
     @JavascriptInterface
     fun stop(): String {
@@ -74,6 +92,26 @@ class MainActivity : TauriActivity() {
 
     @JavascriptInterface
     fun status(): String = An3ControllerHost.statusJson()
+
+    // Controller Mode: while the phone-controller pad is the active surface the
+    // library activity locks to landscape so the pad fills the screen. Leaving
+    // the mode restores sensor orientation. This changes presentation only; it
+    // never touches the session or input semantics.
+    @JavascriptInterface
+    fun enterControllerMode(): String {
+      activity.runOnUiThread {
+        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+      }
+      return "landscape"
+    }
+
+    @JavascriptInterface
+    fun exitControllerMode(): String {
+      activity.runOnUiThread {
+        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+      }
+      return "auto"
+    }
   }
 
   // Canonical settings surface for the offline shell. MainActivity is a
@@ -104,29 +142,39 @@ class MainActivity : TauriActivity() {
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    An3LanMulticast.acquire(this)
+  }
+
+  override fun onDestroy() {
+    An3LanMulticast.release()
+    super.onDestroy()
   }
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     contentWebView = webView
+    // The installed shell keeps the optional AN3 session on the account
+    // provider's HTTPS origin.  Android treats the packaged app origin as a
+    // separate site, so explicitly enable the WebView's persistent,
+    // HttpOnly/Secure third-party cookie path for that account session.  LAN
+    // sync never uses this cookie or sends it to a peer.
+    CookieManager.getInstance().setAcceptCookie(true)
+    CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
-    webView.addJavascriptInterface(AndroidNativeControllerBridge(), "AN3AndroidNativeController")
+    webView.addJavascriptInterface(AndroidNativeControllerBridge(this), "AN3AndroidNativeController")
     webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")
-    // Tauri creates its WebView at `tauri.localhost`; Android does not make
-    // that origin cross-origin isolated. Tauri attaches its stock client
-    // immediately after this callback, so replace it on the next event-loop
-    // turn, then move to the packaged AssetLoader origin.
-    webView.postDelayed({
-      webView.webViewClient = An3SecureWebViewClient(webView as RustWebView)
-      webView.loadUrl(OFFLINE_ORIGIN)
-    }, 250)
+    // TauriActivity owns navigation to the packaged https://tauri.localhost
+    // document.  Keep that stock navigation and client intact: replacing it
+    // with a raw WebView.loadUrl leaves Tauri's dispatcher at about:blank,
+    // which correctly causes every native command to fail its ACL check.
   }
 
   private fun isValidRomId(romId: String): Boolean =
     Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").matches(romId)
 
   private fun launchNative(romId: String, system: String, expectedSize: Long): String {
-    if (!isValidRomId(romId) || system !in listOf("gba", "nds", "3ds")) return "Unsupported native game"
+    if (!isValidRomId(romId) || system !in listOf("gba", "nds", "3ds", "switch")) return "Unsupported native game"
+    if (system == "switch" && !NativeGameActivity.ensureEdenLoaded()) return "Nintendo Switch runtime is unavailable"
     val rom = nativeRomFile(romId, system, expectedSize) ?: return "Native ROM is unavailable"
     runOnUiThread {
       startActivity(Intent(this, NativeGameActivity::class.java)
@@ -302,7 +350,7 @@ class MainActivity : TauriActivity() {
       }
       val sourceSize = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }?.takeIf { it > 0 }
       val system = detectDirectSystem(uri, extension, sourceSize)
-        ?: throw IllegalArgumentException("Could not identify a supported GBA, NDS, or decrypted 3DS ROM.")
+        ?: throw IllegalArgumentException("Could not identify a supported GBA, NDS, 3DS, or Switch ROM.")
       val destinationName = "$romId.${storageExtension(name, system)}"
       val destination = File(destinationDirectory, destinationName)
       val playableSize = declaredNcsdLength(uri, sourceSize)
@@ -363,6 +411,7 @@ class MainActivity : TauriActivity() {
     "gba", "raw" -> "gba"
     "nds", "dsi" -> "nds"
     "3ds", "3dsx", "cci", "cxi", "app" -> "3ds"
+    "nsp", "xci", "nro", "nso", "nca" -> "switch"
     else -> null
   }
 

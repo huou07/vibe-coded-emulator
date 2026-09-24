@@ -116,9 +116,9 @@ pub(super) fn input(value: NativeInput) -> Result<(), String> {
 /// over the private `--control-stdin` channel. The player maps the command onto
 /// its existing quick-save/speed/menu operations; an unknown action is rejected
 /// before anything is written.
-pub(super) fn utility(action: &str) -> Result<(), String> {
+pub(super) fn utility(action: &str, slot: u8) -> Result<(), String> {
     let command = match action {
-        "QUICK_SAVE" | "SPEED_UP" | "SPEED_DOWN" | "OPEN_MENU" => action,
+        "QUICK_SAVE" | "QUICK_LOAD" | "SPEED_UP" | "SPEED_DOWN" | "OPEN_MENU" => action,
         _ => {
             return Err(format!(
                 "The desktop player does not support the '{action}' utility action."
@@ -130,7 +130,11 @@ pub(super) fn utility(action: &str) -> Result<(), String> {
         .as_mut()
         .and_then(|child| child.stdin.as_mut())
         .ok_or_else(|| "No native game is running.".to_string())?;
-    writeln!(pipe, "{command}").map_err(|error| error.to_string())?;
+    if matches!(command, "QUICK_SAVE" | "QUICK_LOAD") {
+        writeln!(pipe, "{command} {slot}").map_err(|error| error.to_string())?;
+    } else {
+        writeln!(pipe, "{command}").map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 

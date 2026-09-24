@@ -1,7 +1,8 @@
 {
   "bundle": {
     "resources": {
-      "../vendor/runtime/windows-x64/": "runtime/windows-x64/"
+      "../vendor/runtime/windows-x64/": "runtime/windows-x64/",
+      "../vendor/switch/windows-x64/": "switch/windows-x64/"
     }
   }
 }

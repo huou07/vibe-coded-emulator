@@ -56,6 +56,13 @@ node "$root/scripts/generate-player-ui.mjs" --check
   echo 'Verified Linux GBA/NDS/3DS libretro cores are unavailable.' >&2
   exit 3
 }
+# Build and stage the pinned Eden companion before Tauri packaging so Linux
+# DEB and Flatpak resources contain the same four-core release surface.
+bash "$root/scripts/build-linux-eden-companion.sh"
+[[ -f "$root/vendor/switch/linux-x86_64/an3_switch_companion" && -f "$root/vendor/switch/linux-x86_64/manifest.json" ]] || {
+  echo 'Verified Linux Eden companion is unavailable.' >&2
+  exit 3
+}
 
 rm -rf "$build"
 mkdir -p "$build" "$release"
@@ -114,6 +121,28 @@ cmp -s "$deb_path" "$flatpak_deb_path" || {
 }
 flatpak-builder --force-clean --disable-cache --repo="$build/flatpak-repo" \
   "$build/flatpak-build" "$root/flatpak/space.an3tocom.offline.yml"
+# Flatpak-builder may extract debug sections from ELF payloads even when the
+# module's strip option is false. Refresh the Eden manifest from the actual
+# staged companion, then re-export the app ref so the installed bundle's
+# integrity record describes the bytes it really contains.
+flatpak_companion="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
+flatpak_manifest="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/manifest.json"
+[[ -f "$flatpak_companion" && -f "$flatpak_manifest" ]] || {
+  echo 'Flatpak Eden companion or manifest is missing after assembly.' >&2
+  exit 3
+}
+node --input-type=module - "$flatpak_manifest" "$flatpak_companion" <<'NODE'
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+const [manifestPath, companionPath] = process.argv.slice(2);
+const bytes = readFileSync(companionPath);
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+manifest.sha256 = createHash("sha256").update(bytes).digest("hex");
+manifest.size = bytes.length;
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+NODE
+flatpak build-export "$build/flatpak-repo" "$build/flatpak-build" \
+  master --no-update-summary --no-summary-index
 flatpak build-bundle "$build/flatpak-repo" \
   "$release/$flatpak_name" \
   space.an3tocom.offline master \

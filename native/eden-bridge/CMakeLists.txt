@@ -32,3 +32,22 @@ enable_testing()
 add_executable(an3_eden_bridge_smoke tests/bridge_smoke.c)
 target_link_libraries(an3_eden_bridge_smoke PRIVATE an3_eden_bridge)
 add_test(NAME an3_eden_bridge_smoke COMMAND an3_eden_bridge_smoke)
+
+# Hosted-frame consumer harness (macOS only): a separate process that attaches
+# to the producer's shared-memory ring and imports each published IOSurface as
+# an MTLTexture. It never links Eden, proving the out-of-process boundary.
+if(APPLE)
+    enable_language(OBJCXX)
+    add_executable(an3_eden_hosted_consumer
+        tests/hosted_frame_consumer.mm
+        src/an3_eden_hosted_frame.c
+        src/an3_eden_hosted_frame_shm.c
+    )
+    target_include_directories(an3_eden_hosted_consumer PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_compile_features(an3_eden_hosted_consumer PRIVATE cxx_std_17)
+    set_source_files_properties(tests/hosted_frame_consumer.mm PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(an3_eden_hosted_consumer PRIVATE
+        "-framework Foundation" "-framework Metal" "-framework IOSurface")
+endif()

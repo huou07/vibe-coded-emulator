@@ -37,6 +37,10 @@ const BRIDGE_ABI = 3;
 const DEST_DIR = join(ROOT, "vendor/switch/macos-arm64");
 const LIB_DIR = join(DEST_DIR, "lib");
 const DEST_BIN = join(DEST_DIR, "an3_switch_companion");
+const CHECKED_IN_LICENSE = join(DEST_DIR, "EDEN-GPL-3.0-or-later.txt");
+const checkedInLicenseText = existsSync(CHECKED_IN_LICENSE)
+  ? readFileSync(CHECKED_IN_LICENSE)
+  : null;
 
 const isExternal = (path) => path.startsWith("/opt/homebrew/") || path.startsWith("/usr/local/");
 
@@ -132,11 +136,25 @@ if (leftovers.length > 0) {
   fail(`install-name rewrite left external paths:\n  ${leftovers.join("\n  ")}`);
 }
 
+// Apple Silicon validates code pages at 16 KiB granularity. Keep the staged
+// vendor tree directly runnable as well as the later app bundle: a default
+// 4 KiB ad-hoc signature is rejected by dyld as "Invalid Page".
+for (const file of [DEST_BIN, ...[...closure.keys()].map((name) => join(LIB_DIR, name))]) {
+  execFileSync("codesign", ["--force", "--pagesize", "16384", "--sign", "-", file], {
+    stdio: "inherit",
+  });
+}
+
 // 5. Ship Eden's license text and a manifest recording the pinned source.
 let licenseNote = "Eden license text was not found at the expected path; see THIRD_PARTY_NOTICES.md.";
-const licensePath = join(EDEN_ROOT, "LICENSE.txt");
-if (existsSync(licensePath)) {
+const licensePath = ["LICENSE.txt", "LICENSE"]
+  .map((name) => join(EDEN_ROOT, name))
+  .find((path) => existsSync(path));
+if (licensePath) {
   copyFileSync(licensePath, join(DEST_DIR, "EDEN-GPL-3.0-or-later.txt"));
+  licenseNote = "EDEN-GPL-3.0-or-later.txt";
+} else if (checkedInLicenseText) {
+  writeFileSync(join(DEST_DIR, "EDEN-GPL-3.0-or-later.txt"), checkedInLicenseText);
   licenseNote = "EDEN-GPL-3.0-or-later.txt";
 }
 const manifest = {

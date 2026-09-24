@@ -112,16 +112,24 @@ class SystemInferenceTests(unittest.TestCase):
         self.assertEqual(
             [item["filename"] for item in available],
             [
-                "vibecodedemulator-2.2.0-macos-aarch64.dmg",
-                "vibecodedemulator-2.2.0-android-arm64-staging.apk",
-                "vibecodedemulator-2.2.0-linux-amd64.deb",
-                "an3-offline-2.2.0-linux-amd64-staging.flatpak",
-                "vibecodedemulator-2.2.0-windows-x64-staging.exe",
+                "vibecodedemulator-3.3.0-macos-aarch64.dmg",
+                "vibecodedemulator-3.3.0-android-arm64-staging.apk",
+                "vibecodedemulator-3.3.0-android-arm64-staging.aab",
+                "vibecodedemulator-3.3.0-linux-amd64.deb",
+                "an3-offline-3.3.0-linux-amd64-staging.flatpak",
+                "vibecodedemulator-3.3.0-windows-x64-staging.exe",
             ],
         )
         self.assertEqual(
             {item["format"]: item["version"] for item in available},
-            {"DMG": "2.2.0", "APK": "2.2.0", "DEB": "2.2.0", "Flatpak": "2.2.0", "EXE": "2.2.0"},
+            {
+                "DMG": "3.3.0",
+                "APK": "3.3.0",
+                "AAB": "3.3.0",
+                "DEB": "3.3.0",
+                "Flatpak": "3.3.0",
+                "EXE": "3.3.0",
+            },
         )
         self.assertTrue(all(item["size"] and item["sha256"] for item in available))
 
@@ -628,15 +636,25 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
         self.assertEqual(status, 404)
 
         self.assertEqual(public.request("GET", "/download-app/source")[0], 404)
-        self.assertEqual(public.request("GET", "/download-app/artifacts.json")[0], 404)
+        # The release catalog is public metadata (filenames, sizes, SHA-256)
+        # consumed by the download page and the Linux installer scripts, so it
+        # is served in production. The staging-only source bundle stays retired.
+        manifest_status, _, manifest_body = public.request("GET", "/download-app/artifacts.json")
+        self.assertEqual(manifest_status, 200)
+        self.assertIn(b'"artifacts"', manifest_body)
 
         status, _, body = public.request("GET", "/download-app")
         self.assertEqual(status, 200)
         self.assertIn(b'nav-download-app', public.request("GET", "/")[2])
 
         import app
-        available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
-        self.assertTrue(available)
+        artifacts = app.native_artifact_manifest()["artifacts"]
+        self.assertTrue(artifacts)
+        available = [item for item in artifacts if item["status"] == "available"]
+        blocked = [item for item in artifacts if item["status"] == "blocked"]
+        self.assertTrue(all(item["download_url"] is None for item in blocked))
+        if not available:
+            self.assertEqual(len(blocked), len(artifacts))
         for item in available:
             with self.subTest(installer=item["filename"]):
                 status, headers, _ = public.raw("HEAD", f"/download-app/release/{item['filename']}?sha256={item['sha256']}")

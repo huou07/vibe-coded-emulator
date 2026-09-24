@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "an3-offline-native"
-version = "2.3.0"
+version = "3.3.0"
 dependencies = [
  "aes-gcm",
  "base64 0.21.7",
@@ -82,6 +82,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

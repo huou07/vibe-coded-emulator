@@ -74,6 +74,10 @@
       "wire": "quick_save",
       "label": "Quick Save"
     },
+    "QUICK_LOAD": {
+      "wire": "quick_load",
+      "label": "Quick Load"
+    },
     "SPEED_UP": {
       "wire": "speed_up",
       "label": "Speed Up"

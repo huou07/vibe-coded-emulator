@@ -242,26 +242,6 @@
       "storageKey": null
     },
     {
-      "id": "controller-server",
-      "label": "Controller server",
-      "category": "network",
-      "type": "string",
-      "storage": "string",
-      "values": [],
-      "labels": {},
-      "min": null,
-      "max": null,
-      "default": "",
-      "legacyKeys": [],
-      "legacyResolve": null,
-      "restart": "none",
-      "note": null,
-      "external": false,
-      "pinned": false,
-      "editable": true,
-      "storageKey": null
-    },
-    {
       "id": "lan-sync",
       "label": "LAN Sync",
       "category": "network",
@@ -271,7 +251,7 @@
       "labels": {},
       "min": null,
       "max": null,
-      "default": "true",
+      "default": "false",
       "legacyKeys": [],
       "legacyResolve": null,
       "restart": "none",
@@ -6027,7 +6007,6 @@
   },
   "availability": {
     "switch": {
-      "android": "Nintendo Switch is not supported on Android. Settings are stored but cannot launch here.",
       "ios": "Nintendo Switch is not supported on iOS."
     }
   },

@@ -13,11 +13,12 @@ vm.runInNewContext(source, context);
 const {ACTIONS, createDispatcher} = context.module.exports;
 
 const operations = () => {
-  const calls = {quick: 0, up: 0, down: 0, menu: 0};
+  const calls = {quick: 0, load: 0, up: 0, down: 0, menu: 0, slots: []};
   return {
     calls,
     ops: {
-      QUICK_SAVE: () => { calls.quick += 1; return "saved"; },
+      QUICK_SAVE: entry => { calls.quick += 1; calls.slots.push(["save", entry?.slot]); return "saved"; },
+      QUICK_LOAD: entry => { calls.load += 1; calls.slots.push(["load", entry?.slot]); return "loaded"; },
       SPEED_UP: () => { calls.up += 1; return 2; },
       SPEED_DOWN: () => { calls.down += 1; return 1; },
       OPEN_MENU: () => { calls.menu += 1; return true; },
@@ -25,7 +26,7 @@ const operations = () => {
   };
 };
 
-assert.equal(ACTIONS.join(","), "QUICK_SAVE,SPEED_UP,SPEED_DOWN,OPEN_MENU", "canonical utility actions");
+assert.equal(ACTIONS.join(","), "QUICK_SAVE,QUICK_LOAD,SPEED_UP,SPEED_DOWN,OPEN_MENU", "canonical utility actions");
 
 // A single press runs the corresponding existing operation exactly once.
 {
@@ -36,6 +37,21 @@ assert.equal(ACTIONS.join(","), "QUICK_SAVE,SPEED_UP,SPEED_DOWN,OPEN_MENU", "can
   assert.equal(results[0].ok, true);
 }
 assert.ok(true, "utilities dispatch once");
+
+// Explicit command IDs are the replay identity, so two commands may share a
+// numeric sequence without collapsing into one side effect.
+{
+  const {calls, ops} = operations();
+  const dispatcher = createDispatcher(ops);
+  dispatcher.dispatch([
+    {action: "QUICK_SAVE", sequence: 7, command_id: "phone-a", slot: 3},
+    {action: "QUICK_LOAD", sequence: 7, command_id: "phone-b", slot: 10},
+  ]);
+  dispatcher.dispatch([{action: "QUICK_SAVE", sequence: 7, command_id: "phone-a", slot: 3}]);
+  assert.equal(calls.quick, 1);
+  assert.equal(calls.load, 1);
+  assert.deepEqual(calls.slots, [["save", 3], ["load", 10]]);
+}
 
 // Duplicate / retried sequences never repeat the side effect.
 {

@@ -3,30 +3,165 @@
   "description": "Canonical native application and per-core emulator settings. One logical source of truth for the Android adapter (SharedPreferences) and the offline shell UI. Per-system settings use the storage key <id>-<system>; global settings use <id>. Legacy keys are read as a fallback until the user stores an explicit per-system value, so existing preferences are preserved and never blindly copied between cores.",
   "store": "an3-native-game",
   "coreOptionRegistry": "core-option-registry.json",
-  "systems": ["gba", "nds", "3ds", "switch"],
-  "systemLabels": {"gba": "GBA", "nds": "NDS", "3ds": "3DS", "switch": "Switch"},
+  "systems": [
+    "gba",
+    "nds",
+    "3ds",
+    "switch"
+  ],
+  "systemLabels": {
+    "gba": "GBA",
+    "nds": "NDS",
+    "3ds": "3DS",
+    "switch": "Switch"
+  },
   "global": [
-    {"id": "volume", "label": "Volume", "category": "audio", "type": "int", "min": 0, "max": 100, "default": "100", "restart": "none", "external": true},
-    {"id": "mute", "label": "Mute", "category": "audio", "type": "bool", "default": "false", "restart": "none", "external": true},
-    {"id": "latency", "label": "Audio latency", "category": "audio", "type": "enum", "storage": "int", "values": ["32", "64", "96", "128"], "labels": {"32": "32 ms", "64": "64 ms", "96": "96 ms", "128": "128 ms"}, "default": "64", "restart": "none", "external": true},
-    {"id": "quality", "label": "Resampler quality", "category": "audio", "type": "enum", "values": ["low", "medium", "high"], "labels": {"low": "Low", "medium": "Medium", "high": "High"}, "default": "medium", "restart": "none", "external": true},
-    {"id": "autosave-mode", "label": "Auto Save", "category": "emulation", "type": "enum", "values": ["off", "exit", "30", "10", "5"], "labels": {"off": "Off", "exit": "On game exit", "30": "Every 30 seconds", "10": "Every 10 seconds", "5": "Every 5 seconds"}, "default": null, "legacyResolve": "native-autosave", "restart": "none", "external": true},
-    {"id": "show-fps", "label": "Show FPS", "category": "display", "type": "bool", "default": "false", "restart": "none", "external": true},
-    {"id": "start-fullscreen", "label": "Start fullscreen on launch", "category": "display", "type": "bool", "default": "true", "restart": "app", "external": true},
-    {"id": "key-map", "label": "Keyboard map", "category": "controls", "type": "string", "default": "{}", "restart": "none", "external": false},
-    {"id": "controller-server", "label": "Controller server", "category": "network", "type": "string", "default": "", "restart": "none", "external": false},
-    {"id": "lan-sync", "label": "LAN Sync", "category": "network", "type": "bool", "default": "true", "restart": "none", "external": false}
+    {
+      "id": "volume",
+      "label": "Volume",
+      "category": "audio",
+      "type": "int",
+      "min": 0,
+      "max": 100,
+      "default": "100",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "mute",
+      "label": "Mute",
+      "category": "audio",
+      "type": "bool",
+      "default": "false",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "latency",
+      "label": "Audio latency",
+      "category": "audio",
+      "type": "enum",
+      "storage": "int",
+      "values": [
+        "32",
+        "64",
+        "96",
+        "128"
+      ],
+      "labels": {
+        "32": "32 ms",
+        "64": "64 ms",
+        "96": "96 ms",
+        "128": "128 ms"
+      },
+      "default": "64",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "quality",
+      "label": "Resampler quality",
+      "category": "audio",
+      "type": "enum",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "labels": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "default": "medium",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "autosave-mode",
+      "label": "Auto Save",
+      "category": "emulation",
+      "type": "enum",
+      "values": [
+        "off",
+        "exit",
+        "30",
+        "10",
+        "5"
+      ],
+      "labels": {
+        "5": "Every 5 seconds",
+        "10": "Every 10 seconds",
+        "30": "Every 30 seconds",
+        "off": "Off",
+        "exit": "On game exit"
+      },
+      "default": null,
+      "legacyResolve": "native-autosave",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "show-fps",
+      "label": "Show FPS",
+      "category": "display",
+      "type": "bool",
+      "default": "false",
+      "restart": "none",
+      "external": true
+    },
+    {
+      "id": "start-fullscreen",
+      "label": "Start fullscreen on launch",
+      "category": "display",
+      "type": "bool",
+      "default": "true",
+      "restart": "app",
+      "external": true
+    },
+    {
+      "id": "key-map",
+      "label": "Keyboard map",
+      "category": "controls",
+      "type": "string",
+      "default": "{}",
+      "restart": "none",
+      "external": false
+    },
+    {
+      "id": "lan-sync",
+      "label": "LAN Sync",
+      "category": "network",
+      "type": "bool",
+      "default": "false",
+      "restart": "none",
+      "external": false
+    }
   ],
   "renderer": {
     "id": "renderer",
     "label": "Renderer",
     "category": "graphics",
     "type": "enum",
-    "values": ["auto", "vulkan", "opengl"],
-    "labels": {"auto": "Auto", "vulkan": "Vulkan", "opengl": "OpenGL ES"},
+    "values": [
+      "auto",
+      "vulkan",
+      "opengl"
+    ],
+    "labels": {
+      "auto": "Auto",
+      "vulkan": "Vulkan",
+      "opengl": "OpenGL ES"
+    },
     "default": "auto",
-    "legacyKeys": ["renderer"],
-    "legacySystems": ["gba", "nds", "3ds"],
+    "legacyKeys": [
+      "renderer"
+    ],
+    "legacySystems": [
+      "gba",
+      "nds",
+      "3ds"
+    ],
     "restart": "renderer",
     "note": "Applies on the next launch. Auto picks the stable backend for each system."
   },
@@ -37,33 +172,81 @@
     "type": "enum",
     "valuesFrom": "native-layout-schema",
     "default": "left-right",
-    "legacyKeys": ["{key}", "nds-layout"],
+    "legacyKeys": [
+      "{key}",
+      "nds-layout"
+    ],
     "restart": "game",
     "note": "Applies immediately in-game and on the next launch outside the game.",
-    "systems": ["nds", "3ds"]
+    "systems": [
+      "nds",
+      "3ds"
+    ]
   },
   "systemGraphics": {
-    "gba": ["renderer"],
-    "nds": ["renderer", "screen-layout"],
-    "3ds": ["renderer", "screen-layout"],
-    "switch": ["renderer"]
+    "gba": [
+      "renderer"
+    ],
+    "nds": [
+      "renderer",
+      "screen-layout"
+    ],
+    "3ds": [
+      "renderer",
+      "screen-layout"
+    ],
+    "switch": [
+      "renderer"
+    ]
   },
   "systemEmulation": {
-    "gba": ["from-core-option-registry"],
-    "nds": ["from-core-option-registry"],
-    "3ds": ["from-core-option-registry"],
+    "gba": [
+      "from-core-option-registry"
+    ],
+    "nds": [
+      "from-core-option-registry"
+    ],
+    "3ds": [
+      "from-core-option-registry"
+    ],
     "switch": []
   },
   "platformAvailability": {
     "switch": {
-      "android": {"available": false, "reason": "Nintendo Switch is not supported on Android. Settings are stored but cannot launch here."},
-      "ios": {"available": false, "reason": "Nintendo Switch is not supported on iOS."}
+      "ios": {
+        "available": false,
+        "reason": "Nintendo Switch is not supported on iOS."
+      }
     }
   },
   "pinnedCoreOptions": {
-    "gba": {"android": [], "default": []},
-    "nds": {"android": ["melonds_render_mode", "melonds_threaded_renderer", "melonds_touch_mode", "melonds_show_cursor", "melonds_number_of_screen_layouts", "melonds_screen_layout1"], "default": []},
-    "3ds": {"android": ["citra_graphics_api", "citra_use_hw_shader", "citra_use_disk_shader_cache", "citra_layout_option"], "default": []},
-    "switch": {"android": [], "default": []}
+    "gba": {
+      "android": [],
+      "default": []
+    },
+    "nds": {
+      "android": [
+        "melonds_render_mode",
+        "melonds_threaded_renderer",
+        "melonds_touch_mode",
+        "melonds_show_cursor",
+        "melonds_number_of_screen_layouts",
+        "melonds_screen_layout1"
+      ],
+      "default": []
+    },
+    "3ds": {
+      "android": [
+        "citra_graphics_api",
+        "citra_use_hw_shader",
+        "citra_use_disk_shader_cache",
+        "citra_layout_option"
+      ],
+      "default": []
+    },
+    "switch": {
+      "android": [],
+      "default": []
+    }
   }
 }

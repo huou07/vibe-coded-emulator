@@ -59,13 +59,47 @@ way.
   release artifacts.
 - No `prod.keys`, `title.keys`, firmware, BIOS, commercial ROMs, or owner
   credentials are distributed.
+- `tools/release-artifact-scan.py` scans the evidence bundle and the collected
+  candidate artifacts for credentials and private data (developer home paths,
+  personal email, LAN/staging hosts) without network access or a `gitleaks`
+  install. It reuses the `tools/publication/.gitleaks.toml` allowlists and
+  inline rules and never prints or stores a matched value. It expands container
+  members with the standard library only, in memory and never to disk, reporting
+  them as `container!member`: ZIP (`.apk`/`.zip`), `ar` (`.deb`, including its
+  `control`/`data` tarballs), gzip/xz/bzip2 streams and `tar`, plus archives
+  nested up to two levels deep. Each member is capped by `--max-file-bytes`.
+  The UDIF `.dmg`, Flatpak bundle and NSIS `.exe` containers have no
+  standard-library reader, so those (and any other unrecognised container) are
+  only raw-scanned; **unpack the payload for deeper coverage of those formats**.
+  A member that cannot be decoded or exceeds the cap is recorded as an
+  unverified `skipped` entry rather than silently trusted, but a skipped member
+  alone does not fail the scan.
 
 ## Pre-release checklist
 
 1. `python3 tools/verify-release-catalog.py` → `RELEASE_CATALOG=PASS`.
-2. Full test suite green (`python3 -m unittest discover -s tests`).
-3. `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `native-core-licenses/` present in
+2. `tools/release-train.sh --staging freeze all` and the coordinated
+   `--coordinated build all` emit the evidence bundle automatically next to
+   `SOURCE_FROZEN.json`: `LICENSE_INVENTORY.json`, `sbom.cdx.json`
+   (CycloneDX 1.5), `SHA256SUMS` and `SECRET_SCAN.json` for
+   `source.tar.gz`/`dependency-cache.tar.gz` or the collected candidate
+   artifacts. Archive the bundle with the release. `tools/release-evidence.py`
+   can also be run directly against a candidate artifact directory.
+   Components whose license is only known categorically from
+   `docs/licensing/license-audit.md` (e.g. Cargo crates) remain `UNKNOWN` and
+   must be reconciled before publication.
+3. Publication gate: run the release train with `AN3_REQUIRE_KNOWN_LICENSES=1`.
+   `--fail-on-unknown` then exits non-zero (the train fails) while any
+   component still has no license, naming the ecosystems to reconcile. The
+   default is report-only, because the Cargo inventory is not yet reconciled.
+4. Artifact secret gate: `tools/release-artifact-scan.py` (run by the train,
+   writes `SECRET_SCAN.json`) reports any credential or private-data match in
+   the evidence bundle or candidate artifacts. Run the train with
+   `AN3_REQUIRE_CLEAN_ARTIFACTS=1` to fail the train on any finding; the default
+   is report-only. A real finding requires rotation/removal, not just a rerun.
+5. Full test suite green (`python3 -m unittest discover -s tests`).
+6. `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `native-core-licenses/` present in
    the built package.
-4. `catalog.json` records the source revision for each artifact.
-5. The Licenses UI opens and shows the notices and the source URL.
-6. Staging deploy passes; production requires explicit owner approval.
+7. `catalog.json` records the source revision for each artifact.
+8. The Licenses UI opens and shows the notices and the source URL.
+9. Staging deploy passes; production requires explicit owner approval.

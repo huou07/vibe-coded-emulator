@@ -84,8 +84,8 @@ def _status(result):
 class EdenBridgeContractTests(unittest.TestCase):
     """Source contracts that must hold without running Eden."""
 
-    def test_01_abi_is_version_two(self):
-        self.assertIn("#define AN3_EDEN_BRIDGE_ABI_VERSION 2u", HEADER)
+    def test_01_abi_is_version_three(self):
+        self.assertIn("#define AN3_EDEN_BRIDGE_ABI_VERSION 3u", HEADER)
 
     def test_02_analog_has_a_stick_selector(self):
         self.assertIn("AN3_EDEN_STICK_LEFT = 0", HEADER)

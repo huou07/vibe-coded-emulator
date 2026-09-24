@@ -97,6 +97,10 @@ public:
     bool load_state(unsigned slot, std::string& error);
     bool save_auto(std::string& error);
     bool load_auto(std::string& error);
+    // Persist the core's battery save (SRAM/Flash/EEPROM) to the frontend save
+    // directory. Called automatically on shutdown; adapters may also call it on
+    // a timer or before suspension so a save survives an abrupt process kill.
+    bool flush_save_ram(std::string& error);
     bool export_state(const std::string& path, std::string& error);
     bool import_state(const std::string& path, std::string& error);
 

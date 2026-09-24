@@ -17,19 +17,24 @@
   var lanDetail = byId("syncLanDetail");
   var googleToggle = byId("syncGoogleEnabled");
   var googleDetail = byId("syncGoogleDetail");
+  var transferButton = byId("syncTransfer");
   var contentIds = {save: "syncContentSave", state: "syncContentState", library: "syncContentLibrary", rom: "syncContentRom"};
-  var state = {mode: "off", content: {}, modes: [], contentOptions: [], lanSyncEnabled: true};
+  var state = {mode: "off", content: {}, modes: [], contentOptions: [], peers: [], conflicts: [], lanSyncEnabled: true};
 
   var setStatus = function (text) { statusNode.textContent = text; };
+  // Only an explicit development adapter may speak to the legacy web server.
+  // Installed clients get their transport from the native LAN peer layer.
+  var devJson = async function (url, options) {
+    var adapter = globalThis.AN3SyncDevAdapter;
+    if (!adapter || typeof adapter.json !== "function") throw new Error("Direct LAN sync is available in the installed AN3 app.");
+    return adapter.json(url, options);
+  };
+  var directTransport = function () { return globalThis.AN3LanPeerTransport || null; };
   var json = async function (url, options) {
-    var response = await fetch(url, options);
-    var data = {};
-    try { data = await response.json(); } catch (_) {}
-    if (!response.ok) throw new Error(data.error || ("HTTP " + response.status));
-    return data;
+    return devJson(url, options);
   };
 
-  var deviceId = (function () {
+  var fallbackDeviceId = (function () {
     try {
       var existing = localStorage.getItem("vibe-sync-device-v1");
       if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
@@ -40,19 +45,21 @@
       return created;
     } catch (_) { return "sync" + Date.now(); }
   })();
+  var deviceId = globalThis.AN3SyncTransfer?.deviceId?.() || fallbackDeviceId;
 
   var modeById = function (id) {
     for (var index = 0; index < state.modes.length; index += 1) if (state.modes[index].id === id) return state.modes[index];
     return null;
   };
   var modeSummary = function (mode) {
-    if (mode === "auto") return "Uses the local network first, then Google Drive when needed.";
-    if (mode === "lan") return "Transfers stay on this local network.";
-    if (mode === "drive") return "Transfers go through Google Drive.";
+    if (mode === "auto") return "Automatic sync is unavailable outside the installed app.";
+    if (mode === "lan") return "Transfers go directly between nearby installed AN3 apps.";
+    if (mode === "drive") return "Cloud sync is not part of LAN features.";
     return "Sync is off. Nothing is transferred.";
   };
 
   var renderModes = function (data) {
+    state.mode = data.mode || "off";
     state.modes = data.modes || [];
     select.innerHTML = "";
     state.modes.forEach(function (mode) {
@@ -67,7 +74,8 @@
     detail.textContent = selected ? modeSummary(selected.id) : "";
     availability.textContent = data.driveConfigured
       ? "Google Drive is connected for this build."
-      : "Google Sync is coming later.";
+      : "Google Drive sync unavailable in this build.";
+    updateTransferButton();
   };
 
   var renderSyncSwitches = function (data) {
@@ -103,9 +111,15 @@
       if (node) node.checked = Boolean(state.content[key]);
     });
     if (romWarning) romWarning.hidden = !state.content.rom;
+    updateTransferButton();
+  };
+
+  var updateTransferButton = function () {
+    if (transferButton) transferButton.disabled = state.mode === "off" || state.mode === "drive" || !state.content.state || !globalThis.AN3SyncTransfer || !directTransport();
   };
 
   var renderDevices = function (peers) {
+    state.peers = peers || [];
     list.innerHTML = "";
     var self = document.createElement("li");
     self.className = "sync-device sync-device-self";
@@ -128,18 +142,14 @@
     });
   };
 
-  // Real conflict resolution wiring. The web build has no wired local store
-  // yet, so this stays hidden until a plan returns an actual conflict; native
-  // clients and the future store integration call the same endpoint.
-  var renderConflicts = function (transfers) {
+  var drawConflicts = function () {
     if (!conflictBox) return;
-    var conflicts = (transfers || []).filter(function (transfer) { return transfer.direction === "conflict"; });
     conflictBox.innerHTML = "";
-    if (!conflicts.length) { conflictBox.hidden = true; return; }
+    if (!state.conflicts.length) { conflictBox.hidden = true; return; }
     var title = document.createElement("h3");
     title.textContent = "Save Conflict";
     conflictBox.appendChild(title);
-    conflicts.forEach(function (conflict) {
+    state.conflicts.forEach(function (conflict) {
       var card = document.createElement("div");
       card.className = "sync-conflict";
       var label = document.createElement("strong");
@@ -153,15 +163,18 @@
         button.className = "button";
         button.textContent = choice[1];
         button.addEventListener("click", async function () {
+          button.disabled = true;
           try {
-            await json("/api/sync/resolve", {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({kind: conflict.kind, key: conflict.key, resolution: choice[0]})
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              deviceId: deviceId,
+              resolution: choice[0],
             });
             setStatus("Conflict resolved.");
-            renderConflicts(transfers.filter(function (item) { return item !== conflict; }));
+            state.conflicts = state.conflicts.filter(function (item) { return item !== conflict; });
+            drawConflicts();
           } catch (error) { setStatus(error.message); }
+          finally { button.disabled = false; }
         });
         actions.appendChild(button);
       });
@@ -170,15 +183,63 @@
     });
     conflictBox.hidden = false;
   };
-  window.AN3Sync = {renderPlan: function (plan) { if (plan && plan.transfers) renderConflicts(plan.transfers); }};
+  var renderConflicts = function (transfers, context) {
+    var localByKey = context && context.local ? new Map(context.local.map(function (item) { return [item.key, item]; })) : new Map();
+    var remoteByKey = context && context.remote ? new Map(context.remote.map(function (item) { return [item.key, item]; })) : new Map();
+    state.conflicts = (transfers || []).filter(function (transfer) { return transfer.direction === "conflict"; }).map(function (transfer) {
+      return {
+        key: transfer.key,
+        kind: transfer.kind || "state",
+        copyKey: transfer.copyKey || transfer.key + ".conflict",
+        local: localByKey.get(transfer.key) || null,
+        remote: remoteByKey.get(transfer.key) || null,
+        reason: transfer.reason || "both-changed",
+      };
+    });
+    drawConflicts();
+  };
+
+  var syncSaveStates = async function () {
+    if (!globalThis.AN3SyncTransfer) throw new Error("LAN save-state transfer is unavailable.");
+    if (state.mode === "off") throw new Error("Turn on LAN or Automatic sync first.");
+    if (!state.content.state) throw new Error("Enable Save states before syncing.");
+    var result = await globalThis.AN3SyncTransfer.syncState({
+      deviceId: deviceId,
+      mode: state.mode,
+      transport: directTransport(),
+      sameLan: true,
+    });
+    renderConflicts((result.plan || {}).transfers, result);
+    setStatus("Sent " + result.counts.uploaded + ", received " + result.counts.downloaded + "." + (result.counts.conflicts ? " " + result.counts.conflicts + " conflict(s) need a choice." : ""));
+    return result;
+  };
+  window.AN3Sync = {
+    renderPlan: function (plan) { if (plan && plan.transfers) renderConflicts(plan.transfers); },
+    syncSaveStates: syncSaveStates,
+  };
 
   var load = async function () {
     try {
-      var data = await json("/api/sync/settings");
-      renderModes(data);
-      renderContent(data);
-      renderSyncSwitches(data);
-      setStatus("");
+      if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/settings");
+        renderModes(data);
+        renderContent(data);
+        renderSyncSwitches(data);
+        setStatus("");
+      } else {
+        var available = Boolean(directTransport());
+        renderModes({
+          mode: available ? "lan" : "off",
+          modes: [
+            {id: "off", label: "Off", available: true},
+            {id: "lan", label: "Direct LAN", available: available},
+          ],
+          content: {save: true, state: true, library: false, rom: false},
+          driveConfigured: false,
+        });
+        renderSyncSwitches({lanSyncEnabled: true});
+        setStatus(directTransport() ? "Direct LAN peer ready." : "Install the AN3 app to use direct LAN sync.");
+      }
     } catch (error) { setStatus(error.message); }
   };
 
@@ -193,13 +254,20 @@
 
   var save = async function () {
     try {
-      var data = await json("/api/sync/settings", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({mode: select.value, content: collectContent()})
-      });
-      renderModes(data);
-      renderContent(data);
+      if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/settings", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({mode: select.value, content: collectContent()})
+        });
+        renderModes(data);
+        renderContent(data);
+      } else {
+        state.mode = select.value;
+        state.content = collectContent();
+        try { localStorage.setItem("an3-direct-sync-settings-v1", JSON.stringify({mode: state.mode, content: state.content})); } catch (_) {}
+        updateTransferButton();
+      }
       setStatus("Saved.");
     } catch (error) { setStatus(error.message); }
   };
@@ -207,13 +275,21 @@
   var announce = async function () {
     if (!state.lanSyncEnabled) { renderDevices([]); return; }
     try {
-      var data = await json("/api/sync/lan/announce", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({deviceId: deviceId, name: "Vibe Coded Emulator", port: 0})
-      });
-      renderDevices(data.peers || []);
-      setStatus("");
+      if (directTransport()?.discover) {
+        renderDevices(await directTransport().discover());
+        setStatus("");
+      } else if (globalThis.AN3SyncDevAdapter) {
+        var data = await json("/api/sync/lan/announce", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({deviceId: deviceId, name: "Vibe Coded Emulator", port: 0})
+        });
+        renderDevices(data.peers || []);
+        setStatus("");
+      } else {
+        renderDevices([]);
+        setStatus("Direct LAN discovery is available in the installed AN3 app.");
+      }
     } catch (error) { setStatus(error.message); }
   };
 
@@ -250,5 +326,10 @@
   byId("syncSave").addEventListener("click", save);
   byId("syncRefreshPeers").addEventListener("click", announce);
   if (lanToggle) lanToggle.addEventListener("change", toggleLanSync);
+  transferButton?.addEventListener("click", function () {
+    transferButton.disabled = true;
+    setStatus("Syncing save-state bytes…");
+    syncSaveStates().catch(function (error) { setStatus(error.message || String(error)); }).finally(updateTransferButton);
+  });
   load().then(function () { if (state.lanSyncEnabled) announce(); });
 })();

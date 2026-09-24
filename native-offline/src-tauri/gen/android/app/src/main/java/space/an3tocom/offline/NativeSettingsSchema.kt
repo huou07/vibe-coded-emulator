@@ -45,8 +45,7 @@ object NativeSettingsSchema {
         Definition("show-fps", "Show FPS", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true, false, true, null),
         Definition("start-fullscreen", "Start fullscreen on launch", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "true", emptyList(), null, "app", null, true, false, true, null),
         Definition("key-map", "Keyboard map", "controls", Type.STRING, "string", emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false, false, true, null),
-        Definition("controller-server", "Controller server", "network", Type.STRING, "string", emptyList(), emptyMap(), null, null, "", emptyList(), null, "none", null, false, false, true, null),
-        Definition("lan-sync", "LAN Sync", "network", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "true", emptyList(), null, "none", null, false, false, true, null)
+        Definition("lan-sync", "LAN Sync", "network", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, false, false, true, null)
     )
 
     val graphics: Map<String, List<Definition>> = mapOf(
@@ -210,7 +209,6 @@ object NativeSettingsSchema {
     // system -> platform -> reason. A missing entry means the system is available.
     val unavailable: Map<String, Map<String, String>> = mapOf(
         "switch" to mapOf(
-            "android" to "Nintendo Switch is not supported on Android. Settings are stored but cannot launch here.",
             "ios" to "Nintendo Switch is not supported on iOS.",
         ),
     )

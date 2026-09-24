@@ -3,19 +3,28 @@
 // Native Settings support surface: the global LAN Sync switch, the disabled
 // Google Sync placeholder, and the bug report entry for the offline shell.
 //
-// Architecture honesty: the offline Android/desktop app has no backend origin,
-// no account, and no HTTP session. It therefore cannot change the server-side
-// per-user LAN sync gate in app.py. This module stores the canonical GLOBAL
-// native setting `lan-sync` (shared/native-settings-schema.json) through the
-// one existing Android SharedPreferences adapter, and the bug report collects,
-// sanitizes, previews, and only then attempts an upload to the existing
-// /api/bug-reports endpoint when a support origin is explicitly configured.
-// It never ships or reads a GitHub token. The Phone Controller host is a
-// separate service and is never gated by this switch.
+// Architecture honesty: the offline Android/desktop app has no account and no
+// HTTP session. It therefore cannot change the server-side per-user LAN sync
+// gate in app.py. This module stores the canonical GLOBAL native setting
+// `lan-sync` (shared/native-settings-schema.json) through the one existing
+// Android SharedPreferences adapter. The bug report collects, sanitizes,
+// previews, and only then uploads to the existing /api/bug-reports endpoint
+// when a support origin is explicitly configured.
+//
+// The support origin is a plain configuration value injected at package time
+// (a meta tag), never a secret. Anonymous submission uses a server-issued
+// opaque capability with a finite lifetime and use count: the client requests
+// one from the allowlisted origin, holds it in memory only, and sends it as a
+// bearer header. It never ships or reads a GitHub token, never sends cookies,
+// and never fabricates a MAC or device-fingerprint identity. The Phone
+// Controller host is a separate service and is never gated by this switch.
 (() => {
   const LAN_SYNC_KEY = "lan-sync";
   const LAN_SYNC_FALLBACK_KEY = "an3-native-lan-sync-v1";
   const SUPPORT_PATH = "/api/bug-reports";
+  const CAPABILITY_PATH = "/api/support/capability";
+  const CAPABILITY_HEADER = "X-AN3-Support-Capability";
+  const SUPPORT_ORIGIN_META = "an3-support-origin";
 
   // Mirrors the server allowlist in bug_report.py ALLOWED_FIELDS. Collection is
   // allowlist-first: a field the server does not know can never be attached.
@@ -138,19 +147,55 @@
     return sanitizeReport(allowlistReport(raw));
   };
 
+  // The support origin is configuration, not a secret. It is resolved from an
+  // injected meta tag (the packaged shell) or an explicit global (tests/dev),
+  // and normalized to a scheme + authority with no trailing slash.
+  const supportOrigin = (explicit, doc = typeof document !== "undefined" ? document : null) => {
+    let raw = explicit != null ? explicit : globalThis.AN3SupportOrigin;
+    if (!raw && doc && typeof doc.querySelector === "function") {
+      const node = doc.querySelector('meta[name="' + SUPPORT_ORIGIN_META + '"]');
+      raw = node ? node.getAttribute("content") : "";
+    }
+    const value = String(raw || "").trim().replace(/\/+$/, "");
+    if (!/^https?:\/\/[^\s/]+$/i.test(value)) return "";
+    return value;
+  };
+
+  // Ask the allowlisted server for a short-lived opaque capability. It carries
+  // no identity, no account, and no secret, and it is kept in memory only.
+  const requestCapability = async (origin, fetchImpl) => {
+    const response = await fetchImpl(origin + CAPABILITY_PATH, {
+      method: "GET",
+      credentials: "omit",
+      headers: {"Accept": "application/json"}
+    });
+    let data = {};
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok || !data.capability) {
+      return {ok: false, status: response.status, error: data.error || ("HTTP " + response.status)};
+    }
+    return {ok: true, capability: String(data.capability), expiresAt: Number(data.expiresAt) || 0};
+  };
+
   // POST only to the existing backend route. The native shell has no session,
   // so a server response of 401/403 is surfaced verbatim: the report is never
-  // silently dropped and never retried without the user.
+  // silently dropped and never retried without the user. `credentials: "omit"`
+  // is deliberate: the offline shell has no cookie to send and must never
+  // attach one to a cross-origin support request.
   const submitReport = async (report, options = {}) => {
-    const origin = String(options.origin != null ? options.origin : globalThis.AN3SupportOrigin || "").replace(/\/+$/, "");
+    const origin = supportOrigin(options.origin);
     if (!origin) return {ok: false, unavailable: true, reason: "no-support-server", report};
     const fetchImpl = options.fetch || globalThis.fetch;
     if (typeof fetchImpl !== "function") return {ok: false, unavailable: true, reason: "fetch-unavailable", report};
     try {
+      const issued = await requestCapability(origin, fetchImpl);
+      if (!issued.ok) {
+        return {ok: false, status: issued.status, error: issued.error, report};
+      }
       const response = await fetchImpl(origin + SUPPORT_PATH, {
         method: "POST",
-        credentials: "include",
-        headers: {"Content-Type": "application/json"},
+        credentials: "omit",
+        headers: {"Content-Type": "application/json", [CAPABILITY_HEADER]: issued.capability},
         body: JSON.stringify(report)
       });
       let data = {};
@@ -167,6 +212,9 @@
   globalThis.AN3NativeSupport = {
     LAN_SYNC_KEY,
     SUPPORT_PATH,
+    CAPABILITY_PATH,
+    CAPABILITY_HEADER,
+    SUPPORT_ORIGIN_META,
     ALLOWED_FIELDS,
     readLanSync,
     writeLanSync,
@@ -175,6 +223,8 @@
     collectDiagnostics,
     sanitizeReport,
     allowlistReport,
+    supportOrigin,
+    requestCapability,
     submitReport
   };
 

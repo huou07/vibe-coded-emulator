@@ -113,6 +113,7 @@ unsafe extern "C" {
     fn an3_native_active_system() -> i32;
     fn an3_native_apply_utility(
         action: *const std::ffi::c_char,
+        slot: u32,
         details: *mut std::ffi::c_char,
         details_length: usize,
     ) -> i32;
@@ -126,6 +127,10 @@ unsafe extern "C" {
         touch_y: i16,
         touch_pressed: i32,
     );
+    // Debug-only latency instrumentation (Track B1) and the test-only
+    // ui-control bridge both read the presented-frame counter; the counter
+    // itself is harmless and inert unless something reads it.
+    fn an3_native_presented_frames() -> u64;
 }
 
 fn native_moltenvk_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -449,6 +454,49 @@ pub fn native_input_ready() -> bool {
     { false }
 }
 
+/// Test-only diagnostics for the ui-control bridge: whether a native core is
+/// running and how many frames its renderer has actually presented. The
+/// distribution build never compiles the bridge, so this can never become a
+/// product dependency.
+#[cfg(feature = "ui-control")]
+pub fn native_bridge_diagnostics() -> (bool, u64) {
+    #[cfg(target_os = "macos")]
+    {
+        return (native_input_ready(), native_presented_frames());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        (native_input_ready(), 0)
+    }
+}
+
+/// Track B1: the number of frames the native player has presented, on the host
+/// clock. Used only by the debug-only latency instrumentation to close the
+/// input-to-produced-frame interval. Returns `None` on platforms that do not
+/// expose a counter, so a measurement is never fabricated.
+pub fn native_presented_frames() -> u64 {
+    #[cfg(target_os = "macos")]
+    {
+        return unsafe { an3_native_presented_frames() };
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        0
+    }
+}
+
+/// Track B1: true when this host can report a produced-frame counter.
+pub fn native_frame_counter_available() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        true
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 /// The system the active native game is running, for the phone pad layout.
 pub fn native_active_system() -> Option<String> {
     #[cfg(target_os = "windows")]
@@ -471,7 +519,13 @@ pub fn native_active_system() -> Option<String> {
 /// Canonical Phone Controller utility actions, matching
 /// `shared/input-actions-schema.json`. A desktop host may only apply these; an
 /// unknown action is rejected before it reaches any platform runtime.
-pub const UTILITY_ACTIONS: &[&str] = &["QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"];
+pub const UTILITY_ACTIONS: &[&str] = &[
+    "QUICK_SAVE",
+    "QUICK_LOAD",
+    "SPEED_UP",
+    "SPEED_DOWN",
+    "OPEN_MENU",
+];
 
 /// True when `action` is a canonical, dispatchable Phone Controller action.
 pub fn is_known_utility(action: &str) -> bool {
@@ -483,19 +537,29 @@ pub fn is_known_utility(action: &str) -> bool {
 /// as their on-screen controls; an unknown action fails explicitly instead of
 /// being silently ignored.
 pub fn apply_utility(action: &str) -> Result<(), String> {
+    apply_utility_at_slot(action, 1)
+}
+
+/// Apply a one-shot host action to an explicit save-state slot. Slots are
+/// deliberately constrained here as well as in the native player so every
+/// transport adapter shares the same safety boundary.
+pub fn apply_utility_at_slot(action: &str, slot: u8) -> Result<(), String> {
     if !is_known_utility(action) {
         return Err(format!("Unsupported utility action '{action}'."));
     }
+    if matches!(action, "QUICK_SAVE" | "QUICK_LOAD") && !(1..=10).contains(&slot) {
+        return Err(format!("Save-state slot {slot} is outside the supported range 1..10."));
+    }
     #[cfg(target_os = "windows")]
-    { return windows_runtime::utility(action); }
+    { return windows_runtime::utility(action, slot); }
     #[cfg(target_os = "linux")]
-    { return linux_runtime::utility(action); }
+    { return linux_runtime::utility(action, slot); }
     #[cfg(target_os = "macos")]
     {
         let action = c_text(action, "utility action")?;
         let mut details = [0_i8; 256];
         let applied =
-            unsafe { an3_native_apply_utility(action.as_ptr(), details.as_mut_ptr(), details.len()) };
+            unsafe { an3_native_apply_utility(action.as_ptr(), slot as u32, details.as_mut_ptr(), details.len()) };
         if applied != 0 {
             return Ok(());
         }
@@ -508,7 +572,7 @@ pub fn apply_utility(action: &str) -> Result<(), String> {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
-        let _ = action;
+        let _ = (action, slot);
         Err("Phone Controller utility actions are unavailable on this host.".into())
     }
 }

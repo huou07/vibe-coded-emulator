@@ -15,11 +15,23 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import time
 import unicodedata
 from urllib.request import Request, urlopen
 
 SCHEMA_VERSION = 1
+# Anonymous native support: the packaged offline app has no account session and
+# no cookie, so it cannot authenticate to /api/bug-reports. Instead the server
+# issues a short-lived opaque capability that is bound to its issuing origin,
+# its own expiry, and a small use count. The capability is a bearer credential, never an
+# identity: it carries no MAC, device fingerprint, account, or user data. Only
+# the SHA-256 digest is stored; the raw token exists only in the response and
+# the client's memory.
+SUPPORT_CAPABILITY_HEADER = "X-AN3-Support-Capability"
+CAPABILITY_TTL_SECONDS = 30 * 60
+CAPABILITY_MAX_USES = 5
+CAPABILITY_TOKEN_BYTES = 32
 # Server-only base URL. Defaults to the public API; an owner may point it at a
 # GitHub Enterprise host. This value and the token never reach the client.
 GITHUB_API_BASE = os.environ.get("AN3_GITHUB_API_BASE", "https://api.github.com").rstrip("/")
@@ -378,6 +390,24 @@ def assert_no_forbidden(report):
         if pattern.search(serialized):
             raise ValueError("forbidden value: %s" % label)
     return True
+
+
+def support_capability_digest(token):
+    """Return the storage digest for a capability; the raw token is never stored."""
+
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+def new_support_capability():
+    """Mint an opaque capability and its storage digest.
+
+    The caller persists the digest with an expiry and a maximum use count. The
+    token is high-entropy, URL-safe, and meaningless without the server row, so
+    it can never be reused as an account credential.
+    """
+
+    token = secrets.token_urlsafe(CAPABILITY_TOKEN_BYTES)
+    return token, support_capability_digest(token)
 
 
 def issue_fingerprint(report):

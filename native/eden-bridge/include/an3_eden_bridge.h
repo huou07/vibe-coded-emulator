@@ -23,7 +23,7 @@ extern "C" {
 #endif
 
 /* Bump when the ABI changes incompatibly. */
-#define AN3_EDEN_BRIDGE_ABI_VERSION 2u
+#define AN3_EDEN_BRIDGE_ABI_VERSION 3u
 
 typedef enum an3_eden_status {
     AN3_EDEN_OK = 0,
@@ -108,6 +108,13 @@ const char* an3_eden_last_error(const an3_eden_core* core);
 
 /* Creates an uninitialised core. Always destroy it, even if initialise fails. */
 an3_eden_status an3_eden_create(an3_eden_core** out_core);
+
+/* Supplies the native presentation surface before initialise on Android.
+ * `native_window` is an ANativeWindow* borrowed for the duration of the
+ * initialise/session call; the caller retains ownership and must keep it
+ * alive until shutdown has returned. Other platforms return UNSUPPORTED. */
+an3_eden_status an3_eden_set_android_surface(an3_eden_core* core,
+                                             void* native_window);
 
 /* Prepares the emulator. `keys_dir` and `firmware_dir` are optional (NULL or
  * empty string); encrypted commercial content needs both, homebrew may not.

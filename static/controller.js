@@ -5,7 +5,11 @@
   var byId = function (id) { return document.getElementById(id); };
 
   var request = async function (url, options) {
-    var response = await fetch(url, options);
+    var adapter = window.AN3ControllerDevAdapter;
+    var response;
+    if (typeof adapter?.request === "function") response = await adapter.request(url, options);
+    else if (typeof adapter?.fetch === "function") response = await adapter.fetch(url, options);
+    else throw new Error("Direct LAN controller is available in the installed AN3 app.");
     var data = {};
     try { data = await response.json(); } catch (_) {}
     if (!response.ok) { var error = new Error(data.error || ("HTTP " + response.status)); error.status = response.status; throw error; }
@@ -60,7 +64,7 @@
     var hostStop = function (message) {
       if (timer) clearInterval(timer);
       timer = 0;
-      if (hostCode) { postJson("/api/controller/disconnect", {code: hostCode}).catch(function () {}); }
+      if (hostCode) { postJson("/api/controller/disconnect", {code: hostCode, hostToken: hostToken}).catch(function () {}); }
       hostCode = ""; hostToken = "";
       if (activeBox) activeBox.hidden = true;
       if (startButton) startButton.hidden = false;
@@ -100,6 +104,7 @@
     var hostsList = byId("ctrlHosts");
     var layoutPicker = byId("ctrlLayout");
     var movementPicker = byId("ctrlMovement");
+    var saveSlotPicker = byId("ctrlSaveSlot");
     var circular = byId("ctrlCircular");
     var touchscreen = byId("ctrlTouchscreen");
     var pairedCode = "";
@@ -120,6 +125,22 @@
     var circularRegion = null;
     var circularActions = [];
     var utilitySequence = 0;
+    var utilitySessionId = "";
+    var newUtilitySession = function () {
+      try { if (window.crypto && typeof window.crypto.randomUUID === "function") return "phone-" + window.crypto.randomUUID(); } catch (_) {}
+      return "phone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+    };
+    utilitySessionId = newUtilitySession();
+    var selectedSaveSlot = function () {
+      var value = Number(saveSlotPicker && saveSlotPicker.value);
+      return Number.isInteger(value) && value >= 1 && value <= 10 ? value : 1;
+    };
+    // Track B1: one monotonic clock for the whole phone. `performance.now()`
+    // never jumps when the wall clock is adjusted mid-session, so a capture
+    // time and the echo of it are always subtractable.
+    var phoneNow = function () {
+      return (window.performance && window.performance.now) ? window.performance.now() : Date.now();
+    };
     try { var storedMovement = localStorage.getItem("an3-controller-movement"); if (storedMovement) movement = storedMovement; } catch (_) {}
     try { if (movementPicker) movementPicker.value = movement; } catch (_) {}
 
@@ -161,8 +182,10 @@
       if (!pairedCode || !token) return;
       utilitySequence += 1;
       sequence += 1;
-      var payload = {s: sequence, b: Array.from(pressed), a: [axes.lx, axes.ly, axes.rx, axes.ry], u: action, us: utilitySequence};
+      var payload = {s: sequence, b: Array.from(pressed), a: [axes.lx, axes.ly, axes.rx, axes.ry], u: action, us: utilitySequence, command_id: utilitySessionId + "-" + utilitySequence};
+      if (action === "QUICK_SAVE" || action === "QUICK_LOAD") payload.slot = selectedSaveSlot();
       if (touch.active) payload.t = [touch.x, touch.y];
+      payload.t0 = Math.round(phoneNow());
       outbox.push({payload: payload, move: false});
       if (outbox.length > 24) outbox.splice(0, outbox.length - 24);
       pump();
@@ -174,6 +197,10 @@
       sequence += 1;
       var payload = {s: sequence, b: Array.from(pressed), a: [axes.lx, axes.ly, axes.rx, axes.ry]};
       if (touch.active) payload.t = [touch.x, touch.y];
+      // Track B1: stamp the phone's own monotonic capture time. The host echoes
+      // it back on the acknowledged frame, so controller RTT is computed here,
+      // on one clock, and never mixes two devices' clocks.
+      payload.t0 = Math.round(phoneNow());
       return payload;
     };
     // Button and touch down/up transitions must never be collapsed into a
@@ -193,7 +220,7 @@
       sending = true;
       while (outbox.length) {
         var item = outbox.shift();
-        var sentAt = Date.now();
+        var sentAt = phoneNow();
         try {
           await postJson("/api/controller/state", Object.assign({code: pairedCode, token: token}, item.payload));
           lastSentAt = sentAt;
@@ -215,9 +242,18 @@
         system = link.system || "auto";
         applyLayout();
         lastAck = link.ackSequence || 0;
-        if (lastAck >= (link.lastSequence || 0) && lastAck > 0) {
-          var latency = Math.max(0, Date.now() - lastSentAt);
+        // Track B1: the host echoes the capture time of the frame it applied.
+        // Subtracting it from this same clock gives true controller RTT
+        // (capture -> applied) without assuming the host's clock agrees.
+        if (link.echoCaptureMs && link.echoCaptureMs <= phoneNow()) {
+          var latency = Math.max(0, phoneNow() - link.echoCaptureMs);
           lastLatency = lastLatency ? Math.round(lastLatency * 0.7 + latency * 0.3) : latency;
+          // Expose the measured RTT on the status node so a debug session can
+          // read it without a second source of truth.
+          if (statusNodePhone) statusNodePhone.setAttribute("data-rtt-ms", String(lastLatency));
+        } else if (lastAck >= (link.lastSequence || 0) && lastAck > 0) {
+          var fallbackLatency = Math.max(0, phoneNow() - lastSentAt);
+          lastLatency = lastLatency ? Math.round(lastLatency * 0.7 + fallbackLatency * 0.3) : fallbackLatency;
         }
         if (!link.paired) setPhoneState("Disconnected");
         else if (link.inputActive) setPhoneState("Connected");
@@ -250,8 +286,9 @@
       if (linkTimer) clearInterval(linkTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       linkTimer = 0; heartbeatTimer = 0;
-      if (pairedCode && token) { postJson("/api/controller/disconnect", {code: pairedCode}).catch(function () {}); }
+      if (pairedCode && token) { postJson("/api/controller/disconnect", {code: pairedCode, token: token}).catch(function () {}); }
       pairedCode = ""; token = "";
+      utilitySequence = 0; utilitySessionId = newUtilitySession();
       if (pad) pad.hidden = true;
       if (joinPanel) joinPanel.hidden = false;
       if (hostsList) hostsList.hidden = false;
@@ -264,6 +301,7 @@
         var data = await postJson("/api/controller/pair", {code: code, deviceId: "phone"});
         token = data.token;
         pairedCode = data.code;
+        utilitySequence = 0; utilitySessionId = newUtilitySession();
         if (codeInput) codeInput.value = data.code;
         if (joinPanel) joinPanel.hidden = true;
         if (pad) pad.hidden = false;

@@ -15,18 +15,22 @@ finish-args:
 modules:
   - name: vibecodedemulator
     buildsystem: simple
+    # Keep the companion bytes identical to the verified DEB payload so its
+    # embedded Eden manifest remains an accurate integrity record.
+    build-options:
+      strip: false
     sources:
       - type: file
         # build-linux-staging.sh must place the exact current verified DEB at
         # this path before Flatpak packaging. A stale historical package is
         # never an acceptable Flatpak source.
-        path: ../releases/vibecodedemulator-2.3.0-linux-amd64.deb
+        path: ../releases/vibecodedemulator-3.3.0-linux-amd64.deb
       - type: file
         path: space.an3tocom.offline.metainfo.xml
       - type: file
         path: an3-native-player.sh
     build-commands:
-      - ar -x vibecodedemulator-2.3.0-linux-amd64.deb
+      - ar -x vibecodedemulator-3.3.0-linux-amd64.deb
       - mkdir -p deb-extract
       - "data_archive=$(find . -maxdepth 1 -name 'data.tar.*' -print -quit); test -n \"$data_archive\"; tar -C deb-extract -xf \"$data_archive\""
       # The Tauri shell embeds the local-ROM library/import frontend and loads

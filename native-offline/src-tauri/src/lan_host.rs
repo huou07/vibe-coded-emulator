@@ -15,7 +15,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    net::{IpAddr, Shutdown, TcpListener, TcpStream, UdpSocket},
+    net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket},
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
@@ -35,13 +35,14 @@ use sha2::{Digest, Sha256};
 
 use crate::azahar::{native_active_system, native_input_ready, set_native_input};
 use crate::controller_host::frame_input;
-
-pub const DISCOVERY_PORT: u16 = 47831;
-pub const CONTROL_PORT: u16 = 47832;
-const PROTOCOL_VERSION: u32 = 1;
+use crate::host_actions::ReplayGuard;
+use crate::lan_peer::{advertisement_with_capabilities, discovery_socket, local_lan_ipv4, parse_advertisement, CONTROL_PORT, DISCOVERY_ADDRESS, DISCOVERY_BROADCAST, DISCOVERY_PORT, PROTOCOL_VERSION};
 const PAIRING_TTL: Duration = Duration::from_secs(120);
 const MAX_FAILURES_PER_MINUTE: usize = 6;
-const IO_TIMEOUT: Duration = Duration::from_secs(30);
+// Pairing is always initiated from an interactive screen. Keep every socket
+// operation bounded so a peer that disappears cannot leave the session in a
+// long-lived connecting state or hold resources indefinitely.
+const IO_TIMEOUT: Duration = Duration::from_secs(8);
 const ACK_INTERVAL: Duration = Duration::from_millis(200);
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const DIR_PHONE_TO_HOST: u32 = 1;
@@ -51,6 +52,8 @@ const DIR_HOST_TO_PHONE: u32 = 2;
 #[serde(rename_all = "camelCase")]
 pub struct LanStatus {
     pub running: bool,
+    pub role: String,
+    pub state: String,
     pub code: String,
     pub code_expires_in_seconds: u64,
     pub paired: bool,
@@ -77,6 +80,9 @@ struct State {
     // The last sequence the host acknowledged, and the latest it applied.
     last_sequence: AtomicU64,
     ack_sequence: AtomicU64,
+    // Session-scoped replay identity for one-shot host actions. Direct LAN
+    // commands use command_id; legacy sequence-only frames remain supported.
+    last_utility: Mutex<ReplayGuard>,
 }
 
 impl State {
@@ -94,6 +100,7 @@ impl State {
             instance_id,
             last_sequence: AtomicU64::new(0),
             ack_sequence: AtomicU64::new(0),
+            last_utility: Mutex::new(ReplayGuard::default()),
         }
     }
 
@@ -111,6 +118,9 @@ impl State {
         self.last_sequence.store(0, Ordering::Relaxed);
         self.ack_sequence.store(0, Ordering::Relaxed);
         self.input_active.store(false, Ordering::Relaxed);
+        if let Ok(mut replay) = self.last_utility.lock() {
+            replay.reset();
+        }
     }
 
     fn code_value(&self) -> String {
@@ -134,10 +144,25 @@ struct Host {
     state: Arc<State>,
     handles: Vec<JoinHandle<()>>,
     name: String,
+    port: u16,
+    advertises: bool,
 }
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
+struct Client {
+    stream: TcpStream,
+    key: [u8; 32],
+    send_counter: u64,
+    peer_address: String,
+    peer_name: String,
+    system: String,
+}
+
+static CLIENT: Mutex<Option<Client>> = Mutex::new(None);
 static FAILURES: OnceLock<Mutex<HashMap<IpAddr, Vec<Instant>>>> = OnceLock::new();
+static JOINING: AtomicBool = AtomicBool::new(false);
+static JOIN_GENERATION: AtomicU64 = AtomicU64::new(0);
+static JOIN_ERROR: OnceLock<Mutex<String>> = OnceLock::new();
 
 /// Test seam: -1 uses the platform runtime, 0 forces "no game", 1 forces
 /// "game running". Production always leaves it at -1.
@@ -151,8 +176,32 @@ fn input_ready() -> bool {
     }
 }
 
+/// Executes canonical utility actions on the running game host. A test seam
+/// lets a unit test observe dispatch without a real emulator.
+static UTILITY_SINK_OVERRIDE: OnceLock<Mutex<Option<crate::controller_host::UtilitySink>>> = OnceLock::new();
+
+fn controller_utility_sink() -> crate::controller_host::UtilitySink {
+    UTILITY_SINK_OVERRIDE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .unwrap_or_else(crate::controller_host::utility_sink_default)
+}
+
+#[cfg(test)]
+pub(crate) fn set_utility_sink_for_test(sink: Option<crate::controller_host::UtilitySink>) {
+    if let Ok(mut guard) = UTILITY_SINK_OVERRIDE.get_or_init(|| Mutex::new(None)).lock() {
+        *guard = sink;
+    }
+}
+
 fn failures() -> &'static Mutex<HashMap<IpAddr, Vec<Instant>>> {
     FAILURES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn join_error() -> &'static Mutex<String> {
+    JOIN_ERROR.get_or_init(|| Mutex::new(String::new()))
 }
 
 /// Six decimal digits from the OS CSPRNG, leading zeroes included.
@@ -285,7 +334,33 @@ fn default_host_name() -> String {
 
 /// Start advertising and accepting direct LAN controllers.
 pub fn start() -> Result<LanStatus, String> {
+    start_on_port(CONTROL_PORT, true)
+}
+
+fn start_on_port(port: u16, advertises: bool) -> Result<LanStatus, String> {
     stop();
+    // On macOS/BSD, SO_REUSEADDR lets a second bind silently share the fixed
+    // control port with an already-running AN3 host. The phone then reaches the
+    // other listener, which does not know this pairing code, and the session
+    // dies mid-handshake (observed as `hello-response-read-error` / EOF).
+    // Refuse to start a second host instead of silently coexisting.
+    if port != 0
+        && TcpStream::connect_timeout(
+            &SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
+            Duration::from_millis(250),
+        )
+        .is_ok()
+    {
+        return Err(format!(
+            "Controller port {port} is already in use. Close the other AN3 host on this device and try again."
+        ));
+    }
+    let listener = TcpListener::bind(("0.0.0.0", port))
+        .map_err(|_| format!("Controller port {port} is unavailable"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("Could not read controller listener address: {error}"))?
+        .port();
     let instance_id = hex(&random_bytes::<8>());
     let state = Arc::new(State::new(instance_id.clone()));
     state.set_code();
@@ -293,28 +368,171 @@ pub fn start() -> Result<LanStatus, String> {
     let stop = Arc::new(AtomicBool::new(false));
 
     let mut handles = Vec::new();
-    handles.push(spawn_discovery(stop.clone(), state.clone(), name.clone()));
-    handles.push(spawn_listener(stop.clone(), state.clone(), name.clone()));
+    if advertises {
+        handles.push(spawn_discovery(
+            stop.clone(),
+            state.clone(),
+            name.clone(),
+            port,
+        ));
+    }
+    handles.push(spawn_listener(
+        stop.clone(),
+        state.clone(),
+        name.clone(),
+        listener,
+    ));
 
     *HOST.lock().map_err(|_| "Controller lock unavailable".to_string())? = Some(Host {
         stop,
         state: state.clone(),
         handles,
         name,
+        port,
+        advertises,
     });
     Ok(status())
 }
 
+/// Discover one direct controller-capable peer and pair as its controller.
+/// The source address comes from the multicast datagram; no fixed IP is used.
+fn join_blocking(code: String, generation: u64) -> Result<LanStatus, String> {
+    let code = code.trim().to_string();
+    if code.len() != 6 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Enter exactly six decimal digits.".into());
+    }
+    let (address, peer_name) = discover_controller()?;
+    let mut stream = TcpStream::connect_timeout(&address, IO_TIMEOUT)
+        .map_err(|error| format!("Could not connect to the AN3 peer: {error}"))?;
+    configure_controller_stream(&stream);
+    let secret = EphemeralSecret::random(&mut OsRngCompat);
+    let public = secret.public_key().to_encoded_point(false);
+    let hello = serde_json::json!({
+        "k": "hello",
+        "v": PROTOCOL_VERSION,
+        "pub": B64.encode(public.as_bytes()),
+        "id": hex(&random_bytes::<8>()),
+        "name": default_host_name(),
+        "capability": "controller",
+    });
+    write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap_or_default())
+        .map_err(|error| format!("Could not start the direct peer handshake: {error}"))?;
+    let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream)
+        .map_err(|error| format!("The direct peer handshake failed: {error}"))?)
+        .map_err(|_| "The direct peer returned malformed handshake data.".to_string())?;
+    if response.get("k").and_then(|value| value.as_str()) != Some("hello")
+        || response.get("v").and_then(|value| value.as_u64()) != Some(PROTOCOL_VERSION as u64)
+    {
+        return Err("The direct peer uses an incompatible protocol.".into());
+    }
+    let host_public = response
+        .get("pub")
+        .and_then(|value| value.as_str())
+        .and_then(|value| B64.decode(value).ok())
+        .and_then(|value| PublicKey::from_sec1_bytes(&value).ok())
+        .ok_or("The direct peer returned an invalid public key.")?;
+    let shared = secret.diffie_hellman(&host_public);
+    let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| "Could not initialize peer encryption.")?;
+    let auth = seal(&cipher, DIR_PHONE_TO_HOST, 0, &serde_json::json!({"k": "auth"}));
+    write_frame(&mut stream, &auth).map_err(|error| format!("Could not authenticate the direct peer: {error}"))?;
+    let ready = open(&cipher, DIR_HOST_TO_PHONE, 0, &read_frame(&mut stream)
+        .map_err(|error| format!("The direct peer closed during pairing: {error}"))?)
+        .ok_or("The direct peer rejected the pairing code.")?;
+    if ready.get("k").and_then(|value| value.as_str()) != Some("ready") {
+        return Err("The direct peer did not confirm pairing.".into());
+    }
+    if !JOINING.load(Ordering::Relaxed) || JOIN_GENERATION.load(Ordering::Relaxed) != generation {
+        let _ = stream.shutdown(Shutdown::Both);
+        return Err("Direct controller pairing was canceled.".into());
+    }
+    let system = ready.get("system").and_then(|value| value.as_str()).unwrap_or("auto").to_string();
+    CLIENT.lock().map_err(|_| "Controller lock unavailable".to_string())?.replace(Client {
+        stream,
+        key,
+        send_counter: 1,
+        peer_address: address.ip().to_string(),
+        peer_name,
+        system,
+    });
+    Ok(status())
+}
+
+/// Discover and pair without making the WebView/Tauri command wait for
+/// multicast, TCP, or the encrypted handshake. Completion is reported by
+/// `status()` as `connecting`, `connected`, or `error`.
+pub fn join_async(code: String) -> Result<LanStatus, String> {
+    let code = code.trim().to_string();
+    if code.len() != 6 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("Enter exactly six decimal digits.".into());
+    }
+    stop();
+    let generation = JOIN_GENERATION.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+    JOINING.store(true, Ordering::Relaxed);
+    if let Ok(mut error) = join_error().lock() { error.clear(); }
+    std::thread::spawn(move || {
+        let result = join_blocking(code, generation);
+        if JOIN_GENERATION.load(Ordering::Relaxed) != generation || !JOINING.load(Ordering::Relaxed) {
+            return;
+        }
+        match result {
+            Ok(_) => JOINING.store(false, Ordering::Relaxed),
+            Err(error) => {
+                if let Ok(mut slot) = join_error().lock() { *slot = error; }
+                JOINING.store(false, Ordering::Relaxed);
+            }
+        }
+    });
+    Ok(status())
+}
+
+fn discover_controller() -> Result<(SocketAddr, String), String> {
+    let socket = discovery_socket(DISCOVERY_PORT)
+        .map_err(|error| format!("Direct LAN discovery is unavailable: {error}"))?;
+    let group = DISCOVERY_ADDRESS.parse::<Ipv4Addr>().map_err(|_| "Invalid AN3 discovery group.")?;
+    let interface = local_lan_ipv4().unwrap_or(Ipv4Addr::UNSPECIFIED);
+    socket.join_multicast_v4(&group, &interface)
+        .map_err(|error| format!("Could not join AN3 LAN discovery: {error}"))?;
+    let _ = socket.set_read_timeout(Some(Duration::from_millis(250)));
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut payload = [0u8; 4096];
+    while Instant::now() < deadline {
+        match socket.recv_from(&mut payload) {
+            Ok((length, source)) if source.ip().is_ipv4() => {
+                let Ok(value) = serde_json::from_slice::<serde_json::Value>(&payload[..length]) else { continue };
+                let Ok(peer) = parse_advertisement(&value) else { continue };
+                if !peer.capabilities.iter().any(|capability| capability == "controller") { continue; }
+                return Ok((SocketAddr::new(source.ip(), peer.port), peer.name));
+            }
+            Ok(_) => {}
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(_) => {}
+        }
+    }
+    Err("No AN3 controller host was found on the local network.".into())
+}
+
 /// Stop hosting, close the listener, and release every held input.
 pub fn stop() {
+    JOIN_GENERATION.fetch_add(1, Ordering::Relaxed);
+    JOINING.store(false, Ordering::Relaxed);
+    if let Ok(mut error) = join_error().lock() { error.clear(); }
+    stop_client();
+    stop_host();
+}
+
+fn stop_host() {
     let previous = HOST.lock().ok().and_then(|mut guard| guard.take());
     if let Some(host) = previous {
         host.stop.store(true, Ordering::Relaxed);
-        // Nudge the UDP loop awake so it notices the stop flag.
-        if let Ok(socket) = UdpSocket::bind("127.0.0.1:0") {
-            let _ = socket.send_to(b"stop", ("127.0.0.1", DISCOVERY_PORT));
+        // Nudge discovery/join listeners only for a real advertised host.
+        // Ephemeral unit-test hosts stay isolated from the live LAN peer.
+        if host.advertises {
+            if let Ok(socket) = UdpSocket::bind("127.0.0.1:0") {
+                let _ = socket.send_to(b"stop", ("127.0.0.1", DISCOVERY_PORT));
+            }
         }
-        if let Ok(socket) = TcpStream::connect(("127.0.0.1", CONTROL_PORT)) {
+        if let Ok(socket) = TcpStream::connect(("127.0.0.1", host.port)) {
             let _ = socket.shutdown(Shutdown::Both);
         }
         for handle in host.handles {
@@ -322,6 +540,28 @@ pub fn stop() {
         }
         let _ = set_native_input(frame_input(&serde_json::Value::Null));
     }
+}
+
+fn stop_client() {
+    let previous = CLIENT.lock().ok().and_then(|mut guard| guard.take());
+    if let Some(client) = previous {
+        let _ = client.stream.shutdown(Shutdown::Both);
+        let _ = set_native_input(frame_input(&serde_json::Value::Null));
+    }
+}
+
+/// Send one encrypted controller snapshot directly to the paired peer.
+pub fn send_state(mut state: serde_json::Value) -> Result<LanStatus, String> {
+    let mut guard = CLIENT.lock().map_err(|_| "Controller lock unavailable".to_string())?;
+    let client = guard.as_mut().ok_or("No direct controller session is active.")?;
+    let object = state.as_object_mut().ok_or("Controller state must be an object.")?;
+    object.insert("k".into(), serde_json::Value::String("state".into()));
+    let cipher = Aes256Gcm::new_from_slice(&client.key).map_err(|_| "Could not initialize peer encryption.")?;
+    let body = seal(&cipher, DIR_PHONE_TO_HOST, client.send_counter, &state);
+    write_frame(&mut client.stream, &body).map_err(|error| format!("Direct controller send failed: {error}"))?;
+    client.send_counter = client.send_counter.wrapping_add(1);
+    drop(guard);
+    Ok(status())
 }
 
 /// Rotate the pairing code and clear any paired session.
@@ -335,6 +575,42 @@ pub fn refresh_code() -> LanStatus {
 }
 
 pub fn status() -> LanStatus {
+    if JOINING.load(Ordering::Relaxed) {
+        return LanStatus {
+            running: true,
+            role: "controller".into(),
+            state: "connecting".into(),
+            code: String::new(),
+            code_expires_in_seconds: 0,
+            paired: false,
+            controller_name: String::new(),
+            input_active: false,
+            input: String::new(),
+            system: String::new(),
+            address: String::new(),
+            port: CONTROL_PORT,
+            error: String::new(),
+        };
+    }
+    if let Ok(guard) = CLIENT.lock() {
+        if let Some(client) = guard.as_ref() {
+            return LanStatus {
+                running: true,
+                role: "controller".into(),
+                state: "connected".into(),
+                code: String::new(),
+                code_expires_in_seconds: 0,
+                paired: true,
+                controller_name: client.peer_name.clone(),
+                input_active: true,
+                input: String::new(),
+                system: client.system.clone(),
+                address: client.peer_address.clone(),
+                port: CONTROL_PORT,
+                error: String::new(),
+            };
+        }
+    }
     match HOST.lock() {
         Ok(guard) => match guard.as_ref() {
             Some(host) => {
@@ -346,6 +622,8 @@ pub fn status() -> LanStatus {
                     .unwrap_or(0);
                 LanStatus {
                     running: true,
+                    role: "host".into(),
+                    state: if host.state.error.lock().map(|v| !v.is_empty()).unwrap_or(false) { "error".into() } else if host.state.paired.load(Ordering::Relaxed) { "connected".into() } else { "waiting".into() },
                     code: host.state.code_value(),
                     code_expires_in_seconds: remaining,
                     paired: host.state.paired.load(Ordering::Relaxed),
@@ -354,12 +632,14 @@ pub fn status() -> LanStatus {
                     input: host.state.input.lock().map(|v| v.clone()).unwrap_or_default(),
                     system: host.state.system.lock().map(|v| v.clone()).unwrap_or_default(),
                     address: local_address(),
-                    port: CONTROL_PORT,
+                    port: host.port,
                     error: host.state.error.lock().map(|v| v.clone()).unwrap_or_default(),
                 }
             }
             None => LanStatus {
                 running: false,
+                role: "off".into(),
+                state: if join_error().lock().map(|v| !v.is_empty()).unwrap_or(false) { "error".into() } else { "idle".into() },
                 code: String::new(),
                 code_expires_in_seconds: 0,
                 paired: false,
@@ -369,11 +649,13 @@ pub fn status() -> LanStatus {
                 system: String::new(),
                 address: String::new(),
                 port: CONTROL_PORT,
-                error: String::new(),
+                error: join_error().lock().map(|v| v.clone()).unwrap_or_default(),
             },
         },
         Err(_) => LanStatus {
             running: false,
+            role: "off".into(),
+            state: "error".into(),
             code: String::new(),
             code_expires_in_seconds: 0,
             paired: false,
@@ -390,34 +672,36 @@ pub fn status() -> LanStatus {
 
 /// Best-effort LAN address for diagnostics only.
 fn local_address() -> String {
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
-        if socket.connect("8.8.8.8:80").is_ok() {
-            if let Ok(addr) = socket.local_addr() {
-                return addr.ip().to_string();
-            }
-        }
-    }
+    // The peer learns the source address from the direct discovery datagram.
+    // Do not probe an Internet address merely to render diagnostics.
     String::new()
 }
 
-fn spawn_discovery(stop: Arc<AtomicBool>, state: Arc<State>, name: String) -> JoinHandle<()> {
+fn spawn_discovery(
+    stop: Arc<AtomicBool>,
+    state: Arc<State>,
+    name: String,
+    port: u16,
+) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else { return };
+        let local = local_lan_ipv4().unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let Ok(socket) = UdpSocket::bind((local, 0)) else { return };
+        let _ = socket.set_multicast_loop_v4(true);
         let _ = socket.set_broadcast(true);
-        let mut counter = 0u64;
         while !stop.load(Ordering::Relaxed) {
-            counter = counter.wrapping_add(1);
-            let advertisement = serde_json::json!({
-                "an3": "ctrl",
-                "v": PROTOCOL_VERSION,
-                "id": state.instance_id,
-                "name": name,
-                "port": CONTROL_PORT,
-            });
-            let payload = serde_json::to_vec(&advertisement).unwrap_or_default();
-            let _ = socket.send_to(&payload, ("255.255.255.255", DISCOVERY_PORT));
-            // A second send to the subnet broadcast helps some Wi-Fi networks.
-            let _ = socket.send_to(&payload, ("192.0.2.255", DISCOVERY_PORT));
+            let payload = serde_json::to_vec(&advertisement_with_capabilities(
+                &state.instance_id,
+                &name,
+                port,
+                &["controller"],
+            ))
+                .unwrap_or_default();
+            let _ = socket.send_to(&payload, (DISCOVERY_ADDRESS, DISCOVERY_PORT));
+            // Some consumer Wi-Fi APs pass unicast traffic but suppress
+            // multicast group delivery. Broadcast is the same local-only
+            // discovery envelope and lets installed peers find one another
+            // without asking the user for an IP address.
+            let _ = socket.send_to(&payload, (DISCOVERY_BROADCAST, DISCOVERY_PORT));
             for _ in 0..20 {
                 if stop.load(Ordering::Relaxed) {
                     break;
@@ -428,14 +712,13 @@ fn spawn_discovery(stop: Arc<AtomicBool>, state: Arc<State>, name: String) -> Jo
     })
 }
 
-fn spawn_listener(stop: Arc<AtomicBool>, state: Arc<State>, name: String) -> JoinHandle<()> {
+fn spawn_listener(
+    stop: Arc<AtomicBool>,
+    state: Arc<State>,
+    name: String,
+    listener: TcpListener,
+) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let Ok(listener) = TcpListener::bind(("0.0.0.0", CONTROL_PORT)) else {
-            if let Ok(mut error) = state.error.lock() {
-                *error = format!("Controller port {CONTROL_PORT} is unavailable");
-            }
-            return;
-        };
         let _ = listener.set_nonblocking(true);
         while !stop.load(Ordering::Relaxed) {
             match listener.accept() {
@@ -473,15 +756,30 @@ fn release(state: &State) {
     }
 }
 
+/// Apply the interactive-controller socket policy to an established stream.
+///
+/// Gameplay input is latency-sensitive, so Nagle's algorithm is disabled on
+/// both the accepted (host) and connected (phone) sides: a button-down or
+/// button-up must not wait for more data to coalesce. Timeouts bound the
+/// handshake; the authenticated session clears them elsewhere.
+fn configure_controller_stream(stream: &TcpStream) {
+    let _ = stream.set_nodelay(true);
+    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+}
+
 fn handle_client(stream: &mut TcpStream, peer: IpAddr, state: &State, name: &str) {
     // Accepted sockets inherit the listener's non-blocking mode on Unix.
     let _ = stream.set_nonblocking(false);
-    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+    configure_controller_stream(stream);
 
     // 1. Plaintext hello exchange.
-    let Ok(hello) = read_frame(stream) else { return };
-    let Ok(hello) = serde_json::from_slice::<serde_json::Value>(&hello) else { return };
+    let Ok(hello) = read_frame(stream) else {
+        return;
+    };
+    let Ok(hello) = serde_json::from_slice::<serde_json::Value>(&hello) else {
+        return;
+    };
     if hello.get("k").and_then(|v| v.as_str()) != Some("hello") {
         return;
     }
@@ -512,7 +810,9 @@ fn handle_client(stream: &mut TcpStream, peer: IpAddr, state: &State, name: &str
     if rate_limited(peer) {
         return;
     }
-    let Ok(sealed) = read_frame(stream) else { return };
+    let Ok(sealed) = read_frame(stream) else {
+        return;
+    };
     let mut key = None;
     let mut used_code = false;
     if let Some(token) = state.token_value() {
@@ -576,6 +876,12 @@ fn handle_client(stream: &mut TcpStream, peer: IpAddr, state: &State, name: &str
     }
     send_counter += 1;
 
+    // Handshake reads are bounded, but an authenticated controller session is
+    // intentionally long-lived while the user keeps the host open.  Do not
+    // turn an idle game/menu into a disconnect after the handshake timeout.
+    let _ = stream.set_read_timeout(None);
+    let _ = stream.set_write_timeout(None);
+
     read_loop(stream, &cipher, state, &mut send_counter);
     release(state);
 }
@@ -597,6 +903,12 @@ fn read_loop(stream: &mut TcpStream, cipher: &Aes256Gcm, state: &State, send_cou
                 };
                 receive_counter += 1;
                 if value.get("k").and_then(|v| v.as_str()) == Some("state") {
+                    // Track B1: capture host receipt before decryption work is
+                    // attributed, so transport and processing stay separable.
+                    crate::latency::note_frame_received(
+                        value.get("s").and_then(|v| v.as_u64()).unwrap_or(0),
+                        value.get("t0").and_then(|v| v.as_i64()).unwrap_or(0),
+                    );
                     apply_state(state, &value);
                     if last_ack_sent.elapsed() >= ACK_INTERVAL {
                         if send_ack(stream, cipher, send_counter, state).is_err() {
@@ -623,6 +935,12 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
         return; // latest-state-wins
     }
     state.last_sequence.store(sequence, Ordering::Relaxed);
+    // Track B1 (debug-only): associate the phone's own capture time with this
+    // sequence. `t0` is echoed, never interpreted on the host clock.
+    crate::latency::note_input_applied(
+        sequence,
+        frame.get("t0").and_then(|v| v.as_i64()).unwrap_or(0),
+    );
     if let Ok(mut input) = state.input.lock() {
         *input = frame
             .get("b")
@@ -634,6 +952,17 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
     let shaped = serde_json::json!({ "state": frame });
     if input_ready() {
         let _ = set_native_input(frame_input(&shaped));
+        // Track B1: close the input-to-produced-frame interval with the host's
+        // real presented-frame counter. This runs only while tracing is on.
+        if crate::latency::is_enabled() && crate::azahar::native_frame_counter_available() {
+            crate::latency::note_frame_produced_at(crate::azahar::native_presented_frames());
+        }
+        // Canonical Phone Controller utility actions (Speed/Quick Save/Menu) are
+        // executed on the running host. The sink reports whether each action was
+        // actually performed, so an unsupported action is never treated as done.
+        if let Ok(mut replay) = state.last_utility.lock() {
+            let _ = crate::controller_host::dispatch_utilities(frame, &mut replay, &controller_utility_sink());
+        }
         if let Some(system) = native_active_system() {
             if let Ok(mut slot) = state.system.lock() {
                 *slot = system;
@@ -690,6 +1019,17 @@ impl p256::elliptic_curve::rand_core::CryptoRng for OsRngCompat {}
 mod tests {
     use super::*;
 
+    // The transport tests share the module-level HOST and must not run
+    // concurrently. Their listeners use isolated ephemeral ports.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn serialize() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn start_test_host() -> LanStatus {
+        start_on_port(0, false).expect("isolated test host start")
+    }
+
     #[test]
     fn pairing_codes_are_six_digits_including_leading_zeroes() {
         for _ in 0..300 {
@@ -721,18 +1061,75 @@ mod tests {
         let _ = open_with_key(&key, DIR_PHONE_TO_HOST, 0, &frame);
     }
 
+    /// Gameplay input must not wait on Nagle's algorithm on either side.
+    #[test]
+    fn controller_streams_disable_nagle_for_gameplay_input() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind ephemeral");
+        let address = listener.local_addr().unwrap();
+        let client = TcpStream::connect(address).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        configure_controller_stream(&client);
+        configure_controller_stream(&server);
+        assert_eq!(client.nodelay().unwrap(), true, "phone gameplay input must not wait on Nagle");
+        assert_eq!(server.nodelay().unwrap(), true, "host reader must not wait on Nagle");
+    }
+
+    /// A second host must not silently share a control port. On macOS
+    /// SO_REUSEADDR can let it coexist, and the phone then reaches the other
+    /// listener, which does not know the pairing code: the session dies as a
+    /// handshake EOF instead of a clear error.
+    #[test]
+    fn start_refuses_when_the_requested_port_is_already_owned() {
+        let _guard = serialize();
+        let owner = TcpListener::bind(("127.0.0.1", 0)).expect("occupy ephemeral port");
+        let port = owner.local_addr().unwrap().port();
+        let result = start_on_port(port, false);
+        assert!(result.is_err(), "a second host must not start while the port is owned");
+    }
+
+    /// Repeated start/stop cycles must release the listener port every time, so
+    /// reconnect churn never leaves a stale listener that would break the next
+    /// handshake.
+    #[test]
+    fn start_stop_cycles_release_the_listener_port() {
+        let _guard = serialize();
+        let mut port = 0;
+        for cycle in 0..5 {
+            let started = start_on_port(port, false).expect("host start");
+            port = started.port;
+            assert_ne!(port, 0, "cycle {cycle}: the host must bind a real port");
+            assert!(started.running, "cycle {cycle}: host must report running");
+            stop();
+            assert!(!status().running, "cycle {cycle}: host must report stopped");
+        }
+        assert!(
+            TcpStream::connect(("127.0.0.1", port)).is_err(),
+            "the listener must be closed after the final stop"
+        );
+    }
+
     /// End-to-end direct transport: a real TCP client pairs by code and its
     /// input frames reach the host's input sink, with acknowledgement.
     #[test]
     fn direct_transport_pairs_and_injects_input() {
+        let _guard = serialize();
         READY_OVERRIDE.store(1, Ordering::Relaxed);
         // The sink is the production `set_native_input`; assert on the host
         // state instead of a real core.
-        let _ = start().expect("host start");
-        let code = status().code.clone();
+        let hosted = start_test_host();
+        let code = hosted.code.clone();
+        let port = hosted.port;
         assert_eq!(code.len(), 6);
 
-        let mut stream = TcpStream::connect(("127.0.0.1", CONTROL_PORT)).expect("connect");
+        let mut stream = (0..50)
+            .find_map(|_| match TcpStream::connect(("127.0.0.1", port)) {
+                Ok(stream) => Some(stream),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    None
+                }
+            })
+            .expect("connect");
         stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
         let secret = EphemeralSecret::random(&mut OsRngCompat);
         let public = secret.public_key().to_encoded_point(false);
@@ -771,5 +1168,173 @@ mod tests {
         stop();
         READY_OVERRIDE.store(-1, Ordering::Relaxed);
         assert!(!status().running);
+    }
+
+    /// End-to-end: the app's canonical utility frame (`u:[{action,command_id,slot}]`)
+    /// reaches the host's utility sink exactly once, and a replayed frame does
+    /// not repeat the side effect. Different commands may share a transport
+    /// sequence because command_id is the direct-LAN replay identity.
+    #[test]
+    fn direct_transport_executes_canonical_utility_frames() {
+        let _guard = serialize();
+        READY_OVERRIDE.store(1, Ordering::Relaxed);
+        let seen: Arc<Mutex<Vec<(String, u8)>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink: crate::controller_host::UtilitySink = {
+            let seen = seen.clone();
+            Arc::new(move |action| {
+                seen.lock().unwrap().push((action.action.clone(), action.slot));
+                true
+            })
+        };
+        set_utility_sink_for_test(Some(sink));
+
+        let hosted = start_test_host();
+        let code = hosted.code.clone();
+        let port = hosted.port;
+
+        let mut stream = (0..50)
+            .find_map(|_| match TcpStream::connect(("127.0.0.1", port)) {
+                Ok(stream) => Some(stream),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    None
+                }
+            })
+            .expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let secret = EphemeralSecret::random(&mut OsRngCompat);
+        let public = secret.public_key().to_encoded_point(false);
+        let hello = serde_json::json!({"k":"hello","v":1,"pub": B64.encode(public.as_bytes()), "name":"Test phone"});
+        write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap()).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream).unwrap()).unwrap();
+        let host_public = PublicKey::from_sec1_bytes(
+            &B64.decode(response.get("pub").unwrap().as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let shared = secret.diffie_hellman(&host_public);
+        let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 0, &serde_json::json!({"k":"auth"}))).unwrap();
+        let _ = open(&cipher, DIR_HOST_TO_PHONE, 0, &read_frame(&mut stream).unwrap()).unwrap();
+
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 1, &serde_json::json!({
+            "k":"state","s":2,"b":[],"a":[0,0,0,0],
+            "u":[
+                {"action":"QUICK_SAVE","sequence":4,"command_id":"phone-a","slot":3},
+                {"action":"QUICK_LOAD","sequence":4,"command_id":"phone-b","slot":10}
+            ]
+        }))).unwrap();
+        for _ in 0..20 {
+            if !seen.lock().unwrap().is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        assert_eq!(
+            seen.lock().unwrap().clone(),
+            vec![("QUICK_SAVE".into(), 3), ("QUICK_LOAD".into(), 10)]
+        );
+
+        // The same state sequence is ignored, so a retry cannot re-run it.
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 2, &serde_json::json!({
+            "k":"state","s":2,"b":[],"a":[0,0,0,0],
+            "u":[
+                {"action":"QUICK_SAVE","sequence":4,"command_id":"phone-a","slot":3},
+                {"action":"QUICK_LOAD","sequence":4,"command_id":"phone-b","slot":10}
+            ]
+        }))).unwrap();
+        std::thread::sleep(Duration::from_millis(120));
+        assert_eq!(seen.lock().unwrap().len(), 2);
+
+        let _ = stream.shutdown(Shutdown::Both);
+        stop();
+        set_utility_sink_for_test(None);
+        READY_OVERRIDE.store(-1, Ordering::Relaxed);
+    }
+
+    /// Track B1 end-to-end: the debug-only tracer records real measurements for
+    /// frames that traverse the actual encrypted transport, associated by phone
+    /// sequence, without changing input behavior.
+    #[test]
+    fn direct_transport_records_latency_for_real_frames() {
+        let _guard = serialize();
+        // The tracer is process-global; hold its lock so a concurrent latency
+        // module test cannot stop the run mid-measurement.
+        let _latency_guard = crate::latency::test_lock();
+        READY_OVERRIDE.store(1, Ordering::Relaxed);
+        let _ = crate::latency::stop();
+        assert!(crate::latency::start(64), "the tracer must be startable");
+
+        let hosted = start_test_host();
+        let code = hosted.code.clone();
+        let port = hosted.port;
+
+        let mut stream = (0..50)
+            .find_map(|_| match TcpStream::connect(("127.0.0.1", port)) {
+                Ok(stream) => Some(stream),
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    None
+                }
+            })
+            .expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let secret = EphemeralSecret::random(&mut OsRngCompat);
+        let public = secret.public_key().to_encoded_point(false);
+        let hello = serde_json::json!({"k":"hello","v":1,"pub": B64.encode(public.as_bytes()), "name":"Test phone"});
+        write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap()).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream).unwrap()).unwrap();
+        let host_public = PublicKey::from_sec1_bytes(
+            &B64.decode(response.get("pub").unwrap().as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        let shared = secret.diffie_hellman(&host_public);
+        let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 0, &serde_json::json!({"k":"auth"}))).unwrap();
+        let _ = open(&cipher, DIR_HOST_TO_PHONE, 0, &read_frame(&mut stream).unwrap()).unwrap();
+
+        // Three distinguishable inputs, each with its own phone capture time.
+        // The host has no real core here, so it reports its own frame counter.
+        for (offset, sequence) in [(0u64, 11u64), (1, 12), (2, 13)] {
+            write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, offset + 1, &serde_json::json!({
+                "k":"state","s":sequence,"b":["a"],"a":[0,0,0,0],"t0": 5_000 + sequence
+            }))).unwrap();
+            // Wait until the real transport reader records this input before
+            // simulating its produced frame; a fixed delay races the reader.
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !crate::latency::snapshot().iter().any(|sample| sample.sequence == sequence) {
+                assert!(Instant::now() < deadline, "host did not record frame {sequence}");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            crate::latency::note_frame_produced();
+        }
+
+        let samples = crate::latency::snapshot();
+        let _ = crate::latency::stop();
+        let _ = stream.shutdown(Shutdown::Both);
+        stop();
+        READY_OVERRIDE.store(-1, Ordering::Relaxed);
+
+        let sequences: Vec<u64> = samples.iter().map(|sample| sample.sequence).collect();
+        assert!(
+            sequences.contains(&11) && sequences.contains(&12) && sequences.contains(&13),
+            "each real frame must produce one sample: {sequences:?}"
+        );
+        for sample in &samples {
+            assert!(
+                [11u64, 12, 13].contains(&sample.sequence),
+                "no unrelated input may be measured"
+            );
+            assert!(
+                sample.phone_t0 >= 5_000,
+                "the phone capture time must be echoed through the transport"
+            );
+            assert!(
+                sample.input_to_frame_ns().is_some(),
+                "a produced frame must close the interval for sequence {}",
+                sample.sequence
+            );
+        }
     }
 }

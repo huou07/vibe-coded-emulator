@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if !defined(_WIN32)
@@ -167,6 +168,21 @@ private:
 bool has_suffix(const std::string& value, const std::string& suffix) {
     return value.size() >= suffix.size() &&
            value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+// The host derives the state filename from the ROM identity, which the harness
+// does not need to reproduce: locate the single file with the requested suffix.
+std::filesystem::path find_state_file(const std::filesystem::path& saves,
+                                      const std::string& suffix) {
+    const std::filesystem::path states = saves / "native-libretro" / "states";
+    std::error_code ec;
+    if (!std::filesystem::is_directory(states, ec)) return {};
+    for (const auto& entry : std::filesystem::directory_iterator(states, ec)) {
+        if (entry.is_regular_file() && has_suffix(entry.path().filename().string(), suffix)) {
+            return entry.path();
+        }
+    }
+    return {};
 }
 
 int fail(const std::string& message) {
@@ -368,6 +384,80 @@ int main(int argc, char** argv) {
     if (!host.load_state(1, error) || !error.empty()) return fail("slot 1 load failed: " + error);
     error.clear();
     if (!host.load_auto(error) || !error.empty()) return fail("auto save load failed: " + error);
+
+    // A truncated state must be rejected before it reaches the core, and the
+    // host must stay running so the user can retry with a valid slot.
+    const std::filesystem::path slot_one_path = find_state_file(saves, ".slot1.state");
+    if (slot_one_path.empty()) return fail("slot 1 state file was not found for the corruption guard");
+    {
+        std::ofstream truncated(slot_one_path, std::ios::binary | std::ios::trunc);
+        truncated << "x";
+    }
+    error.clear();
+    if (host.load_state(1, error) || error.empty()) {
+        return fail("a truncated save state was accepted without a diagnostic");
+    }
+    if (!host.running()) return fail("a rejected save state stopped the running core");
+
+    // An empty state file is rejected the same way.
+    {
+        std::ofstream empty(slot_one_path, std::ios::binary | std::ios::trunc);
+    }
+    error.clear();
+    if (host.load_state(1, error) || error.empty()) {
+        return fail("an empty save state was accepted without a diagnostic");
+    }
+
+    // A failed atomic write must leave the previous valid bytes byte-identical
+    // and must not leave a temporary artifact behind. Make the destination a
+    // directory so the final rename cannot succeed.
+    error.clear();
+    if (!host.save_state(2, error) || !error.empty()) return fail("slot 2 save failed: " + error);
+    const std::filesystem::path slot_two_path = find_state_file(saves, ".slot2.state");
+    if (slot_two_path.empty()) return fail("slot 2 state file was not found for the atomic-write guard");
+    std::vector<std::uint8_t> before;
+    {
+        std::ifstream input(slot_two_path, std::ios::binary);
+        before.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    }
+    if (before.empty()) return fail("slot 2 did not produce readable bytes");
+    std::error_code remove_ec;
+    std::filesystem::remove(slot_two_path, remove_ec);
+    std::filesystem::create_directory(slot_two_path, remove_ec);
+    error.clear();
+    if (host.save_state(2, error) || error.empty()) {
+        return fail("a save whose atomic rename cannot complete reported success");
+    }
+    if (!std::filesystem::is_directory(slot_two_path)) {
+        return fail("a failed atomic save replaced the destination");
+    }
+    if (std::filesystem::exists(slot_two_path.string() + ".tmp")) {
+        return fail("a failed atomic save left a temporary artifact behind");
+    }
+    std::filesystem::remove(slot_two_path, remove_ec);
+
+    // Concurrent save/load requests must serialise on the host mutex without
+    // corrupting state or deadlocking. Each thread saves then loads the same
+    // slot, so every load has a state to read.
+    {
+        std::vector<std::thread> workers;
+        std::atomic<int> failures{0};
+        for (int index = 0; index < 4; ++index) {
+            workers.emplace_back([&host, &failures, index]() {
+                std::string local_error;
+                const unsigned slot = static_cast<unsigned>(1 + (index % 10));
+                for (int round = 0; round < 8; ++round) {
+                    if (!host.save_state(slot, local_error)) failures.fetch_add(1);
+                    local_error.clear();
+                    if (!host.load_state(slot, local_error)) failures.fetch_add(1);
+                    local_error.clear();
+                }
+            });
+        }
+        for (auto& worker : workers) worker.join();
+        if (failures.load() != 0) return fail("concurrent save/load requests failed");
+        if (!host.running()) return fail("concurrent save/load requests stopped the core");
+    }
 
     host.shutdown();
     if (host.running() || audio.initialized) return fail("host shutdown left runtime resources active");

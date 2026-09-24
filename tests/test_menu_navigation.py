@@ -122,7 +122,11 @@ class MenuLifecycleTests(unittest.TestCase):
         # finish() destroys the activity; onDestroy stops the native session once.
         destroy = self.activity[self.activity.index("override fun onDestroy()"):]
         destroy = destroy[:destroy.index("super.onDestroy()")]
-        self.assertIn("if (active) nativeStop(false)", destroy)
+        self.assertIn("if (active) {", destroy)
+        self.assertIn("if (system == \"switch\")", destroy)
+        self.assertIn("nativeEdenStop(edenHandle)", destroy)
+        self.assertIn("nativeEdenDestroy(edenHandle)", destroy)
+        self.assertIn("else nativeStop(false)", destroy)
         self.assertIn("unbindService(controllerConnection)", destroy)
         self.assertIn("sendToControllerService(ControllerHostService.MSG_DETACH)", destroy)
         self.assertIn("nativeCancelPointer()", destroy)

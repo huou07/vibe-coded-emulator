@@ -554,6 +554,7 @@ int main(int argc, char** argv) {
         int16_t x = 0, y = 0, tx = 0, ty = 0;
         bool touched = false;
         std::string utility;
+        unsigned utility_slot = 1;
     };
     auto parent = std::make_shared<ParentControl>();
     if (options.control_stdin) {
@@ -565,9 +566,19 @@ int main(int argc, char** argv) {
                 // Phone Controller one-shot utilities. Only the canonical action
                 // names are accepted; anything else falls through to the INPUT
                 // parser and is ignored.
-                if (line == "QUICK_SAVE" || line == "SPEED_UP" || line == "SPEED_DOWN" || line == "OPEN_MENU") {
+                std::istringstream utility_message(line);
+                std::string utility_name;
+                unsigned utility_slot = 1;
+                if (utility_message >> utility_name &&
+                    (utility_name == "QUICK_SAVE" || utility_name == "QUICK_LOAD" || utility_name == "SPEED_UP" || utility_name == "SPEED_DOWN" || utility_name == "OPEN_MENU")) {
+                    std::string extra;
+                    if (utility_message >> extra) {
+                        try { utility_slot = static_cast<unsigned>(std::stoul(extra)); } catch (...) { continue; }
+                    }
+                    if (utility_message >> extra || ((utility_name == "QUICK_SAVE" || utility_name == "QUICK_LOAD") && (utility_slot < 1 || utility_slot > 10))) continue;
                     std::lock_guard lock(parent->mutex);
-                    parent->utility = line;
+                    parent->utility = utility_name;
+                    parent->utility_slot = utility_slot;
                     continue;
                 }
                 std::istringstream message(line);
@@ -602,6 +613,7 @@ int main(int argc, char** argv) {
         }
         while (running && host.running() && !parent->quit) {
             std::string utility;
+            unsigned utility_slot = 1;
             if (options.control_stdin) {
                 std::lock_guard lock(parent->mutex);
                 if (parent->pending) {
@@ -612,10 +624,13 @@ int main(int argc, char** argv) {
                     parent->pending = false;
                 }
                 utility.swap(parent->utility);
+                utility_slot = parent->utility_slot;
             }
             if (!utility.empty()) {
                 if (utility == "QUICK_SAVE") {
-                    runtime_message = host.save_state(1, error) ? "Quick save 1 completed." : "Quick save 1 failed: " + error;
+                    runtime_message = host.save_state(utility_slot, error) ? "Quick save completed." : "Quick save failed: " + error;
+                } else if (utility == "QUICK_LOAD") {
+                    runtime_message = host.load_state(utility_slot, error) ? "Quick load completed." : "Quick load failed: " + error;
                 } else if (utility == "SPEED_UP" || utility == "SPEED_DOWN") {
                     step_speed(utility == "SPEED_UP" ? 1 : -1);
                 } else if (utility == "OPEN_MENU") {

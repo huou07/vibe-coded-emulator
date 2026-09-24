@@ -37,6 +37,9 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
 
         self.assertIn('cp -a deb-extract/usr/lib/. /app/lib/', FLATPAK)
         self.assertNotIn('cp -a deb-extract/usr/lib/. /app/lib/an3-offline-native/', FLATPAK)
+        self.assertIn('strip: false', FLATPAK)
+        self.assertIn('flatpak_companion=', BUILD)
+        self.assertIn('flatpak build-export', BUILD)
         self.assertIn('--runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo', BUILD)
         self.assertIn('flatpak_deb_path="$root/releases/$deb_name"', BUILD)
         self.assertIn('The Flatpak source DEB is stale or differs from the selected staged DEB.', BUILD)

@@ -137,6 +137,16 @@ mod runtime {
                 let payload = evaluate(app, expression)?;
                 Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null))
             }
+            // Native-runtime diagnostics read straight from the Rust host, so an
+            // E2E can prove the renderer is presenting frames (advancing counter)
+            // instead of trusting a DOM status string.
+            "native" => {
+                let (running, presented_frames) = crate::azahar::native_bridge_diagnostics();
+                Ok(serde_json::json!({
+                    "running": running,
+                    "presentedFrames": presented_frames,
+                }))
+            }
             "tree" => {
                 let expression = "Array.from(document.querySelectorAll('[data-testid]')).map(function(el){\
                     return {testid:el.getAttribute('data-testid'),tag:el.tagName.toLowerCase(),\
@@ -234,6 +244,7 @@ mod runtime {
                 .map(|value| value.replace("%2D", "-").replace("%5F", "_"));
             let action = match route {
                 "/diag" => "diag",
+                "/native" => "native",
                 "/tree" => "tree",
                 "/query" => "query",
                 "/text" => "text",

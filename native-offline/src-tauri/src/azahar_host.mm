@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #import <AppKit/AppKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <dispatch/dispatch.h>
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -18,6 +19,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <condition_variable>
 #include <dlfcn.h>
 #include <filesystem>
 #include <fstream>
@@ -56,6 +58,7 @@ constexpr unsigned RETRO_DEVICE_ID_POINTER_PRESSED = 2;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_X = 0;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_Y = 1;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_LEFT = 2;
+constexpr unsigned RETRO_MEMORY_SAVE_RAM = 0;
 
 constexpr int RETRO_PIXEL_FORMAT_0RGB1555 = 0;
 constexpr int RETRO_PIXEL_FORMAT_XRGB8888 = 1;
@@ -92,6 +95,7 @@ constexpr uintptr_t RETRO_HW_FRAME_BUFFER_VALID = static_cast<uintptr_t>(-1);
 constexpr unsigned RETRO_MEMORY_ACCESS_WRITE = 1u << 0;
 constexpr unsigned RETRO_MEMORY_TYPE_CACHED = 1u << 0;
 constexpr size_t kMaxQuickStateBytes = 512u * 1024u * 1024u;
+constexpr size_t kMaxSaveRamBytes = 16u * 1024u * 1024u;
 constexpr unsigned kMaxQuickStateSlot = 10;
 constexpr size_t kHostTimingSamples = 256;
 constexpr double kNominalCoreFps = 60.0;
@@ -338,6 +342,8 @@ struct CoreApi {
     size_t (*serialize_size)() = nullptr;
     bool (*serialize)(void*, size_t) = nullptr;
     bool (*unserialize)(const void*, size_t) = nullptr;
+    void* (*get_memory_data)(unsigned) = nullptr;
+    size_t (*get_memory_size)(unsigned) = nullptr;
 
     template <typename T>
     bool load_symbol(const char* name, T& target, std::string& error) {
@@ -381,6 +387,12 @@ struct CoreApi {
         load_optional_symbol("retro_serialize_size", serialize_size);
         load_optional_symbol("retro_serialize", serialize);
         load_optional_symbol("retro_unserialize", unserialize);
+        load_optional_symbol("retro_get_memory_data", get_memory_data);
+        load_optional_symbol("retro_get_memory_size", get_memory_size);
+        if (!get_memory_data || !get_memory_size) {
+            get_memory_data = nullptr;
+            get_memory_size = nullptr;
+        }
         return true;
     }
 
@@ -534,6 +546,9 @@ class AzaharHost {
         speed_ = 1.0;
         speed_budget_ = 0.0;
         active_game_seconds_ = 0.0;
+        last_save_ram_game_seconds_ = 0.0;
+        save_ram_writable_ = true;
+        pending_save_ram_restore_size_ = 0;
         last_autosave_game_seconds_ = 0.0;
         // One shared Auto Save token, resolved through the same
         // native-runtime/core/auto_save_mode.h parser Android and Linux use.
@@ -623,6 +638,7 @@ class AzaharHost {
             return false;
         }
         game_loaded_ = true;
+        restore_save_ram();
 
         retro_system_av_info av_info{};
         core_.get_system_av_info(&av_info);
@@ -654,14 +670,18 @@ class AzaharHost {
             return false;
         }
         renderer_initialized_ = true;
-        running_ = true;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            running_ = true;
+        }
         return true;
     }
 
     void stop() {
+        std::lock_guard<std::mutex> lock(state_mutex_);
         if (running_ && auto_save_enabled_) {
             std::string ignored;
-            (void)save_auto_state(ignored);
+            (void)save_auto_state_locked(ignored);
         }
         running_ = false;
         // The libretro Vulkan contract keeps image/semaphore ownership with
@@ -672,7 +692,11 @@ class AzaharHost {
             hardware_callbacks_.context_destroy();
         }
         renderer_initialized_ = false;
-        if (game_loaded_ && core_.unload_game) core_.unload_game();
+        if (game_loaded_ && core_.unload_game) {
+            std::string save_error;
+            if (!flush_save_ram_locked(save_error) && !save_error.empty()) message_ = "Battery save could not be flushed: " + save_error;
+            core_.unload_game();
+        }
         game_loaded_ = false;
         if (initialized_ && core_.deinit) core_.deinit();
         initialized_ = false;
@@ -694,11 +718,15 @@ class AzaharHost {
         mouse_delta_y_.store(0, std::memory_order_relaxed);
     }
 
-    bool running() const { return running_; }
+    bool running() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return running_;
+    }
     bool is_nds() const { return system_ == "nds"; }
     const std::string& system_name() const { return system_; }
     const std::string& layout() const { return layout_; }
     bool set_screen_layout(const std::string& requested, std::string& error) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
         if (!running_ || (system_ != "nds" && system_ != "3ds")) {
             error = "Screen layout is available only while an NDS or 3DS game is running.";
             return false;
@@ -720,18 +748,47 @@ class AzaharHost {
     }
     uint64_t presented_frames() const { return vulkan_.presented_frames(); }
     NativeRendererMetrics renderer_metrics() const;
-    bool supports_quick_states() const { return running_ && core_.supports_states(); }
+    bool supports_quick_states() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return running_ && core_.supports_states();
+    }
     const std::vector<CoreOption>& core_options() const { return core_options_.options(); }
     bool set_core_option(const std::string& key, const std::string& value, std::string& error);
-    double speed() const { return speed_; }
+    double speed() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return speed_;
+    }
     void set_speed(double multiplier);
-    bool auto_save_enabled() const { return auto_save_enabled_; }
-    bool auto_save_on_exit() const { return auto_save_on_exit_; }
-    unsigned auto_save_interval_seconds() const { return auto_save_interval_seconds_; }
-    void set_auto_save_enabled(bool enabled) { auto_save_enabled_ = enabled; }
-    void set_auto_save_on_exit(bool enabled) { auto_save_on_exit_ = enabled; }
-    void set_auto_save_interval_seconds(unsigned seconds) { auto_save_interval_seconds_ = std::clamp(seconds, 1u, 3600u); }
+    bool auto_save_enabled() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return auto_save_enabled_;
+    }
+    bool auto_save_on_exit() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return auto_save_on_exit_;
+    }
+    unsigned auto_save_interval_seconds() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return auto_save_interval_seconds_;
+    }
+    bool flush_save_ram(std::string& error) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        return flush_save_ram_locked(error);
+    }
+    void set_auto_save_enabled(bool enabled) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        auto_save_enabled_ = enabled;
+    }
+    void set_auto_save_on_exit(bool enabled) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        auto_save_on_exit_ = enabled;
+    }
+    void set_auto_save_interval_seconds(unsigned seconds) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        auto_save_interval_seconds_ = std::clamp(seconds, 1u, 3600u);
+    }
     std::filesystem::path auto_save_file_path() const {
+        std::lock_guard<std::mutex> lock(state_mutex_);
         return std::filesystem::path(save_path_) / "states" / (rom_id_ + ".autosave.state");
     }
     bool save_auto_state(std::string& error);
@@ -941,6 +998,7 @@ class AzaharHost {
     }
 
     void draw() {
+        std::lock_guard<std::mutex> lock(state_mutex_);
         if (!running_ || !core_.run || !vulkan_.ready()) return;
         // At normal speed preserve the historical scheduler: one core frame
         // per MTKView callback. Fractional wall-clock budgeting at 1x causes
@@ -962,18 +1020,106 @@ class AzaharHost {
         for (unsigned index = 0; index < std::min(runs, 8u); ++index) {
             const auto began = std::chrono::steady_clock::now();
             core_.run();
+            resolve_pending_save_ram_restore();
             flush_pending_audio_samples();
             emulate_timings_.add(std::chrono::steady_clock::now() - began);
             active_game_seconds_ += 1.0 / kNominalCoreFps;
             if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
                 std::string ignored;
-                if (save_auto_state(ignored)) last_autosave_game_seconds_ = active_game_seconds_;
+                if (save_auto_state_locked(ignored)) last_autosave_game_seconds_ = active_game_seconds_;
+            }
+            if (active_game_seconds_ - last_save_ram_game_seconds_ >= 5.0) {
+                std::string save_error;
+                if (!flush_save_ram_locked(save_error) && !save_error.empty()) message_ = "Battery save could not be flushed: " + save_error;
+                last_save_ram_game_seconds_ = active_game_seconds_;
             }
         }
         note_audio_underrun();
     }
 
   private:
+    bool flush_save_ram_locked(std::string& error) {
+        if (!game_loaded_ || !core_.get_memory_data || !core_.get_memory_size) return true;
+        if (pending_save_ram_restore_size_ != 0) {
+            error = "The existing cartridge save is waiting for the core to identify its memory size; it was preserved.";
+            return false;
+        }
+        if (!save_ram_writable_) {
+            error = "An existing battery save was invalid and has been preserved; saving is disabled for this session.";
+            return false;
+        }
+        const auto size = core_.get_memory_size(RETRO_MEMORY_SAVE_RAM);
+        void* data = core_.get_memory_data(RETRO_MEMORY_SAVE_RAM);
+        if (!data || size == 0) return true;
+        if (size > kMaxSaveRamBytes) {
+            error = "The core reported an invalid battery-save size.";
+            return false;
+        }
+        const auto* begin = static_cast<const uint8_t*>(data);
+        std::vector<uint8_t> bytes(begin, begin + size);
+        return write_save_ram_atomically(std::filesystem::path(save_path_) / (rom_id_ + ".srm"), bytes, error);
+    }
+
+    bool save_auto_state_locked(std::string& error);
+    bool load_auto_state_locked(std::string& error);
+
+    void restore_save_ram() {
+        if (!core_.get_memory_data || !core_.get_memory_size) return;
+        void* data = core_.get_memory_data(RETRO_MEMORY_SAVE_RAM);
+        const auto size = core_.get_memory_size(RETRO_MEMORY_SAVE_RAM);
+        if (!data || size == 0 || size > kMaxSaveRamBytes) return;
+        const auto path = std::filesystem::path(save_path_) / (rom_id_ + ".srm");
+        std::error_code filesystem_error;
+        const auto file_status = std::filesystem::symlink_status(path, filesystem_error);
+        if (filesystem_error == std::errc::no_such_file_or_directory) {
+            return;
+        }
+        if (filesystem_error || !std::filesystem::is_regular_file(file_status)) {
+            save_ram_writable_ = false;
+            message_ = "The existing cartridge save is not a regular file; it was left untouched.";
+            return;
+        }
+        const auto saved_size = std::filesystem::file_size(path, filesystem_error);
+        if (filesystem_error || saved_size == 0 || saved_size > kMaxSaveRamBytes) {
+            save_ram_writable_ = false;
+            message_ = "The existing cartridge save has an invalid size; it was left untouched.";
+            return;
+        }
+        const bool provisional_gba_buffer = saved_size != size && system_ == "gba" && saved_size < size;
+        if (saved_size != size && !provisional_gba_buffer) {
+            save_ram_writable_ = false;
+            message_ = "The existing cartridge save does not match this core's save memory size; it was left untouched.";
+            return;
+        }
+        std::ifstream input(path, std::ios::binary);
+        std::vector<uint8_t> bytes(static_cast<size_t>(saved_size));
+        if (!input || !input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
+            save_ram_writable_ = false;
+            message_ = "The existing cartridge save could not be read and was left untouched.";
+            return;
+        }
+        std::copy(bytes.begin(), bytes.end(), static_cast<uint8_t*>(data));
+        if (provisional_gba_buffer) {
+            pending_save_ram_restore_size_ = bytes.size();
+            return;
+        }
+    }
+
+    void resolve_pending_save_ram_restore() {
+        if (pending_save_ram_restore_size_ == 0) return;
+        void* data = core_.get_memory_data ? core_.get_memory_data(RETRO_MEMORY_SAVE_RAM) : nullptr;
+        const auto size = core_.get_memory_size ? core_.get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
+        const auto expected_size = pending_save_ram_restore_size_;
+        if (data && size == expected_size) {
+            pending_save_ram_restore_size_ = 0;
+            save_ram_writable_ = true;
+            return;
+        }
+        pending_save_ram_restore_size_ = 0;
+        save_ram_writable_ = false;
+        message_ = "The core's detected cartridge-save size did not match the existing save; it was left untouched.";
+    }
+
     bool validate_state_slot(unsigned slot, std::string& error) const {
         if (!running_ || !core_.supports_states()) {
             error = "This native core does not provide save states.";
@@ -1005,13 +1151,14 @@ class AzaharHost {
         return true;
     }
 
-    static bool write_state_atomically(const std::filesystem::path& path,
+    static bool write_bytes_atomically(const std::filesystem::path& path,
                                        const std::vector<uint8_t>& bytes,
+                                       const char* description,
                                        std::string& error) {
         std::error_code filesystem_error;
         if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), filesystem_error);
         if (filesystem_error) {
-            error = "VibeCodedEmulator could not prepare local save-state storage.";
+            error = std::string("VibeCodedEmulator could not prepare local ") + description + " storage.";
             return false;
         }
         const std::filesystem::path temporary = path.string() + ".tmp";
@@ -1022,7 +1169,7 @@ class AzaharHost {
             if (!output) {
                 output.close();
                 std::filesystem::remove(temporary, filesystem_error);
-                error = "VibeCodedEmulator could not write this save state.";
+                error = std::string("VibeCodedEmulator could not write this ") + description + ".";
                 return false;
             }
         }
@@ -1033,10 +1180,22 @@ class AzaharHost {
         }
         if (std::rename(temporary.c_str(), path.c_str()) != 0) {
             std::filesystem::remove(temporary, filesystem_error);
-            error = "VibeCodedEmulator could not atomically finish this save state.";
+            error = std::string("VibeCodedEmulator could not atomically finish this ") + description + ".";
             return false;
         }
         return true;
+    }
+
+    static bool write_state_atomically(const std::filesystem::path& path,
+                                       const std::vector<uint8_t>& bytes,
+                                       std::string& error) {
+        return write_bytes_atomically(path, bytes, "save state", error);
+    }
+
+    static bool write_save_ram_atomically(const std::filesystem::path& path,
+                                          const std::vector<uint8_t>& bytes,
+                                          std::string& error) {
+        return write_bytes_atomically(path, bytes, "cartridge save", error);
     }
 
     std::filesystem::path quick_state_path(unsigned slot) const {
@@ -1304,6 +1463,9 @@ class AzaharHost {
     double speed_ = 1.0;
     double speed_budget_ = 0.0;
     double active_game_seconds_ = 0.0;
+    double last_save_ram_game_seconds_ = 0.0;
+    bool save_ram_writable_ = true;
+    size_t pending_save_ram_restore_size_ = 0;
     double last_autosave_game_seconds_ = 0.0;
     bool auto_save_enabled_ = false;
     bool auto_save_on_exit_ = false;
@@ -1318,6 +1480,7 @@ class AzaharHost {
 };
 
 void AzaharHost::set_speed(double multiplier) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
     constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
     double selected = 1.0;
     for (const double candidate : kSpeeds) {
@@ -1330,6 +1493,7 @@ void AzaharHost::set_speed(double multiplier) {
 }
 
 bool AzaharHost::set_core_option(const std::string& key, const std::string& value, std::string& error) {
+    std::lock_guard<std::mutex> lock(state_mutex_);
     if (!core_options_.set(key, value)) {
         error = "The selected value is not announced by the running core.";
         return false;
@@ -1344,6 +1508,10 @@ bool AzaharHost::set_core_option(const std::string& key, const std::string& valu
 
 bool AzaharHost::save_auto_state(std::string& error) {
     std::lock_guard<std::mutex> lock(state_mutex_);
+    return save_auto_state_locked(error);
+}
+
+bool AzaharHost::save_auto_state_locked(std::string& error) {
     if (!running_ || !core_.supports_states()) {
         error = "This native core does not provide automatic save states.";
         return false;
@@ -1356,6 +1524,10 @@ bool AzaharHost::save_auto_state(std::string& error) {
 
 bool AzaharHost::load_auto_state(std::string& error) {
     std::lock_guard<std::mutex> lock(state_mutex_);
+    return load_auto_state_locked(error);
+}
+
+bool AzaharHost::load_auto_state_locked(std::string& error) {
     if (!running_ || !core_.supports_states()) {
         error = "This native core does not provide automatic save states.";
         return false;
@@ -3375,7 +3547,10 @@ extern "C" int an3_native_import_state(const char* path, char* details, size_t d
 // Routes the Phone Controller's one-shot utility actions to the same host
 // operations the toolbar and keyboard shortcuts already use. No second
 // save-state or speed implementation is introduced.
-extern "C" int an3_native_apply_utility(const char* action, char* details, size_t details_length) {
+extern "C" int an3_native_apply_utility_at_slot(const char* action,
+                                                   unsigned slot,
+                                                   char* details,
+                                                   size_t details_length) {
     // The host's supported speed steps, matching the toolbar and schema.
     static constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
     const auto finish = [&](bool applied, const std::string& message) {
@@ -3383,30 +3558,76 @@ extern "C" int an3_native_apply_utility(const char* action, char* details, size_
         return applied ? 1 : 0;
     };
     if (!action || !*action) return finish(false, "Missing utility action.");
-    if (!an3::g_host || !an3::g_host->running()) return finish(false, "The native player is not running.");
     const std::string name(action);
-    if (name == "QUICK_SAVE") {
-        std::string error;
-        const bool saved = an3::g_host->save_state(1, error);
-        return finish(saved, saved ? "Quick save complete." : (error.empty() ? "Quick save failed." : error));
+    if ((name == "QUICK_SAVE" || name == "QUICK_LOAD") && (slot < 1 || slot > 10)) {
+        return finish(false, "Save-state slot must be between 1 and 10.");
     }
-    if (name == "SPEED_UP" || name == "SPEED_DOWN") {
-        const double current = an3::g_host->speed();
-        int index = 1;
-        for (int step = 0; step < 5; ++step) {
-            if (std::abs(kSpeeds[step] - current) < 0.001) index = step;
+    const auto apply_on_main = [name, slot]() -> std::pair<bool, std::string> {
+        if (!an3::g_host || !an3::g_host->running()) {
+            return {false, "The native player is not running."};
         }
-        index = std::clamp(index + (name == "SPEED_UP" ? 1 : -1), 0, 4);
-        an3::g_host->set_speed(kSpeeds[index]);
-        if (an3::g_view) [an3::g_view syncSpeedControls];
-        return finish(true, "Speed changed.");
+        if (name == "QUICK_SAVE") {
+            std::string error;
+            const bool saved = an3::g_host->save_state(slot, error);
+            return {saved, saved ? "Quick save complete." : (error.empty() ? "Quick save failed." : error)};
+        }
+        if (name == "QUICK_LOAD") {
+            std::string error;
+            const bool loaded = an3::g_host->load_state(slot, error);
+            return {loaded, loaded ? "Quick load complete." : (error.empty() ? "Quick load failed." : error)};
+        }
+        if (name == "SPEED_UP" || name == "SPEED_DOWN") {
+            const double current = an3::g_host->speed();
+            int index = 1;
+            for (int step = 0; step < 5; ++step) {
+                if (std::abs(kSpeeds[step] - current) < 0.001) index = step;
+            }
+            index = std::clamp(index + (name == "SPEED_UP" ? 1 : -1), 0, 4);
+            an3::g_host->set_speed(kSpeeds[index]);
+            if (an3::g_view) [an3::g_view syncSpeedControls];
+            return {true, "Speed changed."};
+        }
+        if (name == "OPEN_MENU") {
+            if (!an3::g_view) return {false, "The native player menu is unavailable."};
+            [an3::g_view openMenu];
+            return {true, "Menu opened."};
+        }
+        return {false, "Unsupported utility action '" + name + "'."};
+    };
+
+    // Controller frames arrive on a transport worker, but the menu and speed
+    // controls are AppKit objects and the core frame callback may be active on
+    // another thread. Serialize the actual operation on the UI queue; callers
+    // wait for its real result rather than acknowledging queued work.
+    if ([NSThread isMainThread]) {
+        const auto [applied, message] = apply_on_main();
+        return finish(applied, message);
     }
-    if (name == "OPEN_MENU") {
-        if (!an3::g_view) return finish(false, "The native player menu is unavailable.");
-        [an3::g_view openMenu];
-        return finish(true, "Menu opened.");
-    }
-    return finish(false, "Unsupported utility action '" + name + "'.");
+    struct PendingUtilityResult {
+        std::mutex mutex;
+        std::condition_variable completed;
+        bool done = false;
+        bool applied = false;
+        std::string message;
+    };
+    const auto result = std::make_shared<PendingUtilityResult>();
+    dispatch_async(dispatch_get_main_queue(), ^{
+        const auto [applied, message] = apply_on_main();
+        {
+            std::lock_guard<std::mutex> lock(result->mutex);
+            result->applied = applied;
+            result->message = message;
+            result->done = true;
+        }
+        result->completed.notify_one();
+    });
+    std::unique_lock<std::mutex> lock(result->mutex);
+    result->completed.wait(lock, [&] { return result->done; });
+    return finish(result->applied, result->message);
+}
+
+extern "C" int an3_native_apply_utility(const char* action, char* details, size_t details_length) {
+    return an3_native_apply_utility_at_slot(action, 1, details, details_length);
 }
 
 extern "C" void an3_native_set_input(uint32_t buttons,

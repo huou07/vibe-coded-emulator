@@ -186,6 +186,9 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         auto now=Clock::now();
         if (auto_save.enabled && now-last_auto>=std::chrono::seconds(auto_save.interval)) {
             message=s.host.save_auto(error)?"Auto Save completed":"Auto Save failed: "+error;
+            // Battery save is frontend-owned; flush it on the same cadence so an
+            // abrupt process kill cannot lose in-game progress between snapshots.
+            std::string save_error; (void)s.host.flush_save_ram(save_error);
             last_auto=now;
         }
         if (now-last_report>=std::chrono::seconds(1)) {
@@ -228,6 +231,7 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
     // A save-on-exit mode writes one final atomic snapshot as the session
     // stops. Periodic modes already saved on their own timer.
     if (auto_save.on_exit) s.host.save_auto(error);
+    std::string save_error; (void)s.host.flush_save_ram(save_error);
     s.host.shutdown();audio.shutdown();video->shutdown();
 }
 }
@@ -242,7 +246,7 @@ extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity
     session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume));
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStop(JNIEnv* e,jobject activity,jboolean suspend) { std::lock_guard lock(lifecycle);if(owns(e,activity)) {if(session) session->suspend=bool(suspend);stop_session();e->DeleteWeakGlobalRef(activity_owner);activity_owner=nullptr;} }
-extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {
+extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeLibretroButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {
     std::lock_guard lock(lifecycle);if (owns(e,activity) && session && button>=0 && button<16) session->host.input().set_button(button,pressed);
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativePointer(JNIEnv* e,jobject activity,jint x,jint y,jboolean pressed) {

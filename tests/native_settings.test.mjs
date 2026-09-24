@@ -112,10 +112,10 @@ test("reset graphics only targets the selected system", () => {
   assert.ok(!Object.keys(edits).some(key => /-(gba|nds|switch)$/.test(key)));
 });
 
-test("Switch is unavailable on Android but remains a stored setting", () => {
+test("Switch is available on Android and remains a stored setting", () => {
   const model = load("Android 15");
-  assert.equal(model.isAvailable("switch", "android"), false);
-  assert.match(model.unavailableReason("switch", "android"), /not supported on Android/i);
+  assert.equal(model.isAvailable("switch", "android"), true);
+  assert.equal(model.unavailableReason("switch", "android"), null);
   assert.equal(model.isAvailable("3ds", "android"), true);
   const edit = model.buildEdit(model.graphics["switch"][0], "switch", "vulkan");
   assert.equal(edit.key, "renderer-switch");

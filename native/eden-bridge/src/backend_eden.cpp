@@ -5,18 +5,22 @@
  * Eden-backed implementation of the bridge. Compiled only when
  * AN3_EDEN_ENABLED=ON and linked against Eden's `core` target.
  *
- * First integration step: a headless EmuWindow drives Eden's core without a
- * host surface (Eden supports WindowSystemType::Headless with
- * render_surface == nullptr). Hosted presentation comes later and must use
- * Eden's own Vulkan device.
+ * The bridge supplies the native WSI surface required by Eden's Vulkan
+ * renderer: a hosted Cocoa layer on macOS and SDL3/native WSI handles on
+ * Linux and Windows. Android is wired through its ANativeWindow frontend.
  */
 #include "an3_eden_internal.h"
 
 #if defined(__APPLE__)
 #include "cocoa_surface.h"
+#elif defined(__ANDROID__)
+#include <android/native_window.h>
+#elif !defined(__ANDROID__)
+#include "desktop_surface.h"
 #endif
 
 #include <atomic>
+#include <algorithm>
 #include <cstdlib>
 #include <chrono>
 #include <cstdio>
@@ -91,21 +95,74 @@ public:
     void DoneCurrent() override {}
 };
 
+#if defined(__ANDROID__)
+/* Eden's Android Vulkan loader obtains the driver from the frontend's
+ * GraphicsContext.  The standalone AN3 JNI adapter does not use Eden's
+ * adrenotools frontend, so keep the same contract with the system Vulkan
+ * loader supplied by Android/the emulator. */
+class AndroidGraphicsContext final : public Frontend::GraphicsContext {
+public:
+    AndroidGraphicsContext() : driver_library_(std::make_shared<Common::DynamicLibrary>()) {
+        if (!driver_library_->Open("libvulkan.so")) {
+            (void)driver_library_->Open("libvulkan.so.1");
+        }
+    }
+
+    std::shared_ptr<Common::DynamicLibrary> GetDriverLibrary() override {
+        return driver_library_;
+    }
+
+private:
+    std::shared_ptr<Common::DynamicLibrary> driver_library_;
+};
+#endif
+
 /*
  * Presentation host. Eden's Vulkan renderer has no headless surface path in the
- * pinned revision: on macOS it requires a Cocoa CAMetalLayer, elsewhere a real
- * Win32/X11/Wayland surface. On macOS the bridge supplies an offscreen
- * CAMetalLayer so the core can initialise without a window.
+ * pinned revision. macOS uses a hosted CAMetalLayer; Linux and Windows use the
+ * same SDL3/native WSI path as Eden's upstream desktop frontend.
  */
 class HostWindow final : public Frontend::EmuWindow {
 public:
-    explicit HostWindow(std::atomic<bool>& frame_flag) : frame_flag_(frame_flag) {
+    explicit HostWindow(std::atomic<bool>& frame_flag, void* platform_surface)
+        : frame_flag_(frame_flag) {
 #if defined(__APPLE__)
         window_info.type = Frontend::WindowSystemType::Cocoa;
         render_surface_ = an3_eden_cocoa_create_layer(width_, height_);
+#elif defined(__ANDROID__)
+        auto* native_window = static_cast<ANativeWindow*>(platform_surface);
+        if (native_window != nullptr) {
+            window_info.type = Frontend::WindowSystemType::Android;
+            render_surface_ = native_window;
+            width_ = static_cast<u32>(std::max(1, ANativeWindow_getWidth(native_window)));
+            height_ = static_cast<u32>(std::max(1, ANativeWindow_getHeight(native_window)));
+        }
 #else
-        window_info.type = Frontend::WindowSystemType::Headless;
-        render_surface_ = nullptr;
+        an3_eden_desktop_surface_info info{};
+        desktop_surface_ = an3_eden_desktop_create_surface(width_, height_,
+                                                            visible_requested(),
+                                                            &info);
+        if (desktop_surface_ != nullptr) {
+            switch (info.type) {
+                case AN3_EDEN_DESKTOP_WINDOW_WINDOWS:
+                    window_info.type = Frontend::WindowSystemType::Windows;
+                    break;
+                case AN3_EDEN_DESKTOP_WINDOW_X11:
+                    window_info.type = Frontend::WindowSystemType::X11;
+                    break;
+                case AN3_EDEN_DESKTOP_WINDOW_WAYLAND:
+                    window_info.type = Frontend::WindowSystemType::Wayland;
+                    break;
+                default:
+                    an3_eden_desktop_destroy_surface(desktop_surface_);
+                    desktop_surface_ = nullptr;
+                    break;
+            }
+            if (desktop_surface_ != nullptr) {
+                window_info.display_connection = info.display_connection;
+                render_surface_ = info.render_surface;
+            }
+        }
 #endif
         window_info.render_surface = render_surface_;
         window_info.render_surface_scale = 1.0f;
@@ -116,13 +173,21 @@ public:
     ~HostWindow() override {
 #if defined(__APPLE__)
         an3_eden_cocoa_destroy_layer(render_surface_);
+#elif defined(__ANDROID__)
+        render_surface_ = nullptr;
+#else
+        an3_eden_desktop_destroy_surface(desktop_surface_);
 #endif
     }
 
     [[nodiscard]] bool HasRenderSurface() const { return render_surface_ != nullptr; }
 
     [[nodiscard]] std::unique_ptr<Frontend::GraphicsContext> CreateSharedContext() const override {
+#if defined(__ANDROID__)
+        return std::make_unique<AndroidGraphicsContext>();
+#else
         return std::make_unique<HeadlessContext>();
+#endif
     }
 
     [[nodiscard]] bool IsShown() const override { return true; }
@@ -138,9 +203,17 @@ public:
 
 private:
     std::atomic<bool>& frame_flag_;
+#if !defined(__APPLE__) && !defined(__ANDROID__)
+    void* desktop_surface_ = nullptr;
+#endif
     void* render_surface_ = nullptr;
     u32 width_ = 1280;
     u32 height_ = 720;
+
+    static bool visible_requested() {
+        const char* value = std::getenv("AN3_EDEN_WINDOW_VISIBLE");
+        return value != nullptr && value[0] != '\0' && value[0] != '0';
+    }
 };
 
 struct EdenState {
@@ -181,7 +254,8 @@ an3_eden_status eden_initialize(an3_eden_core* core, const char* keys_dir, const
         /* Logging is optional; never fail initialise because of it. */
     }
     try {
-        state->window = std::make_unique<HostWindow>(state->frame_displayed);
+        state->window = std::make_unique<HostWindow>(state->frame_displayed,
+                                                     core->platform_surface);
         if (!state->window->HasRenderSurface()) {
             return fail(core, AN3_EDEN_ERR_UNAVAILABLE,
                         "No presentation surface is available for Eden's renderer");

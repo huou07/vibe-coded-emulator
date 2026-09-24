@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-sync-library-read-chunk"
+description = "Enables the native_sync_library_read_chunk command without any pre-configured scope."
+commands.allow = ["native_sync_library_read_chunk"]
+
+[[permission]]
+identifier = "deny-native-sync-library-read-chunk"
+description = "Denies the native_sync_library_read_chunk command without any pre-configured scope."
+commands.deny = ["native_sync_library_read_chunk"]

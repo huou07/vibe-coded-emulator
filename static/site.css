@@ -2669,8 +2669,26 @@ body.reference-shell .site-header .brand{
 .ctrl-pad[data-layout="custom"] .ctrl-touchscreen{aspect-ratio:auto;min-height:150px}
 .ctrl-pad[data-layout="nds"] .ctrl-touchscreen,.ctrl-pad[data-layout="3ds"] .ctrl-touchscreen{max-width:min(100%,52vh);margin:0 auto}
 .ctrl-phone-foot{text-align:center;margin-top:14px}
+/* Narrow (phone) controller: keep every control on screen without wrap or
+   overlap. D-pad and face stay side by side; the sticks share a centred row.
+   Controls keep their own touch-action:none, so dragging never scrolls. */
+@media(max-width:560px){
+  .ctrl-pad{--ctrl-cell:42px;--ctrl-stick:60px;--ctrl-face:136px}
+  /* These layout-scoped variables have higher specificity than the base rule,
+     so they must be re-declared here or the narrow layout would overflow. */
+  .ctrl-pad[data-layout="custom"],.ctrl-pad[data-layout="nds"],.ctrl-pad[data-layout="3ds"]{--ctrl-cell:42px;--ctrl-stick:60px;--ctrl-face:136px}
+  .ctrl-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"dpad face" "sticks sticks";align-items:center;justify-items:center;gap:12px}
+  .ctrl-dpad,.ctrl-circular{grid-area:dpad;justify-self:start}
+  .ctrl-face{grid-area:face;justify-self:end}
+  .ctrl-sticks{grid-area:sticks;flex-direction:row;justify-content:center;gap:20px}
+  .ctrl-circular{--ctrl-circular:min(160px,38vw)}
+  .ctrl-shoulder{height:46px;min-height:46px}
+  .ctrl-system .ctrl-key{min-width:88px}
+  .ctrl-touchscreen{aspect-ratio:auto;min-height:120px;max-height:30vh}
+}
 @media(max-width:420px){
-  .ctrl-pad{--ctrl-cell:42px;--ctrl-stick:66px;--ctrl-face:136px}
+  .ctrl-pad{--ctrl-cell:42px;--ctrl-stick:60px;--ctrl-face:132px}
+  .ctrl-pad[data-layout="custom"],.ctrl-pad[data-layout="nds"],.ctrl-pad[data-layout="3ds"]{--ctrl-cell:42px;--ctrl-stick:60px;--ctrl-face:132px}
   .ctrl-system .ctrl-key{min-width:84px}
 }
 

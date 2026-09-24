@@ -162,6 +162,8 @@ body.native-app-shell{
   color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;min-height:44px;
 }
 .native-field input:focus,.native-field select:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+/* The Phone Controller pad reuses the shared web pad classes (.ctrl-*) from
+   static/site.css so the packaged app and the web player cannot drift. */
 .native-native-picker{justify-content:center;min-height:48px}
 .native-status{margin:0;padding:0 18px 16px;color:var(--v-muted,#a5a0b6);font-size:12px}
 .native-status:empty{display:none}
@@ -236,6 +238,9 @@ body.native-app-shell{
 .native-system-tab,.native-settings-tab{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--v-line,#282238);background:var(--v-surface-1,#120f1e);color:var(--v-text,#f4f2fb);font-size:13px;font-weight:650;cursor:pointer}
 .native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
 .native-settings-group{display:grid;gap:12px;margin-top:6px}
+.native-settings-tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.native-settings-pane{display:grid;gap:14px}
+.native-settings-pane[hidden]{display:none}
 .native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
 .native-field textarea{
   border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);
@@ -247,3 +252,14 @@ body.native-app-shell{
   background:var(--v-bg-soft,#0b0912);color:var(--v-muted,#a5a0b6);padding:12px;font-size:12px;
   white-space:pre-wrap;overflow-wrap:anywhere;
 }
+.native-sync-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.native-sync-mode label,.native-sync-background{display:flex;align-items:center;gap:8px;color:var(--v-text,#f3f1fa);font-size:13px}
+.native-sync-mode input,.native-sync-background input{width:18px;height:18px}
+.native-sync-login{display:grid;gap:10px;margin:10px 0}
+.native-sync-code{margin:12px 0 4px;color:var(--v-muted,#a5a0b6)}
+.native-sync-code strong{font-size:24px;letter-spacing:.16em;color:var(--v-text,#f3f1fa)}
+.native-sync-peers{display:grid;gap:8px;margin-top:14px}
+.native-sync-peer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912)}
+.native-sync-peer small{display:block;color:var(--v-muted,#a5a0b6)}
+.native-sync-peer-actions{display:flex;gap:6px;flex-wrap:wrap}
+.native-sync-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6);margin:10px 0 0}

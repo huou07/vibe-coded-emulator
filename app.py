@@ -35,6 +35,13 @@ from urllib.request import Request, urlopen
 APP_DIR = os.path.abspath(os.environ.get("AN3_APP_DIR", os.path.dirname(__file__)))
 DATA_DIR = os.path.abspath(os.environ.get("AN3_DATA_DIR", os.path.join(APP_DIR, "data")))
 STATIC_DIR = os.path.join(APP_DIR, "static")
+# Downloadable Linux installer scripts live with the source, not in the app
+# bundle. Only these exact names are served; no directory traversal is possible.
+INSTALL_SCRIPTS_DIR = os.path.join(APP_DIR, "scripts", "install")
+INSTALL_SCRIPTS = {
+    "/install/install-deb.sh": "install-deb.sh",
+    "/install/install-flatpak.sh": "install-flatpak.sh",
+}
 NATIVE_OFFLINE_DIR = os.path.join(APP_DIR, "native-offline")
 NATIVE_OFFLINE_RELEASE_DIR = os.path.join(NATIVE_OFFLINE_DIR, "releases")
 # Release metadata is finalized after builds; it is not a native build input.
@@ -64,7 +71,7 @@ def static_asset_version():
 
 
 ASSET_VERSION = static_asset_version()
-PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "player.js", "site.css"})
+PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "lan-peer.js", "sync-transfer.js", "player.js", "site.css"})
 
 # The public source location for the GPL corresponding source. The owner sets
 # the real URL (via AN3_SOURCE_REPOSITORY or by editing this default) so the
@@ -152,6 +159,7 @@ MULTIPLAYER_ENABLED = ENVIRONMENT in {"staging", "development"} and bool(NETPLAY
 ROOMS = netcode.RoomService(
     room_ttl_seconds=900,
     join_limiter=netcode.SlidingRateLimiter(limit=20, window_seconds=60),
+    create_limiter=netcode.SlidingRateLimiter(limit=10, window_seconds=60),
 )
 
 # Capability is per core, not global. The staged web EmulatorJS build has no
@@ -176,9 +184,9 @@ def multiplayer_capability(system):
             "reason": "Not available for this system"}
 
 
-# The remote controller is staging-only too. A host creates a short-lived
-# pairing session, the phone pairs with the code, and both sides use
-# role-scoped tokens. No controller endpoint exists in production.
+# Legacy web-controller endpoints are staging/development test fixtures only.
+# Installed AN3 applications host and pair over the direct native LAN peer
+# layer; these endpoints are not part of the product controller architecture.
 CONTROLLER_ENABLED = ENVIRONMENT in {"staging", "development"}
 CONTROLLERS = {}
 CONTROLLER_LOCK = threading.Lock()
@@ -206,10 +214,11 @@ def controller_reap():
     return len(expired)
 
 
-# Cross-device sync is staging-only. The pure planning core lives in
-# sync_engine; this app owns the per-device mode, the plan/conflict surface, and
-# the LAN peer registry. Google Drive transport needs owner OAuth credentials
-# and stays unavailable (mode rejected, option unadvertised) until configured.
+# Legacy web sync fixtures are staging/development-only. The pure planning core
+# lives in sync_engine; installed AN3 applications use the direct native peer
+# transport and do not call this application for LAN data.
+# Google Drive transport needs owner OAuth credentials and stays unavailable
+# (mode rejected, option unadvertised) until configured.
 SYNC_ENABLED = ENVIRONMENT in {"staging", "development"}
 GOOGLE_DRIVE_ENABLED = bool(os.environ.get("AN3_GOOGLE_CLIENT_ID", "").strip())
 # LAN Sync is the global, user-facing master switch for device-to-device sync.
@@ -225,13 +234,23 @@ LAN_PEERS = {}
 LAN_PEERS_LOCK = threading.Lock()
 SYNC_LIMITER = netcode.SlidingRateLimiter(limit=60, window_seconds=60)
 SYNC_MANIFEST_LIMIT = 2000
-# LAN transfer: eligible save/state blobs kept in memory for a short window so a
-# peer on the same LAN can pull them. The staging app server is the LAN
-# rendezvous; nothing is persisted and nothing leaves the LAN. Only user data
-# kinds are accepted, and firmware/keys can never be published.
+# Development/test compatibility fixture: eligible save/state blobs are kept in
+# memory for a short window so deterministic browser/API tests can exercise the
+# old HTTP envelope. This is not the installed-app LAN transport, is never a
+# production default, and is not a product data store. Only user data kinds are
+# accepted, and firmware/keys can never be published.
 LAN_BLOB_TTL_SECONDS = 900
 LAN_BLOB_MAX_BYTES = 16 * 1024 * 1024
+# A LAN item is base64-wrapped in the JSON envelope. Keep the generic API
+# payload limit small while allowing the documented per-item byte limit here.
+LAN_BLOB_MAX_JSON_BYTES = (LAN_BLOB_MAX_BYTES * 4 // 3) + 256 * 1024
 LAN_BLOB_MAX_ITEMS = 512
+LAN_SAVE_SET_MEMBER_LIMIT = 64
+LAN_SAVE_SET_MAX_BYTES = 64 * 1024 * 1024
+# Keep the existing request envelope ceiling for both legacy single blobs and
+# the set envelope. The per-member and aggregate caps below add constraints;
+# they never enlarge the generic LAN JSON budget.
+LAN_SAVE_SET_MAX_JSON_BYTES = LAN_BLOB_MAX_JSON_BYTES
 LAN_BLOBS = {}
 LAN_BLOBS_LOCK = threading.Lock()
 
@@ -252,7 +271,144 @@ GITHUB_ISSUES_REPOSITORY = os.environ.get("AN3_GITHUB_REPOSITORY", "").strip()
 GITHUB_ISSUE_LABELS = tuple(
     label.strip() for label in os.environ.get("AN3_GITHUB_ISSUE_LABELS", "bug-report").split(",") if label.strip()
 )
+# Anonymous native support. The packaged offline app has no account session or
+# cookie, so an owner may allowlist the exact app origins permitted to request a
+# short-lived opaque capability and submit sanitized anonymous bug reports. An
+# empty allowlist disables the whole path (fail closed): the app keeps the
+# copy-the-report fallback. No token, secret, or shared key ever reaches the
+# client, and the capability carries no MAC or device-fingerprint identity.
+SUPPORT_ALLOWED_ORIGINS = tuple(
+    origin.strip().rstrip("/")
+    for origin in os.environ.get("AN3_SUPPORT_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+)
+SUPPORT_CAPABILITY_PATH = "/api/support/capability"
+SUPPORT_PATHS = frozenset({SUPPORT_CAPABILITY_PATH, "/api/bug-reports"})
+SUPPORT_CAPABILITY_RATE_LIMIT = 6
+SUPPORT_CAPABILITY_REPORT_LIMIT = 6
 # -----------------------------------------------------------------------------
+
+LAN_SAVE_MEMBER_RE = re.compile(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\Z")
+LAN_SAVE_HASH_RE = re.compile(r"[a-f0-9]{64}\Z")
+
+
+def _sync_safe_segment(value, fallback, limit):
+    result = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or fallback).strip())
+    if re.fullmatch(r"\.+", result or ""):
+        result = ""
+    return (result or str(fallback))[:limit]
+
+
+def _sync_save_identity(data):
+    core = str(data.get("core") or "").strip()
+    game_id = str(data.get("gameId") or data.get("game_id") or "").strip()
+    rom_hash = str(data.get("romHash") or data.get("rom_hash") or "").strip().lower()
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,64}", core):
+        raise ValueError("invalid save-set core")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", game_id):
+        raise ValueError("invalid save-set game identity")
+    if not re.fullmatch(r"(?:sha256:)?[a-f0-9]{64}", rom_hash):
+        raise ValueError("invalid save-set ROM hash")
+    set_id = ":".join((
+        "save",
+        _sync_safe_segment(core, "unknown-core", 48),
+        _sync_safe_segment(game_id, "unknown-game", 48),
+        _sync_safe_segment(rom_hash, "unknown-rom", 80),
+    ))
+    return {"core": core, "gameId": game_id, "romHash": rom_hash, "setId": set_id}
+
+
+def _sync_save_set_payload(save_set):
+    return {
+        "setId": save_set["setId"],
+        "core": save_set["core"],
+        "gameId": save_set["gameId"],
+        "romHash": save_set["romHash"],
+        "memberCount": save_set["memberCount"],
+        "totalSize": save_set["totalSize"],
+        "members": [
+            {
+                "memberId": member["memberId"],
+                "path": member["path"],
+                "size": member["size"],
+                "contentHash": member["contentHash"],
+            }
+            for member in save_set["members"]
+        ],
+    }
+
+
+def _sync_save_set_hash(save_set):
+    payload = json.dumps(_sync_save_set_payload(save_set), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _sync_validate_save_set(data):
+    if not isinstance(data, dict):
+        raise ValueError("invalid save-set manifest")
+    identity = _sync_save_identity(data)
+    expected_set_id = identity["setId"]
+    set_id = str(data.get("setId") or "")
+    if set_id not in {expected_set_id, expected_set_id + ".conflict"}:
+        raise ValueError("invalid save-set identity")
+    members = data.get("members")
+    if not isinstance(members, list) or not members or len(members) > LAN_SAVE_SET_MEMBER_LIMIT:
+        raise ValueError("invalid save-set member list")
+    if data.get("memberCount") != len(members):
+        raise ValueError("save-set member count does not match")
+    total_size = data.get("totalSize")
+    if isinstance(total_size, bool) or not isinstance(total_size, int) or total_size < 1 or total_size > LAN_SAVE_SET_MAX_BYTES:
+        raise ValueError("invalid save-set total size")
+    seen = set()
+    normalized_members = []
+    calculated_total = 0
+    previous_member = None
+    for member in members:
+        if not isinstance(member, dict):
+            raise ValueError("invalid save-set member")
+        member_id = str(member.get("memberId") or "")
+        path = str(member.get("path") or "")
+        if not LAN_SAVE_MEMBER_RE.fullmatch(member_id) or member_id in seen or path != "/data/saves/" + member_id:
+            raise ValueError("invalid save-set member path")
+        if previous_member is not None and previous_member >= member_id:
+            raise ValueError("save-set members must be deterministically ordered")
+        size = member.get("size")
+        content_hash = str(member.get("contentHash") or "").lower()
+        key = str(member.get("key") or "")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+            raise ValueError("invalid save-set member size")
+        if not LAN_SAVE_HASH_RE.fullmatch(content_hash):
+            raise ValueError("invalid save-set member hash")
+        if key != set_id + ":" + member_id or not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
+            raise ValueError("invalid save-set member identity")
+        seen.add(member_id)
+        previous_member = member_id
+        calculated_total += size
+        normalized_members.append({
+            "key": key,
+            "memberId": member_id,
+            "path": path,
+            "size": size,
+            "contentHash": content_hash,
+        })
+    if calculated_total != total_size:
+        raise ValueError("save-set total size does not match its members")
+    normalized = {
+        "kind": "save",
+        "setId": set_id,
+        "core": identity["core"],
+        "gameId": identity["gameId"],
+        "romHash": identity["romHash"],
+        "memberCount": len(normalized_members),
+        "totalSize": total_size,
+        "members": normalized_members,
+        "manifestHash": str(data.get("manifestHash") or "").lower(),
+    }
+    if not LAN_SAVE_HASH_RE.fullmatch(normalized["manifestHash"]):
+        raise ValueError("invalid save-set aggregate hash")
+    if _sync_save_set_hash(normalized) != normalized["manifestHash"]:
+        raise ValueError("save-set aggregate hash does not match its members")
+    return normalized
 
 
 def lan_blob_reap(now=None):
@@ -392,6 +548,20 @@ def room_signature_from(data):
 
 
 AUTH_PEPPER = os.environ.get("AN3_AUTH_PEPPER", "")
+PEER_PROOF_TTL_SECONDS = 120
+PEER_PROOF_CHALLENGE_RE = re.compile(r"^[A-Za-z0-9._:-]{16,256}$")
+# Native AN3 account requests originate from the Tauri WebView, not from the
+# website itself.  Keep this allow-list narrow: LAN payloads never use these
+# endpoints, and arbitrary web origins must not receive credentialed account
+# responses.
+NATIVE_ACCOUNT_ORIGINS = frozenset(
+    origin.strip()
+    for origin in os.environ.get(
+        "AN3_NATIVE_ACCOUNT_ORIGINS",
+        "https://tauri.localhost,http://tauri.localhost,tauri://localhost,https://appassets.androidplatform.net",
+    ).split(",")
+    if origin.strip()
+)
 EMULATOR_CDN = "https://cdn.emulatorjs.org"
 EMULATOR_CACHE_LOCK = threading.Lock()
 EMULATOR_ASSET_LOCKS = {}
@@ -844,6 +1014,35 @@ def cached_emulator_asset(channel, relative):
                 pass
 
 RATE_LIMIT = {}
+RATE_LIMIT_LOCK = threading.Lock()
+RATE_LIMIT_MAX_KEYS = 4096
+RATE_LIMIT_MAX_WINDOW = 600
+
+
+def _prune_rate_limit(now, preserve):
+    """Bound the RATE_LIMIT key space; callers must hold RATE_LIMIT_LOCK.
+
+    Buckets whose newest timestamp is older than the largest window in use can
+    no longer affect any decision and are dropped first. If the cap is still
+    exceeded the least-recently-seen buckets are evicted. The key being checked
+    is always preserved so a request is never rejected by its own sweep.
+    """
+
+    for key in list(RATE_LIMIT):
+        if key == preserve:
+            continue
+        entries = RATE_LIMIT[key]
+        if not entries or now - entries[-1] >= RATE_LIMIT_MAX_WINDOW:
+            RATE_LIMIT.pop(key, None)
+    overflow = len(RATE_LIMIT) - RATE_LIMIT_MAX_KEYS
+    if overflow <= 0:
+        return
+    evictable = sorted(
+        (key for key in RATE_LIMIT if key != preserve),
+        key=lambda key: RATE_LIMIT[key][-1] if RATE_LIMIT[key] else now - RATE_LIMIT_MAX_WINDOW,
+    )
+    for key in evictable[:overflow]:
+        RATE_LIMIT.pop(key, None)
 
 
 def db():
@@ -937,6 +1136,17 @@ def init_db():
               github_issue_url TEXT NOT NULL DEFAULT '',
               created_at INTEGER NOT NULL
             );
+            -- Anonymous native support capabilities. Only the digest is kept;
+            -- the raw bearer token exists in the issue response and the client
+            -- memory only. Finite lifetime and use count bound a leaked token.
+            CREATE TABLE IF NOT EXISTS support_capabilities (
+              token_hash TEXT PRIMARY KEY,
+              origin TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              expires_at INTEGER NOT NULL,
+              uses INTEGER NOT NULL DEFAULT 0,
+              max_uses INTEGER NOT NULL DEFAULT 5
+            );
             CREATE TABLE IF NOT EXISTS page_views (
               id INTEGER PRIMARY KEY, visitor_hash TEXT NOT NULL, user_id INTEGER,
               path TEXT NOT NULL, created_at INTEGER NOT NULL
@@ -974,6 +1184,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS reports_status_idx ON reports(status, updated_at DESC);
             CREATE INDEX IF NOT EXISTS bug_reports_created_idx ON bug_reports(created_at DESC);
             CREATE INDEX IF NOT EXISTS bug_reports_fingerprint_idx ON bug_reports(fingerprint);
+            CREATE INDEX IF NOT EXISTS support_capabilities_expires_idx ON support_capabilities(expires_at);
             CREATE INDEX IF NOT EXISTS page_views_created_idx ON page_views(created_at DESC);
             CREATE INDEX IF NOT EXISTS play_events_created_idx ON play_events(created_at DESC);
             CREATE INDEX IF NOT EXISTS play_events_game_idx ON play_events(game_id, created_at DESC);
@@ -1118,6 +1329,56 @@ class RateLimited(PermissionError):
 
 def auth_hash(value):
     return hashlib.sha256((AUTH_PEPPER + str(value)).encode("utf-8")).hexdigest()
+
+
+def make_peer_proof(user_id, challenge):
+    """Create a short-lived opaque proof for an already authenticated user.
+
+    The proof is only useful inside the freshly encrypted native peer session;
+    discovery never carries it, and the endpoint never returns a password or
+    reusable session bearer token.
+    """
+
+    if not AUTH_PEPPER:
+        raise RuntimeError("native peer account proof is not configured")
+    if not PEER_PROOF_CHALLENGE_RE.fullmatch(str(challenge or "")):
+        raise ValueError("invalid peer challenge")
+    payload = {
+        "v": 1,
+        "userId": int(user_id),
+        "challenge": str(challenge),
+        "expiresAt": int(time.time()) + PEER_PROOF_TTL_SECONDS,
+        "nonce": secrets.token_urlsafe(18),
+    }
+    encoded = base64.urlsafe_b64encode(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    signature = hmac.new(AUTH_PEPPER.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+    return encoded + "." + base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+
+
+def verify_peer_proof(user_id, challenge, proof):
+    if not AUTH_PEPPER or not PEER_PROOF_CHALLENGE_RE.fullmatch(str(challenge or "")):
+        return False
+    try:
+        encoded, signature = str(proof or "").split(".", 1)
+        if not encoded or len(encoded) > 4096:
+            return False
+        supplied = base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+        expected = hmac.new(AUTH_PEPPER.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+        if not hmac.compare_digest(supplied, expected):
+            return False
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8"))
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    return (
+        payload.get("v") == 1
+        and int(payload.get("userId", -1)) == int(user_id)
+        and payload.get("challenge") == str(challenge)
+        and int(payload.get("expiresAt", 0)) >= int(time.time())
+        and isinstance(payload.get("nonce"), str)
+        and 12 <= len(payload["nonce"]) <= 128
+    )
 
 
 def clean_contribution(body, maximum, kind):
@@ -1377,7 +1638,7 @@ def download_platform_card(platform, items, lang):
     )
 
 
-def download_app_page(lang, user, csrf):
+def download_app_page(lang, user, csrf, origin=""):
     """Download-first homepage: platform cards are the primary content."""
     t = lambda vi, en: tr(lang, vi, en)
     source_available = ENVIRONMENT in {"staging", "development"}
@@ -1400,6 +1661,12 @@ def download_app_page(lang, user, csrf):
         for platform in DOWNLOAD_PLATFORM_ORDER
     )
 
+    linux_install = f'''<section class="download-features linux-install" aria-labelledby="linuxInstallTitle">
+<header><p class="eyebrow">LINUX</p><h2 id="linuxInstallTitle">{t("Cài đặt trên Linux","Install on Linux")}</h2><p>{t("Tải script, xem qua, rồi chạy. Script kiểm tra SHA-256 với catalog phát hành trước khi cài.","Download the script, inspect it, then run it. The script verifies SHA-256 against the release catalog before installing.")}</p></header>
+<article><div><strong>{t("Gói DEB (Ubuntu/Debian)","DEB package (Ubuntu/Debian)")}</strong><span>{t("Tải script rồi chạy:","Download the script, then run:")} <code>bash install-deb.sh --base-url {esc(origin)}</code></span><p><a class="button" href="/install/install-deb.sh">{ref_icon("download")}{t("Tải install-deb.sh","Download install-deb.sh")}</a></p><small>{t("Dùng apt để xử lý phụ thuộc khi có sẵn. Bạn vẫn có thể tải trực tiếp gói DEB ở thẻ Linux phía trên.","Uses apt for dependencies when available. The DEB itself is also available from the Linux card above.")}</small></div></article>
+<article><div><strong>Flatpak</strong><span>{t("Tải script rồi chạy:","Download the script, then run:")} <code>bash install-flatpak.sh --base-url {esc(origin)}</code></span><p><a class="button" href="/install/install-flatpak.sh">{ref_icon("download")}{t("Tải install-flatpak.sh","Download install-flatpak.sh")}</a></p><small>{t("Mặc định cài cho người dùng hiện tại (--user); dùng --system để cài toàn hệ thống. Script không cài thêm remote nào.","Defaults to a per-user install (--user); use --system for system-wide. The script installs no extra remotes.")}</small></div></article>
+</section>'''
+
     body = f'''<main class="page download-app-page">
 <section class="download-app-hero">
 <p class="eyebrow">VIBE CODED EMULATOR · OFFLINE</p>
@@ -1411,10 +1678,16 @@ def download_app_page(lang, user, csrf):
 <header><p class="eyebrow">{t("NỀN TẢNG","PLATFORMS")}</p><h2 id="platformTitle">{t("Chọn hệ điều hành của bạn","Choose your operating system")}</h2></header>
 <div class="platform-grid">{platform_cards}</div>
 </section>
+{linux_install}
 <section class="download-features" aria-label="{t("Điểm chính","Highlights")}">
 <article>{ref_icon("hard-drive")}<div><strong>{t("ROM cục bộ","Local ROMs")}</strong><span>{t("Chọn tệp trên máy. ROM không rời khỏi thiết bị.","Pick files on your device. ROMs never leave it.")}</span></div></article>
 <article>{ref_icon("eye-off")}<div><strong>{t("Không tài khoản","No account")}</strong><span>{t("Không đăng nhập, không theo dõi, không kho game trên web.","No sign-in, no tracking, no web game catalog.")}</span></div></article>
 <article>{ref_icon("gamepad-2")}<div><strong>{t("Chơi offline","Plays offline")}</strong><span>{t("Menu, phím ảo, cảm ứng và bàn phím vật lý ngay trong app.","Menu, virtual pad, touch and physical keyboard inside the app.")}</span></div></article>
+</section>
+<section class="download-features" aria-labelledby="publicTestTitle">
+<header><p class="eyebrow">{t("THỬ NGHIỆM CÔNG KHAI","PUBLIC TESTING")}</p><h2 id="publicTestTitle">{t("Bản phát hành để thử nghiệm","A release for testing")}</h2><p>{t("Đây là bản phát hành thử nghiệm: không phải tính năng nào cũng được kiểm chứng ở mức như nhau.","This is a testing release: not every feature is verified to the same degree.")}</p></header>
+<article><div><strong>{t("Hạn chế đã biết","Known limitations")}</strong><span>{t("Đồng bộ LAN giữa hai thiết bị cần được thử rộng hơn; lỗi handshake LAN gián đoạn đang được điều tra; độ trễ Phone Controller chưa được tối ưu; tương thích Eden/Switch chưa được kiểm chứng toàn diện; hành vi runtime Windows/Linux có thể ít được kiểm chứng hơn phần đóng gói.","LAN Sync between two devices still needs broader public testing; an intermittent LAN handshake EOF is under investigation; Phone Controller latency is not yet optimized; Eden/Switch compatibility is not comprehensively verified; Windows/Linux runtime behaviour may be less verified than packaging.")}</span></div></article>
+<article><div><strong>{t("Báo lỗi","Report a bug")}</strong><span>{t("Dùng mục Báo lỗi trong app (Help / About). Nêu nền tảng, phiên bản app, core và các bước tái hiện. Không đính kèm ROM, firmware, key hay tệp save.","Use the in-app Report a bug flow (Help / About). Include platform, app version, core and steps to reproduce. Do not attach ROMs, firmware, keys or saves.")}</span></div></article>
 </section>
 </main>'''
     return layout(tr(lang, "Tải ứng dụng", "Download app"), body, lang, user, csrf)
@@ -1765,6 +2038,7 @@ def multiplayer_page(lang, user, csrf, slug=""):
 <div class="form-actions"><button id="mpCopyCode" type="button" class="button">{tr(lang,"Sao chép mã","Copy Code")}</button><button id="mpShowQr" type="button" class="button">{tr(lang,"Hiện mã QR","Show QR")}</button><button id="mpCancelRoom" type="button" class="button danger">{tr(lang,"Hủy","Cancel")}</button></div>
 <img id="mpRoomQr" class="ctrl-qr" alt="{tr(lang,"Mã QR phòng chơi","Room QR code")}" hidden>
 <p id="mpWaitState" class="muted" role="status">{tr(lang,"Đang chờ người chơi…","Waiting for player…")}</p>
+<p><a id="mpRoomLink" class="button" href="#" hidden>{tr(lang,"Mở game để chơi","Open the game to play")}</a></p>
 </div>
 <p id="mpCreateOut" class="muted" role="status"></p>
 </div>
@@ -1945,7 +2219,9 @@ def controller_join_page(lang, user, csrf, code=""):
 <button type="button" class="ctrl-key ctrl-util" data-util="speed_down">Speed −</button>
 <button type="button" class="ctrl-key ctrl-util" data-util="speed_up">Speed +</button>
 <button type="button" class="ctrl-key ctrl-util" data-util="quick_save">Quick Save</button>
+<button type="button" class="ctrl-key ctrl-util" data-util="quick_load">Quick Load</button>
 <button type="button" class="ctrl-key ctrl-util" data-util="open_menu">Menu</button>
+<label class="ctrl-layout-picker ctrl-save-slot">Save slot<select id="ctrlSaveSlot"><option value="1">Slot 1</option><option value="2">Slot 2</option><option value="3">Slot 3</option><option value="4">Slot 4</option><option value="5">Slot 5</option><option value="6">Slot 6</option><option value="7">Slot 7</option><option value="8">Slot 8</option><option value="9">Slot 9</option><option value="10">Slot 10</option></select></label>
 </div>
 </section>
 <p class="muted ctrl-phone-foot"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
@@ -1980,7 +2256,7 @@ def sync_page(lang, user, csrf):
 <label class="check"><input type="checkbox" id="syncContentRom"> {tr(lang,"Tệp ROM","ROM files")}</label>
 <p id="syncRomWarning" class="sync-warning" hidden>{tr(lang,"Thư viện ROM có thể tốn nhiều dung lượng và băng thông.","ROM libraries may use significant storage and network bandwidth.")}</p>
 </fieldset>
-<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu","Save")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị","Find devices")}</button></div>
+<div class="form-actions"><button id="syncSave" type="button" class="button primary">{tr(lang,"Lưu","Save")}</button><button id="syncRefreshPeers" type="button" class="button">{tr(lang,"Tìm thiết bị","Find devices")}</button><button id="syncTransfer" type="button" class="button" disabled>{tr(lang,"Đồng bộ save state","Sync save states")}</button></div>
 <p id="syncStatus" class="muted" role="status" aria-live="polite"></p>
 <small id="syncAvailability" class="muted"></small>
 <h2 class="sync-devices-title">{tr(lang,"Thiết bị","Devices")}</h2>
@@ -1988,7 +2264,7 @@ def sync_page(lang, user, csrf):
 <div id="syncConflicts" class="sync-conflicts" hidden></div>
 <p class="muted"><a href="/diagnostics">{tr(lang,"Chẩn đoán nâng cao","Advanced Diagnostics")}</a></p>
 </section>
-<script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
+<script src="/static/lan-peer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync-transfer.js?v={ASSET_VERSION}" defer></script><script src="/static/sync.js?v={ASSET_VERSION}" defer></script>
 </main>'''
     return layout(tr(lang, "Đồng bộ", "Sync"), body, lang, user, csrf)
 
@@ -2077,7 +2353,7 @@ def player_page(game, lang, user, csrf):
         touch_toggle = f'<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="{tr(lang,"Ẩn phím ảo","Hide virtual controls")}" aria-label="{tr(lang,"Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>' if game["system"] in {"gb", "gba", "nds", "3ds"} else ""
         toolbar_extra = f'{touch_toggle}<button id="slotMenu" type="button" aria-expanded="false" title="{tr(lang,"Save slot","Save slots")}" aria-label="{tr(lang,"Mở save slot trên thiết bị","Open save slots on this device")}">{icon("save")}</button><button id="playerControls" type="button" aria-expanded="false" title="{tr(lang,"Tùy chọn khác","More options")}" aria-label="{tr(lang,"Mở tùy chọn trình phát","Open player options")}">{icon("more")}</button>'
         speed_settings = f'''<section class="player-settings-group player-speed-settings"><header><strong>{tr(lang,"Tốc độ","Speed")}</strong><small>{tr(lang,"Chỉ trong phiên","Session only")}</small></header><div class="player-speed-controls" role="group" aria-label="{tr(lang,"Tốc độ trò chơi","Game speed")}"><button id="speedDown" type="button" aria-label="{tr(lang,"Chậm hơn","Slower")}">−</button><output id="speedValue" aria-live="polite">1×</output><button id="speedUp" type="button" aria-label="{tr(lang,"Nhanh hơn","Faster")}">+</button></div><small id="speedHint" class="muted">{tr(lang,"Điều chỉnh tốc độ hoạt động sau khi game khởi động.","Speed controls become available after the game starts.")}</small></section>''' if game["system"] in {"gba", "nds"} else ""
-        game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div></section>'''
+        game_settings = f'''<section class="player-settings-group player-game-settings"><header><strong>{tr(lang,"Trò chơi & save","Game & saves")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">{tr(lang,"Tải save state","Download save state")}</button><button id="loadState" type="button">{tr(lang,"Nạp save state","Load save state")}</button><button id="syncSaveFile" type="button" disabled>{tr(lang,"Đồng bộ tệp save","Sync game save")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div><div id="syncSaveConflicts" class="sync-conflicts" hidden></div></section>'''
         autosave_settings = f'''<section class="player-settings-group player-autosave-settings"><header><strong>{tr(lang,"Tự động lưu","Autosave")}</strong><small>{tr(lang,"Trên thiết bị này","On this device")}</small></header><label><span>{tr(lang,"Chế độ","Mode")}</span><select id="autosaveMode"><option value="off">{tr(lang,"Tắt","Off")}</option><option value="exit">{tr(lang,"Khi thoát game","On game exit")}</option><option value="30">{tr(lang,"Mỗi 30 giây","Every 30 seconds")}</option><option value="10">{tr(lang,"Mỗi 10 giây","Every 10 seconds")}</option><option value="5">{tr(lang,"Mỗi 5 giây","Every 5 seconds")}</option></select></label><small class="muted">{tr(lang,"Autosave dùng slot riêng, không thay thế save thủ công.","Autosave uses its own slot and never replaces a manual save state.")}</small></section>'''
         exit_settings = f'''<section class="player-settings-group player-exit-settings"><header><strong>{tr(lang,"Thoát game","Exit game")}</strong></header><p class="player-setting-copy">{tr(lang,"Dừng phiên giả lập và quay về thư viện.","Stop this emulation session and return to the library.")}</p><div class="player-panel-actions"><button id="exitGame" type="button">{tr(lang,"Thoát game","Exit game")}</button></div></section>'''
         phone_controller_button = f'<button id="phoneController" type="button">{tr(lang,"Điện thoại làm tay cầm","Phone controller")}</button>' if CONTROLLER_ENABLED else ""
@@ -2121,7 +2397,7 @@ def player_page(game, lang, user, csrf):
 <div class="player-toolbar" role="toolbar" aria-label="{tr(lang,'Điều khiển trình phát','Player controls')}"><a class="player-back" href="{back_path}" title="{tr(lang,'Quay lại','Back')}" aria-label="{tr(lang,'Quay lại trang game','Back to game details')}">{icon("arrow-left")}</a><span class="player-title">{esc(title)}</span><div class="player-toolbar-actions"><button id="fullscreen" type="button" title="{tr(lang,'Toàn màn hình','Fullscreen')}" aria-label="{tr(lang,'Toàn màn hình','Fullscreen')}">{icon("maximize")}</button>{toolbar_extra}</div></div>
 <section class="player-stage player-stage-ui">{game_area}<div class="player-status"><span class="player-runtime-state"><i aria-hidden="true"></i><span id="playerStatusText">{tr(lang,'Đang chuẩn bị','Preparing')}</span></span><span id="playerSaveStatus" class="player-save-state">{tr(lang,'Chưa có save trên thiết bị','No save on this device')}</span><div id="playerNotice" class="player-notice" role="status" aria-live="polite"></div></div><div id="loading" class="loading" role="status" aria-live="polite"><strong id="loadingText">{tr(lang,'Đang chuẩn bị','Preparing')}</strong><div class="progress" role="progressbar" aria-label="{tr(lang,'Tiến trình khởi động','Startup progress')}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loadingBar"></i></div><span id="loadingPct">0%</span></div></section>
 {slot_panel}{pad_panel}{controller_panel}{multiplayer_panel}</main>
-<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
+<script src="{versioned_player_asset("player-ui.js")}" defer></script><script src="{versioned_player_asset("player-runtime.js")}" defer></script><script src="{versioned_player_asset("renderer-worker.js")}" defer></script><script src="{versioned_player_asset("nds-touch.js")}" defer></script><script src="{versioned_player_asset("lan-peer.js")}" defer></script><script src="{versioned_player_asset("sync-transfer.js")}" defer></script><script src="{versioned_player_asset("player.js")}" defer></script>"""
     return layout(title, body, lang, user, csrf, player=True)
 
 
@@ -2352,15 +2628,21 @@ def admin_page(lang, user, csrf, edit_id=None, return_to="/admin", range_key=DAS
 
 
 def rate_allowed(ip, action, limit, window=600, subject=""):
+    global RATE_LIMIT_MAX_WINDOW
     now = time.time()
     key = (auth_hash(ip), action, str(subject))
-    entries = [stamp for stamp in RATE_LIMIT.get(key, []) if now - stamp < window]
-    if len(entries) >= limit:
+    with RATE_LIMIT_LOCK:
+        if window > RATE_LIMIT_MAX_WINDOW:
+            RATE_LIMIT_MAX_WINDOW = window
+        entries = [stamp for stamp in RATE_LIMIT.get(key, []) if now - stamp < window]
+        if len(entries) >= limit:
+            RATE_LIMIT[key] = entries
+            return False
+        entries.append(now)
         RATE_LIMIT[key] = entries
-        return False
-    entries.append(now)
-    RATE_LIMIT[key] = entries
-    return True
+        if len(RATE_LIMIT) > RATE_LIMIT_MAX_KEYS:
+            _prune_rate_limit(now, key)
+        return True
 
 
 def player_content_security_policy(netplay_origin):
@@ -2397,25 +2679,119 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stdout.write("%s %s\n" % (self.address_string(), fmt % args))
 
+    def native_account_endpoint(self):
+        # Some security tests exercise the renderer with a socket-free Handler
+        # stub.  Treat a missing request path as a non-account endpoint rather
+        # than allowing a response-header helper to raise while handling an
+        # otherwise valid static 404/asset response.
+        path = urlparse(getattr(self, "path", "")).path
+        return path in {"/api/login", "/api/logout"} or path.startswith("/api/account/")
+
+    def native_account_origin(self):
+        if not self.native_account_endpoint():
+            return ""
+        origin = self.headers.get("Origin", "").strip()
+        return origin if origin in NATIVE_ACCOUNT_ORIGINS else ""
+
     def common_headers(self, content_type, length=None, cache="no-store", csp=None, cross_origin_isolated=False):
+        # The native support surface is the only cross-origin API: an allowlisted
+        # app origin may read the capability and the submission receipt. Every
+        # other response stays same-origin exactly as before.
+        cors_origin = getattr(self, "_cors_origin", "")
+        account_origin = self.native_account_origin()
         self.send_header("Content-Type", content_type)
         if length is not None:
             self.send_header("Content-Length", str(length))
+        if cors_origin:
+            self.send_header("Access-Control-Allow-Origin", cors_origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, " + bug_report.SUPPORT_CAPABILITY_HEADER)
+            self.send_header("Access-Control-Max-Age", "600")
+            self.send_header("Vary", "Origin")
         self.send_header("Cache-Control", cache)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        # A COEP: require-corp document may only read a cross-origin response
+        # that opts in, so support responses declare cross-origin explicitly.
+        self.send_header("Cross-Origin-Resource-Policy", "cross-origin" if (cors_origin or account_origin) else "same-origin")
         if cross_origin_isolated:
             self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         self.send_header("X-Permitted-Cross-Domain-Policies", "none")
         if COOKIE_SECURE:
             self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         self.send_header("Content-Security-Policy", csp or "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+        if account_origin:
+            self.send_header("Access-Control-Allow-Origin", account_origin)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Origin")
         if getattr(self, "_visitor_cookie", ""):
             self.send_header("Set-Cookie", self._visitor_cookie)
+
+    def handle_one_request(self):
+        # Body accounting is per request: one handler instance serves an entire
+        # keep-alive connection, so each request boundary must reset the count.
+        self._body_consumed = 0
+        super().handle_one_request()
+
+    def handle_expect_100(self):
+        # RFC 9110 10.1.1: the interim `100 Continue` is emitted before the
+        # request body is sent, so there is no body to drain yet and blocking in
+        # rfile.read() would deadlock an Expect: 100-continue client. Suppress
+        # the end_headers drain for this interim response only; every terminal
+        # response (including a final error reply) still drains normally.
+        self._interim_response = True
+        try:
+            return super().handle_expect_100()
+        finally:
+            self._interim_response = False
+
+    def end_headers(self):
+        # Every terminal response flushes its headers through here, including
+        # the direct writers (redirect, serve_static, serve_file,
+        # /download-app/source, login/logout) and send_error. Draining the
+        # declared-but-unread request body at this single terminal point keeps
+        # the next request on a keep-alive connection correctly framed. The
+        # interim `100 Continue` (handle_expect_100) is not terminal and must
+        # not drain, or the client never learns it may send the body.
+        if not getattr(self, "_interim_response", False):
+            self.drain_unread_body()
+        super().end_headers()
+
+    def declared_body_length(self):
+        headers = getattr(self, "headers", None)
+        if headers is None:
+            return 0
+        try:
+            return max(0, int(headers.get("Content-Length", "0") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def drain_unread_body(self):
+        """Consume a declared body the handler never read.
+
+        HTTP/1.1 keep-alive parses the next request from the same connection, so
+        a body left in the socket is mistaken for the next request line (a
+        request desync). Every terminal response flushes through ``end_headers``,
+        which drains whatever the handler left behind before the response headers
+        are written; a body larger than one bounded read closes the connection
+        instead of blocking forever. The interim ``100 Continue`` is the one
+        exception: it is emitted before the request body and is therefore not a
+        terminal response, so ``end_headers`` skips the drain for it.
+        """
+
+        if self.close_connection:
+            return
+        remaining = self.declared_body_length() - getattr(self, "_body_consumed", 0)
+        if remaining <= 0:
+            return
+        chunk = min(remaining, MAX_JSON_BYTES)
+        self.rfile.read(chunk)
+        self._body_consumed = getattr(self, "_body_consumed", 0) + chunk
+        if remaining > chunk:
+            self.close_connection = True
 
     def send_bytes(self, status, data, content_type="application/json; charset=utf-8", cache="no-store", csp=None, cross_origin_isolated=False):
         self.send_response(status)
@@ -2427,6 +2803,20 @@ class Handler(BaseHTTPRequestHandler):
     def send_json(self, payload, status=200):
         self.send_bytes(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
+    def do_OPTIONS(self):
+        if not self.native_account_endpoint():
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
+        if not self.native_account_origin():
+            self.send_bytes(403, b"origin not allowed\n", "text/plain; charset=utf-8")
+            return
+        self.send_response(204)
+        self.common_headers("text/plain; charset=utf-8", 0)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
+
     def send_html(self, content, status=200, player=False):
         csp = None
         if player:
@@ -2437,7 +2827,22 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length <= 0 or length > maximum:
             raise ValueError("invalid request size")
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        raw = self.rfile.read(length)
+        self._body_consumed = getattr(self, "_body_consumed", 0) + len(raw)
+        return json.loads(raw.decode("utf-8"))
+
+    def discard_request_body(self, maximum=MAX_JSON_BYTES):
+        """Consume a small declared body when a request is rejected early.
+
+        An unread body would otherwise be parsed as the next request line on a
+        keep-alive connection, corrupting the following request.
+        """
+
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        if length <= 0:
+            return
+        raw = self.rfile.read(min(length, maximum))
+        self._body_consumed = getattr(self, "_body_consumed", 0) + len(raw)
 
     def read_optional_json(self, maximum=MAX_JSON_BYTES):
         """Read a small JSON body when present, otherwise return ``{}``.
@@ -2453,6 +2858,7 @@ class Handler(BaseHTTPRequestHandler):
         if length > maximum:
             raise ValueError("invalid request size")
         raw = self.rfile.read(length)
+        self._body_consumed = getattr(self, "_body_consumed", 0) + len(raw)
         try:
             return json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
@@ -2562,7 +2968,8 @@ class Handler(BaseHTTPRequestHandler):
         with db() as conn:
             conn.execute("DELETE FROM sessions WHERE expires_at<?", (int(time.time()),))
             conn.execute("INSERT INTO sessions(token_hash,user_id,csrf,expires_at) VALUES(?,?,?,?)", (hashlib.sha256(token.encode()).hexdigest(), user_id, csrf, expires))
-        flags = f"Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL}" + ("; Secure" if COOKIE_SECURE else "")
+        same_site = "None" if self.native_account_origin() and COOKIE_SECURE else "Lax"
+        flags = f"Path=/; HttpOnly; SameSite={same_site}; Max-Age={SESSION_TTL}" + ("; Secure" if COOKIE_SECURE else "")
         self.send_header("Set-Cookie", f"an3_session={token}; {flags}")
 
     def clear_session(self):
@@ -2571,7 +2978,8 @@ class Handler(BaseHTTPRequestHandler):
         if token:
             with db() as conn:
                 conn.execute("DELETE FROM sessions WHERE token_hash=?", (hashlib.sha256(token.value.encode()).hexdigest(),))
-        flags = "Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + ("; Secure" if COOKIE_SECURE else "")
+        same_site = "None" if self.native_account_origin() and COOKIE_SECURE else "Lax"
+        flags = f"Path=/; HttpOnly; SameSite={same_site}; Max-Age=0" + ("; Secure" if COOKIE_SECURE else "")
         self.send_header("Set-Cookie", f"an3_session=; {flags}")
 
     def find_game(self, slug, include_draft=True):
@@ -2671,7 +3079,11 @@ class Handler(BaseHTTPRequestHandler):
         except netcode.NetcodeError as exc:
             return self.send_json({"error": str(exc)}, 400)
         device = str(data.get("deviceId") or "")[:64]
-        room, token = ROOMS.create_room(signature, device or "host", signaling_hint=NETPLAY_ORIGIN)
+        try:
+            room, token = ROOMS.create_room(
+                signature, device, signaling_hint=NETPLAY_ORIGIN, client_key=self.client_address[0])
+        except netcode.RateLimitedError as exc:
+            return self.send_json({"error": str(exc)}, 429)
         self.send_json({
             "code": room.code,
             "token": token,
@@ -2692,7 +3104,7 @@ class Handler(BaseHTTPRequestHandler):
         code = str(data.get("code") or "")
         device = str(data.get("deviceId") or "")[:64]
         try:
-            room, token = ROOMS.join_room(code, signature, device or "guest", client_key=self.client_address[0])
+            room, token = ROOMS.join_room(code, signature, device, client_key=self.client_address[0])
         except netcode.RateLimitedError as exc:
             return self.send_json({"error": str(exc)}, 429)
         except netcode.IncompatibleError as exc:
@@ -2721,6 +3133,91 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
         ROOMS.leave(code, role)
         self.send_json({"ok": True})
+
+    def multiplayer_reconnect(self):
+        """Resume a room membership with the previous member token.
+
+        Background/resume and reload recovery: the client persists its token,
+        presents it here, and receives a freshly rotated token for the same
+        role. A non-member or an expired/closed room is refused.
+        """
+
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        data = self.read_json()
+        code = str(data.get("code") or "")
+        token = str(data.get("token") or "")
+        try:
+            room, role, fresh = ROOMS.resume(code, token)
+        except netcode.ExpiredError as exc:
+            return self.send_json({"error": str(exc), "reason": "expired"}, 404)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 403)
+        self.send_json({
+            "code": room.code,
+            "token": fresh,
+            "role": role.value,
+            "relay": NETPLAY_ORIGIN,
+            "expiresInSeconds": int(room.ttl_seconds),
+        })
+
+    def multiplayer_publish_input(self):
+        """Store one member's latest coalesced input snapshot.
+
+        The live input path is the EmulatorJS relay (RG-086); this is the
+        resume/checkpoint anchor so a peer that reconnects can read the other
+        peer's newest frame instead of replaying relay history.
+        """
+
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        data = self.read_json()
+        code = str(data.get("code") or "")
+        token = str(data.get("token") or "")
+        frame = {key: value for key, value in data.items() if key not in {"code", "token"}}
+        try:
+            room, role, applied = ROOMS.publish_input(code, token, frame)
+        except netcode.ExpiredError:
+            return self.send_json({"error": "room is no longer available"}, 404)
+        except netcode.NotPairedError:
+            return self.send_json({"error": "not a room member"}, 403)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        self.send_json({
+            "applied": applied is not None,
+            "role": role.value,
+            "sequence": applied.sequence if applied is not None else (
+                room.latest_input(role).sequence if room.latest_input(role) is not None else 0),
+        })
+
+    def multiplayer_member_state(self):
+        """Return the caller's own and the peer's latest input snapshot."""
+
+        if not MULTIPLAYER_ENABLED:
+            return self.multiplayer_unavailable()
+        query = parse_qs(urlparse(self.path).query)
+        code = query.get("code", [""])[0]
+        token = query.get("token", [""])[0]
+        try:
+            room, role = ROOMS.member_state(code, token)
+        except netcode.ExpiredError:
+            return self.send_json({"error": "room is no longer available"}, 404)
+        except netcode.NotPairedError:
+            return self.send_json({"error": "not a room member"}, 403)
+        except netcode.NetcodeError as exc:
+            return self.send_json({"error": str(exc)}, 404)
+        peer_role = netcode.RoomRole.GUEST if role is netcode.RoomRole.HOST else netcode.RoomRole.HOST
+        own = room.latest_input(role)
+        peer = room.latest_input(peer_role)
+        remaining = max(0, int(room.ttl_seconds - (room.clock() - room.created_at)))
+        self.send_json({
+            "state": "full" if room.full else "waiting",
+            "role": role.value,
+            "players": 2 if room.full else 1,
+            "expiresInSeconds": remaining,
+            "self": own.to_wire() if own is not None else None,
+            "peer": peer.to_wire() if peer is not None else None,
+        })
 
     def multiplayer_room_status(self):
         if not MULTIPLAYER_ENABLED:
@@ -2967,7 +3464,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.sync_lan_enabled_for_request():
             return self.sync_lan_denied()
         SYNC_LIMITER.check(self.client_address[0])
-        data = self.read_json()
+        data = self.read_json(maximum=LAN_SAVE_SET_MAX_JSON_BYTES)
         device = str(data.get("deviceId") or "").strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", device):
             return self.send_json({"error": "invalid device id"}, 400)
@@ -2981,30 +3478,105 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(items, list) or not items or len(items) > LAN_BLOB_MAX_ITEMS:
             return self.send_json({"error": "invalid item list"}, 400)
         now = time.monotonic()
+        request_ip = self.client_address[0]
         lan_blob_reap(now)
-        stored = []
+        prepared = []
+        seen_item_keys = set()
+        save_set = data.get("set") if kind is sync_engine.ItemKind.SAVE else None
+        replace_manifest_hash = str(data.get("replaceManifestHash") or "").strip().lower()
+        if replace_manifest_hash and not LAN_SAVE_HASH_RE.fullmatch(replace_manifest_hash):
+            return self.send_json({"error": "invalid replacement manifest hash"}, 400)
+        validated_set = None
+        member_by_key = {}
+        if save_set is not None:
+            try:
+                validated_set = _sync_validate_save_set(save_set)
+            except ValueError as error:
+                return self.send_json({"error": str(error)}, 400)
+            if len(items) != validated_set["memberCount"]:
+                return self.send_json({"error": "save-set item count does not match its manifest"}, 400)
+            member_by_key = {member["key"]: member for member in validated_set["members"]}
         for item in items:
             if not isinstance(item, dict):
                 return self.send_json({"error": "invalid item"}, 400)
             key = str(item.get("key") or "")
             if not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
                 return self.send_json({"error": "invalid item key"}, 400)
+            if key in seen_item_keys:
+                return self.send_json({"error": "duplicate item key"}, 400)
+            seen_item_keys.add(key)
             content_hash = str(item.get("contentHash") or "").strip().lower()
             if not re.fullmatch(r"[a-f0-9]{16,64}", content_hash):
                 return self.send_json({"error": "invalid content hash"}, 400)
+            member = None
+            if save_set is not None:
+                member = member_by_key.get(key)
+                if member is None:
+                    return self.send_json({"error": "unknown save-set member"}, 400)
+                if (str(item.get("memberId") or "") != member["memberId"]
+                        or str(item.get("path") or "") != member["path"]
+                        or content_hash != member["contentHash"]
+                        or item.get("size") != member["size"]):
+                    return self.send_json({"error": "save-set member metadata does not match its manifest"}, 400)
             try:
                 blob = base64.b64decode(str(item.get("data") or ""), validate=True)
             except (ValueError, binascii.Error):
                 return self.send_json({"error": "invalid item data"}, 400)
             if len(blob) > LAN_BLOB_MAX_BYTES:
                 return self.send_json({"error": "item too large"}, 413)
+            if member is not None and len(blob) != member["size"]:
+                return self.send_json({"error": "save-set member size does not match its manifest"}, 400)
             digest = hashlib.sha256(blob).hexdigest()
-            if digest[: len(content_hash)] != content_hash:
+            hash_matches = digest == content_hash if save_set is not None else digest[: len(content_hash)] == content_hash
+            if not hash_matches:
                 return self.send_json({"error": "content hash does not match the data"}, 400)
-            with LAN_BLOBS_LOCK:
-                LAN_BLOBS[(kind.value, key)] = {"hash": content_hash, "device": device, "data": blob, "updated": now}
-            stored.append({"key": key, "contentHash": content_hash, "size": len(blob)})
-        self.send_json({"ok": True, "stored": len(stored), "items": stored})
+            prepared.append({
+                "key": key,
+                "hash": content_hash,
+                "device": device,
+                "ip": request_ip,
+                "data": blob,
+                "updated": now,
+                "set": validated_set,
+                "setId": validated_set["setId"] if validated_set else None,
+            })
+        if validated_set and sum(len(item["data"]) for item in prepared) != validated_set["totalSize"]:
+            return self.send_json({"error": "save-set payload size does not match its manifest"}, 400)
+
+        conflict = None
+        with LAN_BLOBS_LOCK:
+            set_id = validated_set["setId"] if validated_set else None
+            existing_set = [record for (blob_kind, _), record in LAN_BLOBS.items()
+                            if blob_kind == kind.value and set_id and record.get("setId") == set_id]
+            existing_hashes = {record.get("set", {}).get("manifestHash") for record in existing_set}
+            replace_allowed = bool(existing_hashes) and existing_hashes == {replace_manifest_hash}
+            if validated_set and existing_hashes and not replace_allowed and existing_hashes != {validated_set["manifestHash"]}:
+                return self.send_json({"error": "a different save set already owns this identity"}, 409)
+            for entry in prepared:
+                existing = LAN_BLOBS.get((kind.value, entry["key"]))
+                if existing is not None and (existing.get("device") != device or existing.get("ip") != request_ip):
+                    if not (replace_allowed and existing.get("setId") == set_id):
+                        conflict = entry["key"]
+                        break
+            if conflict is None:
+                if validated_set:
+                    for blob_key, record in list(LAN_BLOBS.items()):
+                        if blob_key[0] == kind.value and record.get("setId") == set_id:
+                            LAN_BLOBS.pop(blob_key, None)
+                for record in prepared:
+                    LAN_BLOBS[(kind.value, record["key"])] = record
+        if conflict is not None:
+            return self.send_json({
+                "error": "item key is owned by another device",
+                "reason": "lan-blob-owner-conflict",
+                "key": conflict,
+            }, 409)
+        stored = [{"key": record["key"], "contentHash": record["hash"], "size": len(record["data"])} for record in prepared]
+        response = {"ok": True, "stored": len(stored), "items": stored}
+        if validated_set:
+            response["setId"] = validated_set["setId"]
+            response["manifestHash"] = validated_set["manifestHash"]
+        self.send_json(response)
 
     def sync_lan_manifest(self):
         if not SYNC_ENABLED:
@@ -3019,19 +3591,38 @@ class Handler(BaseHTTPRequestHandler):
         now = time.monotonic()
         lan_blob_reap(now)
         items = []
+        save_sets = {}
         with LAN_BLOBS_LOCK:
             for (blob_kind, key), record in LAN_BLOBS.items():
                 if blob_kind != kind.value:
                     continue
-                items.append({
+                item = {
                     "key": key,
                     "contentHash": record["hash"],
                     "size": len(record["data"]),
                     "deviceId": record["device"],
                     "ageSeconds": int(now - record["updated"]),
-                })
+                }
+                items.append(item)
+                if kind is sync_engine.ItemKind.SAVE and record.get("setId") and record.get("set"):
+                    group = save_sets.setdefault(record["setId"], {"set": record["set"], "records": []})
+                    group["records"].append(record)
         items.sort(key=lambda item: item["key"])
-        self.send_json({"kind": kind.value, "items": items})
+        sets = []
+        for set_id, group in sorted(save_sets.items()):
+            declared = dict(group["set"])
+            actual_by_key = {record["key"]: record for record in group["records"]}
+            members = []
+            for member in declared.get("members", []):
+                entry = dict(member)
+                record = actual_by_key.get(member["key"])
+                if record:
+                    entry["deviceId"] = record["device"]
+                members.append(entry)
+            declared["members"] = members
+            declared["deviceId"] = next(iter(actual_by_key.values()))["device"] if actual_by_key else ""
+            sets.append(declared)
+        self.send_json({"kind": kind.value, "items": items, "sets": sets})
 
     def sync_lan_blob(self):
         if not SYNC_ENABLED:
@@ -3045,6 +3636,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid item kind"}, 400)
         key = query.get("key", [""])[0]
         content_hash = query.get("hash", [""])[0].strip().lower()
+        if not re.fullmatch(r"[A-Za-z0-9._:@/\-]{1,256}", key):
+            return self.send_json({"error": "invalid item key"}, 400)
+        if not re.fullmatch(r"[a-f0-9]{16,64}", content_hash):
+            return self.send_json({"error": "invalid content hash"}, 400)
         lan_blob_reap()
         with LAN_BLOBS_LOCK:
             record = LAN_BLOBS.get((kind.value, key))
@@ -3224,6 +3819,10 @@ class Handler(BaseHTTPRequestHandler):
             "system": record.get("system") or "auto",
             "name": record.get("name") or "",
             "expiresInSeconds": max(0, int(session.ttl_seconds - (session.clock() - session.created_at))),
+            # Track B1: echo the phone's own capture time for the frame the host
+            # acknowledged, so the phone can compute controller RTT entirely on
+            # its own monotonic clock. Never compared against a host clock.
+            "echoCaptureMs": session.acked_capture_ms(),
         })
 
     def controller_nearby_hosts(self):
@@ -3303,23 +3902,100 @@ class Handler(BaseHTTPRequestHandler):
             "updatedAt": int(time.time()),
         })
 
-    def bug_report_submit(self):
-        """Authenticated, rate-limited bug report ingestion.
+    def support_origin(self):
+        """Return the allowlisted app origin for this request, or an empty string.
 
-        The sanitized report is persisted before any GitHub call, so a failed
-        or misconfigured integration can never lose the admin report.
+        The allowlist is exact-match and fail-closed: an empty configuration, an
+        absent ``Origin``, or any unlisted origin yields no cross-origin grant.
+        """
+
+        if not SUPPORT_ALLOWED_ORIGINS:
+            return ""
+        origin = (self.headers.get("Origin", "") or "").strip().rstrip("/")
+        return origin if origin in SUPPORT_ALLOWED_ORIGINS else ""
+
+    def support_capability_issue(self):
+        """Issue a short-lived opaque capability to an allowlisted app origin.
+
+        No account, cookie, secret, or device identity is involved. The token is
+        high-entropy and server-side only; the response also tells the client
+        whether the anonymous support path is available at all.
         """
 
         if not BUG_REPORT_ENABLED:
             return self.send_json({"error": "not found"}, 404)
-        user = self.require_user()
-        if not user:
-            return
-        if not rate_allowed(self.client_address[0], "bug-report-ip", BUG_REPORT_RATE_LIMIT, BUG_REPORT_RATE_WINDOW):
-            raise RateLimited("Too many bug reports from this network")
-        if not rate_allowed(self.client_address[0], "bug-report-user", BUG_REPORT_USER_LIMIT, BUG_REPORT_RATE_WINDOW, user["id"]):
-            raise RateLimited("You reached the bug report limit")
-        data = self.read_json(BUG_REPORT_MAX_BYTES)
+        origin = self.support_origin()
+        if not origin:
+            return self.send_json({"error": "origin not allowed"}, 403)
+        if not rate_allowed(
+            self.client_address[0], "support-capability-ip", SUPPORT_CAPABILITY_RATE_LIMIT, BUG_REPORT_RATE_WINDOW
+        ):
+            raise RateLimited("Too many capability requests from this network")
+        token, digest = bug_report.new_support_capability()
+        now = int(time.time())
+        expires = now + bug_report.CAPABILITY_TTL_SECONDS
+        with db() as conn:
+            conn.execute("DELETE FROM support_capabilities WHERE expires_at<?", (now,))
+            conn.execute(
+                "INSERT INTO support_capabilities(token_hash,origin,created_at,expires_at,uses,max_uses) VALUES(?,?,?,?,?,?)",
+                (digest, origin, now, expires, 0, bug_report.CAPABILITY_MAX_USES),
+            )
+        self.send_json(
+            {
+                "ok": True,
+                "capability": token,
+                "expiresAt": expires,
+                "maxUses": bug_report.CAPABILITY_MAX_USES,
+                "reportPath": "/api/bug-reports",
+                "header": bug_report.SUPPORT_CAPABILITY_HEADER,
+            },
+            201,
+        )
+
+    def support_capability_consume(self):
+        """Consume one use of a capability header; ``None`` when absent/invalid.
+
+        Expiry and the finite use count are enforced atomically, so a captured
+        token cannot be replayed after it lapses or is spent. The token is also
+        scoped to the allowlisted origin it was issued to: a capability obtained
+        through one app origin must not be replayable from another origin (or
+        from a non-browser client that simply forges an ``Origin``), so the
+        issuing origin is re-checked against the live allowlist on every use.
+        """
+
+        token = (self.headers.get(bug_report.SUPPORT_CAPABILITY_HEADER, "") or "").strip()
+        if not token:
+            return None
+        request_origin = self.support_origin()
+        if not request_origin:
+            return None
+        digest = bug_report.support_capability_digest(token)
+        now = int(time.time())
+        with db() as conn:
+            row = conn.execute(
+                "SELECT token_hash,origin,expires_at,uses,max_uses FROM support_capabilities WHERE token_hash=?",
+                (digest,),
+            ).fetchone()
+            if not row or row["expires_at"] < now or row["uses"] >= row["max_uses"]:
+                return None
+            if request_origin != row["origin"]:
+                return None
+            updated = conn.execute(
+                "UPDATE support_capabilities SET uses=uses+1 WHERE token_hash=? AND expires_at>=? AND uses<max_uses",
+                (digest, now),
+            )
+            if updated.rowcount != 1:
+                return None
+        return dict(row)
+
+    def ingest_bug_report(self, data, user_id):
+        """Sanitize, persist, then optionally file a GitHub issue.
+
+        The sanitized report is persisted before any GitHub call, so a failed
+        or misconfigured integration can never lose the admin report. Returns
+        the JSON receipt the caller sends.
+        """
+
         report = bug_report.build_report(
             data, build_id=RUNTIME_BUILD_ID, app_version=ASSET_VERSION, channel=ENVIRONMENT
         )
@@ -3327,11 +4003,13 @@ class Handler(BaseHTTPRequestHandler):
         fingerprint = bug_report.issue_fingerprint(report)
         now = int(time.time())
         with db() as conn:
-            recent = conn.execute(
-                "SELECT created_at FROM bug_reports WHERE user_id=? ORDER BY created_at DESC LIMIT 1", (user["id"],)
-            ).fetchone()
-            if recent and now - recent["created_at"] < BUG_REPORT_COOLDOWN:
-                raise RateLimited("Please wait before sending another report")
+            if user_id is not None:
+                recent = conn.execute(
+                    "SELECT created_at FROM bug_reports WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
+                    (user_id,),
+                ).fetchone()
+                if recent and now - recent["created_at"] < BUG_REPORT_COOLDOWN:
+                    raise RateLimited("Please wait before sending another report")
             duplicate = conn.execute(
                 "SELECT github_issue_number,github_issue_url FROM bug_reports WHERE fingerprint=? AND github_issue_url!='' ORDER BY created_at DESC LIMIT 1",
                 (fingerprint,),
@@ -3341,7 +4019,7 @@ class Handler(BaseHTTPRequestHandler):
                    emulator_system,core_name,game_title,game_identifier,description,payload,status,created_at)
                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    user["id"], fingerprint, report["reportSchemaVersion"], report["appVersion"], report["buildId"],
+                    user_id, fingerprint, report["reportSchemaVersion"], report["appVersion"], report["buildId"],
                     report["platform"], report["emulatorSystem"], report["coreName"], report["gameTitle"],
                     report["gameIdentifier"], report["description"],
                     json.dumps(report, ensure_ascii=False, sort_keys=True), "open", now,
@@ -3370,17 +4048,62 @@ class Handler(BaseHTTPRequestHandler):
                         )
         except Exception:
             issue = {"attempted": True, "created": False, "reason": "issue creation failed"}
-        self.send_json({"ok": True, "id": report_id, "fingerprint": fingerprint, "issue": issue}, 201)
+        return {"ok": True, "id": report_id, "fingerprint": fingerprint, "issue": issue}
+
+    def bug_report_submit(self):
+        """Rate-limited bug report ingestion for an account or a capability.
+
+        An authenticated user submits with their cookie and CSRF token exactly
+        as before. The packaged native app, which has neither, submits with the
+        server-issued opaque capability it obtained from an allowlisted origin.
+        """
+
+        if not BUG_REPORT_ENABLED:
+            return self.send_json({"error": "not found"}, 404)
+        user, csrf_token = self.current_user()
+        if user:
+            if not secrets.compare_digest(self.headers.get("X-CSRF-Token", ""), csrf_token):
+                self.discard_request_body(BUG_REPORT_MAX_BYTES)
+                return self.send_json({"error": "invalid csrf token"}, 403)
+        elif self.support_capability_consume() is None:
+            # No session and no valid capability: never a silent drop.
+            self.discard_request_body(BUG_REPORT_MAX_BYTES)
+            return self.send_json({"error": "login required"}, 401)
+        if not rate_allowed(self.client_address[0], "bug-report-ip", BUG_REPORT_RATE_LIMIT, BUG_REPORT_RATE_WINDOW):
+            raise RateLimited("Too many bug reports from this network")
+        if user and not rate_allowed(
+            self.client_address[0], "bug-report-user", BUG_REPORT_USER_LIMIT, BUG_REPORT_RATE_WINDOW, user["id"]
+        ):
+            raise RateLimited("You reached the bug report limit")
+        data = self.read_json(BUG_REPORT_MAX_BYTES)
+        self.send_json(self.ingest_bug_report(data, user["id"] if user else None), 201)
 
     def controller_disconnect(self):
+        """Release a pairing only for a holder of the host or guest token.
+
+        The pairing code is public (shown on the host page, encoded in the QR
+        and discoverable to same-subnet phones), so it must not be a bearer
+        credential here: an unauthenticated caller could otherwise tear down
+        any live session and its pending one-shot utilities. An unknown code is
+        still idempotent, but an existing session is only cleared when the
+        request proves possession of the host token or the paired guest token.
+        """
+
         if not CONTROLLER_ENABLED:
             return self.controller_unavailable()
         data = self.read_json()
         code = netcode.normalize_code(str(data.get("code") or ""))
+        host_token = str(data.get("hostToken") or "")
+        guest_token = str(data.get("token") or "")
         with CONTROLLER_LOCK:
             record = CONTROLLERS.get(code)
-        if record:
-            record["session"].disconnect()
+        if record is None:
+            return self.send_json({"ok": True})
+        session = record["session"]
+        host_ok = bool(host_token) and hmac.compare_digest(record["host"], netcode.token_digest(host_token))
+        if not (host_ok or session.authenticate(guest_token)):
+            return self.send_json({"error": "session token rejected"}, 403)
+        session.disconnect()
         self.send_json({"ok": True})
 
     def controller_qr(self):
@@ -3404,11 +4127,34 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid payload"}, 400)
         self.send_bytes(200, svg.encode("utf-8"), "image/svg+xml; charset=utf-8", cache="no-store")
 
+    def request_origin(self):
+        """Best-effort public origin (scheme://host) for install instructions.
+
+        Derived from the request so no production domain is hardcoded in the
+        source or shipped assets. Returns an empty string when the Host header
+        is missing or not a plain host[:port]."""
+        scheme = self.headers.get("X-Forwarded-Proto", "https" if COOKIE_SECURE else "http")
+        if scheme not in {"http", "https"}:
+            scheme = "http"
+        host = (self.headers.get("Host", "") or "").strip()
+        if not host or not re.fullmatch(r"[A-Za-z0-9.\-]+(?::\d{1,5})?", host):
+            return ""
+        return f"{scheme}://{host}"
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
         lang = language(self)
+        if path == SUPPORT_CAPABILITY_PATH:
+            self._cors_origin = self.support_origin()
+            try:
+                self.support_capability_issue()
+            except RateLimited as exc:
+                self.send_json({"error": str(exc)}, 429)
+            except Exception:
+                self.send_json({"error": "Request could not be processed"}, 400)
+            return
         # The dedicated offline app has been consolidated into ``/offline``.
         # Keep explicit redirects so existing shortcuts and cached bookmarks
         # land on the supported surface without reviving a second player.
@@ -3455,7 +4201,11 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.wfile.write(bundle)
             return
         if path == "/download-app/artifacts.json":
-            if ENVIRONMENT not in {"staging", "development"}:
+            # Public release metadata (filenames, sizes, SHA-256, status) that
+            # both the download page and the Linux installer scripts rely on.
+            # It carries no secrets, so it is served in every release
+            # environment, including production.
+            if ENVIRONMENT not in PUBLIC_NATIVE_RELEASE_ENVIRONMENTS:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
                 return
             self.send_json(native_artifact_manifest())
@@ -3499,7 +4249,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
         user, csrf = (None, "") if public_resource else self.current_user()
         if path == "/":
             self.track_visit("/download-app", user)
-            self.send_html(download_app_page(lang, user, csrf))
+            origin = f"{self.request_origin()}"
+            self.send_html(download_app_page(lang, user, csrf, origin))
         elif path == "/games":
             self.track_visit("/games", user)
             self.send_html(home_page(lang, user, csrf))
@@ -3527,7 +4278,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_html(multiplayer_page(lang, user, csrf, parse_qs(parsed.query).get("slug", [""])[0]))
         elif path == "/download-app":
             self.track_visit("/download-app", user)
-            self.send_html(download_app_page(lang, user, csrf))
+            origin = f"{self.request_origin()}"
+            self.send_html(download_app_page(lang, user, csrf, origin))
         elif path.startswith("/core-preload/"):
             system = path.rsplit("/", 1)[1]
             self.send_html(core_preload_page(system, lang), 200 if system in SYSTEMS and system != "html5" else 404, player=True)
@@ -3567,7 +4319,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 except Exception:
                     self.send_bytes(502, b"emulator asset unavailable\n", "text/plain; charset=utf-8")
         elif path.startswith("/static/v/"):
-            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|player\.js|site\.css)", path)
+            match = re.fullmatch(r"/static/v/([a-f0-9]{12})/(offline\.js|player-ui\.js|player-runtime\.js|renderer-worker\.js|nds-touch\.js|lan-peer\.js|sync-transfer\.js|player\.js|site\.css)", path)
             if not match or match.group(1) != ASSET_VERSION:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:
@@ -3576,6 +4328,13 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             requested_asset = query.get("v", [""])[0]
             static_cache = "public,max-age=31536000,immutable" if requested_asset == ASSET_VERSION else "public,max-age=86400"
             self.serve_static(STATIC_DIR, path[8:], static_cache)
+        elif path in INSTALL_SCRIPTS:
+            self.serve_file(
+                os.path.join(INSTALL_SCRIPTS_DIR, INSTALL_SCRIPTS[path]),
+                INSTALL_SCRIPTS[path],
+                attachment=True,
+                cache="public,max-age=300",
+            )
         elif path.startswith("/cover/"):
             game_id = path.rsplit("/", 1)[1]
             with db() as conn:
@@ -3626,8 +4385,21 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_json(system_metrics())
         elif path == "/health":
             self.send_json({"ok": True, "environment": ENVIRONMENT, "asset_version": ASSET_VERSION, "release_id": native_release_identity(), "time": int(time.time())})
+        elif path == "/api/account/session":
+            account, _ = self.current_user()
+            if not account:
+                self.send_json({"authenticated": False})
+            else:
+                self.send_json({
+                    "authenticated": True,
+                    "userId": int(account["id"]),
+                    "name": account["display_name"] or account["name"],
+                    "csrf": csrf,
+                })
         elif path == "/api/multiplayer/room":
             self.multiplayer_room_status()
+        elif path == "/api/multiplayer/state":
+            self.multiplayer_member_state()
         elif path == "/api/multiplayer/qr.svg":
             self.multiplayer_qr()
         elif path == "/api/controller/state":
@@ -3696,6 +4468,33 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
 
     do_HEAD = do_GET
 
+    def do_OPTIONS(self):
+        """CORS preflight for the allowlisted native support endpoints only.
+
+        The response is empty and carries no credentials; it exists so the
+        packaged app's ``application/json`` POST is not blocked by the browser.
+        """
+
+        path = urlparse(self.path).path
+        support_path = path in SUPPORT_PATHS
+        account_path = self.native_account_endpoint()
+        if not support_path and not account_path:
+            return self.send_json({"error": "not found"}, 404)
+        if support_path:
+            origin = self.support_origin()
+            if not origin:
+                return self.send_json({"error": "origin not allowed"}, 403)
+            self._cors_origin = origin
+        elif not self.native_account_origin():
+            return self.send_json({"error": "origin not allowed"}, 403)
+        self.send_response(204)
+        self.common_headers("text/plain; charset=utf-8", 0, cache="no-store")
+        if account_path:
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token")
+            self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
+
     def do_POST(self):
         path = urlparse(self.path).path
         lang = language(self)
@@ -3743,6 +4542,26 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.wfile.write(payload)
                 if upgrade:
                     threading.Thread(target=upgrade_password_hash, args=(user["id"], password), daemon=True).start()
+            elif path == "/api/account/peer-proof":
+                user = self.require_user(csrf=False)
+                if not user: return
+                if not AUTH_PEPPER:
+                    self.send_json({"error": "native peer account proof is not configured"}, 503)
+                    return
+                data = self.read_json()
+                self.send_json({"proof": make_peer_proof(user["id"], data.get("challenge")), "expiresInSeconds": PEER_PROOF_TTL_SECONDS})
+            elif path == "/api/account/peer-proof/verify":
+                user = self.require_user(csrf=False)
+                if not user: return
+                if not AUTH_PEPPER:
+                    self.send_json({"error": "native peer account proof is not configured"}, 503)
+                    return
+                data = self.read_json()
+                challenge = str(data.get("challenge") or "")
+                proof = str(data.get("proof") or "")
+                if not PEER_PROOF_CHALLENGE_RE.fullmatch(challenge):
+                    raise ValueError("invalid peer challenge")
+                self.send_json({"sameAccount": verify_peer_proof(user["id"], challenge, proof)})
             elif path == "/api/logout":
                 if not self.require_user(): return
                 payload = b'{"ok":true}'
@@ -3987,6 +4806,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                     if cur.rowcount != 1: raise ValueError("report not found")
                 self.send_json({"ok": True, "status": status})
             elif path == "/api/bug-reports":
+                self._cors_origin = self.support_origin()
                 self.bug_report_submit()
             elif path == "/api/multiplayer/room":
                 self.multiplayer_create_room()
@@ -3994,6 +4814,10 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.multiplayer_join_room()
             elif path == "/api/multiplayer/leave":
                 self.multiplayer_leave_room()
+            elif path == "/api/multiplayer/reconnect":
+                self.multiplayer_reconnect()
+            elif path == "/api/multiplayer/input":
+                self.multiplayer_publish_input()
             elif path == "/api/controller/session":
                 self.controller_create_session()
             elif path == "/api/controller/pair":
@@ -4018,6 +4842,8 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_json({"error":"not found"},404)
         except RateLimited as exc:
             self.send_json({"error":str(exc)},429)
+        except netcode.RateLimitedError as exc:
+            self.send_json({"error": str(exc)}, 429)
         except PermissionError as exc:
             self.send_json({"error":str(exc)},403)
         except (ValueError, json.JSONDecodeError) as exc:
@@ -4053,11 +4879,15 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 chunk = self.rfile.read(min(1024 * 1024, remaining))
                 if not chunk:
                     break
+                self._body_consumed = getattr(self, "_body_consumed", 0) + len(chunk)
                 handle.write(chunk)
                 remaining -= len(chunk)
             handle.flush()
             os.fsync(handle.fileno())
         if remaining:
+            # The client declared more than it sent; there is no body left to
+            # drain, so close the connection instead of blocking on a read.
+            self.close_connection = True
             raise ValueError("incomplete upload")
 
     def finalize_game_upload(self, game_id, kind, name, temp, size):

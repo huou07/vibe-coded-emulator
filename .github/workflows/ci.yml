@@ -31,5 +31,9 @@ jobs:
           python3 -m py_compile app.py netcode.py sync_engine.py google_sync.py qrcodegen.py
       - name: Player syntax
         run: node --check static/player.js
+      - name: Native host fixture headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan-dev
       - name: Tests
         run: python3 -m unittest discover -s tests

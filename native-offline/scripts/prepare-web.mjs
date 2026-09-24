@@ -29,14 +29,27 @@ if (!/^\d+\.\d+\.\d+$/.test(appVersion)) {
   throw new Error(`prepare-web requires a valid injected app version, received: ${JSON.stringify(appVersion)}`);
 }
 const generatedIndex = resolve(destination, "index.html");
-await writeFile(generatedIndex, (await readFile(generatedIndex, "utf8")).replaceAll("__AN3_VERSION__", appVersion));
+// Anonymous support origin: plain configuration, never a secret. An empty or
+// invalid value disables the anonymous path and leaves the copy fallback.
+const supportOrigin = String(process.env.AN3_SUPPORT_ORIGIN || "").trim().replace(/\/+$/, "");
+if (supportOrigin && !/^https?:\/\/[^\s/]+$/i.test(supportOrigin)) {
+  throw new Error(`AN3_SUPPORT_ORIGIN must be a scheme and authority, received: ${JSON.stringify(supportOrigin)}`);
+}
+await writeFile(
+  generatedIndex,
+  (await readFile(generatedIndex, "utf8"))
+    .replaceAll("__AN3_VERSION__", appVersion)
+    .replaceAll("__AN3_SUPPORT_ORIGIN__", supportOrigin),
+);
 
 // The installed app cannot rely on a browser tab's origin to deliver cores.
 // Package only the reviewed GBA, NDS and 3DS runtime files from staging, then
 // let the Rust loopback server deliver them with COOP/COEP.  `data-v2` is the
 // staging-only repaired Azahar path; the public EmulatorJS CDN has no such
-// path, which is why the former native 3DS launcher always failed.
-const patchedRuntimeOrigin = (process.env.AN3_OFFLINE_RUNTIME_SOURCE || "http://192.0.2.8:8092/emulatorjs").replace(/\/+$/, "");
+// path, which is why the former native 3DS launcher always failed. A source
+// must be provided by the local build/test environment when the frozen cache
+// is incomplete; the installed app never uses this origin at runtime.
+const patchedRuntimeOrigin = (process.env.AN3_OFFLINE_RUNTIME_SOURCE || "http://127.0.0.1:8092/emulatorjs").replace(/\/+$/, "");
 const standardRuntimeOrigin = "https://cdn.emulatorjs.org";
 const runtimeFiles = [
   "stable/data/loader.js", "stable/data/emulator.min.js", "stable/data/emulator.min.css",

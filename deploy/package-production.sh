@@ -54,7 +54,7 @@ COPYFILE_DISABLE=1 tar --no-xattrs \
   --exclude='native-offline/src-tauri/gen/android/app/build' \
   --exclude='native-offline/src-tauri/gen/android/local.properties' \
   --exclude='*.DS_Store' \
-  -cf "$SOURCE_ARCHIVE" -C "$ROOT" app.py bug_report.py netcode.py sync_engine.py qrcodegen.py LICENSE THIRD_PARTY_NOTICES.md static deploy README.md tools/verify-release-catalog.py
+  -cf "$SOURCE_ARCHIVE" -C "$ROOT" app.py bug_report.py netcode.py sync_engine.py qrcodegen.py LICENSE THIRD_PARTY_NOTICES.md static deploy README.md scripts tools/verify-release-catalog.py
 
 tar -xf "$SOURCE_ARCHIVE" -C "$PAYLOAD"
 install -d -m 0755 "$PAYLOAD/native-offline/releases"

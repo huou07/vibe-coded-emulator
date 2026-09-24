@@ -8,6 +8,7 @@ silently reintroduce a prior defect.
 """
 
 from pathlib import Path
+import plistlib
 import unittest
 
 
@@ -21,6 +22,12 @@ PLAYER = (ROOT / "static/player.js").read_text(encoding="utf-8")
 RUNTIME = (ROOT / "static/player-runtime.js").read_text(encoding="utf-8")
 NATIVE_WEB_INDEX = (ROOT / "native-offline/web/index.html").read_text(encoding="utf-8")
 TAURI = (ROOT / "native-offline/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
+MAIN_ACTIVITY = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt").read_text(encoding="utf-8")
+CONTROLLER_CLIENT = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt").read_text(encoding="utf-8")
+LAN_PEER = (ROOT / "native-offline/src-tauri/src/lan_peer.rs").read_text(encoding="utf-8")
+SYNC_PEER = (ROOT / "native-offline/src-tauri/src/sync_peer.rs").read_text(encoding="utf-8")
+NATIVE_APP = (ROOT / "native-offline/web/native-app.js").read_text(encoding="utf-8")
+TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
 
 
 class NativeRegressionGuardTests(unittest.TestCase):
@@ -196,6 +203,70 @@ class NativeRegressionGuardTests(unittest.TestCase):
             self.assertIn("_menu_panel.hidden", body, handler)
         toggle = HOST.split("- (void)toggleMenu:(id)sender {", 1)[1].split("\n}", 1)[0]
         self.assertIn("set_nds_touch_pressed(false)", toggle)
+
+    def test_direct_lan_android_navigation_keeps_the_tauri_origin(self):
+        # A raw WebView reload bypasses Tauri's dispatcher and leaves the
+        # page at about:blank, so every native command is rejected by ACL.
+        self.assertIn("super.onWebViewCreate(webView)", MAIN_ACTIVITY)
+        self.assertNotIn("webView.loadUrl", MAIN_ACTIVITY)
+        self.assertIn("WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)", MAIN_ACTIVITY)
+
+    def test_direct_lan_discovery_uses_one_reusable_bound_socket(self):
+        self.assertIn("pub fn discovery_socket", LAN_PEER)
+        self.assertIn("socket.set_reuse_address(true)", LAN_PEER)
+        self.assertIn("socket.set_reuse_port(true)", LAN_PEER)
+        self.assertIn("discovery_socket(DISCOVERY_PORT)", SYNC_PEER)
+
+    def test_direct_lan_sync_start_does_not_reenter_the_runtime_lock(self):
+        existing = SYNC_PEER[SYNC_PEER.index("if let Some(existing) = slot.as_ref()") : SYNC_PEER.index("fs::create_dir_all", SYNC_PEER.index("if let Some(existing) = slot.as_ref()"))]
+        self.assertIn("drop(slot);", existing)
+        self.assertIn("return Ok(status());", existing)
+
+    def test_direct_lan_reconnect_respects_the_foreground_opt_in(self):
+        self.assertIn("if (status.running && window.AN3NativeSync.backgroundEnabled())", NATIVE_APP)
+
+    def test_direct_lan_sync_accepts_blocking_handshake_sockets(self):
+        listener = SYNC_PEER[SYNC_PEER.index("fn listener_loop") : SYNC_PEER.index("fn handshake_status")]
+        self.assertIn("listener.set_nonblocking(true)", listener)
+        self.assertIn("stream.set_nonblocking(false)", listener)
+        self.assertLess(listener.index("stream.set_nonblocking(false)"), listener.index("handle_client"))
+
+    def test_sync_loopback_tests_use_an_ephemeral_local_listener(self):
+        self.assertIn("start_with_listener(app_dir, mode, SYNC_PORT, true)", SYNC_PEER)
+        self.assertIn("start_with_listener(app_dir, mode, 0, false)", SYNC_PEER)
+        listener = SYNC_PEER[SYNC_PEER.index("fn listener_loop") : SYNC_PEER.index("fn discover(")]
+        self.assertIn("Ipv4Addr::LOCALHOST", listener)
+        self.assertIn("runtime.bind_port", SYNC_PEER[SYNC_PEER.index("fn discovery_loop") : SYNC_PEER.index("fn listener_loop")])
+
+    def test_macos_local_network_discovery_declares_privacy_usage(self):
+        info = plistlib.loads((ROOT / "native-offline/src-tauri/Info.plist").read_bytes())
+        description = info.get("NSLocalNetworkUsageDescription", "")
+        self.assertIn("discover", description.lower())
+        self.assertIn("save synchronization", description.lower())
+        self.assertIn("phone-controller", description.lower())
+
+    def test_remote_quick_state_actions_share_the_core_frame_lock(self):
+        draw = HOST[HOST.index("void draw()") : HOST.index("void restore_save_ram()")]
+        self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", draw)
+        self.assertIn("save_auto_state_locked(ignored)", draw)
+        self.assertIn("flush_save_ram_locked(save_error)", draw)
+        stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
+        self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", stop)
+        self.assertIn("flush_save_ram_locked(save_error)", stop)
+
+    def test_controller_native_actions_run_on_ui_queue_and_stop_off_thread(self):
+        utility = HOST[HOST.index('extern "C" int an3_native_apply_utility_at_slot') : HOST.index('extern "C" int an3_native_apply_utility(')]
+        self.assertIn("[NSThread isMainThread]", utility)
+        self.assertIn("dispatch_async(dispatch_get_main_queue()", utility)
+        self.assertIn("result->completed.wait(lock, [&] { return result->done; })", utility)
+        self.assertIn("async fn native_controller_lan_stop()", TAURI_LIB)
+        self.assertIn("spawn_blocking(lan_host::stop)", TAURI_LIB)
+        self.assertIn("spawn_blocking(controller_host::stop)", TAURI_LIB)
+        self.assertIn("spawn_blocking(|| {\n                    lan_host::stop();", TAURI_LIB)
+
+    def test_android_controller_clears_paired_state_after_remote_disconnect(self):
+        self.assertIn("if (!stopping.get()) {\n                    paired = false", CONTROLLER_CLIENT)
+        self.assertIn("release()", CONTROLLER_CLIENT)
 
 
 if __name__ == "__main__":

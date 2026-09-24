@@ -11,7 +11,7 @@
   "use strict";
   // Canonical utility action identifiers, matching
   // native-offline/shared/input-actions-schema.json.
-  const ACTIONS = ["QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"];
+  const ACTIONS = ["QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"];
 
   /**
    * Build a dispatcher around a host's existing operations. `operations` maps a
@@ -21,27 +21,43 @@
    */
   function createDispatcher(operations = {}) {
     let last = 0;
+    let seenCommandIds = new Set();
+    let commandOrder = [];
     return {
       actions: () => ACTIONS.slice(),
       get lastSequence() { return last; },
-      reset() { last = 0; },
+      reset() { last = 0; seenCommandIds = new Set(); commandOrder = []; },
       supports(action) { return typeof operations[action] === "function"; },
       dispatch(utilities) {
         const results = [];
         for (const entry of Array.isArray(utilities) ? utilities : []) {
           const sequence = Number(entry && entry.sequence) || 0;
-          if (sequence <= last) continue;
-          last = sequence;
-          const action = String((entry && entry.action) || "");
+          const commandId = String((entry && (entry.command_id || entry.commandId)) || "").trim();
+          if (commandId) {
+            if (seenCommandIds.has(commandId)) continue;
+            seenCommandIds.add(commandId);
+            commandOrder.push(commandId);
+            if (commandOrder.length > 64) {
+              const oldest = commandOrder.shift();
+              seenCommandIds.delete(oldest);
+            }
+          } else {
+            if (sequence <= last) continue;
+          }
+          last = Math.max(last, sequence);
+          const action = String((entry && entry.action) || "").toUpperCase();
           const operation = operations[action];
           if (typeof operation !== "function") {
-            results.push({action, sequence, ok: false, reason: "unsupported"});
+            results.push({action, sequence, command_id: commandId, ok: false, reason: "unsupported"});
             continue;
           }
+          const rawSlot = Number(entry && entry.slot);
+          const slot = Number.isInteger(rawSlot) && rawSlot >= 1 && rawSlot <= 10 ? rawSlot : null;
+          const command = {action, sequence, command_id: commandId, slot};
           try {
-            results.push({action, sequence, ok: true, value: operation()});
+            results.push({action, sequence, command_id: commandId, slot, ok: true, value: operation(command)});
           } catch (error) {
-            results.push({action, sequence, ok: false, reason: (error && error.message) || String(error)});
+            results.push({action, sequence, command_id: commandId, slot, ok: false, reason: (error && error.message) || String(error)});
           }
         }
         return results;
