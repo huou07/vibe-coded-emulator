@@ -1,0 +1,265 @@
+/* SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/*
+ * AN3 native app shell. Loaded after site.css + theme-violet.css, so it owns
+ * the app layout while reusing the shared violet palette. The in-game player
+ * is untouched: offline.js swaps the whole body for .player-page on launch.
+ */
+
+body.reference-shell .ui-ref-settings{-webkit-mask-image:url("/static/ui-ref-settings.svg");mask-image:url("/static/ui-ref-settings.svg")}
+
+html,body{height:100%}
+body.native-app-shell{
+  margin:0;
+  overflow-x:hidden;
+  background:var(--v-bg,#07060c);
+  color:var(--v-text,#f3f1fa);
+}
+/* `hidden` must win over the layout display rules below. */
+.native-app [hidden]{display:none !important}
+
+.native-app{
+  display:grid;
+  grid-template-columns:236px minmax(0,1fr);
+  min-height:100dvh;
+}
+
+/* Sidebar (landscape / tablet / desktop) */
+.native-sidebar{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  border-right:1px solid var(--v-line,#282238);
+  background:var(--v-surface-2,#0e0c18);
+  padding:22px 16px;
+}
+.native-brand{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  border:0;
+  background:none;
+  padding:4px 8px;
+  cursor:pointer;
+  color:var(--v-text,#f3f1fa);
+}
+.native-brand-mark{font-size:22px;font-weight:800;letter-spacing:.02em}
+.native-brand-logo{display:block;height:40px;width:auto;max-width:180px;object-fit:contain}
+.native-brand-sub{color:var(--v-violet-2,#a855f7);font-size:10px;font-weight:700;letter-spacing:.24em;text-transform:uppercase}
+.native-nav{display:flex;flex-direction:column;gap:4px}
+.native-nav-item{
+  display:flex;align-items:center;gap:12px;
+  width:100%;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:none;
+  padding:11px 12px;
+  color:var(--v-muted,#a5a0b6);
+  font-size:14px;font-weight:600;
+  text-align:left;cursor:pointer;
+  transition:background .16s ease,color .16s ease,border-color .16s ease;
+}
+.native-nav-item .ui-mask{width:19px;height:19px;color:currentColor}
+.native-nav-item:hover{background:var(--v-surface,#131020);color:var(--v-lavender,#c4b5fd)}
+.native-nav-item.active{background:var(--v-surface-3,#191532);border-color:var(--v-line-2,#38304f);color:#fff}
+.native-nav-item.active .ui-mask{color:var(--v-violet-2,#a855f7)}
+
+/* Main column */
+.native-main{display:flex;flex-direction:column;min-width:0}
+.native-topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:12px;
+  border-bottom:1px solid var(--v-line,#282238);
+  background:rgba(8,7,13,.92);
+  backdrop-filter:blur(14px);
+  padding:14px 22px;
+}
+.native-title{margin:0;font-size:20px;font-weight:750;letter-spacing:-.02em}
+.native-topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.native-icon-button{
+  display:grid;place-items:center;
+  width:38px;height:38px;
+  border:1px solid var(--v-line-2,#38304f);
+  border-radius:10px;background:var(--v-surface-2,#0e0c18);color:var(--v-lavender,#c4b5fd);cursor:pointer;
+}
+.native-back .ui-mask{width:18px;height:18px;transform:rotate(180deg)}
+.native-open-rom{display:inline-flex;align-items:center;gap:8px}
+.native-open-rom .ui-mask{width:16px;height:16px}
+
+.native-content{padding:24px 22px 40px;min-width:0}
+
+/* Play */
+.native-panel-play{display:grid;gap:18px}
+.native-play-card{
+  display:flex;align-items:center;gap:20px;
+  width:100%;
+  border:1px solid var(--v-line,#282238);
+  border-radius:16px;
+  background:linear-gradient(120% 140% at 100% 0%, rgba(139,92,246,.16), transparent 55%), var(--v-surface-2,#0e0c18);
+  padding:30px 26px;
+  color:var(--v-text,#f3f1fa);
+  text-align:left;cursor:pointer;
+  transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease;
+}
+.native-play-card:hover{border-color:var(--v-violet,#8b5cf6);transform:translateY(-2px);box-shadow:var(--v-glow)}
+.native-play-icon{
+  display:grid;place-items:center;
+  width:64px;height:64px;flex:0 0 auto;
+  border:1px solid var(--v-line-2,#38304f);
+  border-radius:18px;background:var(--v-bg-soft,#0b0912);
+}
+.native-play-icon .ui-mask{width:30px;height:30px;color:var(--v-violet-2,#a855f7)}
+.native-play-copy{display:flex;flex-direction:column;gap:4px}
+.native-play-copy strong{font-size:24px;font-weight:800;letter-spacing:-.02em}
+.native-play-copy span{color:var(--v-muted,#a5a0b6);font-size:14px}
+.native-quick-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.native-quick-links button{
+  display:flex;align-items:center;gap:10px;
+  border:1px solid var(--v-line,#282238);
+  border-radius:12px;background:var(--v-surface-2,#0e0c18);
+  padding:15px 16px;color:var(--v-text,#f3f1fa);font-size:14px;font-weight:600;cursor:pointer;
+}
+.native-quick-links button:hover{border-color:var(--v-violet,#8b5cf6);color:var(--v-lavender,#c4b5fd)}
+.native-quick-links .ui-mask{width:18px;height:18px;color:var(--v-violet-2,#a855f7)}
+
+/* Cards and facts */
+.native-card{border:1px solid var(--v-line,#282238);border-radius:14px;background:var(--v-surface-2,#0e0c18);padding:20px}
+.native-card h2{margin:0 0 14px;font-size:17px;font-weight:750}
+.native-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.native-fact{display:flex;flex-direction:column;gap:5px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);padding:12px 14px}
+.native-fact span{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-fact strong{font-size:15px;font-weight:650;word-break:break-word}
+.native-muted{color:var(--v-muted,#a5a0b6);font-size:14px;line-height:1.55;margin:0 0 16px}
+.native-note{display:flex;align-items:center;gap:8px;margin:16px 0 0;color:var(--v-muted,#a5a0b6);font-size:13px}
+.native-note .ui-mask{width:16px;height:16px;color:var(--v-green,#34d399)}
+.native-steps{display:grid;gap:12px;margin:0;padding:0;list-style:none;counter-reset:step}
+.native-steps li{display:grid;gap:3px;border-left:2px solid var(--v-violet,#8b5cf6);padding-left:14px}
+.native-steps strong{font-size:14px}
+.native-steps span{color:var(--v-muted,#a5a0b6);font-size:13px;line-height:1.5}
+
+/* Library */
+.native-search{display:flex;align-items:center;gap:8px;border:1px solid var(--v-line,#282238);border-radius:999px;background:var(--v-bg-soft,#0b0912);padding:7px 14px}
+.native-search .ui-mask{width:16px;height:16px;color:var(--v-muted,#a5a0b6)}
+.native-search input{border:0;background:none;color:var(--v-text,#f3f1fa);font-size:14px;min-width:150px;outline:none}
+.native-add{margin-bottom:18px;border:1px solid var(--v-line,#282238);border-radius:14px;background:var(--v-surface-2,#0e0c18);overflow:hidden}
+.native-add>summary{display:flex;align-items:center;gap:10px;padding:15px 18px;cursor:pointer;list-style:none;color:var(--v-text,#f3f1fa);font-size:14px}
+.native-add>summary::-webkit-details-marker{display:none}
+.native-add>summary .ui-mask{width:18px;height:18px;color:var(--v-violet-2,#a855f7)}
+.native-add-hint{margin-left:auto;color:var(--v-muted,#a5a0b6);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.native-form{display:grid;gap:12px;padding:0 18px 18px}
+.native-dropzone{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  border:1px dashed var(--v-line-2,#38304f);border-radius:12px;background:var(--v-bg-soft,#0b0912);
+  padding:22px;color:var(--v-muted,#a5a0b6);font-size:14px;cursor:pointer;text-align:center;
+}
+.native-dropzone:hover{border-color:var(--v-violet,#8b5cf6);color:var(--v-lavender,#c4b5fd)}
+.native-dropzone .ui-mask{width:26px;height:26px;color:var(--v-violet-2,#a855f7)}
+.native-dropzone input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.native-field{display:grid;gap:6px;color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-field input,.native-field select{
+  border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);
+  color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;min-height:44px;
+}
+.native-field input:focus,.native-field select:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+/* The Phone Controller pad reuses the shared web pad classes (.ctrl-*) from
+   static/site.css so the packaged app and the web player cannot drift. */
+.native-native-picker{justify-content:center;min-height:48px}
+.native-status{margin:0;padding:0 18px 16px;color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-status:empty{display:none}
+
+.native-grid{display:grid;gap:22px}
+.native-grid .offline-system-section{display:grid;gap:12px}
+.native-grid .section-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.native-grid .section-title h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--v-lavender,#c4b5fd)}
+.native-grid .section-title span{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-grid .game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.native-grid .game-card{
+  display:block;border:1px solid var(--v-line,#282238) !important;border-radius:12px !important;
+  background:var(--v-surface-2,#0e0c18) !important;box-shadow:none !important;overflow:hidden;
+}
+.native-grid .game-card:hover{border-color:var(--v-violet,#8b5cf6) !important}
+.native-grid .game-card-body{display:grid;gap:8px;padding:14px}
+.native-grid .game-meta{margin:0}
+.native-grid .badge{border:1px solid var(--v-line-2,#38304f);border-radius:999px;background:var(--v-bg-soft,#0b0912);color:var(--v-lavender,#c4b5fd) !important;padding:3px 9px;font-size:11px}
+.native-grid .game-card h4{margin:0;font-size:15px;font-weight:700;color:var(--v-text,#f3f1fa);overflow-wrap:anywhere}
+.native-grid .game-card .muted{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-grid .card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.native-grid .card-actions .button{min-height:38px;padding:0 12px;font-size:13px}
+.native-grid .empty-state{grid-column:1/-1;border:1px dashed var(--v-line-2,#38304f);border-radius:12px;padding:26px;text-align:center;color:var(--v-muted,#a5a0b6)}
+.native-grid .empty-state strong{display:block;color:var(--v-text,#f3f1fa);margin-bottom:6px}
+
+/* Bottom navigation (portrait) */
+.native-bottomnav{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  display:none;
+  border-top:1px solid var(--v-line,#282238);
+  background:rgba(8,7,13,.96);
+  backdrop-filter:blur(14px);
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+}
+.native-bottomnav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  border:0;background:none;padding:6px 2px;color:var(--v-muted,#a5a0b6);
+  font-size:10px;font-weight:600;cursor:pointer;min-width:0;
+}
+.native-bottomnav button .ui-mask{width:20px;height:20px}
+.native-bottomnav button.active{color:var(--v-violet-2,#a855f7)}
+.native-bottomnav button span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+
+@media (max-width:900px){
+  .native-app{grid-template-columns:1fr}
+  .native-sidebar{display:none}
+  .native-bottomnav{display:flex}
+  .native-content{padding:18px 16px calc(84px + env(safe-area-inset-bottom,0px))}
+  .native-topbar{padding:12px 16px}
+  .native-title{font-size:17px}
+  .native-open-rom span:last-child{display:none}
+  .native-open-rom{padding:0 12px;min-width:44px;justify-content:center}
+  .native-play-card{padding:22px 20px;gap:16px}
+  .native-play-copy strong{font-size:21px}
+  .native-grid .game-grid{grid-template-columns:1fr}
+  .native-topbar-actions .native-search input{min-width:0;width:100%}
+  .native-topbar-actions .native-search{flex:1}
+}
+
+@media (max-width:560px){
+  .native-topbar{gap:8px;flex-wrap:wrap}
+  .native-search{order:3;width:100%}
+  .native-title{flex:1}
+}
+
+/* Game Settings / Application settings (canonical per-core settings UI) */
+.native-settings-body{display:grid;gap:10px}
+.native-settings-field{margin:0}
+.native-settings-field input[type="checkbox"]{justify-self:start;width:20px;height:20px}
+.native-settings-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6)}
+.native-system-tabs,.native-settings-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.native-system-tab,.native-settings-tab{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--v-line,#282238);background:var(--v-surface-1,#120f1e);color:var(--v-text,#f4f2fb);font-size:13px;font-weight:650;cursor:pointer}
+.native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
+.native-settings-group{display:grid;gap:12px;margin-top:6px}
+.native-settings-tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.native-settings-pane{display:grid;gap:14px}
+.native-settings-pane[hidden]{display:none}
+.native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.native-field textarea{
+  border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);
+  color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;font-family:inherit;resize:vertical;
+}
+.native-field textarea:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+.native-bug-preview{
+  max-height:260px;overflow:auto;margin:12px 0;border:1px solid var(--v-line,#282238);border-radius:10px;
+  background:var(--v-bg-soft,#0b0912);color:var(--v-muted,#a5a0b6);padding:12px;font-size:12px;
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.native-sync-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.native-sync-mode label,.native-sync-background{display:flex;align-items:center;gap:8px;color:var(--v-text,#f3f1fa);font-size:13px}
+.native-sync-mode input,.native-sync-background input{width:18px;height:18px}
+.native-sync-login{display:grid;gap:10px;margin:10px 0}
+.native-sync-code{margin:12px 0 4px;color:var(--v-muted,#a5a0b6)}
+.native-sync-code strong{font-size:24px;letter-spacing:.16em;color:var(--v-text,#f3f1fa)}
+.native-sync-peers{display:grid;gap:8px;margin-top:14px}
+.native-sync-peer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912)}
+.native-sync-peer small{display:block;color:var(--v-muted,#a5a0b6)}
+.native-sync-peer-actions{display:flex;gap:6px;flex-wrap:wrap}
+.native-sync-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6);margin:10px 0 0}

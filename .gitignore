@@ -1,0 +1,44 @@
+# Local runtime data and SQLite WAL files
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Generated Python/runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local scratch and inspection files
+work/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+*.secret
+*.key
+
+# Temporary release archives
+*.tgz
+*.tar.gz
+
+# Tauri native-offline build artifacts
+native-offline/dist/
+native-offline/node_modules/
+native-offline/src-tauri/target/
+native-offline/.signing/
+native-offline/src-tauri/gen/android/.gradle/
+native-offline/src-tauri/gen/android/build/
+native-offline/src-tauri/gen/android/app/build/
+native-offline/src-tauri/gen/android/local.properties
+.codegraph/
+
+# Release installer binaries (published via the catalog, not source commits)
+native-offline/releases/*.apk
+native-offline/releases/*.aab
+native-offline/releases/*.deb
+native-offline/releases/*.dmg
+native-offline/releases/*.flatpak
+native-offline/releases/*.exe
+native-offline/releases/*.idsig

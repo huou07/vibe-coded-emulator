@@ -1,0 +1,35 @@
+# Gitleaks configuration.
+#
+# One narrowly scoped allowlist: `rendererStorageKey = "an3-presentation-renderer-v1"`
+# in static/player-runtime.js is a localStorage key name, not a credential.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "localStorage key-name assignment, not a secret"
+paths = ['static/player-runtime\.js$']
+regexTarget = "match"
+regexes = ['an3-presentation-renderer-v1']
+
+[[allowlists]]
+description = "The public AN3 account-provider origin is required runtime configuration, not private infrastructure"
+paths = [
+  '(^|/|!)native-account\.js$',
+  '(^|/|!)tauri\.conf\.json$',
+  '(^|/|!)liban3_offline_native\.so$',
+  '(^|/|!)an3-offline-native$',
+]
+regexTarget = "match"
+regexes = ['an3tocom\.space']
+
+[[allowlists]]
+description = "Pinned Eden GPL attribution is public upstream metadata, not user data"
+paths = ['(^|/|!)an3_switch_companion$']
+regexTarget = "match"
+regexes = ['joseignacioechevarria@gmail\.com']
+
+[[allowlists]]
+description = "The bundled GNOME proxy schema carries its documented example address"
+paths = ['(^|/|!)org\.gnome\.system\.proxy\.gschema\.xml$']
+regexTarget = "match"
+regexes = ['192\.168\.0\.0']
