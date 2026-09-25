@@ -140,14 +140,14 @@ jobs:
         run: |
           npm install --global @playwright/cli@0.1.21
           command -v playwright-cli
-      - name: Run macOS native regression suites
-        run: |
-          node --test tests/*.test.js tests/*.test.mjs native-offline/tests/*.test.mjs
-          cargo test --locked --manifest-path native-offline/src-tauri/Cargo.toml --lib
+      - name: Run macOS JavaScript regression suites
+        run: node --test tests/*.test.js tests/*.test.mjs native-offline/tests/*.test.mjs
       - name: Build canonical macOS package
         env:
           AN3_EDEN_JOBS: '2'
         run: bash tools/release-train.sh --staging build macos
+      - name: Run macOS Rust native regression suite
+        run: cargo test --locked --manifest-path native-offline/src-tauri/Cargo.toml --lib
       - name: Label and hash artifact
         run: |
           set -euo pipefail
@@ -225,6 +225,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -x src-tauri/gen/android/gradlew ]; then npm run android:init; fi
+      - name: Build canonical Android package and release-targeted test APK
+        run: bash tools/release-train.sh --staging build android
       - name: Run Android controller queue JVM regression tests
         run: |
           set -euo pipefail
@@ -232,8 +234,6 @@ jobs:
             -p native-offline/src-tauri/gen/android \
             :app:testArm64DebugUnitTest \
             --tests space.an3tocom.offline.ControllerSendQueueTest
-      - name: Build canonical Android package and release-targeted test APK
-        run: bash tools/release-train.sh --staging build android
       - name: Label and checksum Android artifacts
         run: |
           set -euo pipefail
@@ -412,6 +412,7 @@ jobs:
           toolchain: '1.88.0'
           targets: x86_64-pc-windows-msvc
       - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        id: msys2
         with:
           msystem: UCRT64
           update: true
@@ -469,8 +470,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned GBA/NDS core preparation failed.' }
       - name: Build and stage pinned Eden companion
         shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          npm --prefix native-offline run build:windows-eden
+          Write-Output "MSYS2_LOCATION=$env:MSYS2_LOCATION"
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-eden-companion.ps1 -MsysRoot $env:MSYS2_LOCATION
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Windows Eden companion build failed.' }
           $commit = '7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c'
           $env:AN3_EDEN_ROOT = Join-Path $env:RUNNER_TEMP "an3-eden-$commit"
@@ -479,8 +483,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Eden companion staging failed.' }
       - name: Build and verify Windows native runtime
         shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-runtime.ps1 -MsysRoot 'C:\msys64'
+          Write-Output "MSYS2_LOCATION=$env:MSYS2_LOCATION"
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-runtime.ps1 -MsysRoot $env:MSYS2_LOCATION
           if ($LASTEXITCODE -ne 0) { throw 'Windows native runtime build failed.' }
       - name: Build canonical Windows installer
         shell: bash
