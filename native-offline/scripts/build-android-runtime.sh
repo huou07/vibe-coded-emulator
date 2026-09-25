@@ -14,6 +14,7 @@ an3_compiler="$an3_ndk/toolchains/llvm/prebuilt/$an3_ndk_host/bin/aarch64-linux-
 [[ -x "$an3_compiler" ]] || { echo "Android NDK compiler is missing: $an3_compiler" >&2; exit 2; }
 an3_output="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$an3_output"
+node scripts/fetch-android-libretro.mjs
 node scripts/fetch-azahar-libretro-android.mjs
 # AN3's four-core Android package includes the pinned Eden runtime built
 # through the upstream Android frontend plus the tracked JNI adapter.

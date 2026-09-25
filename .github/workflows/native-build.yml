@@ -32,23 +32,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Transport only: the public release already carries the exact locked files.
-  # Pin the APK and recheck every entry against web-runtime-lock.json below.
+  # Transport only: this accepted release carries the locked web runtime and
+  # Android GBA/NDS core payloads used as deterministic source inputs.
   web-runtime-cache:
     name: Prepare checksum-locked web runtime cache
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
-      - name: Download and verify the published runtime source bundle
+      - name: Download and verify the published runtime and Android core inputs
         run: |
           set -euo pipefail
           apk="$RUNNER_TEMP/an3-3.3.0-android-arm64.apk"
+          release_info="$(python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          lock = json.loads(Path('native-offline/vendor/libretro/android-arm64/manifest.json').read_text())['bootstrapArtifact']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', lock['releaseTag']):
+              raise SystemExit('Invalid Android bootstrap release tag')
+          if not re.fullmatch(r'[A-Za-z0-9._-]+\.apk', lock['assetName']):
+              raise SystemExit('Invalid Android bootstrap APK filename')
+          if not re.fullmatch(r'[0-9a-f]{64}', lock['sha256']):
+              raise SystemExit('Invalid Android bootstrap APK SHA-256')
+          print('\t'.join((lock['releaseTag'], lock['assetName'], lock['sha256'])))
+          PY
+          )"
+          IFS=$'\t' read -r release_tag asset_name expected_sha <<< "$release_info"
           curl --fail --location --retry 3 --connect-timeout 20 --max-time 300 --silent --show-error \
             --output "$apk" \
-            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/v3.3.0/vibecodedemulator-3.3.0-android-arm64-staging.apk"
-          printf '%s  %s\n' \
-            '3fba0a93bca648d6f1d45df23b9838849fedafdae74da4de66b656d36a5c9c29' "$apk" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$release_tag/$asset_name"
+          printf '%s  %s\n' "$expected_sha" "$apk" \
             | sha256sum --check --strict -
           python3 - "$apk" <<'PY'
           import hashlib
@@ -80,6 +93,9 @@ jobs:
                   (cache / expected).write_bytes(payload)
           print(f"WEB_RUNTIME_CACHE=VERIFIED locked_files={len(lock)}")
           PY
+          node native-offline/scripts/fetch-android-libretro.mjs \
+            --apk "$apk" \
+            --cache-dir native-offline/work/dependency-cache
           tar -czf native-offline/work/web-runtime-cache.tar.gz \
             -C native-offline/work dependency-cache
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,0 +1,131 @@
+{
+  "platform": "Android arm64-v8a",
+  "retrievedAtUtc": "2026-09-10T02:44:53Z",
+  "source": {
+    "provider": "Official Libretro nightly buildbot",
+    "directoryUrl": "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/",
+    "pinningCaveat": "The buildbot latest URLs are mutable and do not publish an exact source revision. The archive and extracted-core SHA-256 values below record the original retrieved bytes; these mutable URLs are not used to acquire the accepted package inputs. The immutable bootstrapArtifact below supplies the existing payloads and does not establish their original source commit or a reproducible build."
+  },
+  "bootstrapArtifact": {
+    "provider": "AN3 GitHub Release",
+    "releaseTag": "v3.3.0",
+    "assetName": "vibecodedemulator-3.3.0-android-arm64-staging.apk",
+    "sha256": "3fba0a93bca648d6f1d45df23b9838849fedafdae74da4de66b656d36a5c9c29",
+    "purpose": "Reuses the exact GBA/NDS core payloads from the previously accepted Android package. Each extracted core is checked against coreSha256 below.",
+    "provenanceCaveat": "The immutable APK digest identifies the packaged bytes but does not establish which upstream source revisions produced the original Libretro nightly cores."
+  },
+  "abi": {
+    "format": "ELF64",
+    "architecture": "AArch64",
+    "endianness": "little",
+    "type": "shared object",
+    "androidAbi": "arm64-v8a"
+  },
+  "apiHeader": {
+    "path": "../../../native-runtime/core/vendor/libretro.h",
+    "sourceRevision": "1d7a50684f9d6d8ba165ebff2e6cad90f4880543",
+    "sourceUrl": "https://raw.githubusercontent.com/libretro/libretro-common/1d7a50684f9d6d8ba165ebff2e6cad90f4880543/include/libretro.h",
+    "sha256": "5875414c47d8af4facf118c184b40b0e311285333a46bbfe8221a853efe5ba7a",
+    "sizeBytes": 313828,
+    "license": "MIT",
+    "licensePath": "../../../native-runtime/core/vendor/libretro.h.LICENSE.txt",
+    "licenseNote": "The license text is copied verbatim from the LICENSE paragraph embedded in the pinned libretro.h."
+  },
+  "requiredLibretroExports": [
+    "retro_api_version",
+    "retro_init",
+    "retro_deinit",
+    "retro_get_system_info",
+    "retro_get_system_av_info",
+    "retro_set_environment",
+    "retro_set_video_refresh",
+    "retro_set_audio_sample",
+    "retro_set_audio_sample_batch",
+    "retro_set_input_poll",
+    "retro_set_input_state",
+    "retro_set_controller_port_device",
+    "retro_reset",
+    "retro_run",
+    "retro_serialize_size",
+    "retro_serialize",
+    "retro_unserialize",
+    "retro_cheat_reset",
+    "retro_cheat_set",
+    "retro_load_game",
+    "retro_load_game_special",
+    "retro_unload_game",
+    "retro_get_region",
+    "retro_get_memory_data",
+    "retro_get_memory_size"
+  ],
+  "cores": [
+    {
+      "system": "gba",
+      "engine": "mGBA libretro",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/mgba_libretro_android.so.zip",
+      "archiveSha256": "2cb020670ad46cbf6a2262f77a1e4f2ea4336994b3b3c2ffe4cec4ea05638c6f",
+      "archiveSizeBytes": 419393,
+      "coreName": "mgba_libretro_android.so",
+      "apkEntry": "lib/arm64-v8a/libmgba_libretro_android.so",
+      "coreSha256": "abdcb33611b3cd6380fe75c010184a174c124a3a3c64c822064ed388ba6ec9a7",
+      "coreSizeBytes": 2472240,
+      "elfBuildIdSha1": "a744a8aa49a45015cb7dc6b5198f5c0030089786",
+      "soname": "mgba_libretro.so",
+      "needed": ["libm.so", "libdl.so", "libc.so"],
+      "exportsValidation": "all requiredLibretroExports present",
+      "firmware": {
+        "required": false,
+        "optional": ["gba_bios.bin", "gb_bios.bin", "gbc_bios.bin", "sgb_bios.bin"],
+        "source": "https://raw.githubusercontent.com/libretro/libretro-super/master/dist/info/mgba_libretro.info"
+      },
+      "license": "MPL-2.0",
+      "licenseFile": "mGBA-MPL-2.0.txt",
+      "licenseSha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
+      "licenseSourceUrl": "https://raw.githubusercontent.com/mgba-emu/mgba/e31759b24e7a4e3899285ff720d7b573ac328ae7/LICENSE",
+      "provenanceCaveat": "The bundled license text is pinned from an mGBA source revision, but the buildbot does not identify which source revision produced this nightly binary."
+    },
+    {
+      "system": "nds",
+      "engine": "melonDS DS libretro",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/melondsds_libretro_android.so.zip",
+      "archiveSha256": "a969a81d7bcc45e3b326caaaeb67f3b404473f18339a633b0c865fe442d53e5b",
+      "archiveSizeBytes": 1842508,
+      "coreName": "melondsds_libretro_android.so",
+      "apkEntry": "lib/arm64-v8a/libmelondsds_libretro_android.so",
+      "coreSha256": "127691b294a6bead6f492039c1e39dbd45f0cfc3bef6e00ca30f52cecb40361d",
+      "coreSizeBytes": 5752000,
+      "elfBuildIdSha1": "8081ccb291b56bcd697a176a55af578bc52da506",
+      "needed": ["libm.so", "libdl.so", "libc.so"],
+      "exportsValidation": "all requiredLibretroExports present",
+      "firmware": {
+        "requiredForNintendoDs": false,
+        "note": "The core provides built-in BIOS and firmware replacements. Native DS BIOS/firmware are optional; DSi mode needs user-supplied DSi BIOS, firmware, and NAND images.",
+        "optionalNintendoDs": ["firmware.bin", "bios7.bin", "bios9.bin"],
+        "dsiFiles": ["dsi_firmware.bin", "dsi_bios7.bin", "dsi_bios9.bin", "dsi_nand.bin"],
+        "source": "https://github.com/JesseTG/melonds-ds/blob/master/README.md"
+      },
+      "license": "GPL-3.0-or-later",
+      "licenseFile": "melonDS-DS-GPL-3.0-or-later.txt",
+      "licenseSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "licenseSourceUrl": "https://raw.githubusercontent.com/JesseTG/melonds-ds/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/LICENSE",
+      "provenanceCaveat": "The bundled license text is pinned from a melonDS DS source revision, but the buildbot does not identify which source revision produced this nightly binary."
+    }
+  ],
+  "availableMelonDsVariants": [
+    {
+      "name": "melonDS DS",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/melondsds_libretro_android.so.zip",
+      "selected": true,
+      "reason": "Matches the repository's existing desktop melonDS DS core and supports current melonDS DS features."
+    },
+    {
+      "name": "melonDS legacy libretro core",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/android/latest/arm64-v8a/melonds_libretro_android.so.zip",
+      "selected": false,
+      "observedArchiveSha256": "215f01a8d812659aa797d70392e503b0d20b63bab5d505a9665dd2ccc46933ea",
+      "observedArchiveSizeBytes": 690401,
+      "reason": "Available on the buildbot, but not selected because the repository already standardizes on melonDS DS."
+    }
+  ],
+  "validationScope": "Static ELF metadata and symbol-table inspection only. Runtime loading, rendering, game compatibility, and Android device acceptance were not tested."
+}
