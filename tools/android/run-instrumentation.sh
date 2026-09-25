@@ -31,8 +31,11 @@ while (( SECONDS < boot_deadline )); do
   if (( SECONDS < boot_deadline )); then sleep 2; fi
 done
 [[ "$booted" == 1 ]] || { echo 'Android emulator did not finish booting within 120 seconds.' >&2; exit 3; }
+printf 'ANDROID_SYS_BOOT_COMPLETED=%s\n' "$boot_state"
 timeout 15s adb devices -l
-timeout 20s adb shell pm list packages >/dev/null
+timeout 20s adb shell pm list packages >"$log_root/packages-before-install.txt"
+package_count="$(grep -c '^package:' "$log_root/packages-before-install.txt" || true)"
+printf 'ANDROID_PACKAGE_MANAGER_READY=true installed_packages=%s\n' "$package_count"
 timeout 15s adb shell settings put global window_animation_scale 0
 timeout 15s adb shell settings put global transition_animation_scale 0
 timeout 15s adb shell settings put global animator_duration_scale 0

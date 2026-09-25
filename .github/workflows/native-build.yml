@@ -131,6 +131,11 @@ jobs:
       - name: Install JS dependencies
         working-directory: native-offline
         run: npm ci
+      - name: Prepare generated inputs required by macOS regression tests
+        run: |
+          set -euo pipefail
+          npm --prefix native-offline run prepare-web
+          npm --prefix native-offline run prepare-moltenvk
       - name: Install pinned Playwright CLI for web UI tests
         run: |
           npm install --global @playwright/cli@0.1.21
@@ -197,6 +202,10 @@ jobs:
         with:
           toolchain: '1.88.0'
           targets: aarch64-linux-android
+      - name: Install host GLSL compiler for pinned Eden Android build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends glslang-tools
       - name: Print Android builder versions
         run: |
           set -euo pipefail
@@ -206,6 +215,7 @@ jobs:
           rustc --version
           cargo --version
           node --version
+          glslangValidator --version
           git rev-parse HEAD
       - name: Install JS dependencies
         working-directory: native-offline
@@ -215,6 +225,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -x src-tauri/gen/android/gradlew ]; then npm run android:init; fi
+      - name: Run Android controller queue JVM regression tests
+        run: |
+          set -euo pipefail
+          native-offline/src-tauri/gen/android/gradlew \
+            -p native-offline/src-tauri/gen/android \
+            :app:testArm64DebugUnitTest \
+            --tests space.an3tocom.offline.ControllerSendQueueTest
       - name: Build canonical Android package and release-targeted test APK
         run: bash tools/release-train.sh --staging build android
       - name: Label and checksum Android artifacts
@@ -226,9 +243,10 @@ jobs:
           test -n "$apk" && test -n "$aab" && test -n "$test_apk" || { echo 'Expected APK, AAB, and instrumentation APK were not all produced.' >&2; exit 1; }
           (cd native-offline/releases && sha256sum "$(basename "$apk")" > "$(basename "$apk").sha256")
           (cd native-offline/releases && sha256sum "$(basename "$aab")" > "$(basename "$aab").sha256")
+          (cd native-offline/releases && sha256sum "$(basename "$test_apk")" > "$(basename "$test_apk").sha256")
           printf 'Android product APK/AAB: arm64 release variant signed with the shared debug identity; not a production signing identity.\nSource revision: %s\nAndroid platform: API 36; NDKs 26.3.11579264 and 28.2.13676358\n' "$GITHUB_SHA" \
             > native-offline/releases/BUILD_LABELS.txt
-          cat "$apk.sha256" "$aab.sha256" native-offline/releases/BUILD_LABELS.txt
+          cat "$apk.sha256" "$aab.sha256" "$test_apk.sha256" native-offline/releases/BUILD_LABELS.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-apk
@@ -296,6 +314,11 @@ jobs:
         run: npm ci
       - name: Build canonical Linux DEB
         run: bash tools/release-train.sh --staging build linux-deb
+      - name: Verify Linux direct-LAN utility acknowledgement contract
+        run: |
+          cargo test --locked --release \
+            --manifest-path native-offline/src-tauri/Cargo.toml \
+            --lib lan_host::tests::direct_transport_executes_canonical_utility_frames
       - name: Label and hash artifact
         run: |
           set -euo pipefail
@@ -503,6 +526,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          emulator -accel-check
       - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -511,7 +535,7 @@ jobs:
           profile: pixel_5
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             set -euo pipefail
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
@@ -551,6 +575,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          emulator -accel-check
       - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -559,7 +584,7 @@ jobs:
           profile: pixel_5
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             set -euo pipefail
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
@@ -599,6 +624,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          emulator -accel-check
       - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -607,7 +633,7 @@ jobs:
           profile: pixel_5
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
             set -euo pipefail
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"

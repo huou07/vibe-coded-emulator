@@ -42,6 +42,11 @@ $actualCommit = (& git -C $EdenRoot rev-parse HEAD).Trim()
 if ($actualCommit -ne $commit) { throw "WINDOWS_EDEN=BLOCKED: Eden checkout is $actualCommit, expected $commit." }
 
 $env:PATH = "$MsysRoot\ucrt64\bin;$MsysRoot\usr\bin;C:\Program Files\CMake\bin;C:\Program Files\Ninja;$env:PATH"
+$iconvInclude = Join-Path $MsysRoot 'ucrt64\include'
+$iconvHeader = Join-Path $iconvInclude 'iconv.h'
+$iconvLibrary = Join-Path $MsysRoot 'ucrt64\lib\libiconv.dll.a'
+if (-not (Test-Path $iconvHeader)) { throw "WINDOWS_EDEN=BLOCKED: missing MSYS2 UCRT64 iconv header $iconvHeader" }
+if (-not (Test-Path $iconvLibrary)) { throw "WINDOWS_EDEN=BLOCKED: missing MSYS2 UCRT64 iconv import library $iconvLibrary" }
 $rootCmakePath = Join-Path $EdenRoot 'CMakeLists.txt'
 $rootCmake = ([IO.File]::ReadAllText($rootCmakePath)).Replace("`r`n", "`n")
 if ($rootCmake -notmatch 'if\(DEFINED AN3_EDEN_BRIDGE_DIR\)') {
@@ -65,8 +70,10 @@ $configureArgs = @(
   '-DYUZU_USE_BUNDLED_SDL3=ON', '-DYUZU_USE_BUNDLED_FFMPEG=ON',
   '-DYUZU_USE_BUNDLED_OPENSSL=ON', '-DYUZU_DOWNLOAD_TIME_ZONE_DATA=OFF',
   "-DCMAKE_PREFIX_PATH=$MsysRoot/ucrt64",
-  "-DCMAKE_INCLUDE_PATH=$MsysRoot/ucrt64/include",
-  "-DCMAKE_LIBRARY_PATH=$MsysRoot/ucrt64/lib"
+  "-DCMAKE_INCLUDE_PATH=$iconvInclude",
+  "-DCMAKE_LIBRARY_PATH=$MsysRoot/ucrt64/lib",
+  "-DICONV_INCLUDE_DIR:PATH=$iconvInclude",
+  "-DICONV_LIBRARY:FILEPATH=$iconvLibrary"
 )
 # CMake and Ninja can emit normal progress/warnings on stderr. Keep their
 # output non-terminating and check each native process exit code explicitly.

@@ -976,7 +976,10 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
 
 fn send_ack(stream: &mut TcpStream, cipher: &Aes256Gcm, send_counter: &mut u64, state: &State) -> std::io::Result<()> {
     let last = state.last_sequence.load(Ordering::Relaxed);
+    #[cfg(target_os = "macos")]
     let utility_results = crate::controller_utility_queue::take_completed();
+    #[cfg(not(target_os = "macos"))]
+    let utility_results: Vec<serde_json::Value> = Vec::new();
     let ack = serde_json::json!({
         "k": "ack",
         "s": last,
@@ -1195,6 +1198,7 @@ mod tests {
                     "OPEN_MENU" => 5,
                     _ => return false,
                 };
+                #[cfg(target_os = "macos")]
                 crate::controller_utility_queue::record_completed(
                     &action.command_id,
                     action_code,
@@ -1202,6 +1206,8 @@ mod tests {
                     true,
                     "test host action completed",
                 );
+                #[cfg(not(target_os = "macos"))]
+                let _ = action_code;
                 true
             })
         };
@@ -1254,20 +1260,46 @@ mod tests {
             vec![("QUICK_SAVE".into(), 3), ("QUICK_LOAD".into(), 10)]
         );
         let ack = open(&cipher, DIR_HOST_TO_PHONE, 1, &read_frame(&mut stream).unwrap()).unwrap();
-        let results = ack.get("utilityResults").and_then(|value| value.as_array()).unwrap();
-        assert!(results.iter().any(|result| {
-            result.get("commandId").and_then(|value| value.as_str()) == Some("phone-a")
-                && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_SAVE")
-                && result.get("slot").and_then(|value| value.as_u64()) == Some(3)
-                && result.get("success").and_then(|value| value.as_bool()) == Some(true)
-        }));
-        assert!(results.iter().any(|result| {
-            result.get("commandId").and_then(|value| value.as_str()) == Some("phone-b")
-                && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_LOAD")
-                && result.get("slot").and_then(|value| value.as_u64()) == Some(10)
-                && result.get("message").and_then(|value| value.as_str())
-                    == Some("test host action completed")
-        }));
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            ack.get("utilityResultsSupported")
+                .and_then(|value| value.as_bool()),
+            Some(true)
+        );
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(
+                ack.get("utilityResultsSupported")
+                    .and_then(|value| value.as_bool()),
+                Some(false)
+            );
+            assert_eq!(
+                ack.get("utilityResults")
+                    .and_then(|value| value.as_array())
+                    .map(|results| results.len()),
+                Some(0)
+            );
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let results = ack
+                .get("utilityResults")
+                .and_then(|value| value.as_array())
+                .unwrap();
+            assert!(results.iter().any(|result| {
+                result.get("commandId").and_then(|value| value.as_str()) == Some("phone-a")
+                    && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_SAVE")
+                    && result.get("slot").and_then(|value| value.as_u64()) == Some(3)
+                    && result.get("success").and_then(|value| value.as_bool()) == Some(true)
+            }));
+            assert!(results.iter().any(|result| {
+                result.get("commandId").and_then(|value| value.as_str()) == Some("phone-b")
+                    && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_LOAD")
+                    && result.get("slot").and_then(|value| value.as_u64()) == Some(10)
+                    && result.get("message").and_then(|value| value.as_str())
+                        == Some("test host action completed")
+            }));
+        }
 
         // The same state sequence is ignored, so a retry cannot re-run it.
         write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 2, &serde_json::json!({
