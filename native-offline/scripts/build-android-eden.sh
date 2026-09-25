@@ -89,6 +89,10 @@ if source not in android:
 PY
 
 cd "$EDEN_ROOT/src/android"
+# Eden generates the SDL Java/Kotlin sources during the CMake configure phase.
+# Prime that output before Gradle schedules Kotlin compilation on a fresh
+# checkout; the full assemble otherwise races source generation.
+./gradlew ':app:configureCMakeRelWithDebInfo[arm64-v8a]' --no-daemon --console=plain --max-workers=2
 ./gradlew :app:assembleMainlineRelWithDebInfo --no-daemon --console=plain --max-workers=4
 
 eden_lib="$(find "$EDEN_ROOT/src/android/app/build" -path '*/lib/arm64-v8a/liban3_eden_android.so' -type f -print -quit)"

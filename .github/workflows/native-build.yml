@@ -127,7 +127,7 @@ jobs:
           node --version
           java -version
       - name: Install pinned-build prerequisites
-        run: brew install cmake ninja autoconf automake libtool glslang
+        run: brew install cmake ninja autoconf automake libtool glslang ffmpeg
       - name: Install JS dependencies
         working-directory: native-offline
         run: npm ci
