@@ -13,6 +13,7 @@ $runnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { 'C:\AN3' }
 if (-not $EdenRoot) { $EdenRoot = Join-Path $runnerTemp "an3-eden-$commit" }
 if (-not $EdenBuild) { $EdenBuild = Join-Path $runnerTemp "an3-eden-build-$commit" }
 if (-not $BridgeRoot) { $BridgeRoot = [IO.Path]::GetFullPath((Join-Path $nativeRoot '..\native\eden-bridge')) }
+$bridgeCmakeRoot = $BridgeRoot.Replace('\', '/')
 $cmake = if (Get-Command cmake -ErrorAction SilentlyContinue) { (Get-Command cmake).Source } else { 'C:\Program Files\CMake\bin\cmake.exe' }
 $ninja = if (Get-Command ninja -ErrorAction SilentlyContinue) { (Get-Command ninja).Source } else { 'C:\Program Files\Ninja\ninja.exe' }
 
@@ -64,7 +65,7 @@ endif()
 $configureArgs = @(
   '-S', $EdenRoot, '-B', $EdenBuild, '-G', 'Ninja',
   '-DCMAKE_BUILD_TYPE=Release',
-  "-DAN3_EDEN_BRIDGE_DIR=$BridgeRoot",
+  "-DAN3_EDEN_BRIDGE_DIR=$bridgeCmakeRoot",
   '-DENABLE_QT=OFF', '-DYUZU_CMD=OFF', '-DENABLE_LIBUSB=OFF',
   '-DENABLE_WERROR=OFF', '-DENABLE_DEBUG_TOOLS=OFF', '-DENABLE_RESHade=OFF',
   '-DYUZU_USE_BUNDLED_SDL3=ON', '-DYUZU_USE_BUNDLED_FFMPEG=ON',
