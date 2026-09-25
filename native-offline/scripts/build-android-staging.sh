@@ -10,9 +10,23 @@ export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=${an3_home_prefix
 if [[ -d /opt/homebrew/opt/rustup/bin ]]; then
   export PATH="/opt/homebrew/opt/rustup/bin:$PATH"
 fi
-export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+if [[ -z "${JAVA_HOME:-}" ]]; then
+  case "$(uname -s)" in
+    Darwin) JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ;;
+    Linux) JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")" ;;
+    *) echo 'Android staging requires a supported macOS or Linux builder.' >&2; exit 1 ;;
+  esac
+fi
+sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [[ -z "$sdk_root" ]]; then
+  case "$(uname -s)" in
+    Darwin) sdk_root="$HOME/Library/Android/sdk" ;;
+    Linux) sdk_root="$HOME/Android/Sdk" ;;
+  esac
+fi
+export JAVA_HOME ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
 export NDK_HOME="${NDK_HOME:-$ANDROID_HOME/ndk/26.3.11579264}"
+export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$NDK_HOME}"
 [[ -x "$JAVA_HOME/bin/java" && -d "$NDK_HOME" ]] || { echo 'Java 17 and Android NDK are required.' >&2; exit 1; }
 bash scripts/build-android-runtime.sh
 # The Android package version is authoritative for the About panel and the
@@ -38,6 +52,22 @@ RELEASE_AAB="${AN3_RELEASE_DIR:-releases}/vibecodedemulator-${VERSION}-android-a
 mkdir -p "$(dirname "$RELEASE_APK")"
 install -m 0644 "$SOURCE_APK" "$RELEASE_APK"
 install -m 0644 "$SOURCE_AAB" "$RELEASE_AAB"
+if [[ "${AN3_BUILD_ANDROID_TESTS:-0}" == "1" ]]; then
+  gradle_root="src-tauri/gen/android"
+  (
+    cd "$gradle_root"
+    ./gradlew --no-daemon --console=plain --max-workers=2 \
+      :app:assembleArm64ReleaseAndroidTest \
+      :app:testArm64ReleaseUnitTest
+  )
+  SOURCE_TEST_APK="$(find "$gradle_root/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)"
+  [[ -f "$SOURCE_TEST_APK" ]] || { echo 'Android release instrumentation APK was not produced.' >&2; exit 1; }
+  RELEASE_TEST_APK="${AN3_RELEASE_DIR:-releases}/vibecodedemulator-${VERSION}-android-arm64-staging-androidTest.apk"
+  install -m 0644 "$SOURCE_TEST_APK" "$RELEASE_TEST_APK"
+  (cd "$(dirname "$RELEASE_TEST_APK")" && shasum -a 256 "$(basename "$RELEASE_TEST_APK")" > "$(basename "$RELEASE_TEST_APK").sha256")
+  printf 'ANDROID_STAGING_TEST_APK=%s\n' "$RELEASE_TEST_APK"
+  printf 'ANDROID_STAGING_TEST_SHA256=%s\n' "$(shasum -a 256 "$RELEASE_TEST_APK" | awk '{print $1}')"
+fi
 printf 'ANDROID_STAGING_APK=%s\n' "$RELEASE_APK"
 printf 'ANDROID_STAGING_SHA256=%s\n' "$(shasum -a 256 "$RELEASE_APK" | awk '{print $1}')"
 printf 'ANDROID_STAGING_AAB=%s\n' "$RELEASE_AAB"

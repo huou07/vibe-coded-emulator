@@ -6,18 +6,34 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDEN_COMMIT="${AN3_EDEN_COMMIT:-7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c}"
-EDEN_ROOT="${AN3_EDEN_ROOT:-/tmp/an3-eden-full.3KCtFH/repo}"
-JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}"
-ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+EDEN_REPOSITORY="https://git.eden-emu.dev/eden-emu/eden.git"
+EDEN_ROOT="${AN3_EDEN_ROOT:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/an3-eden-$EDEN_COMMIT}"
+if [[ -z "${JAVA_HOME:-}" ]]; then
+  case "$(uname -s)" in
+    Darwin) JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ;;
+    Linux) JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")" ;;
+    *) echo 'Android Eden requires a supported macOS or Linux builder.' >&2; exit 2 ;;
+  esac
+fi
+ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 export JAVA_HOME ANDROID_HOME
+export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+EDEN_NDK_HOME="${AN3_EDEN_NDK_HOME:-$ANDROID_HOME/ndk/28.2.13676358}"
 
 [[ -x "$JAVA_HOME/bin/java" ]] || { echo "Android Eden requires Java 17 at $JAVA_HOME" >&2; exit 2; }
-[[ -x "$EDEN_ROOT/src/android/gradlew" ]] || { echo "Pinned Eden Android checkout is missing at $EDEN_ROOT" >&2; exit 2; }
+if [[ ! -d "$EDEN_ROOT/.git" ]]; then
+  mkdir -p "$(dirname "$EDEN_ROOT")"
+  git init -q "$EDEN_ROOT"
+  git -C "$EDEN_ROOT" remote add origin "$EDEN_REPOSITORY"
+  git -C "$EDEN_ROOT" fetch --depth=1 origin "$EDEN_COMMIT"
+  git -C "$EDEN_ROOT" checkout --detach FETCH_HEAD
+fi
+[[ -x "$EDEN_ROOT/src/android/gradlew" ]] || { echo "Pinned Eden Android checkout is missing its Gradle wrapper: $EDEN_ROOT" >&2; exit 2; }
 [[ "$(git -C "$EDEN_ROOT" rev-parse HEAD)" == "$EDEN_COMMIT" ]] || {
   echo "Eden checkout is not pinned to $EDEN_COMMIT" >&2
   exit 2
 }
-[[ -d "$ANDROID_HOME/ndk/28.2.13676358" ]] || {
+[[ -d "$EDEN_NDK_HOME" ]] || {
   echo "Android NDK 28.2.13676358 is required for the pinned Eden Android build" >&2
   exit 2
 }
@@ -89,9 +105,15 @@ install -m 0644 "$eden_lib" "$destination/liban3_eden_android.so"
 # paths. Strip only debug sections before the library enters APK/AAB packaging;
 # this preserves code and symbols needed by the JNI ABI while preventing local
 # paths from becoming release metadata.
-llvm_strip="$(find "$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt" -name llvm-strip -print -quit)"
-[[ -n "$llvm_strip" && -x "$llvm_strip" ]] || {
-  echo 'Android Eden build did not find the NDK llvm-strip tool.' >&2
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) eden_ndk_host="darwin-arm64" ;;
+  Darwin-x86_64) eden_ndk_host="darwin-x86_64" ;;
+  Linux-x86_64) eden_ndk_host="linux-x86_64" ;;
+  *) echo "Unsupported Android NDK host: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
+esac
+llvm_strip="$EDEN_NDK_HOME/toolchains/llvm/prebuilt/$eden_ndk_host/bin/llvm-strip"
+[[ -x "$llvm_strip" ]] || {
+  echo "Android Eden build did not find NDK llvm-strip: $llvm_strip" >&2
   exit 3
 }
 "$llvm_strip" --strip-debug "$destination/liban3_eden_android.so"

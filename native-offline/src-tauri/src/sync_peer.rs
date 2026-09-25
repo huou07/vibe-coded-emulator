@@ -2113,6 +2113,29 @@ mod tests {
         response.get("result").cloned().unwrap_or(serde_json::Value::Null)
     }
 
+    fn connect_guest_for_test(port: u16, code: &str, client_id: &str) -> (TcpStream, Aes256Gcm) {
+        let mut stream = TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, port)), IO_TIMEOUT).expect("connect");
+        let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+        let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+        let secret = EphemeralSecret::random(&mut p256::elliptic_curve::rand_core::OsRng);
+        let public = secret.public_key().to_encoded_point(false).as_bytes().to_vec();
+        let hello = serde_json::json!({"k":"hello","v":PROTOCOL_VERSION,"pub":B64.encode(&public),"id":client_id,"name":"AN3 test client","mode":"guest"});
+        write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap()).expect("send hello");
+        let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream).expect("hello response")).expect("parse hello response");
+        let host_pub_bytes = B64.decode(response.get("pub").and_then(|value| value.as_str()).unwrap()).unwrap();
+        let host_pub = PublicKey::from_sec1_bytes(&host_pub_bytes).unwrap();
+        let host_id = response.get("id").and_then(|value| value.as_str()).unwrap();
+        let shared = secret.diffie_hellman(&host_pub);
+        let transcript = challenge(host_id, &host_pub_bytes, client_id, &public);
+        let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        let auth = serde_json::json!({"k":"auth","mode":"guest","identity":B64.encode(random_bytes::<32>()),"challenge":transcript,"reconnect":false});
+        write_frame(&mut stream, &seal(&cipher, DIR_CLIENT_TO_HOST, 0, &auth)).expect("send auth");
+        let ready = open(&cipher, DIR_HOST_TO_CLIENT, 0, &read_frame(&mut stream).expect("ready frame")).expect("open ready");
+        assert_eq!(ready.get("k").and_then(|value| value.as_str()), Some("ready"));
+        (stream, cipher)
+    }
+
     /// End-to-end over the real native transport: a device with a real ROM and
     /// a real save pairs by code, reads the save manifest and bytes back over
     /// the encrypted LAN session, and publishes modified bytes that the host
@@ -2144,28 +2167,8 @@ mod tests {
         let identity = game_identity(&root, "gba".to_string(), rom_id.to_string()).expect("rom identity");
         let context_value = serde_json::json!({"kind":"save","system":"gba","romId":rom_id,"identity":identity});
 
-        // Handshake as a guest peer using the displayed pairing code.
-        let mut stream = TcpStream::connect_timeout(&SocketAddr::from((Ipv4Addr::LOCALHOST, listener_port)), IO_TIMEOUT).expect("connect");
-        let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-        let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
-        let secret = EphemeralSecret::random(&mut p256::elliptic_curve::rand_core::OsRng);
-        let public = secret.public_key().to_encoded_point(false).as_bytes().to_vec();
-        let client_id = "an3-test-client";
-        let client_secret = B64.encode(random_bytes::<32>());
-        let hello = serde_json::json!({"k":"hello","v":PROTOCOL_VERSION,"pub":B64.encode(&public),"id":client_id,"name":"Test tablet","mode":"guest"});
-        write_frame(&mut stream, &serde_json::to_vec(&hello).unwrap()).expect("send hello");
-        let response: serde_json::Value = serde_json::from_slice(&read_frame(&mut stream).expect("hello response")).expect("parse hello response");
-        let host_pub_bytes = B64.decode(response.get("pub").and_then(|v| v.as_str()).unwrap()).unwrap();
-        let host_pub = PublicKey::from_sec1_bytes(&host_pub_bytes).unwrap();
-        let host_id = response.get("id").and_then(|v| v.as_str()).unwrap().to_string();
-        let shared = secret.diffie_hellman(&host_pub);
-        let transcript = challenge(&host_id, &host_pub_bytes, client_id, &public);
-        let key = derive_key(shared.raw_secret_bytes().as_slice(), code.as_bytes());
-        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
-        let auth = serde_json::json!({"k":"auth","mode":"guest","identity":client_secret,"challenge":transcript,"reconnect":false});
-        write_frame(&mut stream, &seal(&cipher, DIR_CLIENT_TO_HOST, 0, &auth)).expect("send auth");
-        let ready = open(&cipher, DIR_HOST_TO_CLIENT, 0, &read_frame(&mut stream).expect("ready frame")).expect("open ready");
-        assert_eq!(ready.get("k").and_then(|v| v.as_str()), Some("ready"), "host must confirm the session");
+        // Pair as a guest using the displayed pairing code.
+        let (mut stream, cipher) = connect_guest_for_test(listener_port, &code, "an3-test-client");
 
         let mut send_counter = 1u64;
         let mut receive_counter = 1u64;
@@ -2234,6 +2237,102 @@ mod tests {
         let state_on_disk = std::fs::read(&state_path).expect("host save-state written");
         assert_eq!(state_on_disk, updated_state, "the host must persist the exact published state bytes");
         assert_eq!(sha256_bytes(&state_on_disk), sha256_bytes(&updated_state));
+
+        let _ = stream.shutdown(Shutdown::Both);
+        stop();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Exercise both native-library directions over the authenticated,
+    /// encrypted LAN protocol. The opaque bytes are transport test data only;
+    /// this test does not treat them as bootable ROM fixtures or launch them.
+    #[test]
+    fn native_library_bytes_round_trip_over_the_encrypted_lan_transport() {
+        let _guard = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::env::temp_dir().join(format!("an3-library-e2e-{}-{:?}", std::process::id(), Instant::now()));
+        let client_root = root.join("client");
+        let host_rom_id = "11111111-1111-1111-1111-111111111111";
+        let client_rom_id = "22222222-2222-2222-2222-222222222222";
+        let host_bytes = b"opaque native-library download payload".to_vec();
+        let client_bytes = b"opaque native-library upload payload".to_vec();
+        let host_roms = root.join("an3-roms");
+        let client_roms = client_root.join("an3-roms");
+        std::fs::create_dir_all(&host_roms).unwrap();
+        std::fs::create_dir_all(&client_roms).unwrap();
+        std::fs::write(host_roms.join(format!("{host_rom_id}.gba")), &host_bytes).unwrap();
+        std::fs::write(client_roms.join(format!("{client_rom_id}.gba")), &client_bytes).unwrap();
+
+        let (status, listener_port) = start_for_test(root.clone(), "guest".to_string()).expect("start host");
+        let code = status.code.clone();
+        let (mut stream, cipher) = connect_guest_for_test(listener_port, &code, "an3-library-test-client");
+        let mut send_counter = 1u64;
+        let mut receive_counter = 1u64;
+
+        let host_manifest = call_request(&mut stream, &cipher, &mut send_counter, &mut receive_counter, 1, "library-manifest", serde_json::Value::Null);
+        let host_item = host_manifest.get("items").and_then(|value| value.as_array()).and_then(|items| {
+            items.iter().find(|item| item.get("romId").and_then(|value| value.as_str()) == Some(host_rom_id))
+        }).expect("host library item");
+        assert_eq!(host_item.get("size").and_then(|value| value.as_u64()), Some(host_bytes.len() as u64));
+        assert_eq!(host_item.get("contentHash").and_then(|value| value.as_str()), Some(sha256_bytes(&host_bytes).as_str()));
+
+        let host_blob = call_request(&mut stream, &cipher, &mut send_counter, &mut receive_counter, 2, "library-blob", serde_json::json!({
+            "romId": host_rom_id,
+            "extension": "gba",
+            "size": host_bytes.len(),
+            "contentHash": sha256_bytes(&host_bytes),
+            "offset": 0,
+            "length": host_bytes.len(),
+        }));
+        let downloaded = B64.decode(host_blob.get("data").and_then(|value| value.as_str()).unwrap()).unwrap();
+        assert_eq!(downloaded, host_bytes, "the encrypted host-to-client bytes must match");
+        let received = native_library_write_chunk(&client_root, &serde_json::json!({
+            "romId": host_rom_id,
+            "extension": "gba",
+            "size": host_bytes.len(),
+            "contentHash": sha256_bytes(&host_bytes),
+            "offset": 0,
+            "data": B64.encode(&downloaded),
+        })).expect("persist downloaded library bytes");
+        assert_eq!(received.get("complete").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(std::fs::read(client_roms.join(format!("{host_rom_id}.gba"))).unwrap(), host_bytes);
+
+        let client_manifest = library_manifest(&client_root).expect("client library manifest");
+        let client_item = client_manifest.get("items").and_then(|value| value.as_array()).and_then(|items| {
+            items.iter().find(|item| item.get("romId").and_then(|value| value.as_str()) == Some(client_rom_id))
+        }).expect("client library item");
+        assert_eq!(client_item.get("contentHash").and_then(|value| value.as_str()), Some(sha256_bytes(&client_bytes).as_str()));
+        let client_blob = library_read_chunk(&client_root, serde_json::json!({
+            "romId": client_rom_id,
+            "extension": "gba",
+            "size": client_bytes.len(),
+            "contentHash": sha256_bytes(&client_bytes),
+            "offset": 0,
+            "length": client_bytes.len(),
+        })).expect("read client library bytes");
+        let upload_data = client_blob.get("data").and_then(|value| value.as_str()).unwrap();
+        assert_eq!(B64.decode(upload_data).unwrap(), client_bytes);
+
+        let client_spec = serde_json::json!({
+            "romId": client_rom_id,
+            "extension": "gba",
+            "size": client_bytes.len(),
+            "contentHash": sha256_bytes(&client_bytes),
+        });
+        let upload_status = call_request(&mut stream, &cipher, &mut send_counter, &mut receive_counter, 3, "library-upload-status", client_spec.clone());
+        assert_eq!(upload_status.get("complete").and_then(|value| value.as_bool()), Some(false));
+        assert_eq!(upload_status.get("nextOffset").and_then(|value| value.as_u64()), Some(0));
+        let mut publish = client_spec;
+        publish["offset"] = serde_json::json!(0);
+        publish["data"] = serde_json::json!(upload_data);
+        let published = call_request(&mut stream, &cipher, &mut send_counter, &mut receive_counter, 4, "library-publish-chunk", publish);
+        assert_eq!(published.get("complete").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(published.get("nextOffset").and_then(|value| value.as_u64()), Some(client_bytes.len() as u64));
+        assert_eq!(std::fs::read(host_roms.join(format!("{client_rom_id}.gba"))).unwrap(), client_bytes);
+        let final_manifest = library_manifest(&root).expect("final host library manifest");
+        let final_item = final_manifest.get("items").and_then(|value| value.as_array()).and_then(|items| {
+            items.iter().find(|item| item.get("romId").and_then(|value| value.as_str()) == Some(client_rom_id))
+        }).expect("uploaded host library item");
+        assert_eq!(final_item.get("contentHash").and_then(|value| value.as_str()), Some(sha256_bytes(&client_bytes).as_str()));
 
         let _ = stream.shutdown(Shutdown::Both);
         stop();

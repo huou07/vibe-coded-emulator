@@ -113,7 +113,7 @@ build_macos() {
 }
 
 build_android() {
-  if [[ "$host_kernel" != "Darwin" ]]; then note "ANDROID_APK=BLOCKED (current Android staging builder is macOS)"; blocked=1; return; fi
+  if [[ "$host_kernel" != "Darwin" && "$host_kernel" != "Linux" ]]; then note "ANDROID_APK=BLOCKED (Android staging requires a macOS or Linux builder)"; blocked=1; return; fi
   if ! bash "$native_root/scripts/build-android-staging.sh"; then
     note "ANDROID_APK=FAILED (builder returned an error)"
     failed=1

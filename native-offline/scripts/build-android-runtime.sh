@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 an3_ndk="${NDK_HOME:-$ANDROID_HOME/ndk/26.3.11579264}"
-an3_compiler="$an3_ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android26-clang++"
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64) an3_ndk_host="darwin-arm64" ;;
+  Darwin-x86_64) an3_ndk_host="darwin-x86_64" ;;
+  Linux-x86_64) an3_ndk_host="linux-x86_64" ;;
+  *) echo "Unsupported Android NDK host: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
+esac
+an3_compiler="$an3_ndk/toolchains/llvm/prebuilt/$an3_ndk_host/bin/aarch64-linux-android26-clang++"
+[[ -x "$an3_compiler" ]] || { echo "Android NDK compiler is missing: $an3_compiler" >&2; exit 2; }
 an3_output="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$an3_output"
 node scripts/fetch-azahar-libretro-android.mjs
@@ -17,9 +25,9 @@ bash scripts/build-android-eden.sh
   native-runtime/platform/android/aaudio_backend.cpp \
   native-runtime/platform/android/jni_runtime.cpp \
   -o "$an3_output/liban3_runtime.so" -landroid -llog -ldl -laaudio -lEGL -lGLESv3
-llvm_strip="$(find "$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt" -name llvm-strip -print -quit)"
-[[ -n "$llvm_strip" && -x "$llvm_strip" ]] || {
-  echo 'Android native runtime build did not find the NDK llvm-strip tool.' >&2
+llvm_strip="$an3_ndk/toolchains/llvm/prebuilt/$an3_ndk_host/bin/llvm-strip"
+[[ -x "$llvm_strip" ]] || {
+  echo "Android native runtime build did not find NDK llvm-strip: $llvm_strip" >&2
   exit 3
 }
 "$llvm_strip" --strip-debug "$an3_output/liban3_runtime.so"

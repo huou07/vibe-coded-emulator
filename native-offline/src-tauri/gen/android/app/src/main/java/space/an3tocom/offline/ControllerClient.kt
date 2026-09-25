@@ -29,12 +29,28 @@ import java.security.spec.ECPublicKeySpec
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
 import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+
+data class ControllerUtilityResult(
+    val commandId: String,
+    val action: String,
+    val slot: Int,
+    val success: Boolean,
+    val message: String,
+) {
+    fun toJson(): JSONObject = JSONObject()
+        .put("commandId", commandId)
+        .put("action", action)
+        .put("slot", slot)
+        .put("success", success)
+        .put("message", message)
+}
 
 /** Snapshot of the direct-LAN phone-controller host. No server token exists. */
 data class ControllerStatus(
@@ -48,6 +64,8 @@ data class ControllerStatus(
     val input: String,
     val error: String,
     val state: String = "idle",
+    val utilityResultsSupported: Boolean = false,
+    val utilityResults: List<ControllerUtilityResult> = emptyList(),
 ) {
     fun toJson(): String = JSONObject()
         .put("running", running)
@@ -60,7 +78,38 @@ data class ControllerStatus(
         .put("input", input)
         .put("error", error)
         .put("state", state)
+        .put("utilityResultsSupported", utilityResultsSupported)
+        .put("utilityResults", JSONArray().apply { utilityResults.forEach { put(it.toJson()) } })
         .toString()
+}
+
+internal fun parseControllerUtilityResults(frame: JSONObject): List<ControllerUtilityResult> {
+    val values = frame.optJSONArray("utilityResults") ?: return emptyList()
+    val results = mutableListOf<ControllerUtilityResult>()
+    for (index in 0 until minOf(values.length(), 64)) {
+        val item = values.optJSONObject(index) ?: continue
+        val commandId = item.optString("commandId", "")
+        val action = item.optString("action", "").uppercase()
+        val slot = item.optInt("slot", 0)
+        val message = item.optString("message", "")
+        controllerUtilityResult(commandId, action, slot, item.optBoolean("success", false), message)
+            ?.let(results::add)
+    }
+    return results
+}
+
+internal fun controllerUtilityResult(
+    commandId: String,
+    action: String,
+    slot: Int,
+    success: Boolean,
+    message: String,
+): ControllerUtilityResult? {
+    val canonicalAction = action.uppercase()
+    if (commandId.length !in 1..128 || !commandId.all { it.code in 0x20..0x7e } ||
+        canonicalAction !in setOf("QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU") ||
+        slot !in 1..10 || message.length > 256) return null
+    return ControllerUtilityResult(commandId, canonicalAction, slot, success, message)
 }
 
 /**
@@ -97,6 +146,7 @@ class ControllerClient(
         private const val PAIRING_TTL_MILLIS = 120_000L
         private const val MAX_FAILURES_PER_MINUTE = 6
         private const val FAILURE_WINDOW_MILLIS = 60_000L
+        private const val MAX_PENDING_CONTROLLER_EVENTS = 64
         private const val AXIS_THRESHOLD = 0.35f
         private const val DIR_PHONE_TO_HOST = 1
         private const val DIR_HOST_TO_PHONE = 2
@@ -109,6 +159,12 @@ class ControllerClient(
     private val executor = Executors.newCachedThreadPool { runnable ->
         Thread(runnable, "an3-lan-peer").apply { isDaemon = true }
     }
+    private class ClientWriterSession(val connection: Socket, val key: ByteArray) {
+        val outbound = ControllerSendQueue<JSONObject>(MAX_PENDING_CONTROLLER_EVENTS) { it.optLong("s", 0) }
+        val monitor = java.lang.Object()
+        var sendCounter = 1L
+    }
+
     private val stopping = AtomicBoolean(false)
     private val operation = AtomicLong(0L)
     @Volatile private var server: ServerSocket? = null
@@ -118,7 +174,9 @@ class ControllerClient(
     @Volatile private var clientKey: ByteArray? = null
     @Volatile private var clientSystem = "auto"
     @Volatile private var clientInputActive = false
-    @Volatile private var clientSendCounter = 1L
+    @Volatile private var clientUtilityResultsSupported = false
+    @Volatile private var clientWriter: ClientWriterSession? = null
+    private val clientUtilityResults = LinkedHashMap<String, ControllerUtilityResult>()
     @Volatile private var code = ""
     @Volatile private var codeExpiresAt = 0L
     @Volatile private var paired = false
@@ -208,6 +266,8 @@ class ControllerClient(
         ackSequence = 0
         clientSystem = "auto"
         clientInputActive = false
+        clientUtilityResultsSupported = false
+        synchronized(clientUtilityResults) { clientUtilityResults.clear() }
         error = ""
         connecting = true
         onStatus(status())
@@ -257,16 +317,22 @@ class ControllerClient(
             // stays open while the host is idle in a menu or has no game.
             socket.soTimeout = 0
             if (!isCurrent(operationId)) return
-            clientSocket = socket
-            connectingSocket = null
-            clientKey = sessionKey
-            clientSendCounter = 1L
-            clientSystem = ready.optString("system", "auto")
-            paired = true
-            connecting = false
-            completed = true
+            val writerSession = synchronized(this) {
+                if (!isCurrent(operationId)) return
+                ClientWriterSession(socket, sessionKey).also { session ->
+                    clientSocket = socket
+                    connectingSocket = null
+                    clientKey = sessionKey
+                    clientWriter = session
+                    clientSystem = ready.optString("system", "auto")
+                    paired = true
+                    connecting = false
+                    completed = true
+                }
+            }
             onStatus(status())
-            executor.execute { clientReadLoop(socket, inputStream, sessionKey) }
+            executor.execute { clientWriteLoop(writerSession) }
+            executor.execute { clientReadLoop(writerSession, inputStream) }
         } catch (failure: Exception) {
             if (isCurrent(operationId)) {
                 try { clientSocket?.close() } catch (_: Exception) {}
@@ -294,6 +360,10 @@ class ControllerClient(
     fun stop() {
         operation.incrementAndGet()
         stopping.set(true)
+        clientWriter?.let { writer ->
+            writer.outbound.clear()
+            synchronized(writer.monitor) { writer.monitor.notifyAll() }
+        }
         try { server?.close() } catch (_: Exception) {}
         try { discovery?.close() } catch (_: Exception) {}
         try { clientSocket?.close() } catch (_: Exception) {}
@@ -303,16 +373,17 @@ class ControllerClient(
         clientSocket = null
         connectingSocket = null
         clientKey = null
+        clientWriter = null
         clientSystem = "auto"
         clientInputActive = false
         connecting = false
-        clientSendCounter = 1L
         release()
         code = ""
         codeExpiresAt = 0L
         paired = false
         lastUtility = 0
         synchronized(seenUtilityIds) { seenUtilityIds.clear() }
+        synchronized(clientUtilityResults) { clientUtilityResults.clear() }
         input = ""
         error = ""
         onStatus(EMPTY.copy(error = ""))
@@ -321,15 +392,21 @@ class ControllerClient(
     fun releaseInput() = release()
 
     /** Send one complete controller snapshot over the encrypted direct session. */
-    @Synchronized
     fun sendState(state: JSONObject): ControllerStatus {
-        val connection = clientSocket ?: return status().copy(error = "No direct controller session is active.")
-        val key = clientKey ?: return status().copy(error = "The direct controller session is not authenticated.")
+        val writer = clientWriter ?: return status().copy(error = "No direct controller session is active.")
+        if (clientSocket !== writer.connection || clientKey !== writer.key) {
+            return status().copy(error = "The direct controller session is not authenticated.")
+        }
         return try {
-            state.put("k", "state")
-            val output = DataOutputStream(connection.getOutputStream())
-            writeFrame(output, seal(key, DIR_PHONE_TO_HOST, clientSendCounter, state))
-            clientSendCounter += 1
+            val queued = JSONObject(state.toString())
+            val motion = queued.optString("_an3q") == "motion"
+            queued.remove("_an3q")
+            queued.put("k", "state")
+            if (!writer.outbound.offer(queued, motion)) {
+                failClientWriter(writer, IllegalStateException("The controller event queue is full; the session was stopped to preserve input transitions."))
+                return status()
+            }
+            synchronized(writer.monitor) { writer.monitor.notifyAll() }
             status()
         } catch (failure: Exception) {
             setError("Direct controller send failed: ${failure.message ?: "connection closed"}")
@@ -349,6 +426,10 @@ class ControllerClient(
             ackSequence = ackSequence,
             input = if (client) "" else input,
             error = error,
+            utilityResultsSupported = client && clientUtilityResultsSupported,
+            utilityResults = if (client) synchronized(clientUtilityResults) {
+                clientUtilityResults.values.toList()
+            } else emptyList(),
             state = when {
                 error.isNotEmpty() -> "error"
                 paired && client -> "connected"
@@ -454,33 +535,95 @@ class ControllerClient(
         return fallback
     }
 
-    private fun clientReadLoop(connection: Socket, inputStream: DataInputStream, key: ByteArray) {
+    private fun clientReadLoop(writer: ClientWriterSession, inputStream: DataInputStream) {
+        val connection = writer.connection
         var receiveCounter = 1L
         try {
             while (!stopping.get() && !connection.isClosed) {
-                val frame = open(key, DIR_HOST_TO_PHONE, receiveCounter, readFrame(inputStream))
+                val frame = open(writer.key, DIR_HOST_TO_PHONE, receiveCounter, readFrame(inputStream))
                     ?: throw IllegalStateException("The direct controller acknowledgement failed authentication.")
                 receiveCounter += 1
                 if (frame.optString("k") == "ack") {
-                    ackSequence = frame.optLong("s", 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                    clientInputActive = frame.optBoolean("inputActive", false)
-                    clientSystem = frame.optString("system", clientSystem)
-                    error = ""
-                    onStatus(status())
+                    val utilityResults = parseControllerUtilityResults(frame)
+                    val update = synchronized(this) {
+                        if (clientWriter !== writer || clientSocket !== connection) null
+                        else {
+                            ackSequence = frame.optLong("s", 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                            clientInputActive = frame.optBoolean("inputActive", false)
+                            clientSystem = frame.optString("system", clientSystem)
+                            clientUtilityResultsSupported = frame.optBoolean("utilityResultsSupported", false)
+                            synchronized(clientUtilityResults) {
+                                utilityResults.forEach { clientUtilityResults[it.commandId] = it }
+                                while (clientUtilityResults.size > 64) {
+                                    clientUtilityResults.remove(clientUtilityResults.keys.first())
+                                }
+                            }
+                            error = ""
+                            status()
+                        }
+                    }
+                    if (update == null) return
+                    onStatus(update)
                 }
             }
         } catch (failure: Exception) {
             if (!stopping.get()) setError("Direct controller session ended")
         } finally {
-            if (clientSocket === connection) {
-                clientSocket = null
-                clientKey = null
-                paired = false
-                clientInputActive = false
-                if (!stopping.get()) onStatus(status())
+            val disconnected = synchronized(this) {
+                if (clientWriter !== writer || clientSocket !== connection) false
+                else {
+                    clientSocket = null
+                    clientKey = null
+                    clientWriter = null
+                    paired = false
+                    clientInputActive = false
+                    writer.outbound.clear()
+                    synchronized(writer.monitor) { writer.monitor.notifyAll() }
+                    true
+                }
             }
+            if (disconnected && !stopping.get()) onStatus(status())
             try { connection.close() } catch (_: Exception) {}
         }
+    }
+
+    /** The sole writer for authenticated client frames; never called by the WebView bridge. */
+    private fun clientWriteLoop(writer: ClientWriterSession) {
+        val connection = writer.connection
+        try {
+            val output = DataOutputStream(connection.getOutputStream())
+            while (!stopping.get() && clientSocket === connection && clientWriter === writer) {
+                val next = synchronized(writer.monitor) {
+                    var queued = if (clientWriter === writer && clientSocket === connection) writer.outbound.poll() else null
+                    while (queued == null && !stopping.get() && clientSocket === connection && clientWriter === writer) {
+                        writer.monitor.wait()
+                        queued = if (clientWriter === writer && clientSocket === connection) writer.outbound.poll() else null
+                    }
+                    queued
+                } ?: return
+                writeFrame(output, seal(writer.key, DIR_PHONE_TO_HOST, writer.sendCounter, next))
+                writer.sendCounter += 1
+            }
+        } catch (failure: Exception) {
+            if (!stopping.get() && clientSocket === connection && clientWriter === writer) failClientWriter(writer, failure)
+        }
+    }
+
+    private fun failClientWriter(writer: ClientWriterSession, failure: Exception) {
+        val update = synchronized(this) {
+            if (clientWriter !== writer || clientSocket !== writer.connection) return
+            error = failure.message ?: "Direct controller send failed."
+            clientSocket = null
+            clientKey = null
+            clientWriter = null
+            paired = false
+            clientInputActive = false
+            writer.outbound.clear()
+            synchronized(writer.monitor) { writer.monitor.notifyAll() }
+            status()
+        }
+        try { writer.connection.close() } catch (_: Exception) {}
+        onStatus(update)
     }
 
     private fun handle(socket: Socket) {

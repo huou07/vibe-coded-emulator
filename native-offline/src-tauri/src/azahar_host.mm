@@ -36,6 +36,7 @@
 #include "azahar_host.h"
 #include "core_options.h"
 #include "native_input_transform.h"
+#include "save_persistence_worker.h"
 #include "vulkan_frontend.h"
 
 // The public libretro ABI is deliberately reproduced in this small host rather
@@ -228,6 +229,9 @@ AzaharHost* active_host();
     NSStackView* _settings_stack;
     NSTabView* _settings_tabs;
     NSMutableDictionary<NSString*, NSStackView*>* _settings_tab_stacks;
+    NSControl* _menu_focus_control;
+    uint32_t _controller_menu_buttons;
+    BOOL _menu_input_suppressed_until_release;
     NSButton* _save_settings_button;
     NSTextField* _settings_save_status;
     BOOL _settings_dirty;
@@ -297,6 +301,12 @@ AzaharHost* active_host();
 - (void)discardSettingsDraft;
 - (void)closeMenuDiscardingDraft;
 - (void)openMenu;
+- (void)focusMenuControl:(NSControl*)control;
+- (NSArray<NSControl*>*)menuFocusableControls;
+- (void)moveMenuFocusBy:(NSInteger)delta;
+- (void)adjustMenuFocusBy:(NSInteger)delta;
+- (void)activateMenuFocus;
+- (void)handleControllerMenuButtons:(uint32_t)buttons;
 @end
 
 @interface AN3InputButton : NSButton
@@ -319,6 +329,10 @@ AzaharHost* active_host();
 // instead of reaching the emulator or a control underneath.
 @interface AN3InertLabel : NSTextField
 @end
+
+namespace an3 {
+static AN3AzaharView* g_view = nil;
+}
 
 namespace an3 {
 
@@ -514,6 +528,9 @@ class AzaharHost {
                const char* layout_path,
                CAMetalLayer* metal_layer,
                std::string& error) {
+        input_ready_.store(false, std::memory_order_release);
+        active_system_code_.store(0, std::memory_order_release);
+        an3_native_controller_utilities_accepting(0);
         core_path_ = core_path ?: "";
         moltenvk_path_ = moltenvk_path ?: "";
         rom_path_ = rom_path ?: "";
@@ -673,15 +690,26 @@ class AzaharHost {
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             running_ = true;
+            const int system_code = (system_ == "gba" || system_ == "gb" || system_ == "gbc")
+                                        ? 1
+                                        : system_ == "nds" ? 2 : system_ == "3ds" ? 3 : 0;
+            active_system_code_.store(system_code, std::memory_order_release);
+            an3_native_controller_utilities_accepting(1);
+            input_ready_.store(true, std::memory_order_release);
         }
         return true;
     }
 
     void stop() {
+        menu_navigation_active_.store(false, std::memory_order_relaxed);
+        input_ready_.store(false, std::memory_order_release);
+        active_system_code_.store(0, std::memory_order_release);
+        an3_native_controller_utilities_accepting(0);
         std::lock_guard<std::mutex> lock(state_mutex_);
+        drain_controller_utilities_locked();
         if (running_ && auto_save_enabled_) {
-            std::string ignored;
-            (void)save_auto_state_locked(ignored);
+            std::string save_error;
+            if (!save_auto_state_locked(save_error, true) && !save_error.empty()) message_ = save_error;
         }
         running_ = false;
         // The libretro Vulkan contract keeps image/semaphore ownership with
@@ -692,11 +720,16 @@ class AzaharHost {
             hardware_callbacks_.context_destroy();
         }
         renderer_initialized_ = false;
-        if (game_loaded_ && core_.unload_game) {
+        const bool unload_game = game_loaded_ && static_cast<bool>(core_.unload_game);
+        if (unload_game) {
             std::string save_error;
-            if (!flush_save_ram_locked(save_error) && !save_error.empty()) message_ = "Battery save could not be flushed: " + save_error;
-            core_.unload_game();
+            if (!flush_save_ram_locked(save_error, true) && !save_error.empty()) message_ = save_error;
         }
+        std::string persistence_error;
+        if (!persistence_writer_.flush(persistence_error) && !persistence_error.empty()) message_ = persistence_error;
+        if (unload_game) core_.unload_game();
+        const std::string background_error = persistence_writer_.take_background_error();
+        if (!background_error.empty()) message_ = background_error;
         game_loaded_ = false;
         if (initialized_ && core_.deinit) core_.deinit();
         initialized_ = false;
@@ -722,6 +755,8 @@ class AzaharHost {
         std::lock_guard<std::mutex> lock(state_mutex_);
         return running_;
     }
+    bool controller_input_ready() const { return input_ready_.load(std::memory_order_acquire); }
+    int active_system_code() const { return active_system_code_.load(std::memory_order_acquire); }
     bool is_nds() const { return system_ == "nds"; }
     const std::string& system_name() const { return system_; }
     const std::string& layout() const { return layout_; }
@@ -773,7 +808,7 @@ class AzaharHost {
     }
     bool flush_save_ram(std::string& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return flush_save_ram_locked(error);
+        return flush_save_ram_locked(error, true);
     }
     void set_auto_save_enabled(bool enabled) {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -802,7 +837,7 @@ class AzaharHost {
             error = "Choose a valid .state export filename.";
             return false;
         }
-        return write_state_atomically(path, bytes, error);
+        return persistence_writer_.write_and_wait(path, std::move(bytes), "save state", error);
     }
 
     bool import_state(const std::filesystem::path& path, std::string& error) {
@@ -840,15 +875,27 @@ class AzaharHost {
 
     bool save_state(unsigned slot, std::string& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
+        return save_state_locked(slot, error, true);
+    }
+
+    bool save_state_locked(unsigned slot,
+                           std::string& error,
+                           bool wait_for_write,
+                           SavePersistenceWorker::AsyncCompletion async_completion = {}) {
         if (!validate_state_slot(slot, error)) return false;
         std::vector<uint8_t> bytes;
         if (!serialize_state(bytes, error)) return false;
         const std::filesystem::path path = quick_state_path(slot);
-        return write_state_atomically(path, bytes, error);
+        return persist_bytes_locked(path, std::move(bytes), "save state", wait_for_write, error,
+                                    std::move(async_completion));
     }
 
     bool load_state(unsigned slot, std::string& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
+        return load_state_locked(slot, error);
+    }
+
+    bool load_state_locked(unsigned slot, std::string& error) {
         if (!validate_state_slot(slot, error)) return false;
         const std::filesystem::path path = quick_state_path(slot);
         std::ifstream input(path, std::ios::binary | std::ios::ate);
@@ -886,6 +933,14 @@ class AzaharHost {
         touch_x_.store(touch_x, std::memory_order_relaxed);
         touch_y_.store(touch_y, std::memory_order_relaxed);
         touch_pressed_.store(touch_pressed, std::memory_order_relaxed);
+    }
+
+    uint32_t controller_buttons() const {
+        return buttons_.load(std::memory_order_relaxed);
+    }
+
+    void set_menu_navigation_active(bool active) {
+        menu_navigation_active_.store(active, std::memory_order_relaxed);
     }
 
     void move_nds_cursor(float delta_x, float delta_y) {
@@ -1000,6 +1055,7 @@ class AzaharHost {
     void draw() {
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (!running_ || !core_.run || !vulkan_.ready()) return;
+        process_controller_utility_locked();
         // At normal speed preserve the historical scheduler: one core frame
         // per MTKView callback. Fractional wall-clock budgeting at 1x causes
         // ordinary timer jitter to alternate 0/2 runs, delaying NDS input
@@ -1025,12 +1081,15 @@ class AzaharHost {
             emulate_timings_.add(std::chrono::steady_clock::now() - began);
             active_game_seconds_ += 1.0 / kNominalCoreFps;
             if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
-                std::string ignored;
-                if (save_auto_state_locked(ignored)) last_autosave_game_seconds_ = active_game_seconds_;
+                std::string save_error;
+                if (save_auto_state_locked(save_error, false)) last_autosave_game_seconds_ = active_game_seconds_;
+                else if (!save_error.empty()) message_ = save_error;
             }
             if (active_game_seconds_ - last_save_ram_game_seconds_ >= 5.0) {
                 std::string save_error;
-                if (!flush_save_ram_locked(save_error) && !save_error.empty()) message_ = "Battery save could not be flushed: " + save_error;
+                if (!flush_save_ram_locked(save_error, false) && !save_error.empty()) message_ = save_error;
+                const std::string background_error = persistence_writer_.take_background_error();
+                if (!background_error.empty()) message_ = background_error;
                 last_save_ram_game_seconds_ = active_game_seconds_;
             }
         }
@@ -1038,7 +1097,117 @@ class AzaharHost {
     }
 
   private:
-    bool flush_save_ram_locked(std::string& error) {
+    void set_speed_locked(double multiplier) {
+        constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
+        double selected = 1.0;
+        for (const double candidate : kSpeeds) {
+            if (std::abs(candidate - multiplier) < 0.001) selected = candidate;
+        }
+        if (std::abs(selected - speed_) < 0.001) return;
+        speed_ = selected;
+        speed_budget_ = 0.0;
+        set_audio_speed(speed_);
+    }
+
+    bool process_controller_utility_locked() {
+        uint32_t action = 0;
+        uint32_t slot = 1;
+        char command_id_buffer[129] = {};
+        if (an3_native_take_controller_utility(&action, &slot, command_id_buffer,
+                                               sizeof(command_id_buffer)) <= 0) return false;
+        const std::string command_id(command_id_buffer);
+        std::string error;
+        bool applied = false;
+        bool completion_deferred = false;
+        switch (action) {
+            case 1: { // QUICK_SAVE
+                const auto completion = [command_id, slot](bool success, const std::string& detail) {
+                    const std::string message = success
+                        ? "Quick save complete."
+                        : (detail.empty() ? "Quick save failed." : detail);
+                    an3_native_controller_utility_completed(command_id.c_str(), 1, slot,
+                                                            success ? 1 : 0, message.c_str());
+                };
+                applied = save_state_locked(slot, error, false, completion);
+                completion_deferred = applied;
+                if (applied) message_ = "Quick save pending.";
+                break;
+            }
+            case 2: // QUICK_LOAD
+                applied = persistence_writer_.flush(error) && load_state_locked(slot, error);
+                if (applied) error = "Quick load complete.";
+                break;
+            case 3: // SPEED_UP
+            case 4: { // SPEED_DOWN
+                constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
+                int index = 1;
+                for (int step = 0; step < 5; ++step) {
+                    if (std::abs(kSpeeds[step] - speed_) < 0.001) index = step;
+                }
+                index = std::clamp(index + (action == 3 ? 1 : -1), 0, 4);
+                set_speed_locked(kSpeeds[index]);
+                if (an3::g_view) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (an3::g_view) [an3::g_view syncSpeedControls];
+                    });
+                }
+                applied = true;
+                error = "Speed changed.";
+                break;
+            }
+            case 5: // OPEN_MENU
+                if (!an3::g_view) {
+                    error = "The native player menu is unavailable.";
+                } else {
+                    const auto result_id = std::make_shared<std::string>(command_id);
+                    const uint32_t result_slot = slot;
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        const bool opened = an3::g_view != nil;
+                        if (opened) [an3::g_view openMenu];
+                        const char* message = opened ? "Menu opened." : "The native player menu is unavailable.";
+                        an3_native_controller_utility_completed(result_id->c_str(), 5, result_slot,
+                                                                opened ? 1 : 0, message);
+                    });
+                    completion_deferred = true;
+                }
+                break;
+            default:
+                error = "The controller utility queue contained an unknown action.";
+                break;
+        }
+        if (!completion_deferred) {
+            if (!applied && error.empty()) error = "The controller utility could not be applied.";
+            if (!applied) message_ = error;
+            an3_native_controller_utility_completed(command_id.c_str(), action, slot,
+                                                    applied ? 1 : 0, error.c_str());
+        }
+        return true;
+    }
+
+    void drain_controller_utilities_locked() {
+        while (process_controller_utility_locked()) {
+            // Stop has already disabled queue acceptance, so the shutdown
+            // drain is finite and preserves every accepted discrete action.
+        }
+    }
+
+    bool persist_bytes_locked(const std::filesystem::path& path,
+                              std::vector<uint8_t> bytes,
+                              const std::string& description,
+                              bool wait_for_write,
+                              std::string& error,
+                              SavePersistenceWorker::AsyncCompletion async_completion = {}) {
+        if (wait_for_write) {
+            return persistence_writer_.write_and_wait(path, std::move(bytes), description, error);
+        }
+        if (async_completion) {
+            return persistence_writer_.write_async_with_completion(
+                path, std::move(bytes), description, std::move(async_completion), error);
+        }
+        return persistence_writer_.write_async(path, std::move(bytes), description, error);
+    }
+
+    bool flush_save_ram_locked(std::string& error, bool wait_for_write) {
         if (!game_loaded_ || !core_.get_memory_data || !core_.get_memory_size) return true;
         if (pending_save_ram_restore_size_ != 0) {
             error = "The existing cartridge save is waiting for the core to identify its memory size; it was preserved.";
@@ -1057,10 +1226,11 @@ class AzaharHost {
         }
         const auto* begin = static_cast<const uint8_t*>(data);
         std::vector<uint8_t> bytes(begin, begin + size);
-        return write_save_ram_atomically(std::filesystem::path(save_path_) / (rom_id_ + ".srm"), bytes, error);
+        return persist_bytes_locked(std::filesystem::path(save_path_) / (rom_id_ + ".srm"),
+                                    std::move(bytes), "cartridge save", wait_for_write, error);
     }
 
-    bool save_auto_state_locked(std::string& error);
+    bool save_auto_state_locked(std::string& error, bool wait_for_write);
     bool load_auto_state_locked(std::string& error);
 
     void restore_save_ram() {
@@ -1149,53 +1319,6 @@ class AzaharHost {
             return false;
         }
         return true;
-    }
-
-    static bool write_bytes_atomically(const std::filesystem::path& path,
-                                       const std::vector<uint8_t>& bytes,
-                                       const char* description,
-                                       std::string& error) {
-        std::error_code filesystem_error;
-        if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), filesystem_error);
-        if (filesystem_error) {
-            error = std::string("VibeCodedEmulator could not prepare local ") + description + " storage.";
-            return false;
-        }
-        const std::filesystem::path temporary = path.string() + ".tmp";
-        {
-            std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-            output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-            output.flush();
-            if (!output) {
-                output.close();
-                std::filesystem::remove(temporary, filesystem_error);
-                error = std::string("VibeCodedEmulator could not write this ") + description + ".";
-                return false;
-            }
-        }
-        const int descriptor = ::open(temporary.c_str(), O_RDONLY);
-        if (descriptor >= 0) {
-            (void)::fsync(descriptor);
-            (void)::close(descriptor);
-        }
-        if (std::rename(temporary.c_str(), path.c_str()) != 0) {
-            std::filesystem::remove(temporary, filesystem_error);
-            error = std::string("VibeCodedEmulator could not atomically finish this ") + description + ".";
-            return false;
-        }
-        return true;
-    }
-
-    static bool write_state_atomically(const std::filesystem::path& path,
-                                       const std::vector<uint8_t>& bytes,
-                                       std::string& error) {
-        return write_bytes_atomically(path, bytes, "save state", error);
-    }
-
-    static bool write_save_ram_atomically(const std::filesystem::path& path,
-                                          const std::vector<uint8_t>& bytes,
-                                          std::string& error) {
-        return write_bytes_atomically(path, bytes, "cartridge save", error);
     }
 
     std::filesystem::path quick_state_path(unsigned slot) const {
@@ -1402,6 +1525,7 @@ class AzaharHost {
     }
 
     int16_t input_state(unsigned device, unsigned index, unsigned id) {
+        if (menu_navigation_active_.load(std::memory_order_relaxed)) return 0;
         if (device == RETRO_DEVICE_JOYPAD) {
             const uint32_t buttons = buttons_.load(std::memory_order_relaxed);
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return static_cast<int16_t>(buttons & 0xffffu);
@@ -1449,6 +1573,7 @@ class AzaharHost {
     unsigned last_video_width_ = 0;
     unsigned last_video_height_ = 0;
     std::atomic<uint32_t> buttons_{0};
+    std::atomic<bool> menu_navigation_active_{false};
     std::atomic<int16_t> circle_x_{0};
     std::atomic<int16_t> circle_y_{0};
     std::atomic<int16_t> cstick_x_{0};
@@ -1471,25 +1596,20 @@ class AzaharHost {
     bool auto_save_on_exit_ = false;
     unsigned auto_save_interval_seconds_ = 60;
     mutable std::mutex state_mutex_;
+    SavePersistenceWorker persistence_writer_;
     int pixel_format_ = RETRO_PIXEL_FORMAT_RGB565;
     bool initialized_ = false;
     bool game_loaded_ = false;
     bool has_hardware_callbacks_ = false;
     bool renderer_initialized_ = false;
     bool running_ = false;
+    std::atomic<bool> input_ready_{false};
+    std::atomic<int> active_system_code_{0};
 };
 
 void AzaharHost::set_speed(double multiplier) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
-    double selected = 1.0;
-    for (const double candidate : kSpeeds) {
-        if (std::abs(candidate - multiplier) < 0.001) selected = candidate;
-    }
-    if (std::abs(selected - speed_) < 0.001) return;
-    speed_ = selected;
-    speed_budget_ = 0.0;
-    set_audio_speed(speed_);
+    set_speed_locked(multiplier);
 }
 
 bool AzaharHost::set_core_option(const std::string& key, const std::string& value, std::string& error) {
@@ -1508,18 +1628,19 @@ bool AzaharHost::set_core_option(const std::string& key, const std::string& valu
 
 bool AzaharHost::save_auto_state(std::string& error) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    return save_auto_state_locked(error);
+    return save_auto_state_locked(error, true);
 }
 
-bool AzaharHost::save_auto_state_locked(std::string& error) {
+bool AzaharHost::save_auto_state_locked(std::string& error, bool wait_for_write) {
     if (!running_ || !core_.supports_states()) {
         error = "This native core does not provide automatic save states.";
         return false;
     }
     std::vector<uint8_t> bytes;
     if (!serialize_state(bytes, error)) return false;
-    return write_state_atomically(std::filesystem::path(save_path_) / "states" /
-                                      (rom_id_ + ".autosave.state"), bytes, error);
+    return persist_bytes_locked(std::filesystem::path(save_path_) / "states" /
+                                    (rom_id_ + ".autosave.state"),
+                                std::move(bytes), "save state", wait_for_write, error);
 }
 
 bool AzaharHost::load_auto_state(std::string& error) {
@@ -1548,7 +1669,6 @@ bool AzaharHost::load_auto_state_locked(std::string& error) {
     return true;
 }
 
-static AN3AzaharView* g_view = nil;
 static AVAudioEngine* g_audio_engine = nil;
 static AVAudioPlayerNode* g_audio_player = nil;
 static AVAudioFormat* g_audio_format = nil; // output/mixer format
@@ -2108,6 +2228,17 @@ static NSString* native_player_ui_text(std::string_view value) {
     return [NSString stringWithUTF8String:value.data()];
 }
 
+static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSControl*>* controls) {
+    if (view.hidden) return;
+    if ([view isKindOfClass:NSButton.class] || [view isKindOfClass:NSPopUpButton.class] ||
+        [view isKindOfClass:NSSlider.class]) {
+        NSControl* control = (NSControl*)view;
+        if (control.enabled) [controls addObject:control];
+        return;
+    }
+    for (NSView* child in view.subviews) collect_menu_focusable_controls(child, controls);
+}
+
 @implementation AN3AzaharView
 
 - (instancetype)initWithFrame:(NSRect)frameRect device:(nullable id<MTLDevice>)device system:(const char*)system {
@@ -2555,7 +2686,14 @@ static NSString* native_player_ui_text(std::string_view value) {
 
 - (void)closeMenuDiscardingDraft {
     if (_settings_dirty) [self discardSettingsDraft];
+    _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
+    _menu_focus_control = nil;
     _menu_panel.hidden = YES;
+    _controller_menu_buttons = an3::active_host() ? an3::active_host()->controller_buttons() : _controller_menu_buttons;
+    _menu_input_suppressed_until_release = _controller_menu_buttons != 0;
+    if (auto* host = an3::active_host()) {
+        host->set_menu_navigation_active(_menu_input_suppressed_until_release);
+    }
     [self.window makeFirstResponder:self];
 }
 
@@ -2565,16 +2703,123 @@ static NSString* native_player_ui_text(std::string_view value) {
         return;
     }
     _menu_panel.hidden = NO;
+    _menu_input_suppressed_until_release = NO;
+    if (auto* host = an3::active_host()) {
+        _controller_menu_buttons = host->controller_buttons();
+        host->set_menu_navigation_active(true);
+    }
     // Opening the menu releases any held NDS/3DS touch so a tap on a menu row
     // can never leak into the emulated touchscreen.
     if (auto* host = an3::active_host()) host->set_nds_touch_pressed(false);
     [self.window makeFirstResponder:self];
+    [self moveMenuFocusBy:1];
 }
 
 // Phone Controller OPEN_MENU has open semantics: a repeated press must not
 // toggle an already-open menu closed.
 - (void)openMenu {
     if (_menu_panel.hidden) [self toggleMenu:nil];
+}
+
+- (NSArray<NSControl*>*)menuFocusableControls {
+    NSMutableArray<NSControl*>* controls = [NSMutableArray array];
+    if (_settings_tabs.selectedTabViewItem.view) {
+        collect_menu_focusable_controls(_settings_tabs.selectedTabViewItem.view, controls);
+    }
+    if (_save_settings_button.enabled) [controls addObject:_save_settings_button];
+    return controls;
+}
+
+- (void)focusMenuControl:(NSControl*)control {
+    if (_menu_focus_control != control) _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
+    _menu_focus_control = control;
+    if (!_menu_focus_control) return;
+    _menu_focus_control.focusRingType = NSFocusRingTypeExterior;
+    [self.window makeFirstResponder:_menu_focus_control];
+    [_menu_focus_control setNeedsDisplay:YES];
+}
+
+- (void)moveMenuFocusBy:(NSInteger)delta {
+    NSArray<NSControl*>* controls = [self menuFocusableControls];
+    if (!controls.count) return;
+    const NSUInteger current = [controls indexOfObjectIdenticalTo:_menu_focus_control];
+    const NSUInteger next = current == NSNotFound
+        ? (delta < 0 ? controls.count - 1 : 0)
+        : (delta < 0 ? (current + controls.count - 1) % controls.count
+                     : (current + 1) % controls.count);
+    [self focusMenuControl:controls[next]];
+}
+
+- (void)adjustMenuFocusBy:(NSInteger)delta {
+    if ([_menu_focus_control isKindOfClass:NSPopUpButton.class]) {
+        NSPopUpButton* popup = (NSPopUpButton*)_menu_focus_control;
+        const NSInteger count = static_cast<NSInteger>(popup.numberOfItems);
+        if (count < 1) return;
+        const NSInteger current = std::max<NSInteger>(0, popup.indexOfSelectedItem);
+        [popup selectItemAtIndex:std::clamp(current + delta, NSInteger{0}, count - 1)];
+        [popup sendAction:popup.action to:popup.target];
+        return;
+    }
+    if ([_menu_focus_control isKindOfClass:NSSlider.class]) {
+        NSSlider* slider = (NSSlider*)_menu_focus_control;
+        const double step = std::max(0.01, (slider.maxValue - slider.minValue) / 20.0);
+        slider.doubleValue = std::clamp(slider.doubleValue + step * delta, slider.minValue, slider.maxValue);
+        [slider sendAction:slider.action to:slider.target];
+        return;
+    }
+    const NSInteger count = static_cast<NSInteger>(_settings_tabs.numberOfTabViewItems);
+    if (count < 1) return;
+    const NSInteger current = std::max<NSInteger>(0, [_settings_tabs indexOfTabViewItem:_settings_tabs.selectedTabViewItem]);
+    const NSInteger next = (current + delta + count) % count;
+    _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
+    _menu_focus_control = nil;
+    [_settings_tabs selectTabViewItemAtIndex:next];
+    [self moveMenuFocusBy:1];
+}
+
+- (void)activateMenuFocus {
+    if ([_menu_focus_control isKindOfClass:NSButton.class]) {
+        [(NSButton*)_menu_focus_control performClick:self];
+    } else if ([_menu_focus_control isKindOfClass:NSPopUpButton.class] ||
+               [_menu_focus_control isKindOfClass:NSSlider.class]) {
+        [self adjustMenuFocusBy:1];
+    } else {
+        [self moveMenuFocusBy:1];
+    }
+}
+
+- (void)handleControllerMenuButtons:(uint32_t)buttons {
+    if (_menu_panel.hidden) {
+        _controller_menu_buttons = buttons;
+        if (_menu_input_suppressed_until_release && buttons == 0) {
+            _menu_input_suppressed_until_release = NO;
+            if (auto* host = an3::active_host()) host->set_menu_navigation_active(false);
+        }
+        return;
+    }
+    const uint32_t rising = buttons & ~_controller_menu_buttons;
+    _controller_menu_buttons = buttons;
+    // Button bit positions are the libretro joypad IDs already sent by the phone.
+    static constexpr uint32_t kMenuUp = 1u << 4;
+    static constexpr uint32_t kMenuDown = 1u << 5;
+    static constexpr uint32_t kMenuLeft = 1u << 6;
+    static constexpr uint32_t kMenuRight = 1u << 7;
+    static constexpr uint32_t kMenuA = 1u << 8;
+    static constexpr uint32_t kMenuB = 1u << 0;
+    static constexpr uint32_t kMenuStart = 1u << 3;
+    if (rising & kMenuB) {
+        [self closeMenuDiscardingDraft];
+    } else if (rising & kMenuUp) {
+        [self moveMenuFocusBy:-1];
+    } else if (rising & kMenuDown) {
+        [self moveMenuFocusBy:1];
+    } else if (rising & kMenuLeft) {
+        [self adjustMenuFocusBy:-1];
+    } else if (rising & kMenuRight) {
+        [self adjustMenuFocusBy:1];
+    } else if (rising & (kMenuA | kMenuStart)) {
+        [self activateMenuFocus];
+    }
 }
 
 - (void)applyNativeSpeed:(double)speed {
@@ -3124,7 +3369,10 @@ static NSString* native_player_ui_text(std::string_view value) {
 }
 
 - (void)drawInMTKView:(MTKView*)view {
-    if (auto* host = an3::active_host()) host->draw();
+    if (auto* host = an3::active_host()) {
+        [self handleControllerMenuButtons:host->controller_buttons()];
+        host->draw();
+    }
     [self updateFpsOverlay];
     [self updateAudioDiagnostics];
     [self syncSpeedControls];
@@ -3437,18 +3685,16 @@ extern "C" void an3_native_stop(void) {
 }
 
 extern "C" int an3_native_is_running(void) {
-    return an3::g_host && an3::g_host->running() ? 1 : 0;
+    // Phone Controller hot-path readiness must never wait on the mutex held
+    // across draw/core execution. Lifecycle code publishes this after init and
+    // clears it before entering stop().
+    return an3::g_host && an3::g_host->controller_input_ready() ? 1 : 0;
 }
 
 // 0 = none, 1 = gba, 2 = nds, 3 = 3ds. Used only so the phone controller can
 // tell the phone which pad layout to show.
 extern "C" int an3_native_active_system(void) {
-    if (!an3::g_host) return 0;
-    const std::string& system = an3::g_host->system_name();
-    if (system == "gba" || system == "gb" || system == "gbc") return 1;
-    if (system == "nds") return 2;
-    if (system == "3ds") return 3;
-    return 0;
+    return an3::g_host ? an3::g_host->active_system_code() : 0;
 }
 
 extern "C" uint64_t an3_native_presented_frames(void) {

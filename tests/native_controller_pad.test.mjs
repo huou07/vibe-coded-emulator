@@ -69,6 +69,16 @@ test("utility wires map to canonical actions through the shared model", () => {
   }
 });
 
+test("remote utility feedback waits for a correlated host completion receipt", () => {
+  assert.match(appJs, /latestControllerStatus\?\.utilityResultsSupported !== true/);
+  assert.match(appJs, /pendingUtilities\.set\(command\.command_id/);
+  assert.match(appJs, /pendingUtilities\.get\(result\?\.commandId\)/);
+  assert.match(appJs, /sendMotionSnapshot\(\);\s*utilityPollTimer = setTimeout\(pollUtilityResults, 160\)/);
+  assert.match(appJs, /No completion response from host/);
+  assert.match(appJs, /Host has no active game; action not sent/);
+  assert.match(appJs, /does not report completion/);
+});
+
 test("the layout and movement selectors offer the canonical options", () => {
   const layoutBlock = appHtml.match(/<select id="nativeControllerLayout">([\s\S]*?)<\/select>/);
   assert.ok(layoutBlock, "layout selector must exist");

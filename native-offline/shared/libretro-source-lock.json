@@ -1,0 +1,12 @@
+{
+  "mgba": {
+    "version": "0.11-219-e31759b",
+    "sourceRevision": "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+    "sourceUrl": "https://codeload.github.com/mgba-emu/mgba/tar.gz/e31759b24e7a4e3899285ff720d7b573ac328ae7",
+    "sourceSha256": "396d749cce8fe3358b29cbb1db479b1816a151bd688ee45b1d241503cbc40243",
+    "licenseUrl": "https://raw.githubusercontent.com/mgba-emu/mgba/e31759b24e7a4e3899285ff720d7b573ac328ae7/LICENSE",
+    "licenseSha256": "fab3dd6bdab226f1c08630b1dd917e11fcb4ec5e1e020e2c16f83a0a13863e85",
+    "licenseName": "mGBA-MPL-2.0.txt",
+    "license": "MPL-2.0"
+  }
+}

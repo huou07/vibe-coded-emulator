@@ -1,20 +1,40 @@
 Param(
-  [string]$EdenRoot = 'C:\AN3\eden',
-  [string]$EdenBuild = 'C:\AN3\eden-build',
-  [string]$BridgeRoot = 'C:\AN3\eden-bridge',
-  [string]$MsysRoot = 'C:\AN3\msys64'
+  [string]$EdenRoot = '',
+  [string]$EdenBuild = '',
+  [string]$BridgeRoot = '',
+  [string]$MsysRoot = 'C:\msys64'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$nativeRoot = Split-Path -Parent $PSScriptRoot
 $commit = if ($env:AN3_EDEN_COMMIT) { $env:AN3_EDEN_COMMIT } else { '7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c' }
+$runnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { 'C:\AN3' }
+if (-not $EdenRoot) { $EdenRoot = Join-Path $runnerTemp "an3-eden-$commit" }
+if (-not $EdenBuild) { $EdenBuild = Join-Path $runnerTemp "an3-eden-build-$commit" }
+if (-not $BridgeRoot) { $BridgeRoot = [IO.Path]::GetFullPath((Join-Path $nativeRoot '..\native\eden-bridge')) }
 $cmake = if (Get-Command cmake -ErrorAction SilentlyContinue) { (Get-Command cmake).Source } else { 'C:\Program Files\CMake\bin\cmake.exe' }
 $ninja = if (Get-Command ninja -ErrorAction SilentlyContinue) { (Get-Command ninja).Source } else { 'C:\Program Files\Ninja\ninja.exe' }
 
 if ($env:OS -ne 'Windows_NT') { throw 'WINDOWS_EDEN=BLOCKED: this path must run on the Windows VM.' }
-foreach ($path in @($EdenRoot, $BridgeRoot, "$EdenRoot\.git")) {
-  if (-not (Test-Path $path)) { throw "WINDOWS_EDEN=BLOCKED: missing $path" }
+if (-not (Test-Path $BridgeRoot)) { throw "WINDOWS_EDEN=BLOCKED: missing bridge source $BridgeRoot" }
+if (-not (Test-Path "$EdenRoot\.git")) {
+  if (Test-Path $EdenRoot) {
+    $existing = Get-ChildItem -Force $EdenRoot | Select-Object -First 1
+    if ($existing) { throw "WINDOWS_EDEN=BLOCKED: refusing nonempty source path without Git metadata: $EdenRoot" }
+  } else {
+    New-Item -ItemType Directory -Force -Path $EdenRoot | Out-Null
+  }
+  & git -C $EdenRoot init --quiet
+  if ($LASTEXITCODE) { throw 'WINDOWS_EDEN=BLOCKED: cannot initialize isolated Eden source.' }
+  & git -C $EdenRoot remote add origin 'https://git.eden-emu.dev/eden-emu/eden.git'
+  if ($LASTEXITCODE) { throw 'WINDOWS_EDEN=BLOCKED: cannot configure the pinned Eden source remote.' }
+  & git -C $EdenRoot fetch --depth=1 origin $commit
+  if ($LASTEXITCODE) { throw 'WINDOWS_EDEN=BLOCKED: pinned Eden source fetch failed.' }
+  & git -C $EdenRoot checkout --detach FETCH_HEAD
+  if ($LASTEXITCODE) { throw 'WINDOWS_EDEN=BLOCKED: pinned Eden source checkout failed.' }
 }
+if (-not (Test-Path "$EdenRoot\CMakeLists.txt")) { throw "WINDOWS_EDEN=BLOCKED: missing pinned source at $EdenRoot" }
 if (-not (Test-Path $cmake)) { throw "WINDOWS_EDEN=BLOCKED: missing CMake at $cmake" }
 if (-not (Test-Path $ninja)) { throw "WINDOWS_EDEN=BLOCKED: missing Ninja at $ninja" }
 
@@ -48,9 +68,12 @@ $configureArgs = @(
   "-DCMAKE_INCLUDE_PATH=$MsysRoot/ucrt64/include",
   "-DCMAKE_LIBRARY_PATH=$MsysRoot/ucrt64/lib"
 )
+# CMake and Ninja can emit normal progress/warnings on stderr. Keep their
+# output non-terminating and check each native process exit code explicitly.
+$ErrorActionPreference = 'Continue'
 & $cmake @configureArgs
 if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_EDEN=BLOCKED: CMake configure failed.' }
-& $cmake '--build' $EdenBuild '--target' 'an3_switch_companion' '-j' '8'
+& $cmake '--build' $EdenBuild '--target' 'an3_switch_companion' '-j' '4'
 if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_EDEN=BLOCKED: Eden companion build failed.' }
 
 $binary = Join-Path $EdenBuild 'bin/an3_switch_companion.exe'

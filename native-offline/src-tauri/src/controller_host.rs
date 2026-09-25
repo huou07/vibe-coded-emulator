@@ -106,13 +106,41 @@ fn sink_default() -> InputSink {
 
 pub(crate) fn utility_sink_default() -> UtilitySink {
     Arc::new(|command| {
-        // Route the canonical action to the platform host's existing native
-        // operation (quick save/load, speed step, menu). The host reports
-        // whether it applied the action, so an unsupported action is never
-        // acknowledged as successful.
-        match crate::azahar::apply_utility_at_slot(&command.action, command.slot) {
+        if !input_ready() {
+            let reason = "No native game is running on the host.";
+            #[cfg(target_os = "macos")]
+            crate::controller_utility_queue::record_rejected(
+                &command.command_id,
+                &command.action,
+                command.slot,
+                reason,
+            );
+            eprintln!("AN3 controller utility '{}' failed: {reason}", command.action);
+            return false;
+        }
+        // On macOS, keep discrete actions out of the LAN reader. The native
+        // frame owner consumes this bounded queue at its state_mutex_ boundary;
+        // completion is returned only after that frame operation and any
+        // asynchronous save-file write have finished. Normal input continues
+        // to update lock-free atomics in parallel.
+        #[cfg(target_os = "macos")]
+        let result = crate::controller_utility_queue::enqueue(
+            &command.action,
+            command.slot,
+            &command.command_id,
+        );
+        #[cfg(not(target_os = "macos"))]
+        let result = crate::azahar::apply_utility_at_slot(&command.action, command.slot);
+        match result {
             Ok(()) => true,
             Err(reason) => {
+                #[cfg(target_os = "macos")]
+                crate::controller_utility_queue::record_rejected(
+                    &command.command_id,
+                    &command.action,
+                    command.slot,
+                    &reason,
+                );
                 eprintln!("AN3 controller utility '{}' failed: {reason}", command.action);
                 false
             }

@@ -7,6 +7,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 VULKAN = (ROOT / "native-offline" / "src-tauri" / "src" / "vulkan_frontend.mm").read_text(encoding="utf-8")
 HOST = (ROOT / "native-offline" / "src-tauri" / "src" / "azahar_host.mm").read_text(encoding="utf-8")
+PERSISTENCE = (ROOT / "native-offline" / "src-tauri" / "src" / "save_persistence_worker.h").read_text(encoding="utf-8")
 HEADER = (ROOT / "native-offline" / "src-tauri" / "src" / "vulkan_frontend.h").read_text(encoding="utf-8")
 SMOKE = (ROOT / "native-offline" / "tests" / "native_smoke.mm").read_text(encoding="utf-8")
 DIRECT_CORE = (ROOT / "native-offline" / "tests" / "mock_direct_frame_core.cpp").read_text(encoding="utf-8")
@@ -46,7 +47,8 @@ class NativeRendererContractTests(unittest.TestCase):
         self.assertIn("an3_native_load_state", HOST)
         self.assertIn("an3_native_export_state", HOST)
         self.assertIn("an3_native_import_state", HOST)
-        self.assertIn("write_state_atomically", HOST)
+        self.assertIn("write_and_wait", HOST)
+        self.assertIn("write_bytes_atomically", PERSISTENCE)
         self.assertIn("kMaxQuickStateBytes", HOST)
         self.assertIn("retro_serialize", DIRECT_CORE)
         self.assertIn("AN3_NATIVE_TEST_STATE", SMOKE)
@@ -73,7 +75,8 @@ class NativeRendererContractTests(unittest.TestCase):
         self.assertIn('now - _fps_last_update < 0.333', HOST)
         self.assertIn('NSSavePanel', HOST)
         self.assertIn('NSOpenPanel', HOST)
-        self.assertIn('write_state_atomically', HOST)
+        self.assertIn('write_and_wait', HOST)
+        self.assertIn('write_bytes_atomically', PERSISTENCE)
         self.assertIn('UTType typeWithFilenameExtension', HOST)
 
     def test_wait_idle_is_outside_per_frame_upload_and_present_hot_paths(self):

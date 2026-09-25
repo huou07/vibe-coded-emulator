@@ -555,6 +555,7 @@ pub fn send_state(mut state: serde_json::Value) -> Result<LanStatus, String> {
     let mut guard = CLIENT.lock().map_err(|_| "Controller lock unavailable".to_string())?;
     let client = guard.as_mut().ok_or("No direct controller session is active.")?;
     let object = state.as_object_mut().ok_or("Controller state must be an object.")?;
+    object.remove("_an3q"); // local queue policy never becomes transport protocol data
     object.insert("k".into(), serde_json::Value::String("state".into()));
     let cipher = Aes256Gcm::new_from_slice(&client.key).map_err(|_| "Could not initialize peer encryption.")?;
     let body = seal(&cipher, DIR_PHONE_TO_HOST, client.send_counter, &state);
@@ -957,12 +958,6 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
         if crate::latency::is_enabled() && crate::azahar::native_frame_counter_available() {
             crate::latency::note_frame_produced_at(crate::azahar::native_presented_frames());
         }
-        // Canonical Phone Controller utility actions (Speed/Quick Save/Menu) are
-        // executed on the running host. The sink reports whether each action was
-        // actually performed, so an unsupported action is never treated as done.
-        if let Ok(mut replay) = state.last_utility.lock() {
-            let _ = crate::controller_host::dispatch_utilities(frame, &mut replay, &controller_utility_sink());
-        }
         if let Some(system) = native_active_system() {
             if let Ok(mut slot) = state.system.lock() {
                 *slot = system;
@@ -971,15 +966,24 @@ fn apply_state(state: &State, frame: &serde_json::Value) {
     } else {
         let _ = set_native_input(frame_input(&serde_json::Value::Null));
     }
+    // Dispatch one-shot actions even without a running game so the native sink
+    // can return a concrete failure instead of silently dropping the command.
+    // Gameplay snapshots still apply only while the core is ready.
+    if let Ok(mut replay) = state.last_utility.lock() {
+        let _ = crate::controller_host::dispatch_utilities(frame, &mut replay, &controller_utility_sink());
+    }
 }
 
 fn send_ack(stream: &mut TcpStream, cipher: &Aes256Gcm, send_counter: &mut u64, state: &State) -> std::io::Result<()> {
     let last = state.last_sequence.load(Ordering::Relaxed);
+    let utility_results = crate::controller_utility_queue::take_completed();
     let ack = serde_json::json!({
         "k": "ack",
         "s": last,
         "inputActive": input_ready() && state.paired.load(Ordering::Relaxed),
         "system": native_active_system().unwrap_or_else(|| "auto".to_string()),
+        "utilityResultsSupported": cfg!(target_os = "macos"),
+        "utilityResults": utility_results,
     });
     let body = seal(cipher, DIR_HOST_TO_PHONE, *send_counter, &ack);
     write_frame(stream, &body)?;
@@ -1183,6 +1187,21 @@ mod tests {
             let seen = seen.clone();
             Arc::new(move |action| {
                 seen.lock().unwrap().push((action.action.clone(), action.slot));
+                let action_code = match action.action.as_str() {
+                    "QUICK_SAVE" => 1,
+                    "QUICK_LOAD" => 2,
+                    "SPEED_UP" => 3,
+                    "SPEED_DOWN" => 4,
+                    "OPEN_MENU" => 5,
+                    _ => return false,
+                };
+                crate::controller_utility_queue::record_completed(
+                    &action.command_id,
+                    action_code,
+                    action.slot as u32,
+                    true,
+                    "test host action completed",
+                );
                 true
             })
         };
@@ -1234,6 +1253,21 @@ mod tests {
             seen.lock().unwrap().clone(),
             vec![("QUICK_SAVE".into(), 3), ("QUICK_LOAD".into(), 10)]
         );
+        let ack = open(&cipher, DIR_HOST_TO_PHONE, 1, &read_frame(&mut stream).unwrap()).unwrap();
+        let results = ack.get("utilityResults").and_then(|value| value.as_array()).unwrap();
+        assert!(results.iter().any(|result| {
+            result.get("commandId").and_then(|value| value.as_str()) == Some("phone-a")
+                && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_SAVE")
+                && result.get("slot").and_then(|value| value.as_u64()) == Some(3)
+                && result.get("success").and_then(|value| value.as_bool()) == Some(true)
+        }));
+        assert!(results.iter().any(|result| {
+            result.get("commandId").and_then(|value| value.as_str()) == Some("phone-b")
+                && result.get("action").and_then(|value| value.as_str()) == Some("QUICK_LOAD")
+                && result.get("slot").and_then(|value| value.as_u64()) == Some(10)
+                && result.get("message").and_then(|value| value.as_str())
+                    == Some("test host action completed")
+        }));
 
         // The same state sequence is ignored, so a retry cannot re-run it.
         write_frame(&mut stream, &seal(&cipher, DIR_PHONE_TO_HOST, 2, &serde_json::json!({
@@ -1336,5 +1370,23 @@ mod tests {
                 sample.sequence
             );
         }
+    }
+
+    #[test]
+    fn stale_controller_sequences_cannot_overwrite_latest_state() {
+        let _guard = serialize();
+        READY_OVERRIDE.store(0, Ordering::Relaxed);
+        let state = State::new("sequence-test".into());
+        apply_state(
+            &state,
+            &serde_json::json!({"s":2,"b":["right"],"a":[0,0,0,0]}),
+        );
+        apply_state(
+            &state,
+            &serde_json::json!({"s":1,"b":["left"],"a":[0,0,0,0]}),
+        );
+        assert_eq!(state.last_sequence.load(Ordering::Relaxed), 2);
+        assert_eq!(*state.input.lock().unwrap(), "right");
+        READY_OVERRIDE.store(-1, Ordering::Relaxed);
     }
 }

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {test} from "node:test";
 import vm from "node:vm";
+import "../native-offline/web/controller-sender.js";
 
 const source = await readFile(new URL("../native-offline/web/native-sync.js", import.meta.url), "utf8");
+const createControllerSender = globalThis.AN3NativeControllerSender.create;
 
 const loadSync = (calls = [], statusPayload = null, overrides = {}, account = null) => {
   const storageValues = new Map();
@@ -82,6 +85,44 @@ test("foreground reconnect is opt-in during initialization", async () => {
   sync.setBackgroundEnabled(true);
   await sync.init();
   assert.equal(calls.some(call => call.name === "native_sync_join"), true);
+});
+
+test("overlapping discovery requests share one native scan and preserve its result", async () => {
+  const calls = [];
+  let completeScan;
+  const scan = new Promise(resolve => { completeScan = resolve; });
+  const sync = loadSync(calls, null, {native_sync_discover: () => scan});
+
+  const first = sync.discover();
+  const second = sync.discover();
+  assert.strictEqual(first, second);
+  await Promise.resolve();
+  assert.equal(calls.filter(call => call.name === "native_sync_discover").length, 1);
+
+  const peers = [{deviceId: "an3-peer", name: "AN3 peer", address: "192.0.2.10"}];
+  completeScan(peers);
+  assert.deepEqual(await first, peers);
+  assert.deepEqual(await second, peers);
+
+  await sync.discover();
+  assert.equal(calls.filter(call => call.name === "native_sync_discover").length, 2);
+});
+
+test("discovery errors reach callers and a later request can retry", async () => {
+  const calls = [];
+  const failure = new Error("discovery unavailable");
+  let attempt = 0;
+  const sync = loadSync(calls, null, {
+    native_sync_discover: () => ++attempt === 1 ? Promise.reject(failure) : [],
+  });
+
+  const first = sync.discover();
+  const second = sync.discover();
+  assert.strictEqual(first, second);
+  await assert.rejects(first, error => error === failure);
+  assert.equal(calls.filter(call => call.name === "native_sync_discover").length, 1);
+  assert.deepEqual(await sync.discover(), []);
+  assert.equal(calls.filter(call => call.name === "native_sync_discover").length, 2);
 });
 
 test("guest connected status is eligible while an unverified account peer is not", async () => {
@@ -235,6 +276,174 @@ test("syncLibrary transfers chunked ROMs and leaves divergent identities as conf
   assert.equal(calls.find(call => call.name === "native_sync_request" && call.args.method === "library-publish-chunk").args.payload.offset, 0);
 });
 
+test("the controller sender drains button edges while a large library chunk invoke is pending", async () => {
+  // Opaque in-memory transfer bytes only: this is not a ROM fixture and is
+  // never written, imported, or launched.
+  const calls = [];
+  const bytes = new Uint8Array(2 * 1024 * 1024 + 1);
+  bytes.fill(0x5a);
+  const item = {
+    key: "rom:77777777-7777-7777-7777-777777777777",
+    romId: "77777777-7777-7777-7777-777777777777",
+    extension: "nro",
+    system: "switch",
+    name: "opaque-transfer-test.nro",
+    size: bytes.byteLength,
+    contentHash: createHash("sha256").update(bytes).digest("hex"),
+  };
+  let beginFirstRequest;
+  let releaseFirstRequest;
+  const firstRequestStarted = new Promise(resolve => { beginFirstRequest = resolve; });
+  const firstRequestGate = new Promise(resolve => { releaseFirstRequest = resolve; });
+  const publishedOffsets = [];
+  const sync = loadSync(calls, {
+    running: true,
+    role: "host",
+    mode: "guest",
+    deviceId: "an3-local",
+    peers: [{state: "connected", mode: "guest", deviceId: "an3-remote"}],
+    error: "",
+  }, {
+    native_sync_library_manifest: {items: [item]},
+    native_sync_library_read_chunk: args => {
+      const {offset, length} = args.payload;
+      return {offset, data: Buffer.from(bytes.slice(offset, offset + length)).toString("base64")};
+    },
+    native_sync_request: args => {
+      if (args.method === "library-manifest") return {items: []};
+      if (args.method === "library-upload-status") return {complete: false, nextOffset: 0};
+      if (args.method === "library-publish-chunk") {
+        publishedOffsets.push(args.payload.offset);
+        const nextOffset = args.payload.offset + Buffer.from(args.payload.data, "base64").byteLength;
+        if (publishedOffsets.length === 1) {
+          beginFirstRequest();
+          return firstRequestGate.then(() => ({complete: false, nextOffset}));
+        }
+        return {complete: true, nextOffset};
+      }
+      throw new Error(`unexpected method ${args.method}`);
+    },
+  });
+
+  let syncFinished = false;
+  const transfer = sync.syncLibrary().then(result => {
+    syncFinished = true;
+    return result;
+  });
+  try {
+    await firstRequestStarted;
+    const sent = [];
+    const sender = createControllerSender({send: async frame => { sent.push(frame); }});
+    sender.enqueue({b: ["a"], a: [0, 0, 0, 0]}, "event");
+    sender.enqueue({b: [], a: [0, 0, 0, 0]}, "event");
+    await sender.waitForIdle();
+
+    assert.deepEqual(sent.map(frame => frame.b), [["a"], []]);
+    assert.equal(syncFinished, false, "input events are delivered before the blocked library request completes");
+    releaseFirstRequest();
+    const result = await transfer;
+    assert.equal(result.counts.uploaded, 1);
+    assert.deepEqual(publishedOffsets, [0, 2 * 1024 * 1024]);
+  } finally {
+    releaseFirstRequest();
+    await transfer.catch(() => {});
+  }
+});
+
+test("syncLibrary reconciles a mixed full library without overwriting conflicts", async () => {
+  // This exercises coordinator planning with in-memory transport stubs; it is
+  // not a ROM fixture or a claim about core launch/runtime behavior.
+  const calls = [];
+  const uploadedBytes = Uint8Array.from([1, 3, 5]);
+  const downloadedBytes = Uint8Array.from([2, 4, 6, 8]);
+  const item = (id, contentHash, size) => ({
+    key: `rom:${id}`,
+    romId: id,
+    extension: "gba",
+    system: "gba",
+    name: `${id}.gba`,
+    size,
+    contentHash,
+  });
+  const upload = item("11111111-1111-1111-1111-111111111111", "a".repeat(64), uploadedBytes.byteLength);
+  const download = item("22222222-2222-2222-2222-222222222222", "b".repeat(64), downloadedBytes.byteLength);
+  const conflictLocal = item("33333333-3333-3333-3333-333333333333", "c".repeat(64), 3);
+  const conflictRemote = {...conflictLocal, contentHash: "d".repeat(64)};
+  const identicalLocal = item("44444444-4444-4444-4444-444444444444", "e".repeat(64), 4);
+  const identicalRemote = {...identicalLocal};
+  const remoteWrites = [];
+  const publishedChunks = [];
+  const downloadedChunks = [];
+  const identityCalls = [];
+  const sync = loadSync(calls, {
+    running: true,
+    role: "host",
+    mode: "guest",
+    deviceId: "an3-local",
+    peers: [{state: "connected", mode: "guest", deviceId: "an3-remote"}],
+    error: "",
+  }, {
+    native_sync_library_manifest: {items: [upload, conflictLocal, identicalLocal]},
+    native_sync_library_read_chunk: args => ({
+      offset: args.payload.offset,
+      data: Buffer.from(uploadedBytes.slice(args.payload.offset, args.payload.offset + args.payload.length)).toString("base64"),
+    }),
+    native_sync_library_upload_status: {complete: false, nextOffset: 0},
+    native_sync_library_write_chunk: args => {
+      remoteWrites.push(args.payload);
+      return {complete: true, nextOffset: args.payload.offset + Buffer.from(args.payload.data, "base64").byteLength};
+    },
+    native_sync_game_identity: args => {
+      identityCalls.push(args);
+      return {system: args.system, core: "mgba", romHash: "fixture-hash"};
+    },
+    native_sync_request: args => {
+      if (args.method === "library-manifest") return {items: [download, conflictRemote, identicalRemote]};
+      if (args.method === "library-upload-status") return {complete: false, nextOffset: 0};
+      if (args.method === "library-publish-chunk") {
+        publishedChunks.push(args.payload);
+        return {complete: true, nextOffset: args.payload.offset + Buffer.from(args.payload.data, "base64").byteLength};
+      }
+      if (args.method === "library-blob") {
+        downloadedChunks.push(args.payload);
+        return {offset: args.payload.offset, data: Buffer.from(downloadedBytes).toString("base64")};
+      }
+      throw new Error(`unexpected method ${args.method}`);
+    },
+  });
+  const phases = [];
+
+  const result = await sync.syncLibrary({onState: state => phases.push(state.phase)});
+
+  assert.deepEqual(Array.from(result.transfers, transfer => [transfer.key, transfer.direction]), [
+    [upload.key, "upload"],
+    [download.key, "download"],
+    [conflictLocal.key, "conflict"],
+    [identicalLocal.key, "none"],
+  ]);
+  assert.equal(result.counts.uploaded, 1);
+  assert.equal(result.counts.downloaded, 1);
+  assert.equal(result.counts.conflicts, 1);
+  assert.equal(result.conflicts.length, 1);
+  assert.deepEqual(remoteWrites.map(payload => payload.romId), [download.romId]);
+  assert.deepEqual(publishedChunks.map(payload => payload.romId), [upload.romId]);
+  assert.deepEqual([...Buffer.from(publishedChunks[0].data, "base64")], [...uploadedBytes]);
+  assert.deepEqual([...Buffer.from(remoteWrites[0].data, "base64")], [...downloadedBytes]);
+  assert.deepEqual(downloadedChunks.map(payload => payload.romId), [download.romId]);
+  assert.equal(identityCalls.length, 6, "all three resolved GBA identities receive save and state passes");
+  assert.deepEqual(
+    [...new Set(identityCalls.map(call => call.romId))].sort(),
+    [upload.romId, download.romId, identicalLocal.romId].sort(),
+  );
+  assert.equal(identityCalls.some(call => call.romId === conflictLocal.romId), false, "conflicts receive no save/state sync");
+  assert.ok(phases.includes("uploading"));
+  assert.ok(phases.includes("downloading"));
+  assert.ok(phases.includes("syncing-save"));
+  assert.ok(phases.includes("syncing-state"));
+  assert.ok(phases.includes("complete"));
+  assert.equal(calls.some(call => /delete/i.test(call.name)), false, "full sync never deletes local library items");
+});
+
 test("syncLibrary cancellation stops before any ROM write", async () => {
   const calls = [];
   const sync = loadSync(calls, {
@@ -248,6 +457,62 @@ test("syncLibrary cancellation stops before any ROM write", async () => {
   const signal = {aborted: true};
   await assert.rejects(() => sync.syncLibrary({signal}), error => error.code === "ABORT_ERR");
   assert.equal(calls.some(call => call.name === "native_sync_library_write_chunk"), false);
+});
+
+test("syncLibrary cancellation after one chunk prevents later chunks and save passes", async () => {
+  // The coordinator sees an injected in-memory byte stream only; it is never
+  // stored, launched, or represented as a lawful GBA runtime fixture.
+  const calls = [];
+  const bytes = new Uint8Array(2 * 1024 * 1024 + 1);
+  bytes.fill(0x5a);
+  const item = {
+    key: "rom:66666666-6666-6666-6666-666666666666",
+    romId: "66666666-6666-6666-6666-666666666666",
+    extension: "gba",
+    system: "gba",
+    name: "sync-test-payload.gba",
+    size: bytes.byteLength,
+    contentHash: createHash("sha256").update(bytes).digest("hex"),
+  };
+  const signal = {aborted: false};
+  const published = [];
+  const read = [];
+  const sync = loadSync(calls, {
+    running: true,
+    role: "host",
+    mode: "guest",
+    deviceId: "an3-local",
+    peers: [{state: "connected", mode: "guest", deviceId: "an3-remote"}],
+    error: "",
+  }, {
+    native_sync_library_manifest: {items: [item]},
+    native_sync_library_read_chunk: args => {
+      const {offset, length} = args.payload;
+      read.push(offset);
+      return {offset, data: Buffer.from(bytes.slice(offset, offset + length)).toString("base64")};
+    },
+    native_sync_request: args => {
+      if (args.method === "library-manifest") return {items: []};
+      if (args.method === "library-upload-status") return {complete: false, nextOffset: 0};
+      if (args.method === "library-publish-chunk") {
+        published.push(args.payload);
+        const length = Buffer.from(args.payload.data, "base64").byteLength;
+        return {complete: false, nextOffset: args.payload.offset + length};
+      }
+      throw new Error(`unexpected method ${args.method}`);
+    },
+  });
+
+  await assert.rejects(
+    () => sync.syncLibrary({signal, onState: state => { if (state.phase === "uploading") signal.aborted = true; }}),
+    error => error.code === "ABORT_ERR",
+  );
+
+  assert.deepEqual(read, [0]);
+  assert.equal(published.length, 1);
+  assert.equal(published[0].offset, 0);
+  assert.equal(Buffer.from(published[0].data, "base64").byteLength, 2 * 1024 * 1024);
+  assert.equal(calls.some(call => call.name === "native_sync_game_identity"), false, "save/state passes do not start after cancellation");
 });
 
 test("syncLibrary can transfer one selected remote ROM without touching other library items", async () => {
