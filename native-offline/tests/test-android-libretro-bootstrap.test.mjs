@@ -21,6 +21,13 @@ test("Android core bootstrap pins the accepted APK and both ABI-specific core en
   ]);
 });
 
+test("Android core license files remain byte-identical to their SHA-256 pins", async () => {
+  for (const core of manifest.cores) {
+    const license = await readFile(resolve(nativeRoot, "vendor/libretro/android-arm64", core.licenseFile));
+    assert.equal(digest(license), core.licenseSha256, `${core.system} license digest`);
+  }
+});
+
 test("bootstrap archive must contain each locked Android core exactly once", () => {
   const core = { system: "gba", apkEntry: "lib/arm64-v8a/libmgba.so" };
   assert.deepEqual(validateArchiveMembers([core], [core.apkEntry]), [core.apkEntry]);

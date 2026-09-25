@@ -81,7 +81,9 @@ jobs:
       - name: Check whitespace and conflict markers
         run: |
           set -euo pipefail
-          git diff --check HEAD^ HEAD
+          # Keep the pinned MPL license byte-identical; its upstream text has
+          # a trailing space and is independently protected by its SHA-256.
+          git diff --check HEAD^ HEAD -- . ':(exclude)native-offline/vendor/libretro/android-arm64/mGBA-MPL-2.0.txt'
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}

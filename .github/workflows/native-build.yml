@@ -467,6 +467,11 @@ jobs:
           if (-not (Test-Path $env:VULKAN_SDK)) { throw 'Pinned Vulkan SDK directory is missing.' }
           if (-not (Test-Path "$env:VULKAN_SDK/Include/vulkan/vulkan.h")) { throw 'Vulkan SDK header is missing.' }
           if (-not (Test-Path "$env:VULKAN_SDK/Lib/vulkan-1.lib")) { throw 'Vulkan x64 import library is missing.' }
+          $glslang = Join-Path $env:VULKAN_SDK 'Bin\glslangValidator.exe'
+          if (-not (Test-Path $glslang)) { throw 'Pinned Vulkan SDK glslangValidator is missing.' }
+          "$env:VULKAN_SDK\Bin" | Add-Content $env:GITHUB_PATH
+          & $glslang --version
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Vulkan SDK glslangValidator failed to run.' }
           Write-Output "VULKAN_SDK=$env:VULKAN_SDK"
       - name: Print hosted builder versions
         shell: pwsh
