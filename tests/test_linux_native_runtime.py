@@ -42,7 +42,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('flatpak build-export', BUILD)
         self.assertIn('--runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo', BUILD)
         self.assertIn('flatpak_deb_path="$root/releases/$deb_name"', BUILD)
-        self.assertIn('The Flatpak source DEB is stale or differs from the selected staged DEB.', BUILD)
+        self.assertIn('The Flatpak source DEB does not match the fresh staged DEB.', BUILD)
 
     def test_flatpak_bundle_is_clean_installable_without_a_builder_runtime_cache(self):
         self.assertIn('flatpak --user install --noninteractive "$bundle"', FLATPAK_INSTALL_VERIFY)
