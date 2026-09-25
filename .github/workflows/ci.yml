@@ -45,6 +45,10 @@ jobs:
       - name: Install native JS dependencies
         working-directory: native-offline
         run: npm ci
+      - name: Install pinned Playwright CLI for web UI tests
+        run: |
+          npm install --global @playwright/cli@0.1.21
+          command -v playwright-cli
       - name: Print Node version
         run: node --version
       - name: Native build-script syntax
