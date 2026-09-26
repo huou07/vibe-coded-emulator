@@ -570,12 +570,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -eu
-            app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
-            test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
-            test -n "$app" && test -n "$test_apk"
-            (cd "$(dirname "$app")" && sha256sum -c "$(basename "$app").sha256")
-            bash tools/android/run-instrumentation.sh "$app" "$test_apk" 'space.an3tocom.offline.NativeAppSmokeTest'
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeAppSmokeTest'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -620,12 +615,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -eu
-            app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
-            test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
-            test -n "$app" && test -n "$test_apk"
-            (cd "$(dirname "$app")" && sha256sum -c "$(basename "$app").sha256")
-            bash tools/android/run-instrumentation.sh "$app" "$test_apk" 'space.an3tocom.offline.NativeGbaSaveTest' gba
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeGbaSaveTest' gba
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -670,12 +660,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -eu
-            app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
-            test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
-            test -n "$app" && test -n "$test_apk"
-            (cd "$(dirname "$app")" && sha256sum -c "$(basename "$app").sha256")
-            bash tools/android/run-instrumentation.sh "$app" "$test_apk" 'space.an3tocom.offline.NativeSettingsTabsTest'
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeSettingsTabsTest'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
