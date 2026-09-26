@@ -54,6 +54,19 @@ elif [[ -n "$fixture" ]]; then
   exit 2
 fi
 
+# Headless API 35 emulator images can leave the app window without focus and
+# show Android's first-use immersive-mode confirmation over NativeGameActivity.
+# Normalize those emulator-only states so UI input reaches AN3 during tests.
+timeout 15s adb shell input keyevent KEYCODE_WAKEUP
+timeout 15s adb shell wm dismiss-keyguard
+timeout 15s adb shell settings put secure immersive_mode_confirmations confirmed
+immersive_confirmation="$(timeout 15s adb shell settings get secure immersive_mode_confirmations | tr -d '\r')"
+[[ "$immersive_confirmation" == confirmed ]] || {
+  echo "Could not disable the first-use immersive confirmation on the CI emulator (value: $immersive_confirmation)." >&2
+  exit 4
+}
+printf 'ANDROID_EMULATOR_UI_READY=true immersive_mode_confirmations=%s\n' "$immersive_confirmation"
+
 timeout 15s adb logcat -c
 set +e
 timeout 600s adb shell am instrument -w -r -e class "$test_class" "$runner" >"$instrumentation_log" 2>&1
