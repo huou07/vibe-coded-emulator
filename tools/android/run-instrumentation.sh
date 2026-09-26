@@ -49,6 +49,14 @@ if [[ "$fixture" == gba ]]; then
   fixture_path="${RUNNER_TEMP:-/tmp}/an3-homebrew-test-visible-20260923.gba"
   python3 tools/testrom/gba_homebrew_test.py "$fixture_path"
   timeout 60s adb push "$fixture_path" /sdcard/Download/an3-homebrew-test-visible-20260923.gba
+  # The soft IME over the Storage Access Framework picker can swallow the first
+  # tap on the result row on hosted emulators. The test sets the search text
+  # programmatically, so disable the soft IME for this job; when it cannot be
+  # disabled the test still tolerates a visible IME.
+  while IFS= read -r ime; do
+    [[ -n "$ime" ]] || continue
+    timeout 15s adb shell ime disable "$ime" >/dev/null 2>&1 || true
+  done < <(timeout 15s adb shell ime list -s 2>/dev/null | tr -d '\r' || true)
 elif [[ -n "$fixture" ]]; then
   echo "Unsupported lawful test fixture: $fixture" >&2
   exit 2

@@ -23,6 +23,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -209,17 +210,23 @@ class NativeGbaSaveTest {
             ) ?: throw AssertionError("the picker search field did not appear")
             Log.i("AN3_ACCEPTANCE", "GBA_PICKER_SEARCH_FIELD=true")
             searchField.text = FIXTURE_NAME
-            // The soft keyboard keeps focus; the first tap on a result would only
-            // dismiss the IME, so close it first.
-            device.pressBack()
-            device.waitForIdle()
+            // The soft IME must be off screen before the result is tapped, or the
+            // first tap only dismisses the keyboard. Only press Back while the IME
+            // is actually shown: Back with no IME would cancel the picker.
+            dismissImeWhileShown(device)
             val row = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 15_000)
                 ?: throw AssertionError("the fixture $FIXTURE_NAME was not found in the picker")
             Log.i("AN3_ACCEPTANCE", "GBA_PICKER_FIXTURE_ROW=true")
-            var target = row
-            while (!target.isClickable && target.parent != null) target = target.parent
-            target.click()
-            val returnedToApp = device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 8_000)
+            // A hosted emulator can swallow the first tap (IME/insets animation),
+            // so retry a bounded number of times until the picker closes.
+            var returnedToApp = false
+            val returnDeadline = System.currentTimeMillis() + PICKER_RETURN_TIMEOUT_MILLIS
+            while (!returnedToApp && System.currentTimeMillis() < returnDeadline) {
+                dismissImeWhileShown(device)
+                val current = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 2_000) ?: row
+                clickRow(device, current)
+                returnedToApp = device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 6_000)
+            }
             Log.i("AN3_ACCEPTANCE", "GBA_PICKER_RETURNED_TO_APP=$returnedToApp")
             assertTrue("the picker did not return to the app", returnedToApp)
         } catch (error: Throwable) {
@@ -230,6 +237,33 @@ class NativeGbaSaveTest {
             }.getOrDefault("<picker hierarchy unavailable>")
             Log.e("AN3_ACCEPTANCE", "GBA_PICKER_FAILURE: ${error.message}; nodes=$visiblePickerNodes", error)
             throw error
+        }
+    }
+
+    private fun dismissImeWhileShown(device: UiDevice) {
+        device.waitForIdle()
+        val deadline = System.currentTimeMillis() + 8_000
+        while (System.currentTimeMillis() < deadline && isImeShown(device)) {
+            device.pressBack()
+            device.waitForIdle()
+            Thread.sleep(200)
+        }
+    }
+
+    private fun isImeShown(device: UiDevice): Boolean = runCatching {
+        device.executeShellCommand("dumpsys input_method")
+            .lineSequence()
+            .any { it.contains("mInputShown=true") || it.contains("mInputShown= true") }
+    }.getOrDefault(false)
+
+    private fun clickRow(device: UiDevice, node: UiObject2) {
+        var target = node
+        while (!target.isClickable && target.parent != null) target = target.parent
+        if (target.isClickable) {
+            target.click()
+        } else {
+            val bounds = node.visibleBounds
+            device.click(bounds.centerX(), bounds.centerY())
         }
     }
 
@@ -307,5 +341,6 @@ class NativeGbaSaveTest {
         const val GBA_SRAM_BYTES = 32768
         const val BOOT_WINDOW_MILLIS = 4_000L
         const val SETTLE_MILLIS = 2_000L
+        const val PICKER_RETURN_TIMEOUT_MILLIS = 30_000L
     }
 }
