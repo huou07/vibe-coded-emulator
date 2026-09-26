@@ -214,7 +214,7 @@ class NativeGbaSaveTest {
             // first tap only dismisses the keyboard. Only press Back while the IME
             // is actually shown: Back with no IME would cancel the picker.
             dismissImeWhileShown(device)
-            val row = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 15_000)
+            val row = findFixtureRow(device, 15_000)
                 ?: throw AssertionError("the fixture $FIXTURE_NAME was not found in the picker")
             Log.i("AN3_ACCEPTANCE", "GBA_PICKER_FIXTURE_ROW=true")
             // A hosted emulator can swallow the first tap (IME/insets animation),
@@ -225,7 +225,7 @@ class NativeGbaSaveTest {
                 val imeShown = isImeShown(device)
                 Log.i("AN3_ACCEPTANCE", "GBA_PICKER_IME_SHOWN=$imeShown")
                 if (imeShown) dismissImeWhileShown(device)
-                val current = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 2_000) ?: row
+                val current = findFixtureRow(device, 2_000) ?: row
                 clickRow(device, current)
                 returnedToApp = device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 6_000)
             }
@@ -254,6 +254,24 @@ class NativeGbaSaveTest {
 
     private fun isImeShown(device: UiDevice): Boolean =
         device.hasObject(By.pkg(GOOGLE_IME)) || device.hasObject(By.pkg(AOSP_IME))
+
+    /**
+     * The picker's search field holds the typed query, which is exactly the
+     * fixture name, so `By.text(FIXTURE_NAME)` matches the EditText too. Select
+     * the actual result row, never the search field.
+     */
+    private fun findFixtureRow(device: UiDevice, timeoutMillis: Long): UiObject2? {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (System.currentTimeMillis() < deadline) {
+            val candidate = device.findObjects(By.text(FIXTURE_NAME)).firstOrNull {
+                it.resourceName != "$DOCUMENTS_UI:id/search_src_text" &&
+                    it.className != "android.widget.EditText"
+            }
+            if (candidate != null) return candidate
+            Thread.sleep(200)
+        }
+        return null
+    }
 
     private fun clickRow(device: UiDevice, node: UiObject2) {
         var target = node
@@ -343,5 +361,6 @@ class NativeGbaSaveTest {
         const val PICKER_RETURN_TIMEOUT_MILLIS = 30_000L
         const val GOOGLE_IME = "com.google.android.inputmethod.latin"
         const val AOSP_IME = "com.android.inputmethod.latin"
+        const val DOCUMENTS_UI = "com.google.android.documentsui"
     }
 }
