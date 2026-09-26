@@ -68,7 +68,7 @@ immersive_confirmation="$(timeout 15s adb shell settings get secure immersive_mo
 }
 timeout 15s adb shell input keyevent KEYCODE_HOME
 timeout 15s adb shell wm dismiss-keyguard
-focused_window="$(timeout 15s adb shell dumpsys window | tr -d '\r' | awk '/mCurrentFocus=/ { print; exit }')"
+focused_window="$(timeout 15s adb shell dumpsys window | tr -d '\r' | awk '/mCurrentFocus=/ && !found { focus = $0; found = 1 } END { print focus }')"
 printf 'ANDROID_EMULATOR_UI_READY=true immersive_mode_confirmations=%s focused_window=%s\n' \
   "$immersive_confirmation" "${focused_window:-unknown}"
 
