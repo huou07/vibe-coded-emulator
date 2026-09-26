@@ -193,31 +193,44 @@ class NativeGbaSaveTest {
     }
 
     private fun selectFixtureInPicker(device: UiDevice) {
-        assertTrue(
-            "the Storage Access Framework picker did not open",
-            device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 15_000),
-        )
-        val searchButton = device.wait(
-            Until.findObject(By.res("com.google.android.documentsui:id/option_menu_search")), 7_000,
-        )
-        searchButton?.click()
-        val searchField = device.wait(
-            Until.findObject(By.res("com.google.android.documentsui:id/search_src_text")), 7_000,
-        ) ?: throw AssertionError("the picker search field did not appear")
-        searchField.text = FIXTURE_NAME
-        // The soft keyboard keeps focus; the first tap on a result would only
-        // dismiss the IME, so close it first.
-        device.pressBack()
-        device.waitForIdle()
-        val row = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 15_000)
-            ?: throw AssertionError("the fixture $FIXTURE_NAME was not found in the picker")
-        var target = row
-        while (!target.isClickable && target.parent != null) target = target.parent
-        target.click()
-        assertTrue(
-            "the picker did not return to the app",
-            device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 8_000),
-        )
+        Log.i("AN3_ACCEPTANCE", "GBA_PICKER_WAIT_OPEN")
+        try {
+            assertTrue(
+                "the Storage Access Framework picker did not open",
+                device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")), 15_000),
+            )
+            val searchButton = device.wait(
+                Until.findObject(By.res("com.google.android.documentsui:id/option_menu_search")), 7_000,
+            )
+            Log.i("AN3_ACCEPTANCE", "GBA_PICKER_SEARCH_BUTTON=${searchButton != null}")
+            searchButton?.click()
+            val searchField = device.wait(
+                Until.findObject(By.res("com.google.android.documentsui:id/search_src_text")), 7_000,
+            ) ?: throw AssertionError("the picker search field did not appear")
+            Log.i("AN3_ACCEPTANCE", "GBA_PICKER_SEARCH_FIELD=true")
+            searchField.text = FIXTURE_NAME
+            // The soft keyboard keeps focus; the first tap on a result would only
+            // dismiss the IME, so close it first.
+            device.pressBack()
+            device.waitForIdle()
+            val row = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 15_000)
+                ?: throw AssertionError("the fixture $FIXTURE_NAME was not found in the picker")
+            Log.i("AN3_ACCEPTANCE", "GBA_PICKER_FIXTURE_ROW=true")
+            var target = row
+            while (!target.isClickable && target.parent != null) target = target.parent
+            target.click()
+            val returnedToApp = device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 8_000)
+            Log.i("AN3_ACCEPTANCE", "GBA_PICKER_RETURNED_TO_APP=$returnedToApp")
+            assertTrue("the picker did not return to the app", returnedToApp)
+        } catch (error: Throwable) {
+            val visiblePickerNodes = runCatching {
+                device.findObjects(By.pkg("com.google.android.documentsui")).take(40).joinToString(" | ") { node ->
+                    "${node.resourceName}:${node.text}:${node.contentDescription}:clickable=${node.isClickable}"
+                }
+            }.getOrDefault("<picker hierarchy unavailable>")
+            Log.e("AN3_ACCEPTANCE", "GBA_PICKER_FAILURE: ${error.message}; nodes=$visiblePickerNodes", error)
+            throw error
+        }
     }
 
     private fun awaitWebView(timeoutMillis: Long = 20_000) {
