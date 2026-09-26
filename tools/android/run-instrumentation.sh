@@ -51,12 +51,19 @@ if [[ "$fixture" == gba ]]; then
   timeout 60s adb push "$fixture_path" /sdcard/Download/an3-homebrew-test-visible-20260923.gba
   # The soft IME over the Storage Access Framework picker can swallow the first
   # tap on the result row on hosted emulators. The test sets the search text
-  # programmatically, so disable the soft IME for this job; when it cannot be
-  # disabled the test still tolerates a visible IME.
+  # programmatically, so disable the soft IME for this job; the test also
+  # tolerates a visible IME by dismissing it and retrying.
   while IFS= read -r ime; do
     [[ -n "$ime" ]] || continue
     timeout 15s adb shell ime disable "$ime" >/dev/null 2>&1 || true
   done < <(timeout 15s adb shell ime list -s 2>/dev/null | tr -d '\r' || true)
+  # `ime disable` refuses to remove the only enabled IME; disable the common
+  # keyboards directly so no soft keyboard can cover the picker.
+  for pkg in com.google.android.inputmethod.latin com.android.inputmethod.latin; do
+    timeout 15s adb shell pm disable-user --user 0 "$pkg" >/dev/null 2>&1 || true
+  done
+  remaining_imes="$(timeout 15s adb shell ime list -s 2>/dev/null | tr -d '\r' | paste -sd, - || true)"
+  printf 'ANDROID_SOFT_IME_DISABLED=true remaining=%s\n' "${remaining_imes:-none}"
 elif [[ -n "$fixture" ]]; then
   echo "Unsupported lawful test fixture: $fixture" >&2
   exit 2

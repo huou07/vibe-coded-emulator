@@ -222,7 +222,9 @@ class NativeGbaSaveTest {
             var returnedToApp = false
             val returnDeadline = System.currentTimeMillis() + PICKER_RETURN_TIMEOUT_MILLIS
             while (!returnedToApp && System.currentTimeMillis() < returnDeadline) {
-                dismissImeWhileShown(device)
+                val imeShown = isImeShown(device)
+                Log.i("AN3_ACCEPTANCE", "GBA_PICKER_IME_SHOWN=$imeShown")
+                if (imeShown) dismissImeWhileShown(device)
                 val current = device.wait(Until.findObject(By.text(FIXTURE_NAME)), 2_000) ?: row
                 clickRow(device, current)
                 returnedToApp = device.wait(Until.hasObject(By.pkg("space.an3tocom.offline")), 6_000)
@@ -250,11 +252,8 @@ class NativeGbaSaveTest {
         }
     }
 
-    private fun isImeShown(device: UiDevice): Boolean = runCatching {
-        device.executeShellCommand("dumpsys input_method")
-            .lineSequence()
-            .any { it.contains("mInputShown=true") || it.contains("mInputShown= true") }
-    }.getOrDefault(false)
+    private fun isImeShown(device: UiDevice): Boolean =
+        device.hasObject(By.pkg(GOOGLE_IME)) || device.hasObject(By.pkg(AOSP_IME))
 
     private fun clickRow(device: UiDevice, node: UiObject2) {
         var target = node
@@ -342,5 +341,7 @@ class NativeGbaSaveTest {
         const val BOOT_WINDOW_MILLIS = 4_000L
         const val SETTLE_MILLIS = 2_000L
         const val PICKER_RETURN_TIMEOUT_MILLIS = 30_000L
+        const val GOOGLE_IME = "com.google.android.inputmethod.latin"
+        const val AOSP_IME = "com.android.inputmethod.latin"
     }
 }
