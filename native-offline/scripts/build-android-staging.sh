@@ -56,9 +56,13 @@ if [[ "${AN3_BUILD_ANDROID_TESTS:-0}" == "1" ]]; then
   gradle_root="src-tauri/gen/android"
   (
     cd "$gradle_root"
+    # The Android package build above already produced the release .so. This
+    # second Gradle invocation only packages tests; rerunning Tauri's Rust task
+    # would try to use the CLI options socket after its parent CLI has exited.
     ./gradlew --no-daemon --console=plain --max-workers=2 \
       :app:assembleArm64ReleaseAndroidTest \
-      :app:testArm64ReleaseUnitTest
+      :app:testArm64ReleaseUnitTest \
+      -x :app:rustBuildArm64Release
   )
   SOURCE_TEST_APK="$(find "$gradle_root/app/build/outputs/apk/androidTest" -type f -name '*.apk' -print -quit)"
   [[ -f "$SOURCE_TEST_APK" ]] || { echo 'Android release instrumentation APK was not produced.' >&2; exit 1; }
