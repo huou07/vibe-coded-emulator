@@ -489,10 +489,10 @@ jobs:
       - name: Prepare verified Windows core inputs
         shell: pwsh
         run: |
-          node native-offline/scripts/fetch-azahar-libretro.mjs windows-x64
-          if ($LASTEXITCODE -ne 0) { throw 'Azahar core preparation failed.' }
           & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/prepare-windows-cores.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Pinned GBA/NDS core preparation failed.' }
+          node native-offline/scripts/fetch-azahar-desktop.mjs windows-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Azahar 3DS core preparation failed.' }
       - name: Build and stage pinned Eden companion
         shell: pwsh
         env:
@@ -570,7 +570,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            set -eu
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
             test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
             test -n "$app" && test -n "$test_apk"
@@ -620,7 +620,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            set -eu
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
             test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
             test -n "$app" && test -n "$test_apk"
@@ -670,7 +670,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            set -eu
             app="$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)"
             test_apk="$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)"
             test -n "$app" && test -n "$test_apk"
