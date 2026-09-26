@@ -1,0 +1,3 @@
+native-offline/shared/generated/*.h text eol=lf
+native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativePlayerUi.kt text eol=lf
+static/player-ui.js text eol=lf
