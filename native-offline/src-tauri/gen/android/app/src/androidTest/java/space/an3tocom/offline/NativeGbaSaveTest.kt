@@ -61,7 +61,6 @@ class NativeGbaSaveTest {
     @Test
     fun persistsAndRestoresSramAcrossRuns() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val device = UiDevice.getInstance(instrumentation)
         val appFiles = instrumentation.targetContext.filesDir
 
         // A previous test run may have left a save for a deduplicated ROM id;
@@ -69,7 +68,8 @@ class NativeGbaSaveTest {
         deleteExistingSaves(appFiles)
 
         ActivityScenario.launch(MainActivity::class.java).use {
-            awaitWebView()
+            val device = UiDevice.getInstance(instrumentation)
+            awaitWebView(device)
             onWebView().forceJavascriptEnabled()
                 .withElement(findElement(Locator.CSS_SELECTOR, "[data-testid='quick-library']"))
                 .perform(webClick())
@@ -233,7 +233,7 @@ class NativeGbaSaveTest {
         }
     }
 
-    private fun awaitWebView(timeoutMillis: Long = 20_000) {
+    private fun awaitWebView(device: UiDevice, timeoutMillis: Long = 20_000) {
         val deadline = System.currentTimeMillis() + timeoutMillis
         var lastError: Throwable? = null
         while (System.currentTimeMillis() < deadline) {
@@ -245,6 +245,26 @@ class NativeGbaSaveTest {
                 Thread.sleep(250)
             }
         }
+        val focusState = runCatching {
+            device.executeShellCommand("dumpsys window").lineSequence()
+                .filter {
+                    it.contains("mCurrentFocus") || it.contains("mFocusedApp") ||
+                        it.contains("mShowingLockscreen") || it.contains("mKeyguardShowing")
+                }
+                .take(12)
+                .joinToString(" | ")
+        }.getOrDefault("<window focus unavailable>")
+        val powerState = runCatching {
+            device.executeShellCommand("dumpsys power").lineSequence()
+                .filter { it.contains("mWakefulness") || it.contains("mInteractive") }
+                .take(8)
+                .joinToString(" | ")
+        }.getOrDefault("<power state unavailable>")
+        Log.e(
+            "AN3_ACCEPTANCE",
+            "GBA_WEBVIEW_STARTUP_FAILURE focus=$focusState power=$powerState",
+            lastError,
+        )
         throw AssertionError("the AN3 WebView did not attach within $timeoutMillis ms", lastError)
     }
 

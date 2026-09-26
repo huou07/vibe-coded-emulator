@@ -56,7 +56,8 @@ fi
 
 # Headless API 35 emulator images can leave the app window without focus and
 # show Android's first-use immersive-mode confirmation over NativeGameActivity.
-# Normalize those emulator-only states so UI input reaches AN3 during tests.
+# Reset the disposable emulator to its launcher and normalize those states so
+# UI input reaches AN3 during tests.
 timeout 15s adb shell input keyevent KEYCODE_WAKEUP
 timeout 15s adb shell wm dismiss-keyguard
 timeout 15s adb shell settings put secure immersive_mode_confirmations confirmed
@@ -65,7 +66,11 @@ immersive_confirmation="$(timeout 15s adb shell settings get secure immersive_mo
   echo "Could not disable the first-use immersive confirmation on the CI emulator (value: $immersive_confirmation)." >&2
   exit 4
 }
-printf 'ANDROID_EMULATOR_UI_READY=true immersive_mode_confirmations=%s\n' "$immersive_confirmation"
+timeout 15s adb shell input keyevent KEYCODE_HOME
+timeout 15s adb shell wm dismiss-keyguard
+focused_window="$(timeout 15s adb shell dumpsys window | tr -d '\r' | awk '/mCurrentFocus=/ { print; exit }')"
+printf 'ANDROID_EMULATOR_UI_READY=true immersive_mode_confirmations=%s focused_window=%s\n' \
+  "$immersive_confirmation" "${focused_window:-unknown}"
 
 timeout 15s adb logcat -c
 set +e
