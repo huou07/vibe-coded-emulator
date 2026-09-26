@@ -3,6 +3,7 @@
 package space.an3tocom.offline
 
 import android.content.pm.ActivityInfo
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -210,6 +211,8 @@ class NativeSettingsTabsTest {
             } finally {
                 if (hostStarted) evalJs(scenario, "window.AN3NativeController.stop();")
             }
+
+            Log.i("AN3_ACCEPTANCE", "ASSERTIONS_PASSED:NativeSettingsTabsTest")
         }
     }
 

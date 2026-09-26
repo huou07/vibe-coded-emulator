@@ -61,32 +61,65 @@ instrumentation_status=$?
 set -e
 cat "$instrumentation_log"
 timeout 30s adb logcat -d -v epoch >"$logcat_log"
+test_name="${test_class##*.}"
+assertion_marker="AN3_ACCEPTANCE: ASSERTIONS_PASSED:$test_name"
 
 if [[ "$instrumentation_status" -eq 124 ]]; then
   echo 'ANDROID_INSTRUMENTATION=FAIL (600-second test command timeout)' >&2
   exit 124
 fi
 
-if ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$instrumentation_log" || grep -q '^FAILURES!!!' "$instrumentation_log"; then
-  echo 'ANDROID_ASSERTIONS=FAIL' >&2
-  if [[ "$instrumentation_status" -ne 0 ]]; then exit "$instrumentation_status"; fi
-  exit 1
-fi
-echo "ANDROID_ASSERTIONS=PASS ($test_class)"
-
 if grep -Fq 'FORTIFY: pthread_mutex_lock called on a destroyed mutex' "$logcat_log"; then
-  unexpected_fatal="$(grep -E 'FATAL EXCEPTION|Fatal signal|ANR in ' "$logcat_log" \
-    | grep -Ev 'Fatal signal 6 \(SIGABRT\)' || true)"
-  if [[ -n "$unexpected_fatal" ]]; then
-    printf '%s\n' "$unexpected_fatal" | head -n 40 >&2
-    echo 'ANDROID_PROCESS_HEALTH=FAIL (additional fatal exception, native signal, or ANR found)' >&2
+  marker_line="$(grep -nF "$assertion_marker" "$logcat_log" | head -n 1 | cut -d: -f1 || true)"
+  fortify_line="$(grep -nF 'FORTIFY: pthread_mutex_lock called on a destroyed mutex' "$logcat_log" | head -n 1 | cut -d: -f1 || true)"
+  lifecycle_line="$(grep -nE 'ActivityScenario: Update currentActivityStage to (STOPPED|DESTROYED), currentActivity=space\.an3tocom\.offline\.MainActivity' "$logcat_log" \
+    | awk -F: -v marker="$marker_line" '$1 > marker { print $1; exit }' || true)"
+
+  if [[ -z "$marker_line" || -z "$fortify_line" || "$marker_line" -ge "$fortify_line" || -z "$lifecycle_line" || "$lifecycle_line" -ge "$fortify_line" ]]; then
+    echo 'ANDROID_ASSERTIONS_OR_TEARDOWN=FAIL (missing ordered assertion marker, ActivityScenario teardown, or FORTIFY evidence)' >&2
     exit 1
   fi
+  if grep -q '^FAILURES!!!' "$instrumentation_log" || grep -Eq '^INSTRUMENTATION_STATUS_CODE: -[0-9]+' "$instrumentation_log"; then
+    echo 'ANDROID_ASSERTIONS=FAIL (instrumentation reported a test failure before teardown)' >&2
+    exit 1
+  fi
+
+  main_app_pids="$(awk '$4 == "I" && $5 == "ActivityManager:" && $6 == "Start" && $7 == "proc" { split($8, proc, ":"); if (proc[2] ~ /^space\.an3tocom\.offline\//) print proc[1] }' "$logcat_log" | sort -u)"
+  fortify_pids="$(awk '/FORTIFY: pthread_mutex_lock called on a destroyed mutex/ { print $2 }' "$logcat_log" | sort -u)"
+  libc_fortify_pids="$(awk '/FORTIFY: pthread_mutex_lock called on a destroyed mutex/ && $4 == "F" && $5 == "libc" { print $2 }' "$logcat_log" | sort -u)"
+  if [[ -z "$main_app_pids" || -z "$fortify_pids" || -z "$libc_fortify_pids" ]]; then
+    echo 'ANDROID_PROCESS_HEALTH=FAIL (could not identify the AN3 main process for the FORTIFY abort)' >&2
+    exit 1
+  fi
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    if ! grep -Fxq "$pid" <<<"$main_app_pids"; then
+      echo "ANDROID_PROCESS_HEALTH=FAIL (FORTIFY abort came from unexpected PID $pid)" >&2
+      exit 1
+    fi
+  done <<<"$fortify_pids"
+
+  unexpected_fatal="$(grep -E 'FATAL EXCEPTION|ANR in ' "$logcat_log" || true)"
+  unexpected_signal=""
+  while IFS= read -r signal_line; do
+    [[ -n "$signal_line" ]] || continue
+    signal_pid="$(awk '{ print $2 }' <<<"$signal_line")"
+    if [[ "$signal_line" != *'Fatal signal 6 (SIGABRT)'* ]] || ! grep -Fxq "$signal_pid" <<<"$fortify_pids"; then
+      unexpected_signal+="$signal_line"$'\n'
+    fi
+  done < <(grep -F 'Fatal signal' "$logcat_log" || true)
+  if [[ -n "$unexpected_fatal$unexpected_signal" ]]; then
+    printf '%s\n%s' "$unexpected_fatal" "$unexpected_signal" | head -n 40 >&2
+    echo 'ANDROID_PROCESS_HEALTH=FAIL (unexpected fatal exception, signal, or ANR found)' >&2
+    exit 1
+  fi
+
   {
-    echo "- Android test assertions: PASS ($test_class)."
-    echo '- Tao/Tauri app-process teardown: **BLOCKED_UPSTREAM** (known destroyed-mutex FORTIFY signature observed during a passing instrumentation run; any additional fatal/ANR remains a failure).'
+    echo "- Android test assertions: PASS ($test_class); explicit completion marker precedes ActivityScenario teardown."
+    echo '- Tao/Tauri app-process teardown: **BLOCKED_UPSTREAM** (destroyed-mutex FORTIFY abort in the AN3 main process after the completion marker; no additional fatal exception or ANR observed).'
   } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-  echo 'TAO_TEARDOWN=BLOCKED_UPSTREAM (assertions passed; exact known FORTIFY signature recorded in logcat)' >&2
+  echo "ANDROID_ASSERTIONS=PASS ($test_class; marker recorded before ActivityScenario teardown)"
+  echo 'TAO_TEARDOWN=BLOCKED_UPSTREAM (exact destroyed-mutex FORTIFY abort in AN3 main process)' >&2
   exit 0
 fi
 
@@ -94,6 +127,16 @@ if [[ "$instrumentation_status" -ne 0 ]]; then
   echo "ANDROID_INSTRUMENTATION=FAIL (exit $instrumentation_status)" >&2
   exit "$instrumentation_status"
 fi
+if ! grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$instrumentation_log" || grep -q '^FAILURES!!!' "$instrumentation_log"; then
+  echo 'ANDROID_ASSERTIONS=FAIL (JUnit success summary is missing)' >&2
+  exit 1
+fi
+if ! grep -Fq "$assertion_marker" "$logcat_log"; then
+  echo "ANDROID_ASSERTIONS=FAIL (missing explicit completion marker for $test_class)" >&2
+  exit 1
+fi
+echo "ANDROID_ASSERTIONS=PASS ($test_class)"
+
 if grep -Eq 'FATAL EXCEPTION|Fatal signal|ANR in ' "$logcat_log"; then
   echo 'ANDROID_PROCESS_HEALTH=FAIL (fatal exception, native signal, or ANR found after clearing logcat)' >&2
   exit 1

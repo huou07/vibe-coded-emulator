@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package space.an3tocom.offline
 
+import android.util.Log
 import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
@@ -62,6 +63,8 @@ class NativeAppSmokeTest {
             onWebView()
                 .withElement(findElement(Locator.CSS_SELECTOR, "[data-testid='open-rom']"))
                 .check(webMatches(getText(), containsString("Open ROM")))
+
+            Log.i("AN3_ACCEPTANCE", "ASSERTIONS_PASSED:NativeAppSmokeTest")
         }
     }
 

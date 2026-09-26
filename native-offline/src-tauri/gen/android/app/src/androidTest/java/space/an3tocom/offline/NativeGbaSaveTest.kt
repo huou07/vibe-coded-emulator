@@ -3,6 +3,7 @@
 package space.an3tocom.offline
 
 import android.app.Activity
+import android.util.Log
 import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
@@ -118,6 +119,8 @@ class NativeGbaSaveTest {
                 (firstCounter + 1) and 0xFF,
                 secondCounter,
             )
+
+            Log.i("AN3_ACCEPTANCE", "ASSERTIONS_PASSED:NativeGbaSaveTest")
         }
     }
 
