@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - '.gitattributes'
       - 'native-offline/**'
       - 'native/**'
       - 'tools/android/**'
@@ -17,6 +18,7 @@ on:
   push:
     branches: [main, ci/3.3.1-performance-candidate]
     paths:
+      - '.gitattributes'
       - 'native-offline/**'
       - 'native/**'
       - 'tools/android/**'
