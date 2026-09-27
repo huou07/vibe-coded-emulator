@@ -3,6 +3,8 @@
 #[cfg(not(mobile))]
 use include_dir::{include_dir, Dir};
 mod azahar;
+#[cfg(target_os = "macos")]
+mod controller_utility_queue;
 mod controller_host;
 mod host_actions;
 mod hosted_frame;
@@ -837,8 +839,10 @@ fn native_sync_stop() {
 }
 
 #[tauri::command]
-fn native_sync_discover() -> Result<Vec<serde_json::Value>, String> {
-    sync_peer::discover_peers()
+async fn native_sync_discover() -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(sync_peer::discover_peers)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -847,8 +851,13 @@ fn native_sync_forget(peer_id: String) -> Result<sync_peer::SyncStatus, String> 
 }
 
 #[tauri::command]
-fn native_sync_request(method: String, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    sync_peer::request(method, payload)
+async fn native_sync_request(
+    method: String,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || sync_peer::request(method, payload))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

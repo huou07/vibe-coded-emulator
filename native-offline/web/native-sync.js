@@ -28,6 +28,7 @@
     if (typeof runner !== "function") throw new Error("Direct LAN Sync requires the installed AN3 app.");
     return runner(name, args);
   };
+  let discoveryInFlight = null;
   const status = () => call("native_sync_status");
   const start = async (requestedMode = mode()) => {
     setMode(requestedMode);
@@ -40,7 +41,12 @@
   };
   const reconnect = peerId => call("native_sync_join", {code: "", mode: mode(), peerId});
   const forget = peerId => call("native_sync_forget", {peerId});
-  const discover = () => call("native_sync_discover");
+  const discover = () => {
+    if (!discoveryInFlight) {
+      discoveryInFlight = call("native_sync_discover").finally(() => { discoveryInFlight = null; });
+    }
+    return discoveryInFlight;
+  };
   const request = (method, payload) => call("native_sync_request", {method, payload});
   const bytesFromBase64 = value => {
     const binary = atob(String(value || ""));

@@ -26,6 +26,17 @@ int an3_native_start(void* content_view,
 void an3_native_stop(void);
 int an3_native_is_running(void);
 uint64_t an3_native_presented_frames(void);
+// Internal controller-utility queue shared with the Rust direct-LAN host.
+void an3_native_controller_utilities_accepting(int accepting);
+int an3_native_take_controller_utility(uint32_t* action,
+                                      uint32_t* slot,
+                                      char* command_id,
+                                      size_t command_id_capacity);
+void an3_native_controller_utility_completed(const char* command_id,
+                                             uint32_t action,
+                                             uint32_t slot,
+                                             int success,
+                                             const char* message);
 
 typedef struct an3_native_renderer_metrics {
     uint64_t presented_frames;

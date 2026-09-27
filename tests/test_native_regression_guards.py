@@ -14,6 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = (ROOT / "native-offline/src-tauri/src/azahar_host.mm").read_text(encoding="utf-8")
+PERSISTENCE = (ROOT / "native-offline/src-tauri/src/save_persistence_worker.h").read_text(encoding="utf-8")
 OPTIONS = (ROOT / "native-offline/native-runtime/core/core_options.h").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/src-tauri/src/vulkan_frontend.mm").read_text(encoding="utf-8")
 BOOTSTRAP = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
@@ -24,6 +25,9 @@ NATIVE_WEB_INDEX = (ROOT / "native-offline/web/index.html").read_text(encoding="
 TAURI = (ROOT / "native-offline/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
 MAIN_ACTIVITY = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt").read_text(encoding="utf-8")
 CONTROLLER_CLIENT = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt").read_text(encoding="utf-8")
+CONTROLLER_SEND_QUEUE = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerSendQueue.kt").read_text(encoding="utf-8")
+CONTROLLER_UTILITY_QUEUE = (ROOT / "native-offline/src-tauri/src/controller_utility_queue.rs").read_text(encoding="utf-8")
+CONTROLLER_SENDER = (ROOT / "native-offline/web/controller-sender.js").read_text(encoding="utf-8")
 LAN_PEER = (ROOT / "native-offline/src-tauri/src/lan_peer.rs").read_text(encoding="utf-8")
 SYNC_PEER = (ROOT / "native-offline/src-tauri/src/sync_peer.rs").read_text(encoding="utf-8")
 NATIVE_APP = (ROOT / "native-offline/web/native-app.js").read_text(encoding="utf-8")
@@ -204,6 +208,29 @@ class NativeRegressionGuardTests(unittest.TestCase):
         toggle = HOST.split("- (void)toggleMenu:(id)sender {", 1)[1].split("\n}", 1)[0]
         self.assertIn("set_nds_touch_pressed(false)", toggle)
 
+    def test_phone_controller_navigates_appkit_menu_without_leaking_core_input(self):
+        draw = HOST[HOST.index("- (void)drawInMTKView:"):HOST.index("- (void)mtkView:")]
+        self.assertLess(draw.index("handleControllerMenuButtons"), draw.index("host->draw()"))
+        self.assertIn("host->controller_buttons()", draw)
+
+        menu = HOST.split("- (void)handleControllerMenuButtons:(uint32_t)buttons {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("buttons & ~_controller_menu_buttons", menu)
+        for name, bit in (("Up", 4), ("Down", 5), ("Left", 6), ("Right", 7),
+                          ("A", 8), ("B", 0), ("Start", 3)):
+            self.assertIn(f"kMenu{name} = 1u << {bit}", menu)
+        self.assertIn("closeMenuDiscardingDraft", menu)
+        self.assertIn("moveMenuFocusBy", menu)
+        self.assertIn("adjustMenuFocusBy", menu)
+        self.assertIn("activateMenuFocus", menu)
+        self.assertIn("_menu_input_suppressed_until_release", menu)
+
+        input_state = HOST.split("int16_t input_state(unsigned device", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("menu_navigation_active_.load", input_state)
+        self.assertIn("return 0", input_state)
+        close = HOST.split("- (void)closeMenuDiscardingDraft {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("_controller_menu_buttons != 0", close)
+        self.assertIn("set_menu_navigation_active(_menu_input_suppressed_until_release)", close)
+
     def test_direct_lan_android_navigation_keeps_the_tauri_origin(self):
         # A raw WebView reload bypasses Tauri's dispatcher and leaves the
         # page at about:blank, so every native command is rejected by ACL.
@@ -216,6 +243,15 @@ class NativeRegressionGuardTests(unittest.TestCase):
         self.assertIn("socket.set_reuse_address(true)", LAN_PEER)
         self.assertIn("socket.set_reuse_port(true)", LAN_PEER)
         self.assertIn("discovery_socket(DISCOVERY_PORT)", SYNC_PEER)
+
+    def test_native_sync_discovery_runs_off_the_event_loop_thread(self):
+        start = TAURI_LIB.index("fn native_sync_discover()")
+        command_start = TAURI_LIB.rfind("#[tauri::command]", 0, start)
+        command_end = TAURI_LIB.index("\n}\n", start) + 2
+        command = TAURI_LIB[command_start:command_end]
+        self.assertIn("async fn native_sync_discover()", command)
+        self.assertIn("spawn_blocking(sync_peer::discover_peers)", command)
+        self.assertNotIn("sync_peer::discover_peers()", command)
 
     def test_direct_lan_sync_start_does_not_reenter_the_runtime_lock(self):
         existing = SYNC_PEER[SYNC_PEER.index("if let Some(existing) = slot.as_ref()") : SYNC_PEER.index("fs::create_dir_all", SYNC_PEER.index("if let Some(existing) = slot.as_ref()"))]
@@ -245,14 +281,48 @@ class NativeRegressionGuardTests(unittest.TestCase):
         self.assertIn("save synchronization", description.lower())
         self.assertIn("phone-controller", description.lower())
 
-    def test_remote_quick_state_actions_share_the_core_frame_lock(self):
-        draw = HOST[HOST.index("void draw()") : HOST.index("void restore_save_ram()")]
+    def test_core_save_snapshots_stay_at_the_frame_boundary_without_frame_path_file_io(self):
+        start = HOST.index("void draw()")
+        draw = HOST[start : HOST.index("\n  private:", start)]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", draw)
-        self.assertIn("save_auto_state_locked(ignored)", draw)
-        self.assertIn("flush_save_ram_locked(save_error)", draw)
+        self.assertIn("save_auto_state_locked(save_error, false)", draw)
+        self.assertIn("flush_save_ram_locked(save_error, false)", draw)
+        for operation in (
+            "write_bytes_atomically",
+            "write_and_wait",
+            "persistence_writer_.flush",
+            "std::ofstream",
+            "::open",
+            "::fsync",
+            "::rename",
+        ):
+            self.assertNotIn(operation, draw)
         stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", stop)
-        self.assertIn("flush_save_ram_locked(save_error)", stop)
+        self.assertIn("save_auto_state_locked(save_error, true)", stop)
+        self.assertIn("flush_save_ram_locked(save_error, true)", stop)
+        self.assertIn("persistence_writer_.flush(persistence_error)", stop)
+        self.assertLess(stop.index("save_auto_state_locked(save_error, true)"), stop.index("running_ = false"))
+        self.assertLess(stop.index("flush_save_ram_locked(save_error, true)"), stop.index("persistence_writer_.flush(persistence_error)"))
+        self.assertLess(stop.index("persistence_writer_.flush(persistence_error)"), stop.index("core_.unload_game()"))
+
+    def test_native_save_file_operations_run_on_the_bounded_persistence_worker(self):
+        self.assertIn('#include "save_persistence_worker.h"', HOST)
+        self.assertIn("SavePersistenceWorker persistence_writer_", HOST)
+        self.assertIn("persistence_writer_.write_async(path", HOST)
+        self.assertIn("persistence_writer_.write_and_wait(path", HOST)
+        self.assertIn("std::thread worker_", PERSISTENCE)
+        self.assertIn("constexpr size_t kMaxPendingPaths = 16", PERSISTENCE)
+        self.assertIn("static bool write_bytes_atomically", PERSISTENCE)
+        self.assertIn("write_bytes_atomically(job.path", PERSISTENCE)
+        writer_start = PERSISTENCE.index("static bool write_bytes_atomically")
+        writer_end = PERSISTENCE.index("    void complete(", writer_start)
+        writer = PERSISTENCE[writer_start:writer_end]
+        self.assertIn('path.string() + ".tmp"', writer)
+        for operation in ("create_directories", "std::ofstream", "output.flush()", "::open", "::fsync", "::rename"):
+            self.assertIn(operation, writer)
+        self.assertLess(writer.index("output.flush()"), writer.index("::fsync"))
+        self.assertLess(writer.index("::fsync"), writer.index("::rename"))
 
     def test_controller_native_actions_run_on_ui_queue_and_stop_off_thread(self):
         utility = HOST[HOST.index('extern "C" int an3_native_apply_utility_at_slot') : HOST.index('extern "C" int an3_native_apply_utility(')]
@@ -263,6 +333,74 @@ class NativeRegressionGuardTests(unittest.TestCase):
         self.assertIn("spawn_blocking(lan_host::stop)", TAURI_LIB)
         self.assertIn("spawn_blocking(controller_host::stop)", TAURI_LIB)
         self.assertIn("spawn_blocking(|| {\n                    lan_host::stop();", TAURI_LIB)
+
+    def test_controller_readiness_and_system_metadata_do_not_read_core_state_under_render_lock(self):
+        ready = HOST[HOST.index("bool controller_input_ready()") : HOST.index("bool is_nds()", HOST.index("bool controller_input_ready()"))]
+        self.assertIn("input_ready_.load(std::memory_order_acquire)", ready)
+        ffi = HOST[HOST.index('extern "C" int an3_native_is_running') : HOST.index('extern "C" uint64_t an3_native_presented_frames')]
+        self.assertIn("controller_input_ready()", ffi)
+        self.assertNotIn("running()", ffi)
+        system = HOST[HOST.index('extern "C" int an3_native_active_system') : HOST.index('extern "C" uint64_t an3_native_presented_frames')]
+        self.assertIn("active_system_code()", system)
+        self.assertIn('(system_ == "gba" || system_ == "gb" || system_ == "gbc")', HOST)
+        stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
+        self.assertLess(stop.index("input_ready_.store(false"), stop.index("std::lock_guard<std::mutex> lock(state_mutex_)"))
+        self.assertLess(stop.index("an3_native_controller_utilities_accepting(0)"), stop.index("std::lock_guard<std::mutex> lock(state_mutex_)"))
+        self.assertIn("drain_controller_utilities_locked()", stop)
+        draw = HOST[HOST.index("void draw()") : HOST.index("\n  private:", HOST.index("void draw()"))]
+        self.assertIn("process_controller_utility_locked()", draw)
+        self.assertIn("input_ready_.store(true", HOST)
+        set_input_start = HOST.index("void set_input(uint32_t buttons,")
+        set_input = HOST[set_input_start : HOST.index("void move_nds_cursor", set_input_start)]
+        self.assertIn("buttons_.store(buttons", set_input)
+        self.assertIn("touch_pressed_.store(touch_pressed", set_input)
+        self.assertNotIn("state_mutex_", set_input)
+        self.assertNotIn("lock_guard", set_input)
+        input_ffi_start = HOST.index('extern "C" void an3_native_set_input')
+        input_ffi = HOST[input_ffi_start:]
+        self.assertIn("g_host->set_input(", input_ffi)
+        self.assertNotIn("state_mutex_", input_ffi)
+
+    def test_controller_utility_commands_use_a_bounded_ordered_frame_boundary_queue(self):
+        self.assertIn("MAX_PENDING_CONTROLLER_UTILITIES: usize = 16", CONTROLLER_UTILITY_QUEUE)
+        self.assertIn("VecDeque<ControllerUtility>", CONTROLLER_UTILITY_QUEUE)
+        self.assertIn(".wait(queue)", CONTROLLER_UTILITY_QUEUE)
+        self.assertIn("available.notify_one()", CONTROLLER_UTILITY_QUEUE)
+        self.assertIn("crate::controller_utility_queue::enqueue", (ROOT / "native-offline/src-tauri/src/controller_host.rs").read_text())
+        process_start = HOST.index("bool process_controller_utility_locked()")
+        process = HOST[process_start : HOST.index("void drain_controller_utilities_locked()", process_start)]
+        for action in ("QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"):
+            self.assertIn(action, process)
+        self.assertEqual(process.count("an3_native_take_controller_utility("), 1)
+        self.assertIn("applied = save_state_locked(slot, error, false, completion)", process)
+        self.assertIn("completion_deferred = applied", process)
+        self.assertIn("persistence_writer_.flush(error) && load_state_locked(slot, error)", process)
+
+    def test_sync_socket_requests_run_off_the_tauri_main_thread(self):
+        start = TAURI_LIB.index("async fn native_sync_request(")
+        command = TAURI_LIB[start : TAURI_LIB.index("\n}", start)]
+        self.assertIn("spawn_blocking(move || sync_peer::request(method, payload))", command)
+        self.assertIn(".await", command)
+
+    def test_controller_motion_has_one_writer_and_separate_bounded_event_storage(self):
+        self.assertIn("MAX_PENDING_EVENTS = 64", CONTROLLER_SENDER)
+        self.assertIn("let motion = null", CONTROLLER_SENDER)
+        self.assertIn("requestAnimationFrame", CONTROLLER_SENDER)
+        self.assertIn('controllerSender.scheduleMotion(() => snapshot())', NATIVE_APP)
+        self.assertIn('update(event, "motion")', NATIVE_APP)
+        self.assertIn('sendMotionSnapshot()', NATIVE_APP)
+        self.assertIn("MAX_PENDING_CONTROLLER_EVENTS = 64", CONTROLLER_CLIENT)
+        self.assertIn("private class ClientWriterSession", CONTROLLER_CLIENT)
+        self.assertIn("val outbound = ControllerSendQueue<JSONObject>", CONTROLLER_CLIENT)
+        write_loop = CONTROLLER_CLIENT[CONTROLLER_CLIENT.index("private fun clientWriteLoop") : CONTROLLER_CLIENT.index("private fun failClientWriter")]
+        self.assertIn("writeFrame(output, seal(writer.key, DIR_PHONE_TO_HOST, writer.sendCounter, next))", write_loop)
+        self.assertIn("if (clientWriter === writer && clientSocket === connection) writer.outbound.poll()", write_loop)
+        read_loop = CONTROLLER_CLIENT[CONTROLLER_CLIENT.index("private fun clientReadLoop") : CONTROLLER_CLIENT.index("private fun clientWriteLoop")]
+        self.assertIn("if (clientWriter !== writer || clientSocket !== connection) false", read_loop)
+        send_state = CONTROLLER_CLIENT[CONTROLLER_CLIENT.index("fun sendState(state: JSONObject)") : CONTROLLER_CLIENT.index("fun status()", CONTROLLER_CLIENT.index("fun sendState(state: JSONObject)"))]
+        self.assertIn("outbound.offer(queued, motion)", send_state)
+        self.assertNotIn("writeFrame(", send_state)
+        self.assertIn("if (latestMotion?.let { sequenceOf(it) < newestEventSequence } == true) latestMotion = null", CONTROLLER_SEND_QUEUE)
 
     def test_android_controller_clears_paired_state_after_remote_disconnect(self):
         self.assertIn("if (!stopping.get()) {\n                    paired = false", CONTROLLER_CLIENT)

@@ -123,7 +123,6 @@
       // cannot drift. Only the transport differs (direct LAN frames here).
       const inputActions = window.AN3InputActions || null;
       let timer = 0;
-      let sequence = 0;
       let utilitySequence = 0;
       let utilitySessionId = "";
       const newUtilitySession = () => {
@@ -133,6 +132,7 @@
       const resetUtilitySession = () => { utilitySequence = 0; utilitySessionId = newUtilitySession(); };
       resetUtilitySession();
       let controllerMode = false;
+      let latestControllerStatus = null;
       let system = "auto";
       let manualLayout = false;
       let movement = "dpad";
@@ -147,11 +147,38 @@
       if (controllerMovement) controllerMovement.value = movement;
       const setStatus = text => { if (controllerStatus) controllerStatus.textContent = text; };
       const setPadState = text => { if (controllerPadState) controllerPadState.textContent = text; };
+      const pendingUtilities = new Map();
+      let utilityPollTimer = 0;
+      let padFeedback = "";
+      let padFeedbackUntil = 0;
+      const utilityLabel = action => ({
+        QUICK_SAVE: "Quick Save", QUICK_LOAD: "Quick Load", SPEED_UP: "Speed +",
+        SPEED_DOWN: "Speed −", OPEN_MENU: "Menu"
+      })[action] || "Controller action";
+      const clearUtilityFeedback = () => {
+        clearTimeout(utilityPollTimer);
+        utilityPollTimer = 0;
+        pendingUtilities.clear();
+        padFeedback = "";
+        padFeedbackUntil = 0;
+      };
+      const controllerSender = window.AN3NativeControllerSender?.create({
+        send: async frame => {
+          const result = await window.AN3NativeController.send(frame);
+          if (result?.error) throw new Error(result.error);
+          return result;
+        },
+        onFailure: error => {
+          setStatus(error?.message || "Controller input could not be delivered.");
+          Promise.resolve(window.AN3NativeController.stop()).catch(() => {});
+        }
+      });
       const words = status => {
         if (!status.running) return "Off";
         if (status.state === "connecting") return "Connecting directly to host…";
         if (status.state === "error") return status.error || "Connection failed";
-        if (status.role === "controller") return status.inputActive ? "Connected to host" : "Connected — waiting for host";        if (!status.paired) return "Waiting for device";
+        if (status.role === "controller") return status.inputActive ? "Connected to host" : "Connected — waiting for host";
+        if (!status.paired) return "Waiting for device";
         return status.inputActive ? "Connected" : "Connected — input unavailable";
       };
       const layoutFor = value => {
@@ -179,23 +206,99 @@
         if (controllerCircular) controllerCircular.hidden = movement !== "circular";
         if (movement !== "circular") releaseCircular();
       };
-      const sendState = payload => {
-        if (!controllerMode || !window.AN3NativeController?.send) return;
-        sequence += 1;
-        const frame = Object.assign({s: sequence, b: [...pressed], a: [axes.lx, axes.ly, axes.rx, axes.ry]}, payload || {});
+      const snapshot = payload => {
+        const frame = Object.assign({b: [...pressed], a: [axes.lx, axes.ly, axes.rx, axes.ry]}, payload || {});
         if (touch.active) frame.t = [touch.x, touch.y];
-        Promise.resolve(window.AN3NativeController.send(frame)).catch(error => {
-          setStatus(error?.message || "Direct controller session ended");
-        });
+        return frame;
       };
-      const sendSnapshot = () => sendState();
+      const sendState = (payload, kind = "event") => {
+        if (!controllerMode || !controllerSender) return false;
+        return controllerSender.enqueue(snapshot(payload), kind);
+      };
+      const sendSnapshot = () => sendState(null, "event");
+      const receiveUtilityResults = status => {
+        for (const result of status?.utilityResults || []) {
+          const pending = pendingUtilities.get(result?.commandId);
+          if (!pending) continue;
+          pendingUtilities.delete(result.commandId);
+          padFeedback = String(result.message || `${utilityLabel(pending.action)} ${result.success ? "complete." : "failed."}`);
+          padFeedbackUntil = Date.now() + 6000;
+          setPadState(padFeedback);
+        }
+        if (!pendingUtilities.size) {
+          clearTimeout(utilityPollTimer);
+          utilityPollTimer = 0;
+        }
+      };
+      const pollUtilityResults = async () => {
+        utilityPollTimer = 0;
+        if (!controllerMode || !pendingUtilities.size) return;
+        try {
+          const status = await window.AN3NativeController.status();
+          latestControllerStatus = status;
+          receiveUtilityResults(status);
+        } catch (_) {}
+        const now = Date.now();
+        for (const [commandId, pending] of pendingUtilities) {
+          if (now < pending.deadline) continue;
+          pendingUtilities.delete(commandId);
+          padFeedback = `No completion response from host for ${utilityLabel(pending.action)}.`;
+          padFeedbackUntil = now + 6000;
+          setPadState(padFeedback);
+        }
+        if (!pendingUtilities.size) return;
+        // A bounded short receipt poll prompts another authenticated ACK while
+        // the native frame owner or save worker finishes the one-shot action.
+        sendMotionSnapshot();
+        utilityPollTimer = setTimeout(pollUtilityResults, 160);
+      };
+      const requestUtilityReceipt = () => {
+        if (!utilityPollTimer && pendingUtilities.size) utilityPollTimer = setTimeout(pollUtilityResults, 120);
+      };
+      const sendMotionSnapshot = () => {
+        if (!controllerMode || !controllerSender) return;
+        controllerSender.scheduleMotion(() => snapshot());
+      };
       const sendUtility = action => {
         if (!controllerMode || !action) return;
+        if (latestControllerStatus?.inputActive !== true) {
+          padFeedback = "Host has no active game; action not sent.";
+          padFeedbackUntil = Date.now() + 6000;
+          setPadState(padFeedback);
+          return;
+        }
         utilitySequence += 1;
         const command = {action, sequence: utilitySequence, command_id: `${utilitySessionId}-${utilitySequence}`};
         const slot = Number(controllerSaveSlot?.value);
         if ((action === "QUICK_SAVE" || action === "QUICK_LOAD") && Number.isInteger(slot) && slot >= 1 && slot <= 10) command.slot = slot;
-        sendState({u: [command]});
+        if (pendingUtilities.size >= 16) {
+          padFeedback = "Wait for the host to finish a queued action.";
+          padFeedbackUntil = Date.now() + 6000;
+          setPadState(padFeedback);
+          return;
+        }
+        if (latestControllerStatus?.utilityResultsSupported !== true) {
+          if (!sendState({u: [command]}, "event")) {
+            padFeedback = `${utilityLabel(action)} could not be queued.`;
+          } else {
+            padFeedback = `${utilityLabel(action)} sent; this host does not report completion.`;
+          }
+          padFeedbackUntil = Date.now() + 6000;
+          setPadState(padFeedback);
+          return;
+        }
+        pendingUtilities.set(command.command_id, {action, deadline: Date.now() + 10_000});
+        padFeedback = `${utilityLabel(action)} sent; waiting for the host…`;
+        padFeedbackUntil = Date.now() + 10_000;
+        setPadState(padFeedback);
+        if (!sendState({u: [command]}, "event")) {
+          pendingUtilities.delete(command.command_id);
+          padFeedback = `${utilityLabel(action)} could not be queued.`;
+          padFeedbackUntil = Date.now() + 6000;
+          setPadState(padFeedback);
+          return;
+        }
+        requestUtilityReceipt();
       };
       const releaseAll = () => {
         pressed.clear();
@@ -214,6 +317,10 @@
         const visible = status?.role === "controller" && status.running;
         const entering = visible && !controllerMode;
         const leaving = !visible && controllerMode;
+        if (entering || leaving) {
+          controllerSender?.reset();
+          clearUtilityFeedback();
+        }
         controllerMode = visible;
         if (controllerPad) controllerPad.hidden = !visible;
         if (controllerPadHead) controllerPadHead.hidden = !visible;
@@ -221,7 +328,11 @@
         if (visible) {
           applyLayout();
           applyMovement();
-          setPadState(words(status));
+          if (pendingUtilities.size) {
+            const pending = [...pendingUtilities.values()].at(-1);
+            setPadState(`${utilityLabel(pending.action)} pending…`);
+          } else if (Date.now() < padFeedbackUntil) setPadState(padFeedback);
+          else setPadState(words(status));
         } else {
           releaseAll();
           controllerPadButtons.forEach(button => button.dataset.active = "false");
@@ -259,7 +370,7 @@
       controllerSticks.forEach(stick => {
         const side = stick.dataset.nativeControllerStick;
         let pointerId = null;
-        const update = event => {
+        const update = (event, kind = "motion") => {
           const rect = stick.getBoundingClientRect();
           const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
           let dx = event.clientX - (rect.left + rect.width / 2);
@@ -270,19 +381,20 @@
           stick.style.setProperty("--sy", dy.toFixed(1) + "px");
           const nx = dx / radius, ny = dy / radius;
           if (side === "left") { axes.lx = nx; axes.ly = ny; } else { axes.rx = nx; axes.ry = ny; }
-          sendSnapshot();
+          if (kind === "event") sendSnapshot();
+          else sendMotionSnapshot();
         };
         stick.addEventListener("pointerdown", event => {
           event.preventDefault();
           pointerId = event.pointerId;
           stick.classList.add("active");
           try { stick.setPointerCapture(pointerId); } catch (_) {}
-          update(event);
+          update(event, "event");
         });
         stick.addEventListener("pointermove", event => {
           if (pointerId === null || event.pointerId !== pointerId) return;
           event.preventDefault();
-          update(event);
+          update(event, "motion");
         });
         const releaseStick = event => {
           if (pointerId === null || (event && event.pointerId !== pointerId)) return;
@@ -361,7 +473,7 @@
           if (pointerId === null || event.pointerId !== pointerId) return;
           event.preventDefault();
           const point = map(event);
-          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendSnapshot(); }
+          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendMotionSnapshot(); }
         });
         const release = event => {
           if (pointerId === null || (event && event.pointerId !== pointerId)) return;
@@ -395,6 +507,8 @@
       if (controllerDisconnect) controllerDisconnect.addEventListener("click", async () => {
         try { await window.AN3NativeController.stop(); } catch (_) {}
         resetUtilitySession();
+        clearUtilityFeedback();
+        latestControllerStatus = null;
         clearInterval(timer);
         renderPad(null);
         if (controllerCode) controllerCode.textContent = "\u2014";
@@ -403,11 +517,14 @@
       const refresh = async () => {
         try {
           const status = await window.AN3NativeController.status();
+          latestControllerStatus = status;
+          receiveUtilityResults(status);
           controllerButton.textContent = status.running ? "Stop" : "Start Hosting";
           if (controllerCode) controllerCode.textContent = status.running && status.code ? status.code : "\u2014";
           renderPad(status);
           setStatus(status.error ? status.error : words(status));
         } catch (error) {
+          latestControllerStatus = null;
           setStatus("Error");
           if (controllerCode) controllerCode.textContent = "\u2014";
           renderPad(null);
@@ -420,6 +537,8 @@
           if (running) {
             await window.AN3NativeController.stop();
             resetUtilitySession();
+            clearUtilityFeedback();
+            latestControllerStatus = null;
             clearInterval(timer);
             if (controllerCode) controllerCode.textContent = "\u2014";
             renderPad(null);
@@ -428,6 +547,7 @@
           }
           resetUtilitySession();
           const session = await window.AN3NativeController.start();
+          latestControllerStatus = session;
           if (controllerCode) controllerCode.textContent = session.code || "\u2014";
           renderPad(session);
           setStatus("Waiting for device");
@@ -453,6 +573,7 @@
           setStatus("Finding host on the local network…");
           resetUtilitySession();
           const session = await window.AN3NativeController.join(code);
+          latestControllerStatus = session;
           if (controllerCode) controllerCode.textContent = session.code || "—";
           renderPad(session);
           setStatus(words(session));

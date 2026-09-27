@@ -16,6 +16,9 @@ val tauriProperties = Properties().apply {
 android {
     compileSdk = 36
     namespace = "space.an3tocom.offline"
+    // Run instrumentation against the exact optimized APK shipped by the
+    // candidate build job, which uses the same shared debug signing identity.
+    testBuildType = "release"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "space.an3tocom.offline"
