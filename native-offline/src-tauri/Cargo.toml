@@ -1,6 +1,6 @@
 [package]
 name = "an3-offline-native"
-version = "3.3.0"
+version = "3.3.1"
 description = "VibeCodedEmulator local-ROM offline player"
 authors = ["Vibe Coded Emulator"]
 edition = "2021"
