@@ -15,4 +15,4 @@ Emulator development history on 2026-09-28.
   other third-party components retain their own licenses; see
   `THIRD_PARTY_NOTICES.md` and `docs/licensing/`.
 
-Exported source revision: 42c7c7f
+Exported source revision: e4848a3

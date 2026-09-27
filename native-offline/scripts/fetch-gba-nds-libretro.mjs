@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const scriptDirectory = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const nativeRoot = resolve(scriptDirectory, "..");
 const destination = resolve(nativeRoot, "vendor", "libretro", "macos-arm64");
+const melondsSourceLock = JSON.parse(await readFile(join(nativeRoot, "shared/libretro-source-lock.json"), "utf8")).melondsdsMacos;
 
 const mgba = {
   system: "gba",
@@ -22,22 +23,8 @@ const mgba = {
 const melonds = {
   system: "nds",
   engine: "melonDS DS libretro",
-  version: "1.3.1",
-  // The creator's v1.3.1 macOS release was built with macOS 26 as its
-  // deployment target. This compatible arm64 buildbot artifact reports the
-  // same 1.3.1 core and targets macOS 11. The buildbot ZIP envelope changes
-  // while the core payload stays byte-identical; verify the extracted core
-  // SHA-256 below instead of pinning incidental ZIP metadata.
-  archiveName: "melondsds_libretro.dylib.zip",
-  archiveUrl: "https://buildbot.libretro.com/nightly/apple/osx/arm64/latest/melondsds_libretro.dylib.zip",
-  archiveCorePath: "melondsds_libretro.dylib",
+  ...melondsSourceLock,
   coreName: "melondsds_libretro.dylib",
-  coreSha256: "028c1d65db6eeafef33b29a90018fe037fcf0f643965031f3eb4a8b1ca23b57a",
-  licenseName: "melonDS-DS-GPL-3.0-or-later.txt",
-  licenseUrl: "https://raw.githubusercontent.com/JesseTG/melonds-ds/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/LICENSE",
-  licenseSha256: "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-  sourceUrl: "https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
-  license: "GPL-3.0-or-later",
 };
 
 const sha256 = data => createHash("sha256").update(data).digest("hex");
@@ -50,25 +37,76 @@ async function verifiedFile(path, expectedHash) {
   }
 }
 
-async function extractFile(archivePath, destinationPath, relativePath) {
-  await execFileAsync("/usr/bin/unzip", ["-p", archivePath, relativePath], { encoding: "buffer", maxBuffer: 16 * 1024 * 1024 })
-    .then(({ stdout }) => writeFile(destinationPath, stdout));
-}
-
 async function hasVerifiedArtifacts() {
-  let mgbaVerified = false;
+  let manifest;
   try {
-    const manifest = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
-    const entry = manifest.cores.find(core => core.system === "gba");
-    mgbaVerified = entry?.sourceRevision === mgba.sourceRevision
-      && entry?.sourceSha256 === mgba.sourceSha256
-      && await verifiedFile(join(destination, mgba.coreName), entry.coreSha256);
-  } catch {}
-  return mgbaVerified && (await Promise.all([
+    manifest = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  const mgbaEntry = manifest.cores.find(core => core.system === "gba");
+  const melondsEntry = manifest.cores.find(core => core.system === "nds");
+  const mgbaVerified = mgbaEntry?.sourceRevision === mgba.sourceRevision
+    && mgbaEntry?.sourceSha256 === mgba.sourceSha256
+    && await verifiedFile(join(destination, mgba.coreName), mgbaEntry.coreSha256);
+  const melondsVerified = melondsEntry?.version === melonds.version
+    && await verifiedFile(join(destination, melonds.coreName), melondsEntry.coreSha256)
+    && ((melondsEntry.sourceRevision === melonds.sourceRevision && melondsEntry.sourceSha256 === melonds.sourceSha256)
+      || melondsEntry.coreSha256 === melonds.cachedCoreSha256);
+  return mgbaVerified && melondsVerified && (await Promise.all([
     verifiedFile(join(destination, mgba.licenseName), mgba.licenseSha256),
-    verifiedFile(join(destination, melonds.coreName), melonds.coreSha256),
     verifiedFile(join(destination, melonds.licenseName), melonds.licenseSha256),
   ])).every(Boolean);
+}
+
+async function buildPinnedMelondsDsCore(stagingDirectory, temporaryDirectory) {
+  const sourceArchive = join(temporaryDirectory, "melondsds-source.tar.gz");
+  const sourceDirectory = join(temporaryDirectory, "melondsds-source");
+  const buildDirectory = join(temporaryDirectory, "melondsds-build");
+  await mkdir(sourceDirectory);
+  await writeFile(sourceArchive, await fetchVerifiedBytes(
+    melonds.sourceArchiveUrl,
+    melonds.sourceSha256,
+    "melonDS DS source archive",
+  ));
+  await execFileAsync("tar", ["-xzf", sourceArchive, "-C", sourceDirectory, "--strip-components=1"]);
+
+  await execFileAsync("cmake", [
+    "-S", sourceDirectory, "-B", buildDirectory, "-G", "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_OSX_ARCHITECTURES=arm64",
+    `-DCMAKE_OSX_DEPLOYMENT_TARGET=${melonds.deploymentTarget}`,
+    "-DENABLE_OPENGL=ON",
+    "-DENABLE_JIT=ON",
+    "-DBUILD_TESTING=OFF",
+  ], { maxBuffer: 4 * 1024 * 1024 });
+  await execFileAsync("cmake", ["--build", buildDirectory, "--target", "melondsds_libretro", "--parallel", "2"], {
+    maxBuffer: 4 * 1024 * 1024,
+  });
+
+  const corePath = join(buildDirectory, "src", "libretro", melonds.coreName);
+  const coreBytes = await readFile(corePath);
+  if (coreBytes.length < 4096) throw new Error("Pinned melonDS DS build produced an implausibly small libretro core");
+  const fileDescription = (await execFileAsync("file", [corePath])).stdout;
+  if (!/Mach-O 64-bit.*arm64/.test(fileDescription)) throw new Error(`Unexpected melonDS DS binary: ${fileDescription.trim()}`);
+  const loadCommands = (await execFileAsync("otool", ["-l", corePath])).stdout;
+  const minimumVersion = /cmd LC_BUILD_VERSION[\s\S]*?\bminos\s+([0-9.]+)/.exec(loadCommands)?.[1];
+  if (minimumVersion !== melonds.deploymentTarget) {
+    throw new Error(`melonDS DS deployment target mismatch: expected ${melonds.deploymentTarget}, received ${minimumVersion ?? "unknown"}`);
+  }
+  const info = await readFile(join(buildDirectory, "melondsds_libretro.info"), "utf8");
+  if (!info.includes(`display_version = "${melonds.version}"`)) {
+    throw new Error(`melonDS DS source did not build the pinned ${melonds.version} version`);
+  }
+
+  await writeFile(join(stagingDirectory, melonds.coreName), coreBytes);
+  await writeFile(join(stagingDirectory, melonds.licenseName), await fetchVerifiedBytes(
+    melonds.licenseUrl,
+    melonds.licenseSha256,
+    "melonDS DS license",
+  ));
+  const { cachedCoreSha256, ...sourceMetadata } = melonds;
+  return { ...sourceMetadata, coreSha256: sha256(coreBytes), buildMethod: "pinned-source" };
 }
 
 if (process.platform !== "darwin") {
@@ -81,24 +119,19 @@ if (process.arch !== "arm64") {
 }
 
 let mgbaBuild;
+let melondsBuild;
 if (!await hasVerifiedArtifacts()) {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "emulatorrust-gba-nds-"));
   try {
-    const melondsArchive = join(temporaryDirectory, melonds.archiveName);
-    const melondsResponse = await fetch(melonds.archiveUrl);
-    if (!melondsResponse.ok) throw new Error(`melonDS DS libretro archive download returned HTTP ${melondsResponse.status}`);
-    await writeFile(melondsArchive, Buffer.from(await melondsResponse.arrayBuffer()));
-
     const staged = join(temporaryDirectory, "staged");
     await mkdir(staged, { recursive: true });
     mgbaBuild = await buildPinnedMgbaCore(staged, "darwin");
-    await extractFile(melondsArchive, join(staged, melonds.coreName), melonds.archiveCorePath);
-    await writeFile(join(staged, melonds.licenseName), await fetchVerifiedBytes(melonds.licenseUrl, melonds.licenseSha256, "melonDS DS license"));
+    melondsBuild = await buildPinnedMelondsDsCore(staged, temporaryDirectory);
 
     for (const [path, expectedHash, label] of [
       [join(staged, mgba.coreName), mgbaBuild.coreSha256, "mGBA core"],
       [join(staged, mgba.licenseName), mgba.licenseSha256, "mGBA license"],
-      [join(staged, melonds.coreName), melonds.coreSha256, "melonDS DS core"],
+      [join(staged, melonds.coreName), melondsBuild.coreSha256, "melonDS DS core"],
       [join(staged, melonds.licenseName), melonds.licenseSha256, "melonDS DS license"],
     ]) {
       if (!await verifiedFile(path, expectedHash)) throw new Error(`${label} failed its pinned SHA-256 verification.`);
@@ -115,12 +148,13 @@ if (!await hasVerifiedArtifacts()) {
 } else {
   const previous = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
   mgbaBuild = previous.cores.find(core => core.system === "gba");
+  melondsBuild = previous.cores.find(core => core.system === "nds");
 }
 
 const manifest = {
   platform: "macOS arm64",
   presentation: "Vulkan 1.1 -> bundled MoltenVK -> Metal",
-  cores: [{ ...mgba, ...mgbaBuild }, melonds],
+  cores: [{ ...mgba, ...mgbaBuild }, melondsBuild],
 };
 await writeFile(join(destination, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`GBA_NDS_LIBRETRO=${destination}`);
