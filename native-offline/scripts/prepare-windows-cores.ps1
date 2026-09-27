@@ -38,7 +38,7 @@ Copy-Item "$source/LICENSE" "$destination/mGBA-MPL-2.0.txt" -Force
 
 $archive = Join-Path $WorkRoot 'melondsds-v1.3.1-win64.zip'
 $url = 'https://github.com/JesseTG/melonds-ds/releases/download/v1.3.1/melondsds_libretro-win32-x86_64-Release.zip'
-$expected = 'ec7ff94ae5be3a6308859ea33ec63ac9d9b12d940b2c93d012e9502f71e57681'
+$expected = '2babc7b0c5786683e2c4e5e1812a8f67e83fdf1ff60b0ec74cdc1576fcf45498'
 if (-not (Test-Path $archive)) {
   & curl.exe -fL --retry 3 -o $archive $url
   if ($LASTEXITCODE) { throw 'Official melonDS DS release download failed.' }
@@ -51,8 +51,13 @@ try {
   if ($coreEntries.Count -ne 1) { throw 'Expected exactly one Windows melonDS core.' }
   [IO.Compression.ZipFileExtensions]::ExtractToFile($coreEntries[0], "$destination/melondsds_libretro.dll", $true)
 } finally { $zip.Dispose() }
-# Same exact v1.3.1 license already pinned by the existing macOS fetcher.
-$license = Join-Path $nativeRoot 'vendor/libretro/macos-arm64/melonDS-DS-GPL-3.0-or-later.txt'
+# The public source snapshot intentionally excludes platform vendor folders;
+# fetch the license from the pinned upstream source revision instead.
+$licenseUrl = 'https://raw.githubusercontent.com/JesseTG/melonds-ds/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/LICENSE'
+$license = Join-Path $WorkRoot 'melonDS-DS-GPL-3.0-or-later.txt'
+if (-not (Test-Path $license)) {
+  Invoke-WebRequest -Uri $licenseUrl -OutFile $license
+}
 if ((Get-FileHash $license -Algorithm SHA256).Hash.ToLowerInvariant() -ne '3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986') { throw 'melonDS license hash mismatch.' }
 Copy-Item $license "$destination/melonDS-DS-GPL-3.0-or-later.txt" -Force
 $cores = @(

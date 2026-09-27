@@ -44,8 +44,7 @@ object NativeSettingsSchema {
         Definition("autosave-mode", "Auto Save", "emulation", Type.ENUM, "string", listOf("off", "exit", "30", "10", "5"), mapOf("5" to "Every 5 seconds", "10" to "Every 10 seconds", "30" to "Every 30 seconds", "off" to "Off", "exit" to "On game exit"), null, null, null, emptyList(), "native-autosave", "none", null, true, false, true, null),
         Definition("show-fps", "Show FPS", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true, false, true, null),
         Definition("start-fullscreen", "Start fullscreen on launch", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "true", emptyList(), null, "app", null, true, false, true, null),
-        Definition("key-map", "Keyboard map", "controls", Type.STRING, "string", emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false, false, true, null),
-        Definition("lan-sync", "LAN Sync", "network", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, false, false, true, null)
+        Definition("key-map", "Keyboard map", "controls", Type.STRING, "string", emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false, false, true, null)
     )
 
     val graphics: Map<String, List<Definition>> = mapOf(

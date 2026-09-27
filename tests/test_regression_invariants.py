@@ -14,20 +14,6 @@ APP = (ROOT / "app.py").read_text(encoding="utf-8")
 
 
 class RegressionInvariantTests(unittest.TestCase):
-    def test_admin_progress_and_analytics_respect_normal_csp(self):
-        # ROM upload/edit and bulk upload were removed from the dashboard.
-        self.assertNotIn('id="adminProgress" class="upload-progress"', APP)
-        self.assertNotIn('id="bulkProgress" class="upload-progress"', APP)
-        # The dashboard tracks visits and app downloads only; play/player
-        # analytics must not return.
-        self.assertIn('class="reference-line-chart"', APP)
-        self.assertIn('data-series=', APP)
-        self.assertIn('"Total Visits"', APP)
-        self.assertIn('"App Downloads"', APP)
-        self.assertIn('class="range-selector"', APP)
-        self.assertNotIn('most-played', APP)
-        self.assertNotIn('style="height:', APP)
-        self.assertNotIn("bar.style.width", SITE_JS)
 
     def test_nds_uses_melonds_auto_start_and_touch_bridge(self):
         self.assertIn('nds:"melonds"', PLAYER)
@@ -105,6 +91,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('an3-arcade-pwa-v31-__ASSET_VERSION__', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/player-runtime.js', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/nds-touch.js', SERVICE_WORKER)
+        self.assertIn('/static/v/__ASSET_VERSION__/local-save-recovery.js', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/offline.js', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/site.css', SERVICE_WORKER)
         self.assertIn('/static/default-cover.webp', SERVICE_WORKER)
@@ -241,14 +228,10 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('the toolbar/menu remains above the', PLAYER)
         self.assertIn('"lostpointercapture"', PLAYER)
         self.assertIn('then reopen the player menu and choose Done to lock their positions.', PLAYER)
-        self.assertIn('id="castScreen"', APP)
-        self.assertIn('id="castScreen"', OFFLINE)
-        self.assertIn('const castGameToTv=async()=>', PLAYER)
-        self.assertIn('canvas.captureStream(60)', PLAYER)
-        self.assertIn('video.remote.watchAvailability', PLAYER)
-        self.assertIn('stage?.classList.add("tv-console-mode")', PLAYER)
-        self.assertIn('cast-console-show', PLAYER)
-        self.assertIn('.player-stage-ui.tv-console-mode #game', (ROOT / "static/site.css").read_text(encoding="utf-8"))
+        for source in (APP, OFFLINE, PLAYER, (ROOT / "static/site.css").read_text(encoding="utf-8")):
+            self.assertNotIn("castScreen", source)
+            self.assertNotIn("watchAvailability", source)
+            self.assertNotIn("tv-console-mode", source)
 
     def test_speed_controls_are_session_only_and_runtime_gated(self):
         self.assertIn('window.EJS_hideSettings = ["fastForward","ff-ratio","slowMotion","sm-ratio"];', PLAYER)
@@ -388,7 +371,8 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('const scheduleLibraryVersionCheck = (delay = 60000)', SITE_JS)
         self.assertIn('protocol_version = "HTTP/1.1"', APP)
         self.assertIn('conn.execute("PRAGMA journal_mode=WAL")', APP)
-        self.assertIn('public_resource = (', APP)
+        self.assertNotIn('public_resource = (', APP)
+        self.assertNotIn('track_visit(', APP)
         self.assertIn('public,max-age=31536000,immutable', APP)
 
     def test_nds_delivery_keeps_original_archive_and_range_support(self):

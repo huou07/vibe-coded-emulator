@@ -8,12 +8,12 @@ silently reintroduce a prior defect.
 """
 
 from pathlib import Path
-import plistlib
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = (ROOT / "native-offline/src-tauri/src/azahar_host.mm").read_text(encoding="utf-8")
+PERSISTENCE = (ROOT / "native-offline/src-tauri/src/save_persistence_worker.h").read_text(encoding="utf-8")
 OPTIONS = (ROOT / "native-offline/native-runtime/core/core_options.h").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/src-tauri/src/vulkan_frontend.mm").read_text(encoding="utf-8")
 BOOTSTRAP = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
@@ -23,9 +23,6 @@ RUNTIME = (ROOT / "static/player-runtime.js").read_text(encoding="utf-8")
 NATIVE_WEB_INDEX = (ROOT / "native-offline/web/index.html").read_text(encoding="utf-8")
 TAURI = (ROOT / "native-offline/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
 MAIN_ACTIVITY = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt").read_text(encoding="utf-8")
-CONTROLLER_CLIENT = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt").read_text(encoding="utf-8")
-LAN_PEER = (ROOT / "native-offline/src-tauri/src/lan_peer.rs").read_text(encoding="utf-8")
-SYNC_PEER = (ROOT / "native-offline/src-tauri/src/sync_peer.rs").read_text(encoding="utf-8")
 NATIVE_APP = (ROOT / "native-offline/web/native-app.js").read_text(encoding="utf-8")
 TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
 
@@ -204,70 +201,90 @@ class NativeRegressionGuardTests(unittest.TestCase):
         toggle = HOST.split("- (void)toggleMenu:(id)sender {", 1)[1].split("\n}", 1)[0]
         self.assertIn("set_nds_touch_pressed(false)", toggle)
 
-    def test_direct_lan_android_navigation_keeps_the_tauri_origin(self):
+    def test_local_gamepad_navigates_appkit_menu_without_leaking_core_input(self):
+        draw = HOST[HOST.index("- (void)drawInMTKView:"):HOST.index("- (void)mtkView:")]
+        self.assertLess(draw.index("handleLocalMenuButtons"), draw.index("host->draw()"))
+        self.assertIn("host->local_input_buttons()", draw)
+
+        menu = HOST.split("- (void)handleLocalMenuButtons:(uint32_t)buttons {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("buttons & ~_local_menu_buttons", menu)
+        self.assertIn("Button bit positions match the libretro joypad IDs used by local keys", menu)
+        for name, bit in (("Up", 4), ("Down", 5), ("Left", 6), ("Right", 7),
+                          ("A", 8), ("B", 0), ("Start", 3)):
+            self.assertIn(f"kMenu{name} = 1u << {bit}", menu)
+        self.assertIn("closeMenuDiscardingDraft", menu)
+        self.assertIn("moveMenuFocusBy", menu)
+        self.assertIn("adjustMenuFocusBy", menu)
+        self.assertIn("activateMenuFocus", menu)
+        self.assertIn("_menu_input_suppressed_until_release", menu)
+
+        input_state = HOST.split("int16_t input_state(unsigned device", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("menu_navigation_active_.load", input_state)
+        self.assertIn("return 0", input_state)
+        close = HOST.split("- (void)closeMenuDiscardingDraft {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("_local_menu_buttons != 0", close)
+        self.assertIn("set_menu_navigation_active(_menu_input_suppressed_until_release)", close)
+
+    def test_android_main_activity_keeps_the_tauri_origin(self):
         # A raw WebView reload bypasses Tauri's dispatcher and leaves the
         # page at about:blank, so every native command is rejected by ACL.
         self.assertIn("super.onWebViewCreate(webView)", MAIN_ACTIVITY)
         self.assertNotIn("webView.loadUrl", MAIN_ACTIVITY)
         self.assertIn("WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)", MAIN_ACTIVITY)
 
-    def test_direct_lan_discovery_uses_one_reusable_bound_socket(self):
-        self.assertIn("pub fn discovery_socket", LAN_PEER)
-        self.assertIn("socket.set_reuse_address(true)", LAN_PEER)
-        self.assertIn("socket.set_reuse_port(true)", LAN_PEER)
-        self.assertIn("discovery_socket(DISCOVERY_PORT)", SYNC_PEER)
+    def test_local_rom_catalog_survives_without_sync_runtime(self):
+        build = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
+        native_roms = (ROOT / "native-offline/src-tauri/src/native_rom_library.rs").read_text(encoding="utf-8")
+        self.assertIn("native_rom_library_manifest", TAURI_LIB)
+        self.assertIn('"native_rom_library_manifest"', build)
+        self.assertIn("native_rom_library::manifest", TAURI_LIB)
+        self.assertIn('invoke("native_rom_library_manifest",{})', OFFLINE)
+        self.assertIn("pub fn manifest(app_dir", native_roms)
+        self.assertNotIn("sync_peer", TAURI_LIB)
+        self.assertNotIn("native_sync_", TAURI_LIB)
 
-    def test_direct_lan_sync_start_does_not_reenter_the_runtime_lock(self):
-        existing = SYNC_PEER[SYNC_PEER.index("if let Some(existing) = slot.as_ref()") : SYNC_PEER.index("fs::create_dir_all", SYNC_PEER.index("if let Some(existing) = slot.as_ref()"))]
-        self.assertIn("drop(slot);", existing)
-        self.assertIn("return Ok(status());", existing)
-
-    def test_direct_lan_reconnect_respects_the_foreground_opt_in(self):
-        self.assertIn("if (status.running && window.AN3NativeSync.backgroundEnabled())", NATIVE_APP)
-
-    def test_direct_lan_sync_accepts_blocking_handshake_sockets(self):
-        listener = SYNC_PEER[SYNC_PEER.index("fn listener_loop") : SYNC_PEER.index("fn handshake_status")]
-        self.assertIn("listener.set_nonblocking(true)", listener)
-        self.assertIn("stream.set_nonblocking(false)", listener)
-        self.assertLess(listener.index("stream.set_nonblocking(false)"), listener.index("handle_client"))
-
-    def test_sync_loopback_tests_use_an_ephemeral_local_listener(self):
-        self.assertIn("start_with_listener(app_dir, mode, SYNC_PORT, true)", SYNC_PEER)
-        self.assertIn("start_with_listener(app_dir, mode, 0, false)", SYNC_PEER)
-        listener = SYNC_PEER[SYNC_PEER.index("fn listener_loop") : SYNC_PEER.index("fn discover(")]
-        self.assertIn("Ipv4Addr::LOCALHOST", listener)
-        self.assertIn("runtime.bind_port", SYNC_PEER[SYNC_PEER.index("fn discovery_loop") : SYNC_PEER.index("fn listener_loop")])
-
-    def test_macos_local_network_discovery_declares_privacy_usage(self):
-        info = plistlib.loads((ROOT / "native-offline/src-tauri/Info.plist").read_bytes())
-        description = info.get("NSLocalNetworkUsageDescription", "")
-        self.assertIn("discover", description.lower())
-        self.assertIn("save synchronization", description.lower())
-        self.assertIn("phone-controller", description.lower())
-
-    def test_remote_quick_state_actions_share_the_core_frame_lock(self):
-        draw = HOST[HOST.index("void draw()") : HOST.index("void restore_save_ram()")]
+    def test_core_save_snapshots_stay_at_the_frame_boundary_without_frame_path_file_io(self):
+        start = HOST.index("void draw()")
+        draw = HOST[start : HOST.index("\n  private:", start)]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", draw)
-        self.assertIn("save_auto_state_locked(ignored)", draw)
-        self.assertIn("flush_save_ram_locked(save_error)", draw)
+        self.assertIn("save_auto_state_locked(save_error, false)", draw)
+        self.assertIn("flush_save_ram_locked(save_error, false)", draw)
+        for operation in (
+            "write_bytes_atomically",
+            "write_and_wait",
+            "persistence_writer_.flush",
+            "std::ofstream",
+            "::open",
+            "::fsync",
+            "::rename",
+        ):
+            self.assertNotIn(operation, draw)
         stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", stop)
-        self.assertIn("flush_save_ram_locked(save_error)", stop)
+        self.assertIn("save_auto_state_locked(save_error, true)", stop)
+        self.assertIn("flush_save_ram_locked(save_error, true)", stop)
+        self.assertIn("persistence_writer_.flush(persistence_error)", stop)
+        self.assertLess(stop.index("save_auto_state_locked(save_error, true)"), stop.index("running_ = false"))
+        self.assertLess(stop.index("flush_save_ram_locked(save_error, true)"), stop.index("persistence_writer_.flush(persistence_error)"))
+        self.assertLess(stop.index("persistence_writer_.flush(persistence_error)"), stop.index("core_.unload_game()"))
 
-    def test_controller_native_actions_run_on_ui_queue_and_stop_off_thread(self):
-        utility = HOST[HOST.index('extern "C" int an3_native_apply_utility_at_slot') : HOST.index('extern "C" int an3_native_apply_utility(')]
-        self.assertIn("[NSThread isMainThread]", utility)
-        self.assertIn("dispatch_async(dispatch_get_main_queue()", utility)
-        self.assertIn("result->completed.wait(lock, [&] { return result->done; })", utility)
-        self.assertIn("async fn native_controller_lan_stop()", TAURI_LIB)
-        self.assertIn("spawn_blocking(lan_host::stop)", TAURI_LIB)
-        self.assertIn("spawn_blocking(controller_host::stop)", TAURI_LIB)
-        self.assertIn("spawn_blocking(|| {\n                    lan_host::stop();", TAURI_LIB)
-
-    def test_android_controller_clears_paired_state_after_remote_disconnect(self):
-        self.assertIn("if (!stopping.get()) {\n                    paired = false", CONTROLLER_CLIENT)
-        self.assertIn("release()", CONTROLLER_CLIENT)
-
+    def test_native_save_file_operations_run_on_the_bounded_persistence_worker(self):
+        self.assertIn('#include "save_persistence_worker.h"', HOST)
+        self.assertIn("SavePersistenceWorker persistence_writer_", HOST)
+        self.assertIn("persistence_writer_.write_async(path", HOST)
+        self.assertIn("persistence_writer_.write_and_wait(path", HOST)
+        self.assertIn("std::thread worker_", PERSISTENCE)
+        self.assertIn("constexpr size_t kMaxPendingPaths = 16", PERSISTENCE)
+        self.assertIn("static bool write_bytes_atomically", PERSISTENCE)
+        self.assertIn("write_bytes_atomically(job.path", PERSISTENCE)
+        writer_start = PERSISTENCE.index("static bool write_bytes_atomically")
+        writer_end = PERSISTENCE.index("    void complete(", writer_start)
+        writer = PERSISTENCE[writer_start:writer_end]
+        self.assertIn('path.string() + ".tmp"', writer)
+        for operation in ("create_directories", "std::ofstream", "output.flush()", "::open", "::fsync", "::rename"):
+            self.assertIn(operation, writer)
+        self.assertLess(writer.index("output.flush()"), writer.index("::fsync"))
+        self.assertLess(writer.index("::fsync"), writer.index("::rename"))
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,8 +10,7 @@ model that fits the existing server:
 * the capability is an opaque, server-issued, finite-lifetime, finite-use
   bearer token that carries no MAC/device-fingerprint/account identity;
 * a capability submission is sanitized and persisted with ``user_id`` NULL;
-* an absent, spent, or expired capability is rejected;
-* the existing cookie + CSRF user path keeps working unchanged.
+* an absent, spent, or expired capability is rejected.
 """
 
 import hashlib
@@ -47,7 +46,6 @@ class NativeSupportApiTests(unittest.TestCase):
             patch.object(app, "COVER_DIR", os.path.join(root, "covers")),
             patch.object(app, "SCREENSHOT_DIR", os.path.join(root, "screenshots")),
             patch.object(app, "CUSTOM_DIR", os.path.join(root, "custom")),
-            patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
         ]
@@ -309,58 +307,6 @@ class NativeSupportApiTests(unittest.TestCase):
                 headers={"Origin": ALLOWED_ORIGIN, bug_report.SUPPORT_CAPABILITY_HEADER: token},
             )
             self.assertEqual(status, 201, data)
-
-    # -- existing account path is untouched ----------------------------------
-
-    def register(self, name):
-        """Register a user and return their session cookie."""
-
-        status, received, raw = self.request(
-            "POST",
-            "/api/register",
-            {"name": name, "display_name": name, "password": name + "-pass-123",
-             "confirm": name + "-pass-123"},
-        )
-        self.assertEqual(status, 201, raw)
-        for header, value in received.items():
-            if header.lower() == "set-cookie" and "an3_session=" in value:
-                return value.split(";", 1)[0]
-        self.fail("registration did not set a session cookie")
-
-    def csrf(self, cookie):
-        status, _, page = self.request("GET", "/bug-report", headers={"Cookie": cookie})
-        self.assertEqual(status, 200)
-        import re
-
-        match = re.search(rb'<meta name="csrf-token" content="([^"]+)"', page)
-        self.assertIsNotNone(match)
-        return match.group(1).decode()
-
-    def test_authenticated_cookie_csrf_path_still_works(self):
-        cookie = self.register("support-user")
-        status, _, data = self.json(
-            "POST",
-            "/api/bug-reports",
-            self.payload("account report"),
-            headers={"Cookie": cookie, "X-CSRF-Token": self.csrf(cookie)},
-        )
-        self.assertEqual(status, 201, data)
-        with app.db() as connection:
-            row = connection.execute(
-                "SELECT user_id FROM bug_reports WHERE id=?", (data["id"],)
-            ).fetchone()
-        self.assertIsNotNone(row["user_id"])
-
-    def test_authenticated_submit_still_requires_csrf(self):
-        cookie = self.register("support-csrf")
-        status, _, _ = self.json(
-            "POST",
-            "/api/bug-reports",
-            self.payload("no csrf"),
-            headers={"Cookie": cookie},
-        )
-        self.assertEqual(status, 403)
-
 
 if __name__ == "__main__":
     unittest.main()

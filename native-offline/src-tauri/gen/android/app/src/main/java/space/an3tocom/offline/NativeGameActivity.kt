@@ -4,17 +4,10 @@ package space.an3tocom.offline
 
 import android.app.Activity
 import android.content.ComponentCallbacks2
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
-import android.os.Message
-import android.os.Messenger
-import android.os.RemoteException
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -25,7 +18,6 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
 import java.io.File
-import kotlin.math.roundToInt
 
 /** The WebView owns the library only. This activity owns native gameplay. */
 class NativeGameActivity : Activity(), SurfaceHolder.Callback {
@@ -114,96 +106,6 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         else nativeAnalog(x, y)
     }
 
-    // Phone controller: the host runs in the main process (library Settings).
-    // This isolated :game process binds to it and receives resolved input.
-    @Volatile private var controllerRunning = false
-    @Volatile private var controllerStatusLabel = "Off"
-    private var controllerService: Messenger? = null
-    private var lastMenuOpen = false
-
-    private val gameMessenger = Messenger(Handler(Looper.getMainLooper()) { message ->
-        when (message.what) {
-            ControllerHostService.MSG_INPUT -> {
-                val data = message.data ?: Bundle()
-                when (data.getString(ControllerHostService.KEY_KIND)) {
-                    "button" -> overlay.applyRemoteButton(
-                        data.getInt(ControllerHostService.KEY_BUTTON, -1),
-                        data.getBoolean(ControllerHostService.KEY_PRESSED),
-                    )
-                    "analog" -> overlay.applyRemoteAnalog(
-                        data.getFloat(ControllerHostService.KEY_X),
-                        data.getFloat(ControllerHostService.KEY_Y),
-                    )
-                    "utility" -> data.getString(ControllerHostService.KEY_ACTION)?.let {
-                        overlay.utility(it, data.getInt(ControllerHostService.KEY_SLOT, 1))
-                    }
-                    "touch" -> {
-                        if (!overlay.isMenuOpen() && system != "switch" && system != "gba") {
-                            val pressed = data.getBoolean(ControllerHostService.KEY_PRESSED)
-                            nativePointer(
-                                (data.getFloat(ControllerHostService.KEY_X) * 255f).roundToInt().coerceIn(0, 255),
-                                (data.getFloat(ControllerHostService.KEY_Y) * 191f).roundToInt().coerceIn(0, 191),
-                                pressed,
-                            )
-                        }
-                    }
-                }
-            }
-            ControllerHostService.MSG_STATUS -> {
-                val data = message.data ?: Bundle()
-                controllerRunning = data.getBoolean(ControllerHostService.KEY_RUNNING)
-                controllerStatusLabel = data.getString(ControllerHostService.KEY_STATUS) ?: "Off"
-            }
-        }
-        true
-    })
-
-    private val controllerBridge = object : NativeGameOverlay.ControllerBridge {
-        override fun isRunning(): Boolean = controllerRunning
-        override fun statusText(): String = controllerStatusLabel
-        override fun start() {
-            sendToControllerService(ControllerHostService.MSG_START)
-        }
-        override fun stop() {
-            sendToControllerService(ControllerHostService.MSG_STOP)
-        }
-    }
-
-    private val controllerConnection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            controllerService = Messenger(service)
-            val attach = Message.obtain(null, ControllerHostService.MSG_ATTACH).apply {
-                replyTo = gameMessenger
-                data = Bundle().apply {
-                    putBoolean(ControllerHostService.KEY_MENU, overlay.isMenuOpen())
-                    putString(ControllerHostService.KEY_SYSTEM, system)
-                }
-            }
-            try { controllerService?.send(attach) } catch (_: RemoteException) { controllerService = null }
-        }
-        override fun onServiceDisconnected(name: ComponentName?) { controllerService = null }
-    }
-
-    private val menuStateTick = object : Runnable {
-        override fun run() {
-            val open = overlay.isMenuOpen()
-            if (open != lastMenuOpen) {
-                lastMenuOpen = open
-                if (open) { overlay.releaseRemoteInput(); nativeCancelPointer() }
-                sendToControllerService(ControllerHostService.MSG_MENU, Bundle().apply { putBoolean(ControllerHostService.KEY_MENU, open) })
-            }
-            handler.postDelayed(this, 250)
-        }
-    }
-
-    private fun sendToControllerService(what: Int, data: Bundle? = null) {
-        val service = controllerService ?: return
-        try {
-            service.send(Message.obtain(null, what).apply { this.data = data })
-        } catch (_: RemoteException) {
-            controllerService = null
-        }
-    }
     private var pointerId = -1
     private var layout = "left-right"
     private var backend = "auto"
@@ -260,9 +162,6 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
             {x,y -> setVirtualDirectionalInput(x,y)},
             {applySavedSettings()})
         root.addView(overlay,FrameLayout.LayoutParams(-1,-1))
-        overlay.controllerBridge = controllerBridge
-        bindService(Intent(this, ControllerHostService::class.java), controllerConnection, Context.BIND_AUTO_CREATE)
-        handler.post(menuStateTick)
         setContentView(root)
         if (!preferences.getBoolean("start-fullscreen",true)) window.decorView.systemUiVisibility=View.SYSTEM_UI_FLAG_VISIBLE
         handler.post(tick)
@@ -343,11 +242,7 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
     override fun onLowMemory() { super.onLowMemory(); if (active) commandWhenReady("save", "auto") }
     override fun onDestroy() {
         handler.removeCallbacks(tick)
-        handler.removeCallbacks(menuStateTick)
-        stopController()
         nativeCancelPointer()
-        sendToControllerService(ControllerHostService.MSG_DETACH)
-        try { unbindService(controllerConnection) } catch (_: IllegalArgumentException) {}
         if (active) {
             if (system == "switch") {
                 nativeEdenStop(edenHandle)
@@ -363,8 +258,6 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_RESUMED, surfaceStarted)
     }
-
-    private fun stopController() { try { overlay.stopController() } catch (_: Exception) {} }
 
     private fun releasePointer(cancel: Boolean = true) { if (active) {if(cancel)nativeCancelPointer() else nativePointer(0,0,false)}; pointerId = -1 }
     private fun touch(event: MotionEvent): Boolean {

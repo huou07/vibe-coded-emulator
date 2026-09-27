@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Own the bundled portable player. No shell, external emulator lookup, or
 //! browser frame transport participates in native Windows gameplay.
-use super::{NativeCapabilities, NativeInput, NativeStart};
+use super::{NativeCapabilities, NativeStart};
 use crate::{native_rom_path, validate_rom_id};
 use std::{fs, io::{BufRead, BufReader, Write}, os::windows::process::CommandExt,
     path::PathBuf, process::{Child, Command, Stdio}, sync::Mutex, time::{Duration, Instant}};
 use tauri::{AppHandle, Manager};
 
 static SESSION: Mutex<Option<Child>> = Mutex::new(None);
-static ACTIVE_SYSTEM: Mutex<Option<String>> = Mutex::new(None);
 
 fn runtime_path(app: &AppHandle) -> Result<PathBuf, String> {
     let bundled = app.path().resource_dir().map_err(|e| e.to_string())?
@@ -40,7 +39,6 @@ pub(super) fn capabilities(app: &AppHandle) -> Result<NativeCapabilities, String
 }
 
 pub(super) fn stop() -> Result<(), String> {
-    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = None; }
     let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
     if let Some(mut child) = session.take() {
         if let Some(mut input) = child.stdin.take() { let _ = writeln!(input, "QUIT"); }
@@ -58,7 +56,6 @@ pub(super) fn stop() -> Result<(), String> {
 }
 
 pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>) -> Result<NativeStart, String> {
-    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = Some(system.to_string()); }
     validate_rom_id(rom_id)?;
     let core = super::native_core(system)?;
     let runtime = runtime_path(app)?;
@@ -103,47 +100,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     }
 }
 
-pub(super) fn input(value: NativeInput) -> Result<(), String> {
-    let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
-    if let Some(pipe) = session.as_mut().and_then(|child| child.stdin.as_mut()) {
-        writeln!(pipe,"INPUT {} {} {} {} {} {}", value.buttons, value.circle_x, value.circle_y,
-            value.touch_x, value.touch_y, u8::from(value.touch_pressed)).map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
-/// Send one canonical Phone Controller utility action to the bundled player
-/// over the private `--control-stdin` channel. The player maps the command onto
-/// its existing quick-save/speed/menu operations; an unknown action is rejected
-/// before anything is written.
-pub(super) fn utility(action: &str, slot: u8) -> Result<(), String> {
-    let command = match action {
-        "QUICK_SAVE" | "QUICK_LOAD" | "SPEED_UP" | "SPEED_DOWN" | "OPEN_MENU" => action,
-        _ => {
-            return Err(format!(
-                "The desktop player does not support the '{action}' utility action."
-            ))
-        }
-    };
-    let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
-    let pipe = session
-        .as_mut()
-        .and_then(|child| child.stdin.as_mut())
-        .ok_or_else(|| "No native game is running.".to_string())?;
-    if matches!(command, "QUICK_SAVE" | "QUICK_LOAD") {
-        writeln!(pipe, "{command} {slot}").map_err(|error| error.to_string())?;
-    } else {
-        writeln!(pipe, "{command}").map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
 /// True while the native player child process is still alive.
-/// The system the active native game is running, if any.
-pub(super) fn active_system() -> Option<String> {
-    ACTIVE_SYSTEM.lock().ok().and_then(|value| value.clone())
-}
-
 pub(super) fn running() -> bool {
     let Ok(mut session) = SESSION.lock() else { return false };
     match session.as_mut() {

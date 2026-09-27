@@ -240,26 +240,6 @@
       "pinned": false,
       "editable": true,
       "storageKey": null
-    },
-    {
-      "id": "lan-sync",
-      "label": "LAN Sync",
-      "category": "network",
-      "type": "bool",
-      "storage": "bool",
-      "values": [],
-      "labels": {},
-      "min": null,
-      "max": null,
-      "default": "false",
-      "legacyKeys": [],
-      "legacyResolve": null,
-      "restart": "none",
-      "note": null,
-      "external": false,
-      "pinned": false,
-      "editable": true,
-      "storageKey": null
     }
   ],
   "graphics": {

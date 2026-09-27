@@ -3,18 +3,12 @@
 #[cfg(not(mobile))]
 use include_dir::{include_dir, Dir};
 mod azahar;
-mod controller_host;
-mod host_actions;
 mod hosted_frame;
-// Debug-only Track B1 latency instrumentation. Inert unless explicitly started.
-mod latency;
-mod lan_peer;
-mod lan_host;
-mod sync_peer;
+mod native_rom_library;
 mod switch_companion;
 // Test-only structured UI bridge; inert unless the `ui-control` feature is on.
 mod ui_control;
-use azahar::{native_capabilities, set_native_input, start_native_game, stop_native_game};
+use azahar::{native_capabilities, start_native_game, stop_native_game};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -646,10 +640,10 @@ fn import_native_rom(
         .ok_or_else(|| "The selected ROM has no usable filename".to_string())?
         .to_string();
     let rom_hash = file_sha256(&destination)?;
-    // Seed the sync content-identity cache with the import-time hash so the
-    // first Sync operation reuses it instead of re-hashing the whole file.
+    // Seed the local library identity cache with the import-time hash so the
+    // next library refresh does not re-hash the whole file.
     if let Some(app_dir) = directory.parent() {
-        sync_peer::prime_content_hash(app_dir, &destination, &rom_hash);
+        native_rom_library::prime_content_hash(app_dir, &destination, &rom_hash);
     }
     Ok(ImportedNativeRom {
         url: format!("/_an3/rom/{rom_id}.{extension}"),
@@ -705,224 +699,16 @@ async fn pick_and_import_native_rom(
     Ok(Some(imported?))
 }
 
-#[tauri::command]
-async fn native_controller_start(base_url: Option<String>) -> Result<controller_host::ControllerSession, String> {
-    tauri::async_runtime::spawn_blocking(move || controller_host::start(base_url.unwrap_or_default()))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_controller_stop() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(controller_host::stop)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn native_controller_status() -> controller_host::ControllerStatus {
-    controller_host::status()
-}
-
-#[tauri::command]
-async fn native_controller_lan_start() -> Result<lan_host::LanStatus, String> {
-    tauri::async_runtime::spawn_blocking(lan_host::start)
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-fn native_controller_lan_join(code: String) -> Result<lan_host::LanStatus, String> {
-    lan_host::join_async(code)
-}
-
-#[tauri::command]
-fn native_controller_lan_send(state: serde_json::Value) -> Result<lan_host::LanStatus, String> {
-    lan_host::send_state(state)
-}
-
-#[tauri::command]
-async fn native_controller_lan_stop() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(lan_host::stop)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn native_controller_lan_status() -> lan_host::LanStatus {
-    lan_host::status()
-}
-
-#[tauri::command]
-fn native_controller_lan_refresh() -> lan_host::LanStatus {
-    lan_host::refresh_code()
-}
-
-/// Track B1 debug-only latency snapshot. Returns an empty report unless a run
-/// was explicitly started, so no product path ever reports fictitious numbers.
-#[tauri::command]
-fn native_latency_snapshot() -> serde_json::Value {
-    let samples = latency::snapshot();
-    let input_to_frame: Vec<u64> = samples.iter().filter_map(latency::Sample::input_to_frame_ns).collect();
-    serde_json::json!({
-        "enabled": latency::is_enabled(),
-        "sampleCount": samples.len(),
-        "total": latency::samples_total(),
-        "p50Ns": latency::input_to_frame_percentile(50),
-        "p95Ns": latency::input_to_frame_percentile(95),
-        "p99Ns": latency::input_to_frame_percentile(99),
-        "intervals": input_to_frame.len(),
-    })
-}
-
-/// Start a bounded debug-only latency run. Returns false when one is already
-/// active so a caller cannot silently clear another run's samples.
-#[tauri::command]
-fn native_latency_start(capacity: Option<usize>) -> bool {
-    latency::start(capacity.unwrap_or(latency::MAX_SAMPLES))
-}
-
-/// Stop the latency run and return the retained samples plus the drop count.
-#[tauri::command]
-fn native_latency_stop() -> serde_json::Value {
-    let (samples, dropped) = latency::stop();
-    let report: Vec<serde_json::Value> = samples
-        .iter()
-        .map(|sample| {
-            serde_json::json!({
-                "sequence": sample.sequence,
-                "phoneT0": sample.phone_t0,
-                "hostProcessingNs": sample.host_processing_ns(),
-                "inputToFrameNs": sample.input_to_frame_ns(),
-                "framesToApply": sample.frames_to_apply(),
-            })
-        })
-        .collect();
-    serde_json::json!({ "samples": report, "dropped": dropped })
-}
-
-fn sync_app_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+fn native_app_data_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
         .app_data_dir()
-        .map_err(|error| format!("Cannot find native sync storage: {error}"))
+        .map_err(|error| format!("Cannot find native app storage: {error}"))
 }
 
 #[tauri::command]
-async fn native_sync_start(app: AppHandle, mode: String) -> Result<sync_peer::SyncStatus, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::start(directory, mode))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_join(app: AppHandle, code: String, mode: String, peer_id: Option<String>) -> Result<sync_peer::SyncStatus, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        sync_peer::start(directory, mode.clone())?;
-        sync_peer::join_async(code, mode, peer_id)
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-fn native_sync_status() -> sync_peer::SyncStatus {
-    sync_peer::status()
-}
-
-#[tauri::command]
-fn native_sync_stop() {
-    sync_peer::stop();
-}
-
-#[tauri::command]
-fn native_sync_discover() -> Result<Vec<serde_json::Value>, String> {
-    sync_peer::discover_peers()
-}
-
-#[tauri::command]
-fn native_sync_forget(peer_id: String) -> Result<sync_peer::SyncStatus, String> {
-    sync_peer::forget(peer_id)
-}
-
-#[tauri::command]
-fn native_sync_request(method: String, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    sync_peer::request(method, payload)
-}
-
-#[tauri::command]
-fn native_sync_identity() -> Result<serde_json::Value, String> {
-    sync_peer::identity()
-}
-
-#[tauri::command]
-fn native_sync_account_context() -> serde_json::Value {
-    sync_peer::account_context()
-}
-
-#[tauri::command]
-fn native_sync_set_account_proof(proof: String) -> Result<(), String> {
-    sync_peer::set_local_proof(proof)
-}
-
-#[tauri::command]
-fn native_sync_mark_account_verified(peer_id: String, verified: bool) -> Result<sync_peer::SyncStatus, String> {
-    sync_peer::mark_account_verified(peer_id, verified)
-}
-
-#[tauri::command]
-async fn native_sync_game_identity(app: AppHandle, system: String, rom_id: String) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::game_identity(&directory, system, rom_id))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_storage_read(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_read(&directory, payload))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_storage_write(app: AppHandle, payload: serde_json::Value) -> Result<(), String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_write(&directory, payload))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_library_manifest(app: AppHandle) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::library_manifest(&directory))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_library_read_chunk(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::library_read_chunk(&directory, payload))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_library_upload_status(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::library_upload_status(&directory, payload))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-async fn native_sync_library_write_chunk(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    let directory = sync_app_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || sync_peer::library_write_chunk(&directory, payload))
+async fn native_rom_library_manifest(app: AppHandle) -> Result<serde_json::Value, String> {
+    let directory = native_app_data_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || native_rom_library::manifest(&directory))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -1093,8 +879,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let _ = tauri::async_runtime::spawn_blocking(|| {
-                    lan_host::stop();
-                    sync_peer::stop();
                     switch_companion::stop();
                 });
             }
@@ -1112,34 +896,7 @@ pub fn run() {
             native_capabilities,
             start_native_game,
             stop_native_game,
-            set_native_input,
-            native_controller_lan_start,
-            native_controller_lan_join,
-            native_controller_lan_send,
-            native_controller_lan_stop,
-            native_controller_lan_status,
-            native_controller_lan_refresh,
-            native_latency_snapshot,
-            native_latency_start,
-            native_latency_stop,
-            native_sync_start,
-            native_sync_join,
-            native_sync_status,
-            native_sync_stop,
-            native_sync_discover,
-            native_sync_forget,
-            native_sync_request,
-            native_sync_identity,
-            native_sync_account_context,
-            native_sync_set_account_proof,
-            native_sync_mark_account_verified,
-            native_sync_game_identity,
-            native_sync_storage_read,
-            native_sync_storage_write,
-            native_sync_library_manifest,
-            native_sync_library_read_chunk,
-            native_sync_library_upload_status,
-            native_sync_library_write_chunk,
+            native_rom_library_manifest,
             switch_companion_detect,
             switch_companion_launch,
             switch_companion_launch_rom,

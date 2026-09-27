@@ -73,8 +73,7 @@ void usage() {
               << "F1: Cycle layout · F2: Menu · F3: Pad · F4: fullscreen · Esc: close Menu/quit · F5/F9: save/load slot 1\n";
 }
 
-// Map a libretro joypad button name to its id (matches NativeInput /
-// keyboard_button ids used elsewhere in this file).
+// Map a libretro joypad button name to its id for deterministic local tests.
 int joypad_button_id(const std::string& name) {
     static const char* names[] = {"B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
                                   "A", "X", "L", "R", "L2", "R2", "L3", "R3"};
@@ -531,30 +530,10 @@ int main(int argc, char** argv) {
     control_callbacks.return_to_library = [&] { running = false; };
     control_callbacks.set_layout = set_layout;
 
-    // Step the emulation speed by one schema step for the Phone Controller.
-    // Reuses the same speed values the companion panel exposes.
-    const auto step_speed = [&](int direction) {
-        static constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
-        int index = 1;
-        for (int step = 0; step < 5; ++step) {
-            if (std::abs(kSpeeds[step] - speed) < 0.001) index = step;
-        }
-        index = std::clamp(index + direction, 0, 4);
-        speed = kSpeeds[index];
-        deadline = std::chrono::steady_clock::now();
-    };
-
-    // Only a private parent-owned pipe enables this channel. It has no TCP
-    // listener, arbitrary paths or commands; SDL/GTK remain input owners.
+    // A private parent-owned pipe carries only QUIT so the app can close the
+    // local player gracefully. Gameplay input remains owned by SDL/GTK.
     struct ParentControl {
         std::atomic<bool> quit{false};
-        std::mutex mutex;
-        bool pending = false;
-        uint32_t buttons = 0;
-        int16_t x = 0, y = 0, tx = 0, ty = 0;
-        bool touched = false;
-        std::string utility;
-        unsigned utility_slot = 1;
     };
     auto parent = std::make_shared<ParentControl>();
     if (options.control_stdin) {
@@ -562,33 +541,6 @@ int main(int argc, char** argv) {
             std::string line;
             while (std::getline(std::cin, line)) {
                 if (line == "QUIT") break;
-                if (line.size() > 160) continue;
-                // Phone Controller one-shot utilities. Only the canonical action
-                // names are accepted; anything else falls through to the INPUT
-                // parser and is ignored.
-                std::istringstream utility_message(line);
-                std::string utility_name;
-                unsigned utility_slot = 1;
-                if (utility_message >> utility_name &&
-                    (utility_name == "QUICK_SAVE" || utility_name == "QUICK_LOAD" || utility_name == "SPEED_UP" || utility_name == "SPEED_DOWN" || utility_name == "OPEN_MENU")) {
-                    std::string extra;
-                    if (utility_message >> extra) {
-                        try { utility_slot = static_cast<unsigned>(std::stoul(extra)); } catch (...) { continue; }
-                    }
-                    if (utility_message >> extra || ((utility_name == "QUICK_SAVE" || utility_name == "QUICK_LOAD") && (utility_slot < 1 || utility_slot > 10))) continue;
-                    std::lock_guard lock(parent->mutex);
-                    parent->utility = utility_name;
-                    parent->utility_slot = utility_slot;
-                    continue;
-                }
-                std::istringstream message(line);
-                std::string command;
-                uint32_t buttons; int x, y, tx, ty, touched;
-                if (!(message >> command >> buttons >> x >> y >> tx >> ty >> touched) || command != "INPUT") continue;
-                if (x < -32767 || x > 32767 || y < -32767 || y > 32767 || tx < -32767 || tx > 32767 || ty < -32767 || ty > 32767 || (touched != 0 && touched != 1)) continue;
-                std::lock_guard lock(parent->mutex);
-                parent->buttons = buttons; parent->x = x; parent->y = y;
-                parent->tx = tx; parent->ty = ty; parent->touched = touched; parent->pending = true;
             }
             parent->quit = true; // Parent exit also closes the native session.
         }).detach();
@@ -612,31 +564,6 @@ int main(int argc, char** argv) {
             std::cout << "AN3_NATIVE_DEVICE " << video_status.device_details << std::endl;
         }
         while (running && host.running() && !parent->quit) {
-            std::string utility;
-            unsigned utility_slot = 1;
-            if (options.control_stdin) {
-                std::lock_guard lock(parent->mutex);
-                if (parent->pending) {
-                    for (unsigned bit = 0; bit < 16; ++bit) host.input().set_button(bit, (parent->buttons & (1u << bit)) != 0);
-                    host.input().set_analog(parent->x, parent->y);
-                    if (parent->touched) host.input().set_pointer(parent->tx, parent->ty, true);
-                    else host.input().cancel_pointer();
-                    parent->pending = false;
-                }
-                utility.swap(parent->utility);
-                utility_slot = parent->utility_slot;
-            }
-            if (!utility.empty()) {
-                if (utility == "QUICK_SAVE") {
-                    runtime_message = host.save_state(utility_slot, error) ? "Quick save completed." : "Quick save failed: " + error;
-                } else if (utility == "QUICK_LOAD") {
-                    runtime_message = host.load_state(utility_slot, error) ? "Quick load completed." : "Quick load failed: " + error;
-                } else if (utility == "SPEED_UP" || utility == "SPEED_DOWN") {
-                    step_speed(utility == "SPEED_UP" ? 1 : -1);
-                } else if (utility == "OPEN_MENU") {
-                    if (controls && !controls->visible()) controls->show();
-                }
-            }
             if (controls) controls->pump();
             SDL_Event event{};
             while (SDL_PollEvent(&event)) {

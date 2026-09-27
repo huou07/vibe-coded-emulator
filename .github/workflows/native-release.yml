@@ -30,28 +30,37 @@ jobs:
   draft-release:
     name: Draft release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - name: Download built installers
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
-      - name: Collect files and labels
-        run: |
-          set -euo pipefail
-          # Each artifact keeps its own directory so its BUILD_LABELS.txt is
-          # preserved instead of being overwritten by a sibling platform.
-          find dist -type f | sort
-          echo '--- labels ---'
-          find dist -name BUILD_LABELS.txt -exec sh -c 'echo "[$1] $(cat "$1")"' _ {} \;
-      - name: Create draft release
+      - name: Collect and create draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # Keep platform packages, checksums, and labels; exclude acceptance
+          # APKs and short-lived emulator diagnostics.
+          while IFS= read -r -d '' label; do
+            platform="$(basename "$(dirname "$label")")"
+            cp "$label" "dist/BUILD_LABELS-${platform}.txt"
+          done < <(find dist -type f -name BUILD_LABELS.txt -print0)
+          mapfile -d '' files < <(find dist -type f \
+            \( -name '*.dmg' -o -name '*.dmg.sha256' \
+            -o -name '*.deb' -o -name '*.deb.sha256' \
+            -o -name '*.flatpak' -o -name '*.flatpak.sha256' \
+            -o -name '*.exe' -o -name '*.exe.sha256' \
+            -o -name '*-android-arm64-staging.apk' -o -name '*-android-arm64-staging.apk.sha256' \
+            -o -name '*-android-arm64-staging.aab' -o -name '*-android-arm64-staging.aab.sha256' \
+            -o -name 'BUILD_LABELS-*.txt' \) -print0 | sort -z)
+          printf '%s\n' "${files[@]}"
+          echo '--- labels ---'
+          find dist -name BUILD_LABELS.txt -exec sh -c 'echo "[$1] $(cat "$1")"' _ {} \;
           cat > release-notes.md <<'NOTES'
           Native installers built from source by GitHub Actions.
 
@@ -63,10 +72,9 @@ jobs:
           `BUILD_LABELS.txt` that records this.
 
           Verify the downloaded files against the adjacent `.sha256` sidecars
-          before running them.
+          before running them. Platform build labels are attached as
+          `BUILD_LABELS-<artifact>.txt` files.
           NOTES
-          shopt -s nullglob
-          files=(dist/*/*)
           ((${#files[@]})) || { echo 'No installer artifacts were downloaded.' >&2; exit 1; }
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \

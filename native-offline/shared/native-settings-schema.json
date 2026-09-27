@@ -127,15 +127,6 @@
       "default": "{}",
       "restart": "none",
       "external": false
-    },
-    {
-      "id": "lan-sync",
-      "label": "LAN Sync",
-      "category": "network",
-      "type": "bool",
-      "default": "false",
-      "restart": "none",
-      "external": false
     }
   ],
   "renderer": {

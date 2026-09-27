@@ -45,7 +45,8 @@ class PackagingImportTests(unittest.TestCase):
     def test_local_imports_are_detected(self):
         modules = local_modules()
         self.assertIn("netcode", modules)
-        self.assertIn("sync_engine", modules)
+        self.assertNotIn("sync_engine", modules)
+        self.assertNotIn("google_sync", modules)
 
     def test_every_local_app_import_is_packaged_for_staging_and_production(self):
         for module in sorted(local_modules()):

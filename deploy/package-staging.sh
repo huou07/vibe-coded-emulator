@@ -50,7 +50,7 @@ COPYFILE_DISABLE=1 tar --no-xattrs \
   --exclude='native-offline/src-tauri/gen/android/app/build' \
   --exclude='native-offline/src-tauri/gen/android/local.properties' \
   --exclude='*.DS_Store' \
-  -cf "$SOURCE_ARCHIVE" -C "$ROOT" app.py bug_report.py netcode.py sync_engine.py qrcodegen.py LICENSE THIRD_PARTY_NOTICES.md static deploy README.md \
+  -cf "$SOURCE_ARCHIVE" -C "$ROOT" app.py bug_report.py netcode.py qrcodegen.py LICENSE THIRD_PARTY_NOTICES.md static deploy README.md \
   Dockerfile.rust-netplay Dockerfile.rust-netplay.dockerignore \
   compose.rust-netplay.staging.yml docs/netplay-staging.md docs/native-offline.md \
   native-offline

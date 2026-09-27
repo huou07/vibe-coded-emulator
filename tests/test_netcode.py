@@ -4,7 +4,6 @@ import threading
 import unittest
 
 import netcode as nc
-import sync_engine as se
 
 
 class Clock:
@@ -19,20 +18,6 @@ class Clock:
 
 
 class CodeTests(unittest.TestCase):
-    def test_pairing_codes_are_six_digits_and_allow_leading_zeroes(self):
-        for _ in range(200):
-            code = nc.generate_pairing_code()
-            self.assertEqual(len(code), 6)
-            self.assertTrue(code.isdigit(), code)
-            self.assertTrue(nc.is_pairing_code(code))
-        # A leading zero is a valid code, and the digit draw is unbiased.
-        self.assertEqual(nc.generate_pairing_code(6, randbelow=lambda n: 0), "000000")
-        self.assertEqual(nc.generate_pairing_code(2, randbelow=lambda n: 9), "99")
-        self.assertFalse(nc.is_pairing_code(""))
-        self.assertFalse(nc.is_pairing_code("ABCD12"))
-        self.assertFalse(nc.is_pairing_code("12345"))
-        self.assertFalse(nc.is_pairing_code("1234567"))
-
     def test_room_codes_avoid_ambiguous_characters_and_have_the_right_length(self):
         code = nc.generate_room_code(8)
         self.assertEqual(len(code), 8)
@@ -46,13 +31,6 @@ class CodeTests(unittest.TestCase):
         self.assertEqual(code, nc.CODE_ALPHABET[0] * 4)
         with self.assertRaises(nc.NetcodeError):
             nc.generate_room_code(0)
-        with self.assertRaises(nc.NetcodeError):
-            nc.generate_pairing_code(0)
-
-    def test_pairing_code_generation_uses_a_secure_ten_way_draw(self):
-        draws = []
-        nc.generate_pairing_code(6, randbelow=lambda n: (draws.append(n), 3)[1])
-        self.assertTrue(draws and all(value == 10 for value in draws), draws)
 
     def test_normalize_code_is_forgiving(self):
         self.assertEqual(nc.normalize_code(" ab-cd 12 "), "ABCD12")
@@ -130,9 +108,9 @@ class RateLimiterTests(unittest.TestCase):
             limiter.check("a")
 
 
-class ControllerWireTests(unittest.TestCase):
+class RoomInputWireTests(unittest.TestCase):
     def test_zero_axes_are_omitted_from_the_wire(self):
-        state = nc.ControllerState(sequence=1, buttons=frozenset({nc.PadButton.A.value}))
+        state = nc.ControllerState(sequence=1, buttons=frozenset({"a"}))
         wire = state.to_wire()
         self.assertNotIn("a", wire)
         self.assertEqual(wire["s"], 1)
@@ -165,112 +143,6 @@ class ControllerWireTests(unittest.TestCase):
         with self.assertRaises(nc.NetcodeError):
             nc.ControllerState.from_wire({"s": 5, "b": [], "t": [0.1]})
 
-    def test_track_b1_capture_time_round_trips_and_is_omitted_at_zero(self):
-        """Track B1: the phone's own capture clock is echoed back unchanged.
-
-        The server must never reinterpret it, so a frame that omits `t0` must
-        not gain one, and a frame that carries it must return the same value.
-        """
-
-        plain = nc.ControllerState(sequence=1, buttons=frozenset({"a"}))
-        self.assertNotIn("t0", plain.to_wire(), "a frame without capture time must not invent one")
-        stamped = nc.ControllerState(sequence=2, buttons=frozenset({"a"}), capture_ms=123456)
-        wire = stamped.to_wire()
-        self.assertEqual(wire["t0"], 123456)
-        self.assertEqual(nc.ControllerState.from_wire(wire).capture_ms, 123456)
-
-    def test_track_b1_capture_time_echoes_only_the_acknowledged_frame(self):
-        """The echoed capture time belongs to the frame the host applied."""
-
-        clock = Clock()
-        session = nc.ControllerSession(code="ABC123", host_device_id="tv", created_at=clock(), clock=clock)
-        token = session.pair("phone")
-        session.accept_state({"s": 3, "b": ["a"], "t0": 1000}, token=token)
-        self.assertEqual(session.acked_capture_ms(), 0, "nothing acknowledged yet")
-        session.ack(3)
-        self.assertEqual(session.acked_capture_ms(), 1000, "the acknowledged frame's capture time is echoed")
-        session.accept_state({"s": 4, "b": ["a"], "t0": 1042}, token=token)
-        session.ack(4)
-        self.assertEqual(session.acked_capture_ms(), 1042)
-        # A stale acknowledgement must not overwrite the echo for a newer frame.
-        session.ack(1)
-        self.assertEqual(session.acked_capture_ms(), 1042)
-        # A frame with no capture time must not inherit the previous one.
-        session.accept_state({"s": 5, "b": ["a"]}, token=token)
-        session.ack(5)
-        self.assertEqual(session.acked_capture_ms(), 0, "an unstamped frame echoes nothing")
-
-
-class ControllerSessionTests(unittest.TestCase):
-    def _session(self, clock):
-        return nc.ControllerSession(code="ABC123", host_device_id="tv", created_at=clock(), clock=clock)
-
-    def test_pair_authenticate_and_disconnect(self):
-        clock = Clock()
-        session = self._session(clock)
-        token = session.pair("phone")
-        self.assertTrue(session.paired)
-        self.assertTrue(session.authenticate(token))
-        self.assertFalse(session.authenticate("wrong"))
-        session.disconnect()
-        self.assertFalse(session.paired)
-
-    def test_latest_state_wins_and_stale_frames_are_dropped(self):
-        clock = Clock()
-        session = self._session(clock)
-        token = session.pair("phone")
-        first = session.accept_state({"s": 2, "b": ["a"]}, token=token)
-        self.assertIsNotNone(first)
-        duplicate = session.accept_state({"s": 2, "b": ["b"]}, token=token)
-        self.assertIsNone(duplicate)
-        stale = session.accept_state({"s": 1, "b": ["start"]}, token=token)
-        self.assertIsNone(stale)
-        newest = session.accept_state({"s": 9, "b": ["start"]}, token=token)
-        self.assertEqual(newest.sequence, 9)
-        self.assertEqual(session.current_buttons(), frozenset({"start"}))
-
-    def test_input_is_active_only_after_the_host_acknowledges(self):
-        clock = Clock()
-        session = self._session(clock)
-        token = session.pair("phone")
-        session.accept_state({"s": 4, "b": ["a"]}, token=token)
-        self.assertFalse(session.input_active())
-        self.assertEqual(session.ack(4), 4)
-        self.assertTrue(session.input_active())
-        # An out-of-order acknowledgement cannot move backwards.
-        self.assertEqual(session.ack(2), 4)
-        # The host may lag by a frame or two, but a host whose input path stops
-        # advancing must fall out of the live window.
-        session.accept_state({"s": 7, "b": ["a"]}, token=token)
-        self.assertFalse(session.input_active())
-        session.ack(7)
-        self.assertTrue(session.input_active())
-        session.disconnect()
-        self.assertFalse(session.input_active())
-
-    def test_input_requires_a_valid_token(self):
-        clock = Clock()
-        session = self._session(clock)
-        session.pair("phone")
-        with self.assertRaises(nc.NotPairedError):
-            session.accept_state({"s": 1, "b": []}, token="nope")
-
-    def test_expired_pairing_is_rejected(self):
-        clock = Clock()
-        session = nc.ControllerSession(code="X", host_device_id="tv", created_at=clock(),
-                                       ttl_seconds=30, clock=clock)
-        clock.advance(31)
-        self.assertTrue(session.is_expired())
-        with self.assertRaises(nc.ExpiredError):
-            session.pair("phone")
-
-    def test_host_requests_resync_until_first_frame(self):
-        clock = Clock()
-        session = self._session(clock)
-        token = session.pair("phone")
-        self.assertTrue(session.needs_resync())
-        session.accept_state({"s": 1, "b": []}, token=token)
-        self.assertFalse(session.needs_resync())
 
 
 def signature(**kwargs):
@@ -514,13 +386,6 @@ class RoomServiceTests(unittest.TestCase):
             service.publish_input("ZZZZZZ", "token", {"s": 1, "b": []})
         with self.assertRaises(nc.NetcodeError):
             service.member_state("ZZZZZZ", "token")
-
-
-class TransportChoiceTests(unittest.TestCase):
-    def test_reuses_sync_engine_lan_preference(self):
-        self.assertEqual(nc.choose_transport(se.SyncMode.LAN_DRIVE, same_lan=True), se.Transport.LAN)
-        self.assertEqual(nc.choose_transport(se.SyncMode.LAN_DRIVE, same_lan=False), se.Transport.DRIVE)
-        self.assertIsNone(nc.choose_transport(se.SyncMode.OFF, same_lan=True))
 
 
 if __name__ == "__main__":

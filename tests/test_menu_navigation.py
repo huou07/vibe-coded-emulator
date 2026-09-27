@@ -127,8 +127,6 @@ class MenuLifecycleTests(unittest.TestCase):
         self.assertIn("nativeEdenStop(edenHandle)", destroy)
         self.assertIn("nativeEdenDestroy(edenHandle)", destroy)
         self.assertIn("else nativeStop(false)", destroy)
-        self.assertIn("unbindService(controllerConnection)", destroy)
-        self.assertIn("sendToControllerService(ControllerHostService.MSG_DETACH)", destroy)
         self.assertIn("nativeCancelPointer()", destroy)
 
     def test_surface_destroy_preserves_resume_semantics(self):
@@ -137,13 +135,17 @@ class MenuLifecycleTests(unittest.TestCase):
         self.assertIn("nativeStop(!isFinishing)", surface)
         self.assertIn("releasePointer()", surface)
 
-    def test_phone_menu_utility_still_opens_the_menu(self):
+    def test_local_touch_keyboard_and_gamepad_paths_remain_wired(self):
         overlay = source(OVERLAY)
-        self.assertIn('"OPEN_MENU" -> if (!isMenuOpen()) showMenu()', overlay)
         self.assertIn("fun isMenuOpen()", overlay)
-        # Remote input is released when the menu opens and on disconnect.
-        self.assertIn("fun releaseRemoteInput()", overlay)
-        self.assertIn("for (index in 0..11) input(index, false)", overlay)
+        self.assertIn("NativeInputActions.directionalControls", overlay)
+        self.assertIn("surface.setOnTouchListener", self.activity)
+        self.assertIn("private fun touch(event: MotionEvent)", self.activity)
+        self.assertIn("override fun onKeyDown", self.activity)
+        self.assertIn("override fun onKeyUp", self.activity)
+        self.assertIn("override fun onGenericMotionEvent", self.activity)
+        self.assertIn("gameButton(", self.activity)
+        self.assertNotIn("ControllerHostService", self.activity + overlay)
 
     def test_menu_does_not_own_a_second_settings_store(self):
         overlay = source(OVERLAY)

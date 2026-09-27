@@ -1,6 +1,6 @@
 [package]
 name = "an3-offline-native"
-version = "3.3.0"
+version = "3.3.1"
 description = "VibeCodedEmulator local-ROM offline player"
 authors = ["Vibe Coded Emulator"]
 edition = "2021"
@@ -30,7 +30,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
-# Direct LAN phone controller: standard primitives only (no custom crypto).
 aes-gcm = "0.10"
 base64 = "0.21"
 getrandom = "0.2"

@@ -65,55 +65,6 @@ class MainActivity : TauriActivity() {
     fun exportState(encoded: String) = activity.exportState(encoded)
   }
 
-  // Library Settings -> Phone Controller. It shares the one app-scoped host
-  // with in-game play, so a session started before a game keeps working when a
-  // game launches. Returns the current status as JSON; never the raw token.
-  private class AndroidNativeControllerBridge(private val activity: MainActivity) {
-    @JavascriptInterface
-    fun start(): String {
-      An3ControllerHost.start()
-      return An3ControllerHost.statusJson()
-    }
-
-    @JavascriptInterface
-    fun join(code: String): String {
-      An3ControllerHost.join(code)
-      return An3ControllerHost.statusJson()
-    }
-
-    @JavascriptInterface
-    fun send(state: String): String = An3ControllerHost.send(state).toJson()
-
-    @JavascriptInterface
-    fun stop(): String {
-      An3ControllerHost.stop()
-      return An3ControllerHost.statusJson()
-    }
-
-    @JavascriptInterface
-    fun status(): String = An3ControllerHost.statusJson()
-
-    // Controller Mode: while the phone-controller pad is the active surface the
-    // library activity locks to landscape so the pad fills the screen. Leaving
-    // the mode restores sensor orientation. This changes presentation only; it
-    // never touches the session or input semantics.
-    @JavascriptInterface
-    fun enterControllerMode(): String {
-      activity.runOnUiThread {
-        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-      }
-      return "landscape"
-    }
-
-    @JavascriptInterface
-    fun exitControllerMode(): String {
-      activity.runOnUiThread {
-        activity.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-      }
-      return "auto"
-    }
-  }
-
   // Canonical settings surface for the offline shell. MainActivity is a
   // separate process from NativeGameActivity, so `all()` re-reads the shared
   // preferences; a renderer that crashes the game process can never trap the
@@ -142,26 +93,18 @@ class MainActivity : TauriActivity() {
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    An3LanMulticast.acquire(this)
-  }
-
-  override fun onDestroy() {
-    An3LanMulticast.release()
-    super.onDestroy()
   }
 
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     contentWebView = webView
-    // The installed shell keeps the optional AN3 session on the account
-    // provider's HTTPS origin.  Android treats the packaged app origin as a
+    // The installed shell may access the account provider's HTTPS origin.
+    // Android treats the packaged app origin as a
     // separate site, so explicitly enable the WebView's persistent,
-    // HttpOnly/Secure third-party cookie path for that account session.  LAN
-    // sync never uses this cookie or sends it to a peer.
+    // HttpOnly/Secure third-party cookie path for that account session.
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
-    webView.addJavascriptInterface(AndroidNativeControllerBridge(this), "AN3AndroidNativeController")
     webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")
     // TauriActivity owns navigation to the packaged https://tauri.localhost
     // document.  Keep that stock navigation and client intact: replacing it

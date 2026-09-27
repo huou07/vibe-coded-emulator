@@ -5,7 +5,7 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
 
-/** Canonical input/action contract shared by the in-game overlay and Phone Controller. */
+/** Canonical local input contract for the native overlay and physical controllers. */
 object NativeInputActions {
     const val B = 0
     const val Y = 1
@@ -21,12 +21,7 @@ object NativeInputActions {
     const val R = 11
 
     val buttonIds: Map<String, Int> = mapOf("B" to 0, "Y" to 1, "SELECT" to 2, "START" to 3, "UP" to 4, "DOWN" to 5, "LEFT" to 6, "RIGHT" to 7, "A" to 8, "X" to 9, "L" to 10, "R" to 11)
-    val wireToId: Map<String, Int> = mapOf("b" to 0, "y" to 1, "select" to 2, "start" to 3, "up" to 4, "down" to 5, "left" to 6, "right" to 7, "a" to 8, "x" to 9, "l" to 10, "r" to 11)
     val buttonLabels: Map<String, String> = mapOf("B" to "B", "Y" to "Y", "SELECT" to "Select", "START" to "Start", "UP" to "Up", "DOWN" to "Down", "LEFT" to "Left", "RIGHT" to "Right", "A" to "A", "X" to "X", "L" to "L", "R" to "R")
-
-    val utilityActions: List<String> = listOf("QUICK_SAVE", "QUICK_LOAD", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU")
-    val utilityWireToAction: Map<String, String> = mapOf("quick_save" to "QUICK_SAVE", "quick_load" to "QUICK_LOAD", "speed_up" to "SPEED_UP", "speed_down" to "SPEED_DOWN", "open_menu" to "OPEN_MENU")
-    val utilityLabels: Map<String, String> = mapOf("QUICK_SAVE" to "Quick Save", "QUICK_LOAD" to "Quick Load", "SPEED_UP" to "Speed Up", "SPEED_DOWN" to "Speed Down", "OPEN_MENU" to "Menu")
 
     val speeds: List<String> = listOf("0.5", "1", "2", "4", "8")
     val directionalControls: List<String> = listOf("dpad", "joystick", "circular")

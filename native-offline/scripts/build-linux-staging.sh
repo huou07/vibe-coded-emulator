@@ -30,6 +30,57 @@ deb_path="$release/$deb_name"
 flatpak_deb_path="$root/releases/$deb_name"
 flatpak_name="an3-offline-${version}-linux-amd64-staging.flatpak"
 
+build_flatpak() {
+  [[ -f "$deb_path" ]] || {
+    echo "Flatpak requires the DEB produced by the Linux build job: $deb_path" >&2
+    exit 3
+  }
+  mkdir -p "$build" "$release" "$(dirname "$flatpak_deb_path")"
+  if [[ "$deb_path" != "$flatpak_deb_path" ]]; then
+    install -m 0644 "$deb_path" "$flatpak_deb_path"
+  fi
+  cmp -s "$deb_path" "$flatpak_deb_path" || {
+    echo 'The Flatpak source DEB differs from the downloaded native-build artifact.' >&2
+    exit 3
+  }
+  flatpak-builder --force-clean --disable-cache --repo="$build/flatpak-repo" \
+    "$build/flatpak-build" "$root/flatpak/space.an3tocom.offline.yml"
+  # Flatpak-builder can strip the companion binary; refresh its manifest to
+  # describe the exact bytes included in this Flatpak bundle.
+  flatpak_companion="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
+  flatpak_manifest="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/manifest.json"
+  [[ -f "$flatpak_companion" && -f "$flatpak_manifest" ]] || {
+    echo 'Flatpak Eden companion or manifest is missing after assembly.' >&2
+    exit 3
+  }
+  node --input-type=module - "$flatpak_manifest" "$flatpak_companion" <<'NODE'
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+const [manifestPath, companionPath] = process.argv.slice(2);
+const bytes = readFileSync(companionPath);
+const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+manifest.sha256 = createHash("sha256").update(bytes).digest("hex");
+manifest.size = bytes.length;
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+NODE
+  flatpak build-export "$build/flatpak-repo" "$build/flatpak-build" \
+    master --no-update-summary --no-summary-index
+  flatpak build-bundle "$build/flatpak-repo" \
+    "$release/$flatpak_name" \
+    space.an3tocom.offline master \
+    --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+  (cd "$release" && sha256sum "$flatpak_name" > "$flatpak_name.sha256")
+  echo "LINUX_FLATPAK=$release/$flatpak_name"
+}
+
+if [[ "$target" == flatpak ]]; then
+  for command in node flatpak-builder flatpak; do
+    command -v "$command" >/dev/null || { echo "Missing required Flatpak build command: $command" >&2; exit 3; }
+  done
+  build_flatpak
+  exit 0
+fi
+
 compiler="${CXX:-}"
 if [[ -z "$compiler" ]]; then
   for candidate in c++ g++ clang++; do
@@ -110,42 +161,3 @@ if [[ "$target" == "deb" ]]; then
   echo "LINUX_DEB=$deb_path"
   exit 0
 fi
-
-[[ -f "$deb_path" && -f "$flatpak_deb_path" ]] || {
-  echo 'Build the verified DEB first: build-linux-staging.sh deb' >&2
-  exit 3
-}
-cmp -s "$deb_path" "$flatpak_deb_path" || {
-  echo 'The Flatpak source DEB is stale or differs from the selected staged DEB.' >&2
-  exit 3
-}
-flatpak-builder --force-clean --disable-cache --repo="$build/flatpak-repo" \
-  "$build/flatpak-build" "$root/flatpak/space.an3tocom.offline.yml"
-# Flatpak-builder may extract debug sections from ELF payloads even when the
-# module's strip option is false. Refresh the Eden manifest from the actual
-# staged companion, then re-export the app ref so the installed bundle's
-# integrity record describes the bytes it really contains.
-flatpak_companion="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
-flatpak_manifest="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/manifest.json"
-[[ -f "$flatpak_companion" && -f "$flatpak_manifest" ]] || {
-  echo 'Flatpak Eden companion or manifest is missing after assembly.' >&2
-  exit 3
-}
-node --input-type=module - "$flatpak_manifest" "$flatpak_companion" <<'NODE'
-import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-const [manifestPath, companionPath] = process.argv.slice(2);
-const bytes = readFileSync(companionPath);
-const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-manifest.sha256 = createHash("sha256").update(bytes).digest("hex");
-manifest.size = bytes.length;
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-NODE
-flatpak build-export "$build/flatpak-repo" "$build/flatpak-build" \
-  master --no-update-summary --no-summary-index
-flatpak build-bundle "$build/flatpak-repo" \
-  "$release/$flatpak_name" \
-  space.an3tocom.offline master \
-  --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
-sha256sum "$release/$flatpak_name" > "$release/$flatpak_name.sha256"
-echo "LINUX_FLATPAK=$release/$flatpak_name"

@@ -150,9 +150,7 @@ chown -R tvshare:tvshare "$DATA_NEW"
 chmod 0640 "$DATA_NEW/arcade.db"
 
 umask 077
-pepper="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 {
-  printf 'AN3_AUTH_PEPPER=%s\n' "$pepper"
   printf '%s\n' 'AN3_APP_DIR=/opt/an3-arcade-staging/current'
   printf '%s\n' 'AN3_DATA_DIR=/srv/an3-arcade-staging'
   printf '%s\n' 'AN3_HOST=192.0.2.8'

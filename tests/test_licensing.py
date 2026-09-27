@@ -51,13 +51,8 @@ class LicenseFileTests(unittest.TestCase):
         for relative in (
             "app.py",
             "netcode.py",
-            "sync_engine.py",
-            "google_sync.py",
             "static/player.js",
-            "static/controller.js",
             "native-offline/src-tauri/src/lib.rs",
-            "native-offline/src-tauri/src/controller_host.rs",
-            "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/ControllerClient.kt",
             "native-offline/native-runtime/core/libretro_host.cpp",
         ):
             with self.subTest(file=relative):
@@ -88,7 +83,6 @@ class LicenseRouteTests(unittest.TestCase):
             patch.object(app, "COVER_DIR", os.path.join(root, "covers")),
             patch.object(app, "SCREENSHOT_DIR", os.path.join(root, "screenshots")),
             patch.object(app, "CUSTOM_DIR", os.path.join(root, "custom")),
-            patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
         ]

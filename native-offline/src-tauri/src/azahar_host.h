@@ -85,25 +85,6 @@ int an3_native_load_state(unsigned slot, char* details, size_t details_length);
 int an3_native_export_state(const char* path, char* details, size_t details_length);
 int an3_native_import_state(const char* path, char* details, size_t details_length);
 
-// Applies one canonical Phone Controller utility action to the running host by
-// reusing the same operations the on-screen controls invoke. Quick save/load
-// use an explicit slot in the inclusive range 1..10.
-int an3_native_apply_utility_at_slot(const char* action,
-                                     unsigned slot,
-                                     char* details,
-                                     size_t details_length);
-// Compatibility wrapper for existing keyboard/UI callers: slot 1.
-int an3_native_apply_utility(const char* action, char* details, size_t details_length);
-
-void an3_native_set_input(uint32_t buttons,
-                          int16_t circle_x,
-                          int16_t circle_y,
-                          int16_t cstick_x,
-                          int16_t cstick_y,
-                          int16_t touch_x,
-                          int16_t touch_y,
-                          int touch_pressed);
-
 #ifdef __cplusplus
 }
 #endif
