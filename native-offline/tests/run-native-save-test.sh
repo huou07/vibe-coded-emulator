@@ -10,10 +10,15 @@ work="$(mktemp -d -t an3-save-test)"
 rom="$work/an3-homebrew-test.gba"
 savedir="$work/saves"
 bin="$work/an3-native-save-roundtrip"
+persistence_bin="$work/an3-save-persistence-worker"
 mkdir -p "$savedir"
 
 [[ -f "$core" ]] || { echo "missing macOS mGBA core: $core" >&2; exit 3; }
 python3 ../tools/testrom/gba_homebrew_test.py "$rom" >/dev/null
+
+clang++ -std=c++20 -O1 -DAN3_SAVE_PERSISTENCE_TESTING -I src-tauri/src \
+    tests/test_save_persistence_worker.cpp -o "$persistence_bin"
+"$persistence_bin"
 
 clang++ -std=c++20 -O1 -I native-runtime/core -I vendor/moltenvk/macos-arm64/include \
     tests/test_native_save_roundtrip.cpp native-runtime/core/libretro_host.cpp \

@@ -35,7 +35,6 @@ class RequestBodyKeepAliveTests(unittest.TestCase):
             patch.object(app, "COVER_DIR", os.path.join(root, "covers")),
             patch.object(app, "SCREENSHOT_DIR", os.path.join(root, "screenshots")),
             patch.object(app, "CUSTOM_DIR", os.path.join(root, "custom")),
-            patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
         ]
@@ -151,10 +150,11 @@ class RequestBodyKeepAliveTests(unittest.TestCase):
                     "an Expect: 100-continue client would deadlock"
                 )
             self.assertEqual(status_line, "HTTP/1.1 100 Continue", status_line)
-            # The client is now allowed to send the body; the terminal 401 follows.
+            # The client is now allowed to send the body; the retired endpoint
+            # returns 404 and the next request must remain correctly framed.
             sock.sendall(b"A" * 10)
             status_line, _, terminal_body = self.read_raw_response(sock, deadline=3.0)
-            self.assertIn("401", status_line, terminal_body)
+            self.assertIn("404", status_line, terminal_body)
             # The unread body must have been drained by the terminal response,
             # so the next request on the same connection frames correctly.
             sock.sendall(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
@@ -164,18 +164,18 @@ class RequestBodyKeepAliveTests(unittest.TestCase):
         finally:
             sock.close()
 
-    def test_unauthenticated_post_body_does_not_desync_keepalive(self):
-        self.assert_health_after("POST", "/api/games/1/rating", {"value": 5}, 401)
+    def test_retired_post_body_does_not_desync_keepalive(self):
+        self.assert_health_after("POST", "/api/games/1/rating", {"value": 5}, 404)
 
     def test_unknown_api_post_body_does_not_desync_keepalive(self):
         self.assert_health_after("POST", "/api/does-not-exist", {"value": 5}, 404)
 
-    def test_unauthenticated_delete_body_does_not_desync_keepalive(self):
-        self.assert_health_after("DELETE", "/admin/api/games/1", {"confirm": True}, 401)
+    def test_retired_delete_body_does_not_desync_keepalive(self):
+        self.assert_health_after("DELETE", "/admin/api/games/1", {"confirm": True}, 404)
 
-    def test_rejected_csrf_post_body_does_not_desync_keepalive(self):
-        # A body attached to a same-origin GET-style rejection is still drained.
-        self.assert_health_after("POST", "/api/logout", {"unused": True}, 401)
+    def test_retired_logout_post_body_does_not_desync_keepalive(self):
+        # A body sent to a retired POST endpoint is still drained.
+        self.assert_health_after("POST", "/api/logout", {"unused": True}, 404)
 
     def test_static_success_with_body_does_not_desync_keepalive(self):
         # serve_static writes its own response (not through send_bytes); a

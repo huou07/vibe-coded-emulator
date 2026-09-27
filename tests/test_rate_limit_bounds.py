@@ -31,7 +31,6 @@ class RateLimitBoundsTests(unittest.TestCase):
             patch.object(app, "COVER_DIR", os.path.join(root, "covers")),
             patch.object(app, "SCREENSHOT_DIR", os.path.join(root, "screenshots")),
             patch.object(app, "CUSTOM_DIR", os.path.join(root, "custom")),
-            patch.object(app, "UPLOAD_DIR", os.path.join(root, "uploads")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
         ]
@@ -50,7 +49,7 @@ class RateLimitBoundsTests(unittest.TestCase):
         self.temp.cleanup()
 
     def seed(self, ip, age, action="probe"):
-        key = (app.auth_hash(ip), action, "")
+        key = (app.rate_limit_hash(ip), action, "")
         app.RATE_LIMIT[key] = [time.time() - age]
         return key
 
@@ -60,7 +59,7 @@ class RateLimitBoundsTests(unittest.TestCase):
         for key in stale:
             self.assertNotIn(key, app.RATE_LIMIT)
         self.assertEqual(len(app.RATE_LIMIT), 1)
-        self.assertIn((app.auth_hash("198.51.100.1"), "probe", ""), app.RATE_LIMIT)
+        self.assertIn((app.rate_limit_hash("198.51.100.1"), "probe", ""), app.RATE_LIMIT)
 
     def test_least_recently_seen_key_is_evicted_when_nothing_has_expired(self):
         oldest = self.seed("192.0.2.1", 300)
@@ -69,11 +68,11 @@ class RateLimitBoundsTests(unittest.TestCase):
         self.assertTrue(app.rate_allowed("198.51.100.1", "probe", 5, 600))
         self.assertNotIn(oldest, app.RATE_LIMIT)
         self.assertLessEqual(len(app.RATE_LIMIT), app.RATE_LIMIT_MAX_KEYS)
-        self.assertIn((app.auth_hash("198.51.100.1"), "probe", ""), app.RATE_LIMIT)
+        self.assertIn((app.rate_limit_hash("198.51.100.1"), "probe", ""), app.RATE_LIMIT)
 
     def test_the_key_being_checked_survives_its_own_sweep(self):
         self.seed("192.0.2.1", 1)
-        target = (app.auth_hash("198.51.100.1"), "probe", "")
+        target = (app.rate_limit_hash("198.51.100.1"), "probe", "")
         self.assertTrue(app.rate_allowed("198.51.100.1", "probe", 5, 600))
         self.assertIn(target, app.RATE_LIMIT)
         self.assertLessEqual(len(app.RATE_LIMIT), app.RATE_LIMIT_MAX_KEYS)

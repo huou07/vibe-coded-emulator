@@ -54,9 +54,6 @@ way.
 
 ## Secrets and private data
 
-- Google OAuth `AN3_GOOGLE_CLIENT_ID`/`AN3_GOOGLE_CLIENT_SECRET` live only in the
-  server environment (`/etc/an3-arcade-staging.env`), never in the repository or
-  release artifacts.
 - No `prod.keys`, `title.keys`, firmware, BIOS, commercial ROMs, or owner
   credentials are distributed.
 - `tools/release-artifact-scan.py` scans the evidence bundle and the collected

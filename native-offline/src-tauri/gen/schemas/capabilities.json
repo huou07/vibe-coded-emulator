@@ -1,0 +1,75 @@
+{
+  "android-local": {
+    "identifier": "android-local",
+    "description": "Native AN3 commands for the bundled Android webview.",
+    "local": true,
+    "windows": [
+      "main"
+    ],
+    "permissions": [
+      "core:default",
+      "dialog:default",
+      "allow-native-capabilities",
+      "allow-start-native-game",
+      "allow-stop-native-game",
+      "allow-native-rom-library-manifest",
+      "allow-switch-companion-detect",
+      "allow-switch-companion-launch",
+      "allow-switch-companion-launch-rom",
+      "allow-switch-companion-status",
+      "allow-switch-companion-stop",
+      "allow-switch-companion-focus",
+      "allow-switch-companion-input",
+      "allow-switch-companion-analog",
+      "allow-switch-companion-audio",
+      "allow-switch-companion-hosted-frame",
+      "allow-switch-companion-hosted-frame-start",
+      "allow-switch-companion-hosted-frame-stop",
+      "allow-switch-companion-hosted-frame-stats",
+      "allow-switch-companion-hosted-frame-verify",
+      "allow-ui-control-result"
+    ],
+    "platforms": [
+      "android"
+    ]
+  },
+  "default": {
+    "identifier": "default",
+    "description": "Offline local-ROM player window",
+    "remote": {
+      "urls": [
+        "http://127.0.0.1:38471/*"
+      ]
+    },
+    "local": true,
+    "windows": [
+      "main"
+    ],
+    "permissions": [
+      "core:default",
+      "dialog:default",
+      "allow-pick-and-import-native-rom",
+      "allow-remove-native-rom",
+      "allow-native-capabilities",
+      "allow-start-native-game",
+      "allow-stop-native-game",
+      "allow-native-rom-library-manifest",
+      "allow-switch-companion-detect",
+      "allow-switch-companion-launch",
+      "allow-switch-companion-launch-rom",
+      "allow-switch-companion-hosted-frame-supported",
+      "allow-switch-companion-status",
+      "allow-switch-companion-stop",
+      "allow-switch-companion-focus",
+      "allow-switch-companion-input",
+      "allow-switch-companion-analog",
+      "allow-switch-companion-audio",
+      "allow-switch-companion-hosted-frame",
+      "allow-switch-companion-hosted-frame-start",
+      "allow-switch-companion-hosted-frame-stop",
+      "allow-switch-companion-hosted-frame-stats",
+      "allow-switch-companion-hosted-frame-verify",
+      "allow-ui-control-result"
+    ]
+  }
+}

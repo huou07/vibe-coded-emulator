@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+import bug_report
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "app.py")
@@ -46,38 +47,33 @@ class Client:
         self.port = port
         self.cookie = ""
 
-    def request(self, method, path, payload=None, csrf=None):
+    def request(self, method, path, payload=None, headers=None):
         body = None if payload is None else json.dumps(payload).encode()
-        headers = {"Accept": "application/json"}
+        request_headers = {"Accept": "application/json"}
         if body is not None:
-            headers["Content-Type"] = "application/json"
-        if self.cookie:
-            headers["Cookie"] = self.cookie
-        if csrf:
-            headers["X-CSRF-Token"] = csrf
+            request_headers["Content-Type"] = "application/json"
+        request_headers.update(headers or {})
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=15)
-        connection.request(method, path, body, headers)
+        connection.request(method, path, body, request_headers)
         response = connection.getresponse()
         raw = response.read()
-        cookie = response.getheader("Set-Cookie")
-        if cookie and "an3_session=" in cookie:
-            self.cookie = cookie.split(";", 1)[0]
         connection.close()
         return response.status, dict(response.getheaders()), raw
 
-    def json(self, method, path, payload=None, csrf=None):
-        status, _, raw = self.request(method, path, payload, csrf)
+    def json(self, method, path, payload=None, headers=None):
+        status, _, raw = self.request(method, path, payload, headers)
         try:
             return status, json.loads(raw)
         except ValueError:
             return status, {}
 
-    def csrf_token(self):
-        status, _, raw = self.request("GET", "/bug-report")
-        if status != 200:
-            return ""
-        match = re.search(rb'<meta name="csrf-token" content="([^"]+)"', raw)
-        return match.group(1).decode() if match else ""
+    def support_headers(self):
+        origin = "https://appassets.androidplatform.net"
+        status, _, raw = self.request("GET", "/api/support/capability", headers={"Origin": origin})
+        if status != 201:
+            raise AssertionError(f"support capability request failed: {status}")
+        capability = json.loads(raw)["capability"]
+        return {"Origin": origin, bug_report.SUPPORT_CAPABILITY_HEADER: capability}
 
 
 class BugReportApiTests(unittest.TestCase):
@@ -96,8 +92,7 @@ class BugReportApiTests(unittest.TestCase):
                 "AN3_DATA_DIR": cls.data_dir,
                 "AN3_PORT": str(PORT),
                 "AN3_ENVIRONMENT": "staging",
-                "AN3_ADMIN_NAME": "bug-admin",
-                "AN3_ADMIN_PASSWORD": "bug-admin-pass-123",
+                "AN3_SUPPORT_ALLOWED_ORIGINS": "https://appassets.androidplatform.net",
                 "AN3_GITHUB_ISSUES_TOKEN": FAKE_TOKEN,
                 "AN3_GITHUB_REPOSITORY": "owner/repo",
                 "AN3_GITHUB_API_BASE": "http://127.0.0.1:%d" % cls.api_port,
@@ -127,16 +122,6 @@ class BugReportApiTests(unittest.TestCase):
 
         shutil.rmtree(cls.temp)
 
-    def register(self, name):
-        client = Client(PORT)
-        status, _ = client.json(
-            "POST",
-            "/api/register",
-            {"name": name, "display_name": name, "password": name + "-pass-123", "confirm": name + "-pass-123"},
-        )
-        self.assertEqual(status, 201)
-        return client
-
     def seed_payload(self, description):
         return {
             "description": description,
@@ -165,22 +150,14 @@ class BugReportApiTests(unittest.TestCase):
         connection.row_factory = sqlite3.Row
         return connection
 
-    def test_page_requires_login_and_post_requires_authentication(self):
-        anonymous = Client(PORT)
-        status, headers, _ = anonymous.request("GET", "/bug-report")
-        self.assertEqual(status, 303)
-        self.assertIn("/login", headers.get("Location", ""))
-        self.assertEqual(anonymous.request("POST", "/api/bug-reports", self.seed_payload("x"))[0], 401)
-
-    def test_csrf_is_required(self):
-        client = self.register("csrf-user")
-        status, _ = client.json("POST", "/api/bug-reports", self.seed_payload("no csrf"))
-        self.assertEqual(status, 403)
+    def test_account_report_page_is_retired_and_capability_is_required(self):
+        client = Client(PORT)
+        self.assertEqual(client.request("GET", "/bug-report")[0], 404)
+        self.assertEqual(client.request("GET", "/login")[0], 404)
+        self.assertEqual(client.request("POST", "/api/bug-reports", self.seed_payload("no capability"))[0], 401)
 
     def test_report_is_sanitized_stored_and_survives_issue_failure(self):
-        client = self.register("sanitize-user")
-        csrf = client.csrf_token()
-        self.assertTrue(csrf)
+        client = Client(PORT)
         payload = self.seed_payload("game crashed after load")
         payload.update(
             {
@@ -196,7 +173,7 @@ class BugReportApiTests(unittest.TestCase):
                 "description": "crashed with token " + FAKE_TOKEN + " on ~/<REDACTED_PATH>",
             }
         )
-        status, data = client.json("POST", "/api/bug-reports", payload, csrf)
+        status, data = client.json("POST", "/api/bug-reports", payload, client.support_headers())
         self.assertEqual(status, 201)
         self.assertTrue(data["ok"])
         self.assertIn("id", data)
@@ -207,6 +184,7 @@ class BugReportApiTests(unittest.TestCase):
         with self.db() as connection:
             row = connection.execute("SELECT * FROM bug_reports WHERE id=?", (data["id"],)).fetchone()
         self.assertIsNotNone(row)
+        self.assertIsNone(row["user_id"])
         self.assertEqual(row["status"], "open")
         stored = row["payload"]
         for forbidden in ("romPath", "accessToken", "refreshToken", "saveState", "macAddress", "password", FAKE_TOKEN, FAKE_PAT, FAKE_MAC):
@@ -218,39 +196,26 @@ class BugReportApiTests(unittest.TestCase):
         serialized = json.dumps(dict(row))
         self.assertNotIn(FAKE_TOKEN, serialized)
 
-        # The page must never expose the server-only GitHub token.
+        # No public page or login route exposes the server-only token.
         status, _, page = client.request("GET", "/bug-report")
-        self.assertEqual(status, 200)
+        self.assertEqual(status, 404)
         self.assertNotIn(FAKE_TOKEN.encode(), page)
-        self.assertNotIn(b"Authorization", page)
-
-        # Admin dashboard lists the sanitized report.
-        admin = Client(PORT)
-        self.assertEqual(admin.json("POST", "/api/login", {"name": "bug-admin", "password": "bug-admin-pass-123"})[0], 200)
-        status, _, admin_page = admin.request("GET", "/admin")
-        self.assertEqual(status, 200)
-        self.assertIn(b"Bug reports", admin_page)
-        self.assertIn(b"Sanitized diagnostics", admin_page)
-        self.assertIn(b"sanitize-user", admin_page)
-        self.assertNotIn(FAKE_TOKEN.encode(), admin_page)
-        self.assertNotIn(b"developer", admin_page)
+        self.assertEqual(client.request("GET", "/admin")[0], 404)
 
     def test_duplicate_report_reuses_existing_issue(self):
-        client = self.register("duplicate-user")
-        csrf = client.csrf_token()
+        client = Client(PORT)
         payload = self.seed_payload("same problem twice")
         fingerprint = self.fingerprint_for(payload)
         with self.db() as connection:
-            user = connection.execute("SELECT id FROM users WHERE name=?", ("duplicate-user",)).fetchone()
             connection.execute(
                 """INSERT INTO bug_reports(user_id,fingerprint,report_schema_version,app_version,build_id,platform,
                    emulator_system,core_name,game_title,game_identifier,description,payload,status,
                    github_issue_number,github_issue_url,created_at)
                    VALUES(?,?,1,'','','Android','nds','melonds','','','',?, 'open',7,'https://github.com/owner/repo/issues/7',?)""",
-                (user["id"], fingerprint, "seeded", int(time.time()) - 300),
+                (None, fingerprint, "seeded", int(time.time()) - 300),
             )
             connection.commit()
-        status, data = client.json("POST", "/api/bug-reports", payload, csrf)
+        status, data = client.json("POST", "/api/bug-reports", payload, client.support_headers())
         self.assertEqual(status, 201)
         self.assertTrue(data["issue"].get("duplicate"))
         self.assertEqual(data["issue"]["number"], 7)
@@ -258,15 +223,6 @@ class BugReportApiTests(unittest.TestCase):
             row = connection.execute("SELECT * FROM bug_reports WHERE id=?", (data["id"],)).fetchone()
         self.assertEqual(row["github_issue_url"], "https://github.com/owner/repo/issues/7")
         self.assertEqual(row["github_issue_number"], 7)
-
-    def test_repeated_reports_are_rate_limited(self):
-        client = self.register("rate-user")
-        csrf = client.csrf_token()
-        self.assertEqual(client.json("POST", "/api/bug-reports", self.seed_payload("first"), csrf)[0], 201)
-        status, data = client.json("POST", "/api/bug-reports", self.seed_payload("second"), csrf)
-        self.assertEqual(status, 429)
-        self.assertIn("wait", data.get("error", "").lower())
-
 
 if __name__ == "__main__":
     unittest.main()

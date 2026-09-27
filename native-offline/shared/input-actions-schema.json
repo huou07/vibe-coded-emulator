@@ -1,26 +1,19 @@
 {
   "version": 1,
-  "description": "Canonical input/action contract shared by the in-game virtual controls, physical controller mapping, and Phone Controller. Gameplay buttons map to the existing libretro joypad ids; utility actions are one-shot host operations (never held bits). The circular D-pad geometry is defined once here and generated into Kotlin and JavaScript so the native overlay and the phone controller cannot drift.",
+  "description": "Canonical local input contract for the native overlay and physical controller mapping. Gameplay buttons map to the existing libretro joypad ids. Circular D-pad geometry and speed choices are generated into the Android adapter.",
   "buttons": {
-    "B": {"wire": "b", "libretro": 0, "label": "B"},
-    "Y": {"wire": "y", "libretro": 1, "label": "Y"},
-    "SELECT": {"wire": "select", "libretro": 2, "label": "Select"},
-    "START": {"wire": "start", "libretro": 3, "label": "Start"},
-    "UP": {"wire": "up", "libretro": 4, "label": "Up"},
-    "DOWN": {"wire": "down", "libretro": 5, "label": "Down"},
-    "LEFT": {"wire": "left", "libretro": 6, "label": "Left"},
-    "RIGHT": {"wire": "right", "libretro": 7, "label": "Right"},
-    "A": {"wire": "a", "libretro": 8, "label": "A"},
-    "X": {"wire": "x", "libretro": 9, "label": "X"},
-    "L": {"wire": "l", "libretro": 10, "label": "L"},
-    "R": {"wire": "r", "libretro": 11, "label": "R"}
-  },
-  "utility": {
-    "QUICK_SAVE": {"wire": "quick_save", "label": "Quick Save"},
-    "QUICK_LOAD": {"wire": "quick_load", "label": "Quick Load"},
-    "SPEED_UP": {"wire": "speed_up", "label": "Speed Up"},
-    "SPEED_DOWN": {"wire": "speed_down", "label": "Speed Down"},
-    "OPEN_MENU": {"wire": "open_menu", "label": "Menu"}
+    "B": {"libretro": 0, "label": "B"},
+    "Y": {"libretro": 1, "label": "Y"},
+    "SELECT": {"libretro": 2, "label": "Select"},
+    "START": {"libretro": 3, "label": "Start"},
+    "UP": {"libretro": 4, "label": "Up"},
+    "DOWN": {"libretro": 5, "label": "Down"},
+    "LEFT": {"libretro": 6, "label": "Left"},
+    "RIGHT": {"libretro": 7, "label": "Right"},
+    "A": {"libretro": 8, "label": "A"},
+    "X": {"libretro": 9, "label": "X"},
+    "L": {"libretro": 10, "label": "L"},
+    "R": {"libretro": 11, "label": "R"}
   },
   "directionalControls": [
     {"id": "dpad", "label": "D-Pad"},

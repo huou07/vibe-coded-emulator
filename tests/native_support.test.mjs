@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Behavioral tests for the native Settings support surface: the global LAN
-// Sync switch, the disabled Google Sync placeholder, and the bug report
+// Behavioral tests for the native bug report
 // collection/sanitize/preview/consent/upload path. The shared sanitizer is the
 // JavaScript port of bug_report.py already exercised by
 // tests/bug_report_client.test.js; this suite proves the native surface reuses
@@ -17,33 +16,10 @@ const read = relative => readFileSync(new URL(relative, root), "utf8");
 const sanitizerSource = read("static/bug-report.js");
 const nativeSource = read("native-offline/web/native-support.js");
 const indexHtml = read("native-offline/web/index.html");
-const schema = JSON.parse(read("native-offline/shared/native-settings-schema.json"));
-const kotlinSchema = read("native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettingsSchema.kt");
-const jsModel = read("native-offline/web/native-settings.js");
 const FAKE_TOKEN = "ghp_" + "A".repeat(36);
-
-const memoryBridge = (initial = {}) => {
-  const data = {...initial};
-  return {
-    all: () => JSON.stringify({global: {...data}, systems: {}}),
-    save: edits => {
-      const parsed = JSON.parse(edits);
-      const saved = [];
-      const rejected = [];
-      for (const [key, value] of Object.entries(parsed)) {
-        if (key !== "lan-sync") { rejected.push(key); continue; }
-        data[key] = value;
-        saved.push(key);
-      }
-      return JSON.stringify({ok: rejected.length === 0, saved, rejected});
-    },
-    values: data,
-  };
-};
 
 const makeDom = () => {
   const ids = [
-    "nativeSyncCard", "nativeLanSyncToggle", "nativeLanSyncStatus",
     "nativeBugReportCard", "nativeBugDescription", "nativeBugGame", "nativeBugPreview",
     "nativeBugPreviewOutput", "nativeBugConsent", "nativeBugSubmit", "nativeBugCancel",
     "nativeBugCopy", "nativeBugStatus",
@@ -51,7 +27,7 @@ const makeDom = () => {
   const map = new Map();
   for (const id of ids) {
     map.set(id, {
-      id, hidden: id === "nativeSyncCard", checked: false, value: "", textContent: "",
+      id, hidden: false, checked: false, value: "", textContent: "",
       disabled: false, dataset: {}, listeners: {},
       addEventListener(type, handler) { (this.listeners[type] = this.listeners[type] || []).push(handler); },
       async fire(type, event = {}) { for (const handler of this.listeners[type] || []) await handler(event); },
@@ -88,7 +64,6 @@ const createHarness = (options = {}) => {
     CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
   };
   sandbox.window = sandbox;
-  sandbox.AN3AndroidSettings = options.bridge;
   vm.runInNewContext(sanitizerSource, sandbox);
   vm.runInNewContext(nativeSource, sandbox);
   return sandbox;
@@ -96,23 +71,15 @@ const createHarness = (options = {}) => {
 
 const json = value => JSON.parse(JSON.stringify(value));
 
-test("the canonical schema declares one global lan-sync setting", () => {
-  const definition = schema.global.find(item => item.id === "lan-sync");
-  assert.ok(definition, "lan-sync must exist in the canonical schema");
-  assert.equal(definition.type, "bool");
-  assert.equal(definition.category, "network");
-  assert.equal(definition.external, false, "the dedicated Sync card owns the control");
-  // Generated artifacts must carry the same definition.
-  assert.match(kotlinSchema, /Definition\("lan-sync", "LAN Sync"/);
-  assert.match(jsModel, /"id": "lan-sync"/);
-});
-
-test("the Sync card exposes LAN Sync and a disabled Google Sync", () => {
-  assert.match(indexHtml, /data-testid="sync-settings"/);
-  assert.match(indexHtml, /data-testid="lan-sync-toggle"/);
-  assert.match(indexHtml, /Google Sync/);
-  assert.match(indexHtml, /Coming later/);
-  assert.doesNotMatch(indexHtml, /google_sync|GoogleDrive|gdrive/i);
+test("native settings and runtime no longer expose Sync controls", () => {
+  const schema = JSON.parse(read("native-offline/shared/native-settings-schema.json"));
+  const kotlinSchema = read("native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettingsSchema.kt");
+  const jsModel = read("native-offline/web/native-settings.js");
+  assert.equal(schema.global.some(item => item.id === "lan-sync"), false);
+  assert.doesNotMatch(kotlinSchema, /lan-sync|LAN Sync/);
+  assert.doesNotMatch(jsModel, /lan-sync|LAN Sync/);
+  assert.doesNotMatch(indexHtml, /data-settings-(?:tab|pane)="sync"|nativeSync|LAN Sync|Google Sync/);
+  assert.doesNotMatch(indexHtml, /native-sync\.js|sync-transfer\.js/);
 });
 
 test("the Bug Report entry is present in the native Settings surface", () => {
@@ -124,40 +91,8 @@ test("the Bug Report entry is present in the native Settings surface", () => {
   assert.match(indexHtml, /static\/bug-report\.js/);
 });
 
-test("LAN Sync persists through the canonical bridge and defaults to on", () => {
-  const bridge = memoryBridge();
-  const sandbox = createHarness({bridge});
-  const api = sandbox.AN3NativeSupport;
-  assert.equal(api.readLanSync(bridge), true);
-  const stored = api.writeLanSync(false, bridge);
-  assert.equal(stored.ok, true);
-  assert.equal(bridge.values["lan-sync"], false);
-  assert.equal(api.readLanSync(bridge), false);
-  api.writeLanSync(true, bridge);
-  assert.equal(bridge.values["lan-sync"], true);
-  assert.equal(api.readLanSync(bridge), true);
-});
-
-test("LAN Sync OFF gates native content sync while ON allows it", () => {
-  const bridge = memoryBridge();
-  const api = createHarness({bridge}).AN3NativeSupport;
-  assert.equal(api.lanContentSyncAllowed(bridge), true);
-  api.writeLanSync(false, bridge);
-  assert.equal(api.lanContentSyncAllowed(bridge), false);
-  api.writeLanSync(true, bridge);
-  assert.equal(api.lanContentSyncAllowed(bridge), true);
-});
-
-test("LAN Sync OFF does not touch the separate Phone Controller host", () => {
-  const calls = {start: 0, stop: 0, status: 0};
-  const sandbox = createHarness({bridge: memoryBridge()});
-  sandbox.AN3NativeController = {start() { calls.start += 1; }, stop() { calls.stop += 1; }, status() { calls.status += 1; }};
-  sandbox.AN3NativeSupport.writeLanSync(false, sandbox.AN3AndroidSettings);
-  assert.deepEqual(calls, {start: 0, stop: 0, status: 0});
-});
-
 test("collection is allowlist-first and sanitizes credentials, paths, MACs and IPs", () => {
-  const sandbox = createHarness({bridge: memoryBridge()});
+  const sandbox = createHarness();
   const api = sandbox.AN3NativeSupport;
   const report = api.collectDiagnostics({
     description: `token=${FAKE_TOKEN} mac de:ad:be:ef:00:11 ip 10.1.2.3 path ~/<REDACTED_PATH> mail a@b.invalid`,
@@ -174,7 +109,7 @@ test("collection is allowlist-first and sanitizes credentials, paths, MACs and I
 });
 
 test("allowlist drops unknown and forbidden top-level fields", () => {
-  const sandbox = createHarness({bridge: memoryBridge()});
+  const sandbox = createHarness();
   const clean = sandbox.AN3NativeSupport.allowlistReport({
     description: "ok", rendererRequested: "vulkan", romPath: "/secret.gba",
     accessToken: FAKE_TOKEN, saveState: "AAE=", SharedPreferences: "dump"
@@ -190,7 +125,7 @@ test("allowlist drops unknown and forbidden top-level fields", () => {
 test("cancelling never uploads and clears the form", async () => {
   const dom = makeDom();
   const fetchCalls = [];
-  const sandbox = createHarness({bridge: memoryBridge(), dom, fetch: async (...args) => { fetchCalls.push(args); return {ok: true, status: 200, json: async () => ({})}; }});
+  const sandbox = createHarness({dom, fetch: async (...args) => { fetchCalls.push(args); return {ok: true, status: 200, json: async () => ({})}; }});
   const element = id => dom.element(id);
   element("nativeBugDescription").value = "something broke with token " + FAKE_TOKEN;
   element("nativeBugConsent").checked = true;
@@ -207,7 +142,7 @@ test("cancelling never uploads and clears the form", async () => {
 
 test("an unavailable backend does not crash and keeps the user's description", async () => {
   const dom = makeDom();
-  const sandbox = createHarness({bridge: memoryBridge(), dom, fetch: async () => { throw new Error("network down"); }});
+  const sandbox = createHarness({dom, fetch: async () => { throw new Error("network down"); }});
   sandbox.AN3SupportOrigin = "http://127.0.0.1:9";
   const element = id => dom.element(id);
   element("nativeBugDescription").value = "kept text";
@@ -242,7 +177,7 @@ test("a successful submit posts a sanitized payload to /api/bug-reports", async 
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   try {
     const origin = `http://127.0.0.1:${server.address().port}`;
-    const sandbox = createHarness({bridge: memoryBridge(), fetch: globalThis.fetch});
+    const sandbox = createHarness({fetch: globalThis.fetch});
     const api = sandbox.AN3NativeSupport;
     const report = api.collectDiagnostics({description: "crash with token " + FAKE_TOKEN});
     const result = await api.submitReport(report, {origin});

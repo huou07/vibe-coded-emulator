@@ -103,6 +103,20 @@ for (const relativePath of runtimeFiles) {
 // `tauri.conf.json` intact and only replace the prepared application entries.
 const androidAssets = resolve(nativeRoot, "src-tauri", "gen", "android", "app", "src", "main", "assets");
 await mkdir(androidAssets, { recursive: true });
+// These packaged browser bundles belonged to the removed LAN Sync and Phone
+// Controller clients.
+for (const obsolete of [
+  "static/lan-peer.js",
+  "static/sync-transfer.js",
+  "static/sync.js",
+  "native-sync.js",
+  "static/controller.js",
+  "static/controller-utility.js",
+  "static/input-actions.js",
+  "controller-sender.js",
+]) {
+  await rm(resolve(androidAssets, obsolete), { force: true });
+}
 // Remove only obsolete generated macOS resources from the Android build tree.
 // Android uses its bundled web cores; these dylibs cannot run on Android.
 for (const obsolete of ["azahar", "libretro"]) {

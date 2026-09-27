@@ -75,19 +75,6 @@ pub struct NativeStart {
     pub detail: String,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeInput {
-    pub buttons: u32,
-    pub circle_x: i16,
-    pub circle_y: i16,
-    pub cstick_x: i16,
-    pub cstick_y: i16,
-    pub touch_x: i16,
-    pub touch_y: i16,
-    pub touch_pressed: bool,
-}
-
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn an3_native_probe(
@@ -110,23 +97,6 @@ unsafe extern "C" {
     ) -> i32;
     fn an3_native_stop();
     fn an3_native_is_running() -> i32;
-    fn an3_native_active_system() -> i32;
-    fn an3_native_apply_utility(
-        action: *const std::ffi::c_char,
-        slot: u32,
-        details: *mut std::ffi::c_char,
-        details_length: usize,
-    ) -> i32;
-    fn an3_native_set_input(
-        buttons: u32,
-        circle_x: i16,
-        circle_y: i16,
-        cstick_x: i16,
-        cstick_y: i16,
-        touch_x: i16,
-        touch_y: i16,
-        touch_pressed: i32,
-    );
     // Debug-only latency instrumentation (Track B1) and the test-only
     // ui-control bridge both read the presented-frame counter; the counter
     // itself is harmless and inert unless something reads it.
@@ -441,9 +411,8 @@ pub fn stop_native_game(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// True while a native game is actually running, so the phone controller only
-/// acknowledges frames that the emulator could really apply.
-pub fn native_input_ready() -> bool {
+#[cfg(feature = "ui-control")]
+fn native_game_running() -> bool {
     #[cfg(target_os = "windows")]
     { return windows_runtime::running(); }
     #[cfg(target_os = "linux")]
@@ -462,11 +431,11 @@ pub fn native_input_ready() -> bool {
 pub fn native_bridge_diagnostics() -> (bool, u64) {
     #[cfg(target_os = "macos")]
     {
-        return (native_input_ready(), native_presented_frames());
+        return (native_game_running(), native_presented_frames());
     }
     #[cfg(not(target_os = "macos"))]
     {
-        (native_input_ready(), 0)
+        (native_game_running(), 0)
     }
 }
 
@@ -483,120 +452,6 @@ pub fn native_presented_frames() -> u64 {
     {
         0
     }
-}
-
-/// Track B1: true when this host can report a produced-frame counter.
-pub fn native_frame_counter_available() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        true
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
-}
-
-/// The system the active native game is running, for the phone pad layout.
-pub fn native_active_system() -> Option<String> {
-    #[cfg(target_os = "windows")]
-    { return windows_runtime::active_system(); }
-    #[cfg(target_os = "linux")]
-    { return linux_runtime::active_system(); }
-    #[cfg(target_os = "macos")]
-    {
-        return match unsafe { an3_native_active_system() } {
-            1 => Some("gba".to_string()),
-            2 => Some("nds".to_string()),
-            3 => Some("3ds".to_string()),
-            _ => None,
-        };
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    { None }
-}
-
-/// Canonical Phone Controller utility actions, matching
-/// `shared/input-actions-schema.json`. A desktop host may only apply these; an
-/// unknown action is rejected before it reaches any platform runtime.
-pub const UTILITY_ACTIONS: &[&str] = &[
-    "QUICK_SAVE",
-    "QUICK_LOAD",
-    "SPEED_UP",
-    "SPEED_DOWN",
-    "OPEN_MENU",
-];
-
-/// True when `action` is a canonical, dispatchable Phone Controller action.
-pub fn is_known_utility(action: &str) -> bool {
-    UTILITY_ACTIONS.contains(&action)
-}
-
-/// Apply one canonical Phone Controller utility action to the running native
-/// host. The desktop hosts reuse the same quick-save, speed and menu operations
-/// as their on-screen controls; an unknown action fails explicitly instead of
-/// being silently ignored.
-pub fn apply_utility(action: &str) -> Result<(), String> {
-    apply_utility_at_slot(action, 1)
-}
-
-/// Apply a one-shot host action to an explicit save-state slot. Slots are
-/// deliberately constrained here as well as in the native player so every
-/// transport adapter shares the same safety boundary.
-pub fn apply_utility_at_slot(action: &str, slot: u8) -> Result<(), String> {
-    if !is_known_utility(action) {
-        return Err(format!("Unsupported utility action '{action}'."));
-    }
-    if matches!(action, "QUICK_SAVE" | "QUICK_LOAD") && !(1..=10).contains(&slot) {
-        return Err(format!("Save-state slot {slot} is outside the supported range 1..10."));
-    }
-    #[cfg(target_os = "windows")]
-    { return windows_runtime::utility(action, slot); }
-    #[cfg(target_os = "linux")]
-    { return linux_runtime::utility(action, slot); }
-    #[cfg(target_os = "macos")]
-    {
-        let action = c_text(action, "utility action")?;
-        let mut details = [0_i8; 256];
-        let applied =
-            unsafe { an3_native_apply_utility(action.as_ptr(), slot as u32, details.as_mut_ptr(), details.len()) };
-        if applied != 0 {
-            return Ok(());
-        }
-        let detail = ffi_detail(&details);
-        return Err(if detail.is_empty() {
-            "The native player could not apply that utility action.".into()
-        } else {
-            detail
-        });
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        let _ = (action, slot);
-        Err("Phone Controller utility actions are unavailable on this host.".into())
-    }
-}
-
-#[tauri::command]
-pub fn set_native_input(input: NativeInput) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    { return windows_runtime::input(input); }
-    #[cfg(target_os = "linux")]
-    { return linux_runtime::input(input); }
-    #[cfg(target_os = "macos")]
-    unsafe {
-        an3_native_set_input(
-            input.buttons,
-            input.circle_x,
-            input.circle_y,
-            input.cstick_x,
-            input.cstick_y,
-            input.touch_x,
-            input.touch_y,
-            i32::from(input.touch_pressed),
-        );
-    }
-    Ok(())
 }
 
 #[cfg(all(test, target_os = "macos"))]

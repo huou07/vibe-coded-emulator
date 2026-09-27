@@ -84,23 +84,6 @@ class NativeGameOverlay(
     private val circular = NativeCircularDpad(activity) { ids -> applyCircularDirections(ids) }
     private var circularPressed: Set<Int> = emptySet()
     private var currentSpeed = "1"
-    // The controller host lives in the main process (library Settings). This
-    // game process binds to it through a Messenger bridge; the raw host token
-    // never crosses the boundary. The bridge is set by NativeGameActivity.
-    interface ControllerBridge {
-        fun isRunning(): Boolean
-        fun start()
-        fun stop()
-        fun statusText(): String
-    }
-    var controllerBridge: ControllerBridge? = null
-    private val controllerStatusTick = object : Runnable {
-        override fun run() {
-            controllerStatus?.text = controllerStatusText()
-            postDelayed(this, 700)
-        }
-    }
-    private var controllerStatus: TextView? = null
     private var directionalMode = prefs.getString("directional-control-$system", "dpad") ?: "dpad"
     private var controlScale = prefs.getInt("virtual-control-scale-$system", 100).coerceIn(70, 140)
     private var controlOpacity = prefs.getInt("virtual-control-opacity-$system", 85).coerceIn(30, 100)
@@ -197,105 +180,6 @@ class NativeGameOverlay(
             }
             .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    /** Canonical utility actions (one-shot; never held gameplay bits). */
-    fun utility(action: String, slot: Int = quickSaveSlot()) {
-        when (action) {
-            "QUICK_SAVE" -> {
-                val selected = slot.coerceIn(1, 10)
-                prefs.edit().putInt("quick-save-slot", selected).apply()
-                send("save", selected.toString())
-            }
-            "QUICK_LOAD" -> send("load", slot.coerceIn(1, 10).toString())
-            "SPEED_UP" -> setSpeed(stepSpeed(1))
-            "SPEED_DOWN" -> setSpeed(stepSpeed(-1))
-            "OPEN_MENU" -> if (!isMenuOpen()) showMenu()
-        }
-    }
-
-    private fun quickSaveSlot(): Int = prefs.getInt("quick-save-slot", 1).coerceIn(1, 10)
-
-    private fun stepSpeed(direction: Int): String {
-        val speeds = NativeInputActions.speeds
-        val index = speeds.indexOf(currentSpeed).takeIf { it >= 0 } ?: 1
-        return speeds[(index + direction).coerceIn(0, speeds.lastIndex)]
-    }
-
-    private fun showSaveMenu() {
-        val items = arrayOf(NativePlayerUi.QUICK_SAVE_LABEL + "…", NativePlayerUi.QUICK_LOAD_LABEL + "…", "Auto Save now", "Load Auto Save")
-        AlertDialog.Builder(activity)
-            .setTitle(NativePlayerUi.SAVE_LABEL)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> chooseQuickSlot(true)
-                    1 -> chooseQuickSlot(false)
-                    2 -> send("save", "auto")
-                    else -> send("load", "auto")
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun controllerStatusText(): String = controllerBridge?.statusText() ?: "Off"
-
-    private fun controllerRunning(): Boolean = controllerBridge?.isRunning() == true
-
-    private fun toggleController() {
-        val bridge = controllerBridge
-        if (bridge == null) {
-            controllerStatus?.text = "Controller unavailable"
-            return
-        }
-        if (bridge.isRunning()) {
-            bridge.stop()
-            controllerStatus?.text = "Off"
-            return
-        }
-        bridge.start()
-        controllerStatus?.text = "Starting…"
-        removeCallbacks(controllerStatusTick)
-        post(controllerStatusTick)
-    }
-
-    /** Apply one remote (phone) button through the same path as the on-screen pad. */
-    fun applyRemoteButton(index: Int, pressed: Boolean) {
-        if (isMenuOpen()) {
-            val keyCode = when (index) {
-                4 -> KeyEvent.KEYCODE_DPAD_UP
-                5 -> KeyEvent.KEYCODE_DPAD_DOWN
-                6 -> KeyEvent.KEYCODE_DPAD_LEFT
-                7 -> KeyEvent.KEYCODE_DPAD_RIGHT
-                8, 3 -> KeyEvent.KEYCODE_ENTER
-                0 -> {
-                    if (pressed) handleEscape()
-                    return
-                }
-                else -> return
-            }
-            menu?.window?.decorView?.dispatchKeyEvent(KeyEvent(if (pressed) KeyEvent.ACTION_DOWN else KeyEvent.ACTION_UP, keyCode))
-            return
-        }
-        input(index, pressed)
-    }
-
-    fun applyRemoteAnalog(x: Float, y: Float) {
-        if (isMenuOpen()) { directionalInput(0f, 0f); return }
-        directionalInput(x, y)
-    }
-
-    /** Release every remote-held control; used when the menu opens or the game ends. */
-    fun releaseRemoteInput() {
-        circular.release()
-        for (index in 0..11) input(index, false)
-        directionalInput(0f, 0f)
-    }
-
-    /** Detach this game from the controller bridge. The pairing session stays alive. */
-    fun stopController() {
-        releaseRemoteInput()
-        removeCallbacks(controllerStatusTick)
     }
 
     private fun setSpeed(value: String) {
@@ -592,11 +476,6 @@ class NativeGameOverlay(
                     content.addView(text("VibeCodedEmulator · ${if(system=="gba") "mGBA" else if(system=="nds") "melonDS DS" else "Azahar 3DS"} native").apply { textSize=16f; typeface=Typeface.DEFAULT_BOLD })
                     content.addView(text("Keyboard: arrows, Z/X, A/S, L/J, Return and Space.\nMenu and Pad control native gameplay. Ten quick-save slots remain separate from Auto Save."))
                     checkbox("Start fullscreen on launch", "start-fullscreen"); action("Enter fullscreen now") { fullscreen() }
-                    content.addView(text("Phone Controller").apply { setPadding(0, 12.dp(), 0, 0) })
-                    content.addView(text("Use a phone on the same network as a controller for this game. The phone never receives the game or its saves.").apply { textSize=12f })
-                    controllerStatus = text(controllerStatusText())
-                    content.addView(controllerStatus)
-                    action(if (controllerRunning()) "Stop controller session" else "Start controller session") { toggleController() }
                 }
                 "Graphics" -> {
                     choice("Renderer · applies on next launch", "renderer", listOf("Auto", "Vulkan", "OpenGL ES"), listOf("auto", "vulkan", "opengl"))

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Shared networking core for controller, LAN sync, and multiplayer rooms.
+"""Shared networking core for multiplayer rooms.
 
 Section 13 of the product spec asks for one reusable layer (discovery,
 pairing/session identity, transport choice, auth, lifecycle) *without*
@@ -12,24 +12,17 @@ that shared layer:
 * :func:`new_session_token` / :func:`token_digest` — bearer tokens that are
   stored only as a SHA-256 digest server-side.
 * :class:`SlidingRateLimiter` — bounded request throttling.
-* :class:`ControllerSession` — an ultra-low-latency, latest-state-wins control
-  channel that tolerates loss and reconnects.
 * :class:`RoomService` — short-lived room codes with core/ROM-hash
   compatibility validation and reconnect handling.
 
-Transport is intentionally *not* implemented here. File sync, the remote
-controller, and netplay pick different transports; callers choose a transport
-and this module owns identity, validation, and lifecycle. ``choose_transport``
-reuses the sync engine's LAN-first preference so devices on one network do not
-detour through the cloud.
+Transport is intentionally *not* implemented here. Netplay picks its own
+transport; this module owns room identity, validation, and lifecycle.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
-import json
-import pathlib
 import secrets
 import threading
 import time
@@ -37,35 +30,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
 
-import sync_engine as se
-
-
-def _load_input_actions() -> Tuple[frozenset, frozenset]:
-    """Read the canonical action contract so wire names cannot drift.
-
-    Falls back to the current literals when the schema is unavailable (for
-    example when netcode is imported from an installed package without it).
-    """
-
-    path = pathlib.Path(__file__).with_name("native-offline") / "shared" / "input-actions-schema.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        buttons = frozenset(str(entry["wire"]) for entry in data["buttons"].values())
-        utility = frozenset(str(entry["wire"]) for entry in data["utility"].values())
-        if buttons and utility:
-            return buttons, utility
-    except (OSError, KeyError, TypeError, ValueError):
-        pass
-    return (
-        frozenset({"b", "y", "select", "start", "up", "down", "left", "right", "a", "x", "l", "r"}),
-        frozenset({"quick_save", "quick_load", "speed_up", "speed_down", "open_menu"}),
-    )
-
-
-CONTROLLER_BUTTONS, CONTROLLER_UTILITY_ACTIONS = _load_input_actions()
-UTILITY_COMMAND_ID_MAX_BYTES = 128
-FIRST_SAVE_SLOT = 1
-LAST_SAVE_SLOT = 10
 
 
 # Crockford-style alphabet: no I, L, O, U to avoid transcription errors.
@@ -96,26 +60,6 @@ def _generate_code(length: int, *, randbelow: Callable[[int], int] = secrets.ran
     if length <= 0:
         raise NetcodeError("code length must be positive")
     return "".join(CODE_ALPHABET[randbelow(len(CODE_ALPHABET))] for _ in range(length))
-
-
-def generate_pairing_code(length: int = 6, *, randbelow: Callable[[int], int] = secrets.randbelow) -> str:
-    """A numeric pairing code (default six digits, leading zeroes allowed).
-
-    Drawn one decimal digit at a time from a cryptographically secure source so
-    every code in ``10**length`` is equally likely. The code is a short-lived
-    user confirmation factor, never the session credential.
-    """
-
-    if length <= 0:
-        raise NetcodeError("code length must be positive")
-    return "".join(str(randbelow(10)) for _ in range(length))
-
-
-def is_pairing_code(code: object) -> bool:
-    """True only for exactly six decimal digits (a leading zero is valid)."""
-
-    text = str(code or "")
-    return len(text) == 6 and text.isascii() and text.isdigit()
 
 
 def generate_room_code(length: int = 6, *, randbelow: Callable[[int], int] = secrets.randbelow) -> str:
@@ -203,27 +147,8 @@ class SlidingRateLimiter:
 
 
 # ---------------------------------------------------------------------------
-# Remote controller
+# Multiplayer game input
 # ---------------------------------------------------------------------------
-
-
-class PadButton(str, Enum):
-    A = "a"
-    B = "b"
-    X = "x"
-    Y = "y"
-    L = "l"
-    R = "r"
-    ZL = "zl"
-    ZR = "zr"
-    START = "start"
-    SELECT = "select"
-    UP = "up"
-    DOWN = "down"
-    LEFT = "left"
-    RIGHT = "right"
-
-
 @dataclass(frozen=True)
 class ControllerState:
     """One controller snapshot.
@@ -245,16 +170,6 @@ class ControllerState:
     touch_active: bool = False
     touch_x: float = 0.0
     touch_y: float = 0.0
-    # One-shot canonical utility action carried by this frame, with a per-press
-    # sequence so retries and duplicates never fire it twice.
-    utility_action: str = ""
-    utility_sequence: int = 0
-    utility_command_id: str = ""
-    utility_slot: int = FIRST_SAVE_SLOT
-    # Track B1 (debug-only): the phone's own capture time, echoed back to the
-    # phone so *it* can compute controller RTT on a single clock. The server
-    # never interprets it or compares it against a host timestamp.
-    capture_ms: int = 0
 
     def to_wire(self) -> dict:
         """Compact payload: short keys, omitted zero axes, touch when pressed."""
@@ -267,15 +182,6 @@ class ControllerState:
             payload["a"] = axes
         if self.touch_active:
             payload["t"] = [round(self.touch_x, 4), round(self.touch_y, 4)]
-        if self.utility_action:
-            payload["u"] = self.utility_action
-            payload["us"] = self.utility_sequence
-            if self.utility_command_id:
-                payload["command_id"] = self.utility_command_id
-            if self.utility_slot != FIRST_SAVE_SLOT:
-                payload["slot"] = self.utility_slot
-        if self.capture_ms:
-            payload["t0"] = self.capture_ms
         return payload
 
     @classmethod
@@ -283,58 +189,22 @@ class ControllerState:
         try:
             sequence = int(payload["s"])
         except (KeyError, TypeError, ValueError) as error:
-            raise NetcodeError("controller frame is missing a sequence") from error
+            raise NetcodeError("input frame is missing a sequence") from error
         axes = payload.get("a") or [0, 0, 0, 0]
         if len(axes) != 4:
-            raise NetcodeError("controller frame has an invalid axis tuple")
+            raise NetcodeError("input frame has an invalid axis tuple")
         touch = payload.get("t")
         touch_active = False
         touch_x = touch_y = 0.0
         if touch is not None:
             if not isinstance(touch, (list, tuple)) or len(touch) != 2:
-                raise NetcodeError("controller frame has an invalid touch tuple")
+                raise NetcodeError("input frame has an invalid touch tuple")
             try:
                 touch_x = min(1.0, max(0.0, float(touch[0])))
                 touch_y = min(1.0, max(0.0, float(touch[1])))
             except (TypeError, ValueError) as error:
-                raise NetcodeError("controller frame has a non-numeric touch tuple") from error
+                raise NetcodeError("input frame has a non-numeric touch tuple") from error
             touch_active = True
-        utility_action = ""
-        utility_sequence = 0
-        utility_command_id = ""
-        utility_slot = FIRST_SAVE_SLOT
-        candidate = str(payload.get("u") or "")
-        allowed_utility_names = {name.upper() for name in CONTROLLER_UTILITY_ACTIONS}
-        if candidate and (not allowed_utility_names or candidate.upper() in allowed_utility_names):
-            utility_action = candidate
-            try:
-                utility_sequence = int(payload.get("us") or 0)
-            except (TypeError, ValueError):
-                utility_sequence = 0
-            raw_command_id = payload.get("command_id", payload.get("commandId", ""))
-            if isinstance(raw_command_id, str):
-                utility_command_id = raw_command_id.strip()
-            if (len(utility_command_id.encode("utf-8")) > UTILITY_COMMAND_ID_MAX_BYTES
-                    or not utility_command_id.isascii()):
-                utility_action = ""
-                utility_sequence = 0
-                utility_command_id = ""
-            raw_slot = payload.get("slot", FIRST_SAVE_SLOT)
-            try:
-                utility_slot = int(raw_slot)
-            except (TypeError, ValueError):
-                utility_slot = 0
-            if not FIRST_SAVE_SLOT <= utility_slot <= LAST_SAVE_SLOT:
-                utility_action = ""
-                utility_sequence = 0
-                utility_command_id = ""
-                utility_slot = FIRST_SAVE_SLOT
-            elif not utility_command_id and utility_sequence > 0:
-                utility_command_id = f"legacy:{utility_sequence}"
-        try:
-            capture_ms = int(payload.get("t0") or 0)
-        except (TypeError, ValueError):
-            capture_ms = 0
         return cls(
             sequence=sequence,
             buttons=frozenset(str(name) for name in payload.get("b") or []),
@@ -342,191 +212,7 @@ class ControllerState:
             right_x=float(axes[2]), right_y=float(axes[3]),
             received_at=received_at,
             touch_active=touch_active, touch_x=touch_x, touch_y=touch_y,
-            utility_action=utility_action, utility_sequence=utility_sequence,
-            utility_command_id=utility_command_id, utility_slot=utility_slot,
-            capture_ms=max(0, capture_ms),
         )
-
-
-@dataclass
-class ControllerSession:
-    """Host side of a remote-controller pairing.
-
-    The guest sends small state frames; the host keeps only the most recent one.
-    Out-of-order, duplicate, and stale frames are dropped rather than buffered,
-    which is what makes packet loss tolerable without adding latency.
-    """
-
-    code: str
-    host_device_id: str
-    created_at: float
-    ttl_seconds: float = 120.0
-    paired_device_id: str = ""
-    _token_digest: str = ""
-    _last: Optional[ControllerState] = None
-    _ack_sequence: int = 0
-    _utility_sequence: int = 0
-    _pending_utilities: List[dict] = field(default_factory=list)
-    _utility_command_ids: set[str] = field(default_factory=set)
-    # Track B1: capture time of the acknowledged frame, echoed to the phone.
-    _acked_capture_ms: int = 0
-    clock: Callable[[], float] = time.monotonic
-
-    # -- lifecycle ---------------------------------------------------------
-    def is_expired(self) -> bool:
-        return self.clock() - self.created_at > self.ttl_seconds
-
-    @property
-    def paired(self) -> bool:
-        return bool(self._token_digest)
-
-    def pair(self, device_id: str) -> str:
-        """Complete pairing and return the raw session token (once)."""
-
-        if self.is_expired():
-            raise ExpiredError("pairing code expired")
-        token, digest = new_session_token()
-        self.paired_device_id = str(device_id or "guest")
-        self._token_digest = digest
-        # A paired session is no longer valid for a second guest.
-        self._last = None
-        self._ack_sequence = 0
-        self._utility_sequence = 0
-        self._pending_utilities = []
-        self._utility_command_ids.clear()
-        return token
-
-    def authenticate(self, token: str) -> bool:
-        if not self._token_digest:
-            return False
-        return hmac.compare_digest(self._token_digest, token_digest(token))
-
-    def disconnect(self) -> None:
-        self.paired_device_id = ""
-        self._token_digest = ""
-        self._last = None
-        self._ack_sequence = 0
-        # One-shot commands must never survive a disconnect and replay on reconnect.
-        self._utility_sequence = 0
-        self._pending_utilities = []
-        self._utility_command_ids.clear()
-
-    # -- acknowledgement ---------------------------------------------------
-    def ack(self, sequence: object, utility_sequence: object = 0) -> int:
-        """Record the newest frame the host's input path has applied.
-
-        The host reports this after it has pushed the frame into the emulator,
-        which is what lets the phone tell "transport connected" apart from
-        "input actually reaching the game". ``utility_sequence`` clears every
-        pending one-shot command the host has already dispatched.
-        """
-
-        try:
-            applied = int(sequence)
-        except (TypeError, ValueError):
-            applied = None
-        if applied is not None and applied >= self._ack_sequence:
-            self._ack_sequence = applied
-            # Track B1: remember the phone's own capture time for exactly the
-            # frame the host reports as applied, so the echo can never be
-            # attributed to a different input. The session keeps only the newest
-            # frame, so the input path always acknowledges that same frame.
-            self._acked_capture_ms = (
-                self._last.capture_ms
-                if self._last is not None and self._last.sequence == applied
-                else 0
-            )
-        try:
-            dispatched = int(utility_sequence)
-        except (TypeError, ValueError):
-            dispatched = 0
-        if dispatched > 0:
-            self._pending_utilities = [
-                item for item in self._pending_utilities if item["sequence"] > dispatched
-            ]
-        return self._ack_sequence
-
-    def ack_sequence(self) -> int:
-        return self._ack_sequence
-
-    def acked_capture_ms(self) -> int:
-        """Track B1: the phone capture time of the frame the host acknowledged.
-
-        Echoed to the phone unchanged so it can measure controller RTT on its
-        own clock. It is never compared against a host timestamp.
-        """
-
-        return self._acked_capture_ms
-
-    def pending_utilities(self) -> List[dict]:
-        """One-shot actions the host has not acknowledged yet."""
-
-        return list(self._pending_utilities)
-
-    def last_sequence(self) -> int:
-        return self._last.sequence if self._last else 0
-
-    def input_active(self) -> bool:
-        """True when the host's input path is keeping up with the phone.
-
-        A live host always has the newest frame in flight while it polls, so
-        requiring an exact match would report "input unavailable" forever.
-        Input is considered applied when the host has acknowledged frames and
-        is no more than a couple of frames behind the phone's latest snapshot;
-        a host whose input path stops advancing falls out of this window.
-        """
-
-        if not self.paired or self._last is None or self._ack_sequence <= 0:
-            return False
-        return self._last.sequence - self._ack_sequence <= 2
-
-    # -- input path --------------------------------------------------------
-    def accept_state(self, frame: dict, *, token: str) -> Optional[ControllerState]:
-        """Validate and apply one guest frame. Returns the applied state.
-
-        Returns ``None`` when the frame is a duplicate or older than the last
-        applied frame; the host must not treat that as an error.
-        """
-
-        if not self.authenticate(token):
-            raise NotPairedError("session token rejected")
-        state = ControllerState.from_wire(frame, received_at=self.clock())
-        if self._last is not None and state.sequence <= self._last.sequence:
-            return None
-        self._last = state
-        if state.utility_action:
-            command_id = state.utility_command_id
-            if not command_id:
-                if state.utility_sequence <= 0:
-                    return state
-                command_id = f"legacy:{state.utility_sequence}"
-            legacy = command_id.startswith("legacy:")
-            if (legacy and state.utility_sequence <= self._utility_sequence) or command_id in self._utility_command_ids:
-                return state
-            self._utility_command_ids.add(command_id)
-            if len(self._utility_command_ids) > 64:
-                self._utility_command_ids.pop()
-            self._utility_sequence = max(self._utility_sequence, state.utility_sequence)
-            self._pending_utilities.append({
-                "action": state.utility_action,
-                "sequence": state.utility_sequence,
-                "command_id": command_id,
-                "slot": state.utility_slot,
-            })
-            if len(self._pending_utilities) > 32:
-                del self._pending_utilities[:-32]
-        return state
-
-    def latest_state(self) -> Optional[ControllerState]:
-        return self._last
-
-    def current_buttons(self) -> frozenset:
-        return self._last.buttons if self._last else frozenset()
-
-    def needs_resync(self) -> bool:
-        """A host that has never received a frame must request a full state."""
-
-        return self.paired and self._last is None
 
 
 # ---------------------------------------------------------------------------
@@ -818,9 +504,3 @@ class RoomService:
             for code in expired:
                 self.rooms.pop(code, None)
             return sorted(expired)
-
-
-def choose_transport(mode: se.SyncMode, *, same_lan: bool) -> Optional[se.Transport]:
-    """Thin re-export so networking code has one transport decision point."""
-
-    return se.select_transport(mode, same_lan=same_lan)

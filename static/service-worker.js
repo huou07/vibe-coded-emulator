@@ -7,7 +7,7 @@ const CACHE = "an3-arcade-pwa-v31-__ASSET_VERSION__";
 const CORE_CACHE = "an3-arcade-cores-v1";
 const APP_SHELL = [
   "/", "/offline", "/download-app", "/static/site.css", "/static/site.js",
-  "/static/v/__ASSET_VERSION__/site.css", "/static/v/__ASSET_VERSION__/offline.js", "/static/v/__ASSET_VERSION__/player-ui.js", "/static/v/__ASSET_VERSION__/player-runtime.js", "/static/v/__ASSET_VERSION__/renderer-worker.js", "/static/v/__ASSET_VERSION__/nds-touch.js", "/static/v/__ASSET_VERSION__/player.js",
+  "/static/v/__ASSET_VERSION__/site.css", "/static/v/__ASSET_VERSION__/offline.js", "/static/v/__ASSET_VERSION__/player-ui.js", "/static/v/__ASSET_VERSION__/player-runtime.js", "/static/v/__ASSET_VERSION__/renderer-worker.js", "/static/v/__ASSET_VERSION__/nds-touch.js", "/static/v/__ASSET_VERSION__/local-save-recovery.js", "/static/v/__ASSET_VERSION__/player.js",
   "/static/default-cover.webp", "/static/manifest.webmanifest",
   "/static/ui-arrow-left.svg", "/static/ui-maximize.svg", "/static/ui-save.svg", "/static/ui-more.svg",
   "/static/ui-chevron-up.svg", "/static/ui-chevron-down.svg", "/static/ui-chevron-left.svg", "/static/ui-chevron-right.svg",

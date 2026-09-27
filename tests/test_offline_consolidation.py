@@ -181,7 +181,8 @@ console.log(JSON.stringify(result));
         capabilities = (native_root / "src-tauri" / "capabilities" / "default.json").read_text(encoding="utf-8")
         self.assertIn('"allow-start-native-game"', capabilities)
         self.assertIn('"allow-stop-native-game"', capabilities)
-        self.assertIn('"allow-set-native-input"', capabilities)
+        self.assertNotIn('"allow-set-native-input"', capabilities)
+        self.assertNotIn('native_controller_', capabilities)
         self.assertNotIn('"allow-launch-native-3ds"', capabilities)
         # Every Tauri command must be allowed by the capability ACL and listed in
         # build.rs's AppManifest, or the WebView gets "Command ... not allowed by
@@ -191,7 +192,8 @@ console.log(JSON.stringify(result));
             for path in sorted((native_root / "src-tauri" / "src").glob("*.rs"))
         )
         commands = re.findall(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)", command_sources)
-        self.assertIn("native_controller_status", commands)
+        self.assertFalse(any(command.startswith("native_controller_") or command.startswith("native_latency_") for command in commands))
+        self.assertNotIn("set_native_input", commands)
         build_rs = (native_root / "src-tauri" / "build.rs").read_text(encoding="utf-8")
         manifest = build_rs[build_rs.index(".commands(&["):]
         manifest = manifest[:manifest.index("]")]
