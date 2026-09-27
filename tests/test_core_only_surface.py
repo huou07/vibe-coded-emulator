@@ -278,6 +278,15 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         self.assertIn("SDL_PollEvent", runtime)
         self.assertNotIn('controllerSender.', native_app)
 
+    def test_android_game_toolbar_save_menu_keeps_manual_and_auto_slots(self):
+        game_overlay = (ANDROID_JAVA / "NativeGameOverlay.kt").read_text(encoding="utf-8")
+        self.assertIn("private val saveButton = button(NativePlayerUi.SAVE_LABEL) { showSaveMenu() }", game_overlay)
+        self.assertIn("private fun showSaveMenu()", game_overlay)
+        self.assertIn('NativePlayerUi.QUICK_SAVE_LABEL + "…"', game_overlay)
+        self.assertIn('NativePlayerUi.QUICK_LOAD_LABEL + "…"', game_overlay)
+        self.assertIn('2 -> send("save", "auto")', game_overlay)
+        self.assertIn('else -> send("load", "auto")', game_overlay)
+
     def test_phone_casting_is_removed_but_local_player_and_multiplayer_remain(self):
         player = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
         offline = (ROOT / "static" / "offline.js").read_text(encoding="utf-8")

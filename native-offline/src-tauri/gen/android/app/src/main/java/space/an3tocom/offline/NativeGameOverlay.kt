@@ -182,6 +182,27 @@ class NativeGameOverlay(
             .show()
     }
 
+    private fun showSaveMenu() {
+        val items = arrayOf(
+            NativePlayerUi.QUICK_SAVE_LABEL + "…",
+            NativePlayerUi.QUICK_LOAD_LABEL + "…",
+            "Auto Save now",
+            "Load Auto Save",
+        )
+        AlertDialog.Builder(activity)
+            .setTitle(NativePlayerUi.SAVE_LABEL)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> chooseQuickSlot(true)
+                    1 -> chooseQuickSlot(false)
+                    2 -> send("save", "auto")
+                    else -> send("load", "auto")
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun setSpeed(value: String) {
         currentSpeed = value
         send("speed", value)
