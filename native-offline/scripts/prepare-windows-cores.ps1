@@ -38,7 +38,7 @@ Copy-Item "$source/LICENSE" "$destination/mGBA-MPL-2.0.txt" -Force
 
 $archive = Join-Path $WorkRoot 'melondsds-v1.3.1-win64.zip'
 $url = 'https://github.com/JesseTG/melonds-ds/releases/download/v1.3.1/melondsds_libretro-win32-x86_64-Release.zip'
-$expected = 'ec7ff94ae5be3a6308859ea33ec63ac9d9b12d940b2c93d012e9502f71e57681'
+$expected = '2babc7b0c5786683e2c4e5e1812a8f67e83fdf1ff60b0ec74cdc1576fcf45498'
 if (-not (Test-Path $archive)) {
   & curl.exe -fL --retry 3 -o $archive $url
   if ($LASTEXITCODE) { throw 'Official melonDS DS release download failed.' }
