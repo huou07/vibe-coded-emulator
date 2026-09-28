@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <condition_variable>
+#include <chrono>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -17,6 +18,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "../../native-runtime/core/perf_telemetry.h"
 
 #if defined(AN3_SAVE_PERSISTENCE_TESTING)
 #include <functional>
@@ -103,6 +106,8 @@ class SavePersistenceWorker {
         std::lock_guard<std::mutex> lock(mutex_);
         return last_write_thread_id_;
     }
+
+    perf::TimingSummary write_metrics() const { return write_timings_.summary(); }
 
   private:
     struct Completion {
@@ -231,6 +236,7 @@ class SavePersistenceWorker {
             }
 
             std::string error;
+            const auto write_began = std::chrono::steady_clock::now();
 #if defined(AN3_SAVE_PERSISTENCE_TESTING)
             const bool success = test_writer_
                                      ? test_writer_(job.path, job.bytes, job.description, error)
@@ -238,6 +244,8 @@ class SavePersistenceWorker {
 #else
             const bool success = write_bytes_atomically(job.path, job.bytes, job.description, error);
 #endif
+            write_timings_.add(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - write_began).count()));
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!success && job.completions.empty()) background_error_ = error;
@@ -267,6 +275,7 @@ class SavePersistenceWorker {
     std::string background_error_;
     bool active_ = false;
     bool stopping_ = false;
+    perf::TimingSeries write_timings_{};
 #if defined(AN3_SAVE_PERSISTENCE_TESTING)
     TestWriter test_writer_;
 #endif

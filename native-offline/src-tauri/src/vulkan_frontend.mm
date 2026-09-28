@@ -7,6 +7,7 @@
 #include <vulkan/vulkan.h>
 
 #include "vulkan_frontend.h"
+#include "../../native-runtime/core/perf_telemetry.h"
 
 #include <array>
 #include <algorithm>
@@ -304,14 +305,22 @@ struct VulkanFrontend::Impl {
         uint64_t converted_software_uploads = 0;
         TimingSeries upload{};
         TimingSeries present{};
+        perf::TimingSeries upload_timing{};
+        perf::TimingSeries present_timing{};
+        perf::TimingSeries acquire_wait_timing{};
+        perf::TimingSeries fence_wait_timing{};
+        perf::TimingSeries queue_depth_timing{};
     } metrics;
 
     struct ScopedTiming {
         TimingSeries& series;
+        perf::TimingSeries& detailed;
         std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
         ~ScopedTiming() {
             const auto elapsed = std::chrono::steady_clock::now() - started;
-            series.add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()));
+            const auto nanos = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+            series.add(nanos / 1000u);
+            detailed.add(nanos);
         }
     };
     mutable std::mutex mutex;
@@ -1162,9 +1171,13 @@ struct VulkanFrontend::Impl {
         frame_index = next_presentation_frame;
         auto& frame = presentation_frames[frame_index];
         if (!frame.in_flight || !frame.image_available || !frame.render_finished) return false;
-        if (frame.submitted &&
-            wait_for_fences(device, 1, &frame.in_flight, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-            return false;
+        metrics.queue_depth_timing.add(frame.submitted ? 2u : 1u);
+        if (frame.submitted) {
+            const auto began = std::chrono::steady_clock::now();
+            const VkResult waited = wait_for_fences(device, 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
+            metrics.fence_wait_timing.add(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - began).count()));
+            if (waited != VK_SUCCESS) return false;
         }
         frame.submitted = false;
         active_presentation_frame = frame_index;
@@ -1295,7 +1308,7 @@ struct VulkanFrontend::Impl {
 
     bool upload_software_frame(SoftwareFrameSlot& slot, const void* framebuffer,
                                unsigned width, unsigned height, std::size_t pitch, int pixel_format) {
-        ScopedTiming timing{metrics.upload};
+        ScopedTiming timing{metrics.upload, metrics.upload_timing};
         if (!framebuffer || !width || !height) return false;
         std::string ignored_error;
         if (!create_software_resources(slot, width, height, pixel_format, ignored_error)) return false;
@@ -1503,7 +1516,7 @@ struct VulkanFrontend::Impl {
             ++metrics.dropped_frames;
             return false;
         }
-        ScopedTiming timing{metrics.present};
+        ScopedTiming timing{metrics.present, metrics.present_timing};
         std::string ignored_error;
         if (!recreate_swapchain_if_needed(ignored_error)) {
             ++metrics.dropped_frames;
@@ -1529,7 +1542,10 @@ struct VulkanFrontend::Impl {
                                       VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)
             ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         uint32_t image_index = 0;
+        const auto acquire_began = std::chrono::steady_clock::now();
         const VkResult acquired = acquire_next_image(device, swapchain, UINT64_MAX, frame.image_available, VK_NULL_HANDLE, &image_index);
+        metrics.acquire_wait_timing.add(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - acquire_began).count()));
         if (acquired == VK_ERROR_OUT_OF_DATE_KHR) {
             abandon();
             destroy_swapchain_resources(true);
@@ -1542,10 +1558,15 @@ struct VulkanFrontend::Impl {
             return false;
         }
         const VkFence image_fence = image_in_flight[image_index];
-        if (image_fence && image_fence != frame.in_flight &&
-            wait_for_fences(device, 1, &image_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-            abandon();
-            return false;
+        if (image_fence && image_fence != frame.in_flight) {
+            const auto began = std::chrono::steady_clock::now();
+            const VkResult waited = wait_for_fences(device, 1, &image_fence, VK_TRUE, UINT64_MAX);
+            metrics.fence_wait_timing.add(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - began).count()));
+            if (waited != VK_SUCCESS) {
+                abandon();
+                return false;
+            }
         }
         const VkCommandBuffer command = command_buffers[image_index];
         if (reset_command_buffer(command, 0) != VK_SUCCESS) {
@@ -1704,6 +1725,32 @@ struct VulkanFrontend::Impl {
         snapshot.upload_p99_us = metrics.upload.percentile(99, 100);
         snapshot.present_p95_us = metrics.present.percentile(95, 100);
         snapshot.present_p99_us = metrics.present.percentile(99, 100);
+        const auto upload = metrics.upload_timing.summary();
+        const auto present = metrics.present_timing.summary();
+        const auto acquire = metrics.acquire_wait_timing.summary();
+        const auto fence = metrics.fence_wait_timing.summary();
+        const auto micros = [](uint64_t nanos) -> uint32_t {
+            return static_cast<uint32_t>(std::min<uint64_t>(nanos / 1000u, std::numeric_limits<uint32_t>::max()));
+        };
+        snapshot.upload_p50_us = micros(upload.p50_ns);
+        snapshot.upload_p95_us = micros(upload.p95_ns);
+        snapshot.upload_p99_us = micros(upload.p99_ns);
+        snapshot.upload_max_us = micros(upload.max_ns);
+        snapshot.present_p50_us = micros(present.p50_ns);
+        snapshot.present_p95_us = micros(present.p95_ns);
+        snapshot.present_p99_us = micros(present.p99_ns);
+        snapshot.present_max_us = micros(present.max_ns);
+        snapshot.acquire_wait_p50_us = micros(acquire.p50_ns);
+        snapshot.acquire_wait_p95_us = micros(acquire.p95_ns);
+        snapshot.acquire_wait_p99_us = micros(acquire.p99_ns);
+        snapshot.acquire_wait_max_us = micros(acquire.max_ns);
+        snapshot.fence_wait_p50_us = micros(fence.p50_ns);
+        snapshot.fence_wait_p95_us = micros(fence.p95_ns);
+        snapshot.fence_wait_p99_us = micros(fence.p99_ns);
+        snapshot.fence_wait_max_us = micros(fence.max_ns);
+        const auto queue = metrics.queue_depth_timing.summary();
+        snapshot.queue_depth_p95 = static_cast<uint32_t>(std::min<uint64_t>(queue.p95_ns, std::numeric_limits<uint32_t>::max()));
+        snapshot.queue_depth_max = static_cast<uint32_t>(std::min<uint64_t>(queue.max_ns, std::numeric_limits<uint32_t>::max()));
         return snapshot;
     }
 };

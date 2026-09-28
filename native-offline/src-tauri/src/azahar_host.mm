@@ -9,6 +9,7 @@
 #include "../../shared/generated/player_ui.h"
 #include "../../shared/generated/native_layouts.h"
 #include "../../native-runtime/core/auto_save_mode.h"
+#include "../../native-runtime/core/perf_telemetry.h"
 
 #include <array>
 #include <atomic>
@@ -553,6 +554,15 @@ class AzaharHost {
         }
         layout_ = native_layout_preference(system_, layout_path);
         emulate_timings_.reset();
+        emulate_detail_timings_.reset();
+        frame_interval_timings_.reset();
+        save_snapshot_timings_.reset();
+        trace_.configure_from_env();
+        trace_epoch_ = std::chrono::steady_clock::now();
+        frame_id_ = 0;
+        current_frame_id_ = 0;
+        last_frame_begin_ns_ = 0;
+        duplicate_frames_.store(0, std::memory_order_relaxed);
         if (!core_.open(core_path_.c_str(), error)) return false;
 
         core_options_.reset(core_option_namespace_for_system(system_));
@@ -655,6 +665,9 @@ class AzaharHost {
 
         retro_system_av_info av_info{};
         core_.get_system_av_info(&av_info);
+        core_fps_ = (std::isfinite(av_info.timing.fps) && av_info.timing.fps > 1.0)
+            ? av_info.timing.fps : kNominalCoreFps;
+        core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / core_fps_));
         if (!start_audio(av_info.timing.sample_rate)) {
             error = "The native core reported an invalid audio sample rate or the output audio graph could not start.";
             stop();
@@ -724,6 +737,7 @@ class AzaharHost {
         stop_audio();
         vulkan_.shutdown();
         core_.close();
+        (void)trace_.write_jsonl(system_, core_budget_ns_);
         hardware_callbacks_ = {};
         has_hardware_callbacks_ = false;
         negotiation_interface_ = nullptr;
@@ -733,6 +747,10 @@ class AzaharHost {
         last_video_width_ = 0;
         last_video_height_ = 0;
         last_draw_time_ = {};
+        core_fps_ = kNominalCoreFps;
+        core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / kNominalCoreFps));
+        active_trace_sample_ = {};
+        trace_frame_active_ = false;
         speed_budget_ = 0.0;
         pixel_format_ = RETRO_PIXEL_FORMAT_RGB565;
         mouse_delta_x_.store(0, std::memory_order_relaxed);
@@ -1034,7 +1052,7 @@ class AzaharHost {
             if (last_draw_time_.time_since_epoch().count() == 0) last_draw_time_ = now;
             const double elapsed = std::clamp(std::chrono::duration<double>(now - last_draw_time_).count(), 0.0, 0.25);
             last_draw_time_ = now;
-            speed_budget_ = std::min(8.0, speed_budget_ + elapsed * kNominalCoreFps * speed_);
+            speed_budget_ = std::min(8.0, speed_budget_ + elapsed * core_fps_ * speed_);
             runs = static_cast<unsigned>(std::floor(speed_budget_));
             speed_budget_ -= static_cast<double>(runs);
         } else {
@@ -1043,11 +1061,28 @@ class AzaharHost {
         }
         for (unsigned index = 0; index < std::min(runs, 8u); ++index) {
             const auto began = std::chrono::steady_clock::now();
+            active_trace_sample_ = {};
+            active_trace_sample_.frame_id = ++frame_id_;
+            active_trace_sample_.core_deadline_ns = trace_now_ns() + core_budget_ns_;
+            active_trace_sample_.input_sample_ns = trace_now_ns();
+            if (last_frame_begin_ns_) {
+                active_trace_sample_.frame_interval_ns = trace_now_ns() - last_frame_begin_ns_;
+                frame_interval_timings_.add(active_trace_sample_.frame_interval_ns, core_budget_ns_);
+            }
+            last_frame_begin_ns_ = trace_now_ns();
+            current_frame_id_ = active_trace_sample_.frame_id;
+            trace_frame_active_ = trace_.enabled();
             core_.run();
             resolve_pending_save_ram_restore();
             flush_pending_audio_samples();
-            emulate_timings_.add(std::chrono::steady_clock::now() - began);
-            active_game_seconds_ += 1.0 / kNominalCoreFps;
+            const auto ended = std::chrono::steady_clock::now();
+            const auto elapsed_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(ended - began).count());
+            active_trace_sample_.emu_begin_ns = trace_now_ns() - elapsed_ns;
+            active_trace_sample_.emu_end_ns = trace_now_ns();
+            emulate_timings_.add(ended - began);
+            emulate_detail_timings_.add(elapsed_ns, core_budget_ns_);
+            active_game_seconds_ += 1.0 / core_fps_;
             if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
                 std::string save_error;
                 if (save_auto_state_locked(save_error, false)) last_autosave_game_seconds_ = active_game_seconds_;
@@ -1060,11 +1095,34 @@ class AzaharHost {
                 if (!background_error.empty()) message_ = background_error;
                 last_save_ram_game_seconds_ = active_game_seconds_;
             }
+            active_trace_sample_.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
+                g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
+            active_trace_sample_.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
+                                               g_audio_overruns.load(std::memory_order_relaxed);
+            active_trace_sample_.frame_queue_depth = 0;
+            if (trace_frame_active_) {
+                active_trace_sample_.rss_bytes = current_rss_bytes();
+                trace_.add(active_trace_sample_);
+            }
+            trace_frame_active_ = false;
         }
         note_audio_underrun();
     }
 
   private:
+    uint64_t trace_now_ns() const {
+        if (trace_epoch_.time_since_epoch().count() == 0) return 0;
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - trace_epoch_).count());
+    }
+
+    static uint64_t current_rss_bytes() {
+        mach_task_basic_info task{};
+        mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+        if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&task), &count) != KERN_SUCCESS) return 0;
+        return static_cast<uint64_t>(task.resident_size);
+    }
+
     void set_speed_locked(double multiplier) {
         constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
         double selected = 1.0;
@@ -1110,8 +1168,13 @@ class AzaharHost {
             error = "The core reported an invalid battery-save size.";
             return false;
         }
+        const auto snapshot_began = std::chrono::steady_clock::now();
         const auto* begin = static_cast<const uint8_t*>(data);
         std::vector<uint8_t> bytes(begin, begin + size);
+        const auto snapshot_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - snapshot_began).count());
+        save_snapshot_timings_.add(snapshot_ns);
+        if (trace_frame_active_) active_trace_sample_.save_snapshot_us = snapshot_ns / 1000u;
         return persist_bytes_locked(std::filesystem::path(save_path_) / (rom_id_ + ".srm"),
                                     std::move(bytes), "cartridge save", wait_for_write, error);
     }
@@ -1237,7 +1300,9 @@ class AzaharHost {
         return frames;
     }
 
-    static void input_poll_callback() {}
+    static void input_poll_callback() {
+        if (auto* host = active_host()) host->note_input_poll();
+    }
 
     static int16_t input_state_callback(unsigned, unsigned device, unsigned index, unsigned id) {
         auto* host = active_host();
@@ -1245,6 +1310,10 @@ class AzaharHost {
     }
 
     static void quiet_log(int, const char*, ...) {}
+
+    void note_input_poll() {
+        if (trace_frame_active_) active_trace_sample_.input_sample_ns = trace_now_ns();
+    }
 
     bool environment(unsigned command, void* data) {
         switch (command) {
@@ -1395,6 +1464,11 @@ class AzaharHost {
 
     void on_video(const void* data, unsigned width, unsigned height, size_t pitch) {
         if (!vulkan_.ready()) return;
+        const uint64_t present_began = trace_now_ns();
+        if (trace_frame_active_) {
+            active_trace_sample_.video_ready_ns = present_began;
+            active_trace_sample_.present_call_ns = present_began;
+        }
         if (system_ == "3ds" && width && height && reinterpret_cast<uintptr_t>(data) == RETRO_HW_FRAME_BUFFER_VALID) {
             last_video_width_ = width;
             last_video_height_ = height;
@@ -1405,8 +1479,14 @@ class AzaharHost {
             vulkan_.present_software(data, width, height, pitch, pixel_format_);
         } else if (!data && last_video_width_ && last_video_height_) {
             // Libretro permits a null frame to duplicate the last image.
+            duplicate_frames_.fetch_add(1, std::memory_order_relaxed);
+            if (trace_frame_active_) active_trace_sample_.duplicated = true;
             if (system_ == "3ds") vulkan_.present(last_video_width_, last_video_height_);
             else vulkan_.present_software(nullptr, last_video_width_, last_video_height_, 0, pixel_format_);
+        }
+        if (trace_frame_active_) {
+            active_trace_sample_.present_duration_ns = trace_now_ns() - present_began;
+            active_trace_sample_.displayed_ns = trace_now_ns();
         }
     }
 
@@ -1470,6 +1550,19 @@ class AzaharHost {
     std::atomic<int16_t> mouse_delta_x_{0};
     std::atomic<int16_t> mouse_delta_y_{0};
     HostTimingSeries emulate_timings_;
+    perf::TimingSeries emulate_detail_timings_;
+    perf::TimingSeries frame_interval_timings_;
+    perf::TimingSeries save_snapshot_timings_;
+    perf::TraceBuffer trace_;
+    perf::FrameSample active_trace_sample_{};
+    std::chrono::steady_clock::time_point trace_epoch_{};
+    uint64_t frame_id_ = 0;
+    uint64_t current_frame_id_ = 0;
+    uint64_t last_frame_begin_ns_ = 0;
+    uint64_t core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / kNominalCoreFps));
+    double core_fps_ = kNominalCoreFps;
+    bool trace_frame_active_ = false;
+    std::atomic<uint64_t> duplicate_frames_{0};
     std::chrono::steady_clock::time_point last_draw_time_{};
     double speed_ = 1.0;
     double speed_budget_ = 0.0;
@@ -2061,8 +2154,34 @@ static void populate_process_metrics(NativeRendererMetrics& snapshot) {
 
 NativeRendererMetrics AzaharHost::renderer_metrics() const {
     NativeRendererMetrics snapshot = vulkan_.renderer_metrics();
-    snapshot.emulate_p95_us = emulate_timings_.percentile(95);
-    snapshot.emulate_p99_us = emulate_timings_.percentile(99);
+    const auto to_us = [](uint64_t nanos) -> uint32_t {
+        return static_cast<uint32_t>(std::min<uint64_t>(nanos / 1000u, std::numeric_limits<uint32_t>::max()));
+    };
+    const auto frame = frame_interval_timings_.summary();
+    const auto emulate = emulate_detail_timings_.summary();
+    const auto save_snapshot = save_snapshot_timings_.summary();
+    const auto save_io = persistence_writer_.write_metrics();
+    snapshot.frame_interval_p50_us = to_us(frame.p50_ns);
+    snapshot.frame_interval_p95_us = to_us(frame.p95_ns);
+    snapshot.frame_interval_p99_us = to_us(frame.p99_ns);
+    snapshot.frame_interval_max_us = to_us(frame.max_ns);
+    snapshot.frame_deadline_misses = frame.deadline_misses;
+    snapshot.frame_over_150x = frame.over_150x;
+    snapshot.frame_over_2x = frame.over_2x;
+    snapshot.frame_over_3x = frame.over_3x;
+    snapshot.duplicated_frames = duplicate_frames_.load(std::memory_order_relaxed);
+    snapshot.emulate_p50_us = to_us(emulate.p50_ns);
+    snapshot.emulate_p95_us = to_us(emulate.p95_ns);
+    snapshot.emulate_p99_us = to_us(emulate.p99_ns);
+    snapshot.emulate_max_us = to_us(emulate.max_ns);
+    snapshot.save_snapshot_p95_us = to_us(save_snapshot.p95_ns);
+    snapshot.save_snapshot_p99_us = to_us(save_snapshot.p99_ns);
+    snapshot.save_snapshot_count = save_snapshot.count;
+    snapshot.save_io_p95_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p95_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
+    snapshot.save_io_p99_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p99_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
+    snapshot.save_io_count = save_io.count;
+    snapshot.perf_trace_enabled = trace_.enabled();
+    snapshot.perf_trace_samples = trace_.sample_count();
     snapshot.audio_queue_depth_frames = static_cast<uint32_t>(std::min<size_t>(
         g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
     snapshot.audio_queue_max_frames = static_cast<uint32_t>(std::min<size_t>(
@@ -3617,6 +3736,39 @@ extern "C" int an3_native_get_renderer_metrics(an3_native_renderer_metrics* metr
     metrics->resident_memory_bytes = snapshot.resident_memory_bytes;
     metrics->cpu_user_time_us = snapshot.cpu_user_time_us;
     metrics->cpu_system_time_us = snapshot.cpu_system_time_us;
+    metrics->frame_interval_p50_us = snapshot.frame_interval_p50_us;
+    metrics->frame_interval_p95_us = snapshot.frame_interval_p95_us;
+    metrics->frame_interval_p99_us = snapshot.frame_interval_p99_us;
+    metrics->frame_interval_max_us = snapshot.frame_interval_max_us;
+    metrics->frame_deadline_misses = snapshot.frame_deadline_misses;
+    metrics->frame_over_150x = snapshot.frame_over_150x;
+    metrics->frame_over_2x = snapshot.frame_over_2x;
+    metrics->frame_over_3x = snapshot.frame_over_3x;
+    metrics->duplicated_frames = snapshot.duplicated_frames;
+    metrics->acquire_wait_p50_us = snapshot.acquire_wait_p50_us;
+    metrics->acquire_wait_p95_us = snapshot.acquire_wait_p95_us;
+    metrics->acquire_wait_p99_us = snapshot.acquire_wait_p99_us;
+    metrics->acquire_wait_max_us = snapshot.acquire_wait_max_us;
+    metrics->fence_wait_p50_us = snapshot.fence_wait_p50_us;
+    metrics->fence_wait_p95_us = snapshot.fence_wait_p95_us;
+    metrics->fence_wait_p99_us = snapshot.fence_wait_p99_us;
+    metrics->fence_wait_max_us = snapshot.fence_wait_max_us;
+    metrics->upload_p50_us = snapshot.upload_p50_us;
+    metrics->upload_max_us = snapshot.upload_max_us;
+    metrics->present_p50_us = snapshot.present_p50_us;
+    metrics->present_max_us = snapshot.present_max_us;
+    metrics->emulate_p50_us = snapshot.emulate_p50_us;
+    metrics->emulate_max_us = snapshot.emulate_max_us;
+    metrics->queue_depth_p95 = snapshot.queue_depth_p95;
+    metrics->queue_depth_max = snapshot.queue_depth_max;
+    metrics->save_snapshot_p95_us = snapshot.save_snapshot_p95_us;
+    metrics->save_snapshot_p99_us = snapshot.save_snapshot_p99_us;
+    metrics->save_io_p95_ms = snapshot.save_io_p95_ms;
+    metrics->save_io_p99_ms = snapshot.save_io_p99_ms;
+    metrics->save_snapshot_count = snapshot.save_snapshot_count;
+    metrics->save_io_count = snapshot.save_io_count;
+    metrics->perf_trace_samples = snapshot.perf_trace_samples;
+    metrics->perf_trace_enabled = snapshot.perf_trace_enabled ? 1 : 0;
     return 1;
 }
 
