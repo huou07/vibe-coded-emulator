@@ -1,110 +1,123 @@
 # AN3 Runtime Performance Checkpoint
 
-## Phase A — bounded telemetry and source map
+## Scope and baseline
 
 - Source baseline: `80c3fe48a0d7da204a19a8a22abb98905da43145` (`v3.3.1`).
-- Worktree/branch: `perf/runtime-architecture` / `/Users/meomeo/Documents/an3-runtime-performance`.
-- Status: `IMPLEMENTED` telemetry contract; deterministic native M5/GBA baseline is
-  `INTEGRATION_VERIFIED` for the harness path. The owner's separate packaged-app
-  lag report is not claimed resolved by this baseline.
+- Worktree/branch: `/Users/meomeo/Documents/an3-runtime-performance` /
+  `perf/runtime-architecture`.
+- This checkpoint covers the macOS runtime performance remediation only. It does
+  not publish, tag, deploy, or change the Android tao/Tauri teardown blocker.
+- The lawful M5 fixture is the generated GBA homebrew fixture from
+  `tools/testrom/gba_homebrew_test.py`; no commercial ROM or fabricated fixture
+  was used.
 
-### Current macOS GBA path
+Phase A established the telemetry and the packaged bottleneck. The old packaged
+path ran `retro_run` from the AppKit/MTKView display callback while the video
+callback synchronously called `present_software`. The old packaged trace
+(`/tmp/an3-tauri-m5.jsonl`) measured:
 
-`MTKView::drawInMTKView` calls `AzaharHost::draw` on the AppKit/display callback. At
-normal speed, one `retro_run` is executed per callback. The core's video callback
-calls `VulkanFrontend::present_software`, which uploads into the bounded two-slot
-ring and submits the swapchain blit/present. The existing presenter can wait for
-an image acquire and an image/in-flight fence; no normal-frame `vkDeviceWaitIdle`
-or `vkQueueWaitIdle` was added. Audio callbacks feed the existing bounded audio
-queue and AVAudioEngine path. SRAM/state bytes are copied under the host lock and
-submitted to the existing bounded/coalescing `AN3 Save Worker`; file open/write,
-flush, `fsync`, and atomic rename remain worker-owned.
+| metric | old packaged result |
+| --- | --- |
+| emulation p50/p95/p99/max | 16.491 / 17.199 / 17.544 / 27.609 ms |
+| presentation p50/p95/p99/max | 16.109 / 16.824 / 17.202 / 27.139 ms |
+| frame interval p50/p95/p99/max | 16.675 / 17.447 / 17.809 / 116.142 ms |
+| intervals >2x / >3x | 2 / 2 |
+| dropped / duplicated frames | 0 / 0 |
+| audio xruns | 24 |
 
-The current host still holds `state_mutex_` across `retro_run`, pending audio
-work, periodic save snapshot submission, and the synchronous presentation call.
-That is a measured architectural risk to verify with the trace; it is not yet
-claimed as the sole cause of the owner's visible lag.
+Source inspection confirmed `queue_present` was reached synchronously from
+`retro_run` on the old MTKView path. The deterministic native harness did not
+show recurring GBA stalls, so the packaged callback ownership and presentation
+boundary were the measured risk to address.
 
-### Telemetry added
+## Implemented change
 
-`native-runtime/core/perf_telemetry.h` provides a fixed 512-sample timing window,
-cumulative deadline/budget counters, and a fixed 4096-frame JSONL trace ring.
-Tracing is local and opt-in with `AN3_PERF_TRACE=1`; the ring is dumped only at
-session stop to `AN3_PERF_TRACE_PATH` (or `/tmp/an3-perf-trace.jsonl`). The frame
-record carries the core/input/emulation/video/present timestamps, acquire/fence
-wait boundaries, audio fill/xruns, save snapshot and I/O fields, RSS, and
-dropped/duplicated flags. The default path performs no file I/O and no network
-activity from the frame callback.
+Primary implementation commit: **`580ca82`** (`fix(perf): decouple macos core cadence and bound presentation`).
 
-Renderer metrics now expose p50/p95/p99/max for frame, emulation, upload,
-presentation, acquire, and fence timings, budget miss counters, duplicate
-frames, bounded queue depth, save snapshot/I/O summaries, and trace status.
-`tools/summarize_perf_trace.py` deterministically summarizes a trace without
-assuming 60 Hz; it uses the trace budget or the observed median cadence.
+- macOS software cores (`gba` and `nds`) now run `retro_run`, input sampling,
+  audio submission, save snapshots, and core timing on one owned worker thread.
+- The AppKit draw callback only presents from a bounded three-slot FIFO frame
+  queue and observes audio recovery. It does not run the core or perform save
+  work.
+- A full bounded ring overwrites the oldest ready frame and records a drop;
+  normal display jitter consumes ready frames FIFO. When no new frame is ready,
+  the last drawable remains visible and telemetry records a duplicate without a
+  second Vulkan submission.
+- `3ds` retains its synchronous hardware-renderer path; no NDS/3DS core
+  initialization, renderer, input, layout, or backend selection was changed.
+- AVAudioPlayerNode recovery clears a stale queued count and restarts the node
+  after a route/output stop, keeping the existing bounded audio path.
+- The trace ring is bounded at 65,536 samples (over 18 minutes at 60 Hz) and
+  records a separate presentation interval. Build dependencies now include the
+  telemetry and save-worker headers so native changes rebuild reliably.
+- Save persistence remains owned by the existing bounded/coalescing `AN3 Save
+  Worker`; file open/write/flush/fsync/atomic rename stay off the core and draw
+  paths. The renderer contract tests assert that boundary.
 
-### Verification
+## Packaged M5/GBA verification
 
-- `tests.test_perf_telemetry`: pass (bounded contract and deterministic summary).
-- `tests.test_native_renderer_contract`: pass.
-- `tests.test_native_regression_guards`: pass.
-- `tests.test_phase1_renderer_contract`: pass.
-- `tests.test_phase_a_branding_autosave_exit`: pass.
-- `tests.test_native_staging_contract`: pass.
-- `tests.test_core_only_surface`: pass.
-- `tests.test_native_input_contract`: pass.
-- standalone C++17 compile of `perf_telemetry.h`: pass.
-- standalone C++17 compile of `SavePersistenceWorker` with its test writer: pass.
-- `git diff --check`: pass.
-- macOS native build: pass after `d98e345` (`cargo build --manifest-path
-  native-offline/src-tauri/Cargo.toml --locked`).
-- Native smoke teardown: the harness had an ARC/`NSWindow` double-release;
-  `d0a78ea` keeps the window owned until the autorelease pool exits. With that
-  test-only correction, a 60-second lawful generated GBA run completed cleanly.
+Final trace: `/tmp/an3-tauri-m5-fifo-final.jsonl` (18 MB, 35,635 frame records;
+the trace was dumped on normal Escape shutdown). The process wall-clock run was
+about ten minutes; the first 1,800 frames (~30 seconds) are treated as warm-up,
+leaving 563.9 seconds (~9.4 minutes) of measured steady state.
 
-### Phase A baseline evidence
-
-Command (from this worktree):
-
-```text
-AN3_PERF_TRACE=1 AN3_PERF_TRACE_PATH=/tmp/an3-m5-baseline-60s.jsonl \
-  /tmp/an3-native-smoke gba \
-  native-offline/vendor/libretro/macos-arm64/mgba_libretro.dylib \
-  native-offline/vendor/moltenvk/macos-arm64/libMoltenVK.dylib \
-  /tmp/an3-m5-gba.gba /tmp/an3-m5-saves /tmp/an3-m5-system 60
-```
-
-The fixture is generated by `tools/testrom/gba_homebrew_test.py`; it contains
-no commercial content. The run produced 3,591 frames in 60.001 seconds
-(59.85 FPS), with zero AN3-reported dropped or duplicated frames. The trace
-summary is:
+Post-warm-up results:
 
 | metric | result |
 | --- | --- |
-| frame interval p50/p95/p99/max | 16.665 / 17.232 / 17.582 / 173.876 ms |
-| frame intervals >2B / >3B | 1 / 1 (both the frame-2 startup gap) |
-| emulation p50/p95/p99/max | 1.241 / 1.467 / 1.533 / 9.196 ms |
-| presentation p50/p95/p99/max | 0.477 / 0.609 / 0.672 / 3.054 ms |
-| acquire/fence p95 | 49 / 5 us |
-| queue depth p95/max | 0 / 0 |
-| audio xruns | 18 cumulative, with no underruns and startup/steady-state audio queue bounded at 1,606/2,528 frames |
-| save snapshot samples | 12, 0.237–0.742 ms |
-| save I/O p95/p99 | 0 / 0 ms in frame samples; worker metrics reported 1 ms p95 |
-| RSS start/end/peak | 76.3 / 101.1 / 101.1 MB |
+| presentation interval p50/p95/p99/max | 16.668 / 17.963 / 18.636 / 19.707 ms |
+| presentation intervals >1.5x / >2x / >3x | 0 / 0 / 0 |
+| core interval p50/p95/p99/max | 16.752 / 18.620 / 20.240 / 22.205 ms |
+| emulation p50/p95/p99/max | 0.851 / 1.157 / 1.366 / 2.241 ms |
+| presentation duration p50/p95/p99/max | 0.665 / 1.021 / 1.171 / 1.496 ms |
+| video-ready to display p50/p95/p99/max | 13.068 / 17.967 / 20.163 / 23.778 ms |
+| dropped / duplicate display opportunities | 0 / 154 |
+| frame queue p95 / max | 2 / 2 (capacity 3) |
+| cumulative audio xruns | 0 |
+| non-zero save snapshots | 113; p50 434 us, p95 748 us, max 787 us |
 
-Only one frame interval exceeded 20 ms, and it was frame 2 at 173.876 ms.
-After warm-up, the trace shows no recurring severe presentation hitch. This
-clears a recurring-GBA-stall hypothesis for the deterministic native harness,
-but does not clear the broad host-lock risk or explain the owner's packaged
-application experience. The exact trace and summary remain at
-`/tmp/an3-m5-baseline-60s.jsonl` and the summarizer output from this run.
+The one startup drop and startup >2x/>3x interval are outside the warm-up
+window. There are no post-warm-up drops or budget misses. Duplicate records are
+display opportunities that kept the last drawable visible; they do not resubmit
+Vulkan work. The native smoke renderer summary reports save-worker I/O p95 2 ms;
+the per-frame trace `save_io_ms` field remains zero because worker I/O is
+aggregated in renderer metrics rather than attributed to each core sample.
+RSS rose from roughly 179.7 MB at the warm-up boundary to a 179.7 MB peak and
+ended at roughly 179.2 MB in this run.
 
-No packaged-app M5 trace has been captured in this phase, so no owner-visible
-gameplay smoothness or before/after performance result is reported yet. The
-Tao/Tauri Android teardown classification remains `BLOCKED_UPSTREAM` and is
-out of scope.
+The normal-profile SRAM readback also passed without profile reset or data
+deletion: the 32 KiB file retained the `AN3B` signature, its counter advanced
+from `0f` to `10`, and its timestamp advanced after a fresh launch/close.
+
+## Verification record
+
+- Focused suite: 72 tests passed:
+  `tests.test_perf_telemetry`, `tests.test_native_renderer_contract`,
+  `tests.test_native_regression_guards`, `tests.test_phase1_renderer_contract`,
+  `tests.test_phase_a_branding_autosave_exit`,
+  `tests.test_native_staging_contract`, and `tests.test_native_input_contract`.
+- Android native runtime contract suite: 24 tests passed.
+- Objective-C++ syntax-only compile: passed.
+- `cargo build --manifest-path native-offline/src-tauri/Cargo.toml --locked`:
+  passed; only the existing nine Rust warnings remain.
+- `git diff --check`: passed before the implementation commit and will be
+  rerun for this checkpoint commit.
+- The four generated schema files and generated Android/vendor outputs were not
+  staged. Unrelated worktrees and caches were preserved.
+
+## Platform and core status
+
+| scope | status | evidence/limit |
+| --- | --- | --- |
+| macOS GBA M5 | `INTEGRATION_VERIFIED` | packaged FIFO trace, audio, queue, and SRAM readback above |
+| macOS NDS | `UNIT_VERIFIED` | shared-host contracts only; no lawful runtime fixture |
+| macOS 3DS | `UNIT_VERIFIED` | synchronous path kept unchanged; no lawful runtime fixture |
+| Switch | `UNVERIFIED_NO_LAWFUL_FIXTURE` | no lawful runtime fixture supplied |
+| Android / Windows / Linux absolute performance | `UNVERIFIED` | source and contract coverage only; no hosted M5 acceptance |
+| tao/Tauri Android teardown | `BLOCKED_UPSTREAM` | separate known issue; not changed here |
 
 ## Next action
 
-Capture the exact packaged-app workload if available; otherwise add focused
-owner/lock-boundary evidence to the native path. Use that evidence to decide
-whether a single-owner runtime change is justified before touching pacing.
+Run cross-platform hosted/physical acceptance and release review in a separate
+authorized session. This branch is not pushed, tagged, released, or deployed by
+this performance-remediation session.
