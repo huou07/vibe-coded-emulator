@@ -24,8 +24,12 @@ int main(int argc, const char* argv[]) {
         NSWindow* window = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(0.0, 0.0, 960.0, 640.0)
                       styleMask:NSWindowStyleMaskTitled
-                        backing:NSBackingStoreBuffered
+                      backing:NSBackingStoreBuffered
                           defer:NO];
+        // `close` releases a window by default. ARC also releases the local
+        // strong reference at the end of this scope, so keep ownership here
+        // until the smoke harness leaves its autorelease pool.
+        window.releasedWhenClosed = NO;
         [window orderFrontRegardless];
 
         char details[512]{};
