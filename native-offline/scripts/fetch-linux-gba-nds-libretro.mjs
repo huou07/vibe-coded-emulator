@@ -20,12 +20,12 @@ const cores = [
   },
   {
     system: "nds", engine: "melonDS DS libretro", version: "1.3.1",
-    archiveName: "melondsds_libretro.so.zip",
-    // The buildbot ZIP envelope changes while the core payload stays
-    // byte-identical; validate the extracted core SHA-256 below.
-    archiveUrl: "https://buildbot.libretro.com/nightly/linux/x86_64/latest/melondsds_libretro.so.zip",
+    archiveName: "melondsds-v1.3.1-linux-x86_64-Release.zip",
+    archiveUrl: "https://github.com/JesseTG/melonds-ds/releases/download/v1.3.1/melondsds_libretro-linux-x86_64-Release.zip",
+    archiveSha256: "11fc7f5f3a265612d805a210b5efb4f0893ae0426b50a1245669e62ec727d934",
+    archiveCorePath: "*/cores/melondsds_libretro.so",
     coreName: "melondsds_libretro.so",
-    coreSha256: "a217ebd98a68745591cf68bdf35342d73b9044f2a3e6a6071c165dc632ae7cf9",
+    coreSha256: "c58d933c6e4d36f5b7a5732325408a6777034d67c227190fbc08fa9c8347071d",
     licenseName: "melonDS-DS-GPL-3.0-or-later.txt", license: "GPL-3.0-or-later",
     licenseUrl: "https://raw.githubusercontent.com/JesseTG/melonds-ds/bc4e4b67d2d470d7c682810a1e892cafd6f9082b/LICENSE",
     licenseSha256: "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
@@ -72,10 +72,8 @@ if (artifactsReady) {
     const builtMgba = await buildPinnedMgbaCore(staged, "linux");
     const melon = cores[1];
     const archive = join(temporary, melon.archiveName);
-    const response = await fetch(melon.archiveUrl);
-    if (!response.ok) throw new Error(`${melon.engine} archive download returned HTTP ${response.status}`);
-    await writeFile(archive, Buffer.from(await response.arrayBuffer()));
-    const extracted = await execFileAsync("/usr/bin/unzip", ["-p", archive, melon.coreName], { encoding: "buffer", maxBuffer: 16 * 1024 * 1024 });
+    await writeFile(archive, await fetchVerifiedBytes(melon.archiveUrl, melon.archiveSha256, `${melon.engine} archive`));
+    const extracted = await execFileAsync("/usr/bin/unzip", ["-p", archive, melon.archiveCorePath], { encoding: "buffer", maxBuffer: 16 * 1024 * 1024 });
     await writeFile(join(staged, melon.coreName), extracted.stdout);
     if (!await verified(join(staged, melon.coreName), melon.coreSha256)) throw new Error(`${melon.engine} extracted core failed its pinned SHA-256 verification.`);
     await writeFile(join(staged, melon.licenseName), await fetchVerifiedBytes(melon.licenseUrl, melon.licenseSha256, `${melon.engine} license`));

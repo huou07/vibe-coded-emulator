@@ -7,6 +7,7 @@ import { fetchVerifiedBytes } from "../scripts/build-mgba-core.mjs";
 const lock = JSON.parse(await readFile(new URL("../shared/libretro-source-lock.json", import.meta.url), "utf8")).mgba;
 const melonds = JSON.parse(await readFile(new URL("../shared/libretro-source-lock.json", import.meta.url), "utf8")).melondsdsMacos;
 const macCoreBuilder = await readFile(new URL("../scripts/fetch-gba-nds-libretro.mjs", import.meta.url), "utf8");
+const linuxCoreBuilder = await readFile(new URL("../scripts/fetch-linux-gba-nds-libretro.mjs", import.meta.url), "utf8");
 
 test("mGBA source and license pins identify immutable upstream content", () => {
   assert.equal(lock.sourceUrl, `https://codeload.github.com/mgba-emu/mgba/tar.gz/${lock.sourceRevision}`);
@@ -38,4 +39,12 @@ test("macOS melonDS DS uses the pinned 1.3.1 source at AN3's supported deploymen
   assert.match(macCoreBuilder, /--target", "melondsds_libretro"/);
   assert.match(macCoreBuilder, /CMAKE_OSX_DEPLOYMENT_TARGET=\$\{melonds\.deploymentTarget\}/);
   assert.doesNotMatch(macCoreBuilder, /buildbot\.libretro\.com\/nightly\/apple\/osx\/arm64\/latest/);
+});
+
+test("Linux melonDS DS uses an immutable official v1.3.1 release asset", () => {
+  assert.match(linuxCoreBuilder, /github\.com\/JesseTG\/melonds-ds\/releases\/download\/v1\.3\.1\/melondsds_libretro-linux-x86_64-Release\.zip/);
+  assert.doesNotMatch(linuxCoreBuilder, /buildbot\.libretro\.com\/nightly\/linux\/x86_64\/latest/);
+  assert.match(linuxCoreBuilder, /archiveSha256: "[a-f0-9]{64}"/);
+  assert.match(linuxCoreBuilder, /archiveCorePath: "\*\/cores\/melondsds_libretro\.so"/);
+  assert.match(linuxCoreBuilder, /coreSha256: "c58d933c6e4d36f5b7a5732325408a6777034d67c227190fbc08fa9c8347071d"/);
 });
