@@ -77,7 +77,8 @@ Post-warm-up results:
 | non-zero save snapshots | 113; p50 434 us, p95 748 us, max 787 us |
 
 The one startup drop and startup >2x/>3x interval are outside the warm-up
-window. There are no post-warm-up drops or budget misses. Duplicate records are
+window. There are no post-warm-up drops and no presentation intervals above 1.5x,
+2x, or 3x budget. Duplicate records are
 display opportunities that kept the last drawable visible; they do not resubmit
 Vulkan work. The native smoke renderer summary reports save-worker I/O p95 2 ms;
 the per-frame trace `save_io_ms` field remains zero because worker I/O is
