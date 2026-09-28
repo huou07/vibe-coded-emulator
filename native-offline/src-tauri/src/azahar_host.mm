@@ -45,6 +45,13 @@
 // supported native integration seam on macOS.
 namespace an3 {
 
+// These counters are sampled by the host frame path before the audio graph
+// implementation is declared below. Keep their definitions at namespace
+// scope so the telemetry code does not depend on declaration order.
+static std::atomic<size_t> g_audio_frames_queued{0};
+static std::atomic<uint64_t> g_audio_underruns{0};
+static std::atomic<uint64_t> g_audio_overruns{0};
+
 constexpr unsigned RETRO_DEVICE_JOYPAD = 1;
 constexpr unsigned RETRO_DEVICE_MOUSE = 2;
 constexpr unsigned RETRO_DEVICE_ANALOG = 5;
@@ -1660,10 +1667,7 @@ static double g_audio_hardware_sample_rate = 0.0;
 static unsigned g_audio_latency_ms = 64;
 static unsigned g_audio_resampler_quality = 2;
 static bool g_audio_playing = false;
-static std::atomic<size_t> g_audio_frames_queued{0};
 static std::atomic<size_t> g_audio_frames_max{0};
-static std::atomic<uint64_t> g_audio_underruns{0};
-static std::atomic<uint64_t> g_audio_overruns{0};
 static std::atomic<uint64_t> g_audio_last_submit_ns{0};
 static std::atomic<bool> g_audio_underrun_latched{false};
 // A bounded PCM snapshot distinguishes a silent core/converter from a

@@ -282,6 +282,12 @@ struct VulkanFrontend::Impl {
         size_t count = 0;
         size_t next = 0;
 
+        void reset() {
+            values.fill(0);
+            count = 0;
+            next = 0;
+        }
+
         void add(uint64_t microseconds) {
             values[next] = static_cast<uint32_t>(std::min<uint64_t>(microseconds, std::numeric_limits<uint32_t>::max()));
             next = (next + 1u) % values.size();
@@ -310,6 +316,21 @@ struct VulkanFrontend::Impl {
         perf::TimingSeries acquire_wait_timing{};
         perf::TimingSeries fence_wait_timing{};
         perf::TimingSeries queue_depth_timing{};
+
+        void reset() {
+            dropped_frames = 0;
+            software_uploads = 0;
+            direct_software_uploads = 0;
+            copied_software_uploads = 0;
+            converted_software_uploads = 0;
+            upload.reset();
+            present.reset();
+            upload_timing.reset();
+            present_timing.reset();
+            acquire_wait_timing.reset();
+            fence_wait_timing.reset();
+            queue_depth_timing.reset();
+        }
     } metrics;
 
     struct ScopedTiming {
@@ -1029,7 +1050,7 @@ struct VulkanFrontend::Impl {
         shutdown();
         current_sync_index.store(0, std::memory_order_relaxed);
         frame_count.store(0, std::memory_order_relaxed);
-        metrics = {};
+        metrics.reset();
         layer = (__bridge CAMetalLayer*)metal_layer;
         if (!layer) {
             error = "The VibeCodedEmulator native game view is unavailable.";
@@ -1083,7 +1104,7 @@ struct VulkanFrontend::Impl {
         shutdown();
         current_sync_index.store(0, std::memory_order_relaxed);
         frame_count.store(0, std::memory_order_relaxed);
-        metrics = {};
+        metrics.reset();
         layer = (__bridge CAMetalLayer*)metal_layer;
         if (!layer) {
             error = "The VibeCodedEmulator native game view is unavailable.";
