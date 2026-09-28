@@ -87,6 +87,42 @@ struct NativeRendererMetrics {
     uint64_t resident_memory_bytes = 0;
     uint64_t cpu_user_time_us = 0;
     uint64_t cpu_system_time_us = 0;
+    // Bounded performance envelope. These fields are populated by the native
+    // host/presenter when available and remain zero on backends that do not
+    // expose the corresponding timing boundary.
+    uint32_t frame_interval_p50_us = 0;
+    uint32_t frame_interval_p95_us = 0;
+    uint32_t frame_interval_p99_us = 0;
+    uint32_t frame_interval_max_us = 0;
+    uint64_t frame_deadline_misses = 0;
+    uint64_t frame_over_150x = 0;
+    uint64_t frame_over_2x = 0;
+    uint64_t frame_over_3x = 0;
+    uint64_t duplicated_frames = 0;
+    uint32_t acquire_wait_p50_us = 0;
+    uint32_t acquire_wait_p95_us = 0;
+    uint32_t acquire_wait_p99_us = 0;
+    uint32_t acquire_wait_max_us = 0;
+    uint32_t fence_wait_p50_us = 0;
+    uint32_t fence_wait_p95_us = 0;
+    uint32_t fence_wait_p99_us = 0;
+    uint32_t fence_wait_max_us = 0;
+    uint32_t upload_p50_us = 0;
+    uint32_t upload_max_us = 0;
+    uint32_t present_p50_us = 0;
+    uint32_t present_max_us = 0;
+    uint32_t emulate_p50_us = 0;
+    uint32_t emulate_max_us = 0;
+    uint32_t queue_depth_p95 = 0;
+    uint32_t queue_depth_max = 0;
+    uint32_t save_snapshot_p95_us = 0;
+    uint32_t save_snapshot_p99_us = 0;
+    uint32_t save_io_p95_ms = 0;
+    uint32_t save_io_p99_ms = 0;
+    uint64_t save_snapshot_count = 0;
+    uint64_t save_io_count = 0;
+    uint64_t perf_trace_samples = 0;
+    bool perf_trace_enabled = false;
 };
 
 } // namespace an3

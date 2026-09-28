@@ -24,8 +24,12 @@ int main(int argc, const char* argv[]) {
         NSWindow* window = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(0.0, 0.0, 960.0, 640.0)
                       styleMask:NSWindowStyleMaskTitled
-                        backing:NSBackingStoreBuffered
+                      backing:NSBackingStoreBuffered
                           defer:NO];
+        // `close` releases a window by default. ARC also releases the local
+        // strong reference at the end of this scope, so keep ownership here
+        // until the smoke harness leaves its autorelease pool.
+        window.releasedWhenClosed = NO;
         [window orderFrontRegardless];
 
         char details[512]{};
@@ -81,19 +85,26 @@ int main(int argc, const char* argv[]) {
         [window close];
 
         std::printf(
-            "system=%s frames=%llu elapsed_s=%.3f fps=%.2f running=%d metrics=%d state_save=%d state_load=%d dropped=%llu uploads=%llu direct=%llu copied=%llu converted=%llu emulate_p95_us=%u emulate_p99_us=%u upload_p95_us=%u upload_p99_us=%u present_p95_us=%u present_p99_us=%u audio_queue=%u audio_queue_max=%u audio_underruns=%llu audio_overruns=%llu rss_bytes=%llu cpu_user_us=%llu cpu_system_us=%llu\n",
+            "system=%s frames=%llu elapsed_s=%.3f fps=%.2f running=%d metrics=%d state_save=%d state_load=%d dropped=%llu duplicated=%llu uploads=%llu direct=%llu copied=%llu converted=%llu frame_p50_us=%u frame_p95_us=%u frame_p99_us=%u frame_max_us=%u frame_over_2x=%llu frame_over_3x=%llu emulate_p50_us=%u emulate_p95_us=%u emulate_p99_us=%u emulate_max_us=%u upload_p50_us=%u upload_p95_us=%u upload_p99_us=%u upload_max_us=%u present_p50_us=%u present_p95_us=%u present_p99_us=%u present_max_us=%u acquire_p95_us=%u fence_p95_us=%u audio_queue=%u audio_queue_max=%u audio_underruns=%llu audio_overruns=%llu save_snapshot_p95_us=%u save_io_p95_ms=%u rss_bytes=%llu cpu_user_us=%llu cpu_system_us=%llu perf_trace=%d perf_samples=%llu\n",
             argv[1], static_cast<unsigned long long>(frames), elapsed, frames / elapsed, running, have_metrics,
             state_save, state_load,
             static_cast<unsigned long long>(metrics.dropped_frames),
+            static_cast<unsigned long long>(metrics.duplicated_frames),
             static_cast<unsigned long long>(metrics.software_uploads),
             static_cast<unsigned long long>(metrics.direct_software_uploads),
             static_cast<unsigned long long>(metrics.copied_software_uploads),
-            static_cast<unsigned long long>(metrics.converted_software_uploads), metrics.emulate_p95_us,
-            metrics.emulate_p99_us, metrics.upload_p95_us, metrics.upload_p99_us, metrics.present_p95_us,
-            metrics.present_p99_us, metrics.audio_queue_depth_frames, metrics.audio_queue_max_frames,
+            static_cast<unsigned long long>(metrics.converted_software_uploads), metrics.frame_interval_p50_us,
+            metrics.frame_interval_p95_us, metrics.frame_interval_p99_us, metrics.frame_interval_max_us,
+            static_cast<unsigned long long>(metrics.frame_over_2x), static_cast<unsigned long long>(metrics.frame_over_3x),
+            metrics.emulate_p50_us, metrics.emulate_p95_us, metrics.emulate_p99_us, metrics.emulate_max_us,
+            metrics.upload_p50_us, metrics.upload_p95_us, metrics.upload_p99_us, metrics.upload_max_us,
+            metrics.present_p50_us, metrics.present_p95_us, metrics.present_p99_us, metrics.present_max_us,
+            metrics.acquire_wait_p95_us, metrics.fence_wait_p95_us, metrics.audio_queue_depth_frames, metrics.audio_queue_max_frames,
             static_cast<unsigned long long>(metrics.audio_underruns), static_cast<unsigned long long>(metrics.audio_overruns),
+            metrics.save_snapshot_p95_us, metrics.save_io_p95_ms,
             static_cast<unsigned long long>(metrics.resident_memory_bytes), static_cast<unsigned long long>(metrics.cpu_user_time_us),
-            static_cast<unsigned long long>(metrics.cpu_system_time_us));
+            static_cast<unsigned long long>(metrics.cpu_system_time_us), metrics.perf_trace_enabled,
+            static_cast<unsigned long long>(metrics.perf_trace_samples));
         return running && frames ? 0 : 1;
     }
 }
