@@ -108,6 +108,24 @@ class NativeRendererContractTests(unittest.TestCase):
         self.assertIn("!discard_pending_core_frame()", present)
         self.assertIn("vulkan_.discard_pending_core_frame();", HOST)
 
+    def test_software_core_and_presenter_are_bounded_and_fifo_when_cadence_is_close(self):
+        self.assertIn("constexpr size_t kSoftwareFrameQueueCapacity = 3", HOST)
+        self.assertIn("start_core_thread();", HOST)
+        self.assertIn("std::thread software_core_thread_", HOST)
+        self.assertIn("void core_thread_loop()", HOST)
+        self.assertIn("void present_pending_software_frame()", HOST)
+        presenter = HOST[HOST.index("void present_pending_software_frame()"):HOST.index("bool begin_software_frame", HOST.index("void present_pending_software_frame()"))]
+        self.assertIn("slot.trace_sample.frame_id < oldest_frame", presenter)
+        video = HOST[HOST.index("void on_video("):HOST.index("int16_t input_state", HOST.index("void on_video("))]
+        self.assertIn("begin_software_frame(data", video)
+        self.assertNotIn("vulkan_.present_software(data", video)
+        draw = HOST[HOST.index("void draw()"):HOST.index("  private:", HOST.index("void draw()"))]
+        self.assertIn("present_pending_software_frame();", draw)
+        async_draw = draw[:draw.index("std::lock_guard<std::mutex> lock(state_mutex_)")]
+        self.assertNotIn("run_one_core_frame_locked", async_draw)
+        mtk_draw = HOST[HOST.index("- (void)drawInMTKView"):HOST.index("- (void)mtkView", HOST.index("- (void)drawInMTKView"))]
+        self.assertNotIn("[self syncSpeedControls];", mtk_draw)
+
 
 if __name__ == "__main__":
     unittest.main()

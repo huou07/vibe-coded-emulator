@@ -30,6 +30,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -524,6 +525,22 @@ static std::string core_option_namespace_for_system(const std::string& system) {
 static NSString* native_stored_auto_save_mode();
 
 class AzaharHost {
+    static constexpr size_t kSoftwareFrameQueueCapacity = 3;
+    static constexpr size_t kNoSoftwareFrameSlot = std::numeric_limits<size_t>::max();
+
+    enum class SoftwareFrameState : uint8_t { Free, Writing, Ready, Presenting };
+
+    struct SoftwareFrameSlot {
+        std::vector<uint8_t> pixels;
+        unsigned width = 0;
+        unsigned height = 0;
+        size_t pitch = 0;
+        int pixel_format = RETRO_PIXEL_FORMAT_RGB565;
+        bool duplicate = false;
+        SoftwareFrameState state = SoftwareFrameState::Free;
+        perf::FrameSample trace_sample{};
+    };
+
   public:
     bool start(const char* core_path,
                const char* moltenvk_path,
@@ -543,6 +560,7 @@ class AzaharHost {
         system_path_ = system_path ?: "";
         system_ = system ?: "";
         layout_ = layout_path ?: "preserve";
+        async_software_presentation_ = system_ != "3ds";
         if (core_path_.empty() || moltenvk_path_.empty() || rom_path_.empty() || rom_id_.empty() || save_path_.empty() ||
             system_path_.empty() || system_.empty() || !metal_layer) {
             error = "The native player did not receive a valid core, Vulkan runtime, ROM identity, save path, system path, and native view.";
@@ -569,7 +587,12 @@ class AzaharHost {
         frame_id_ = 0;
         current_frame_id_ = 0;
         last_frame_begin_ns_ = 0;
+        last_presented_ns_ = 0;
+        last_presented_trace_sample_ = {};
+        has_presented_software_frame_ = false;
         duplicate_frames_.store(0, std::memory_order_relaxed);
+        software_dropped_frames_.store(0, std::memory_order_relaxed);
+        software_queue_depth_max_.store(0, std::memory_order_relaxed);
         if (!core_.open(core_path_.c_str(), error)) return false;
 
         core_options_.reset(core_option_namespace_for_system(system_));
@@ -708,12 +731,298 @@ class AzaharHost {
             running_ = true;
             running_snapshot_.store(true, std::memory_order_release);
         }
+        if (async_software_presentation_) start_core_thread();
+        return true;
+    }
+
+    void start_core_thread() {
+        if (!async_software_presentation_ || software_core_thread_.joinable()) return;
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            software_present_stop_ = false;
+            active_capture_slot_ = kNoSoftwareFrameSlot;
+            software_drop_pending_ = false;
+            for (auto& slot : software_frame_slots_) {
+                slot.state = SoftwareFrameState::Free;
+                slot.trace_sample = {};
+            }
+        }
+        software_core_thread_ = std::thread([this] { core_thread_loop(); });
+    }
+
+    void stop_core_thread() {
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            software_present_stop_ = true;
+        }
+        software_frame_condition_.notify_all();
+        if (software_core_thread_.joinable()) software_core_thread_.join();
+        std::lock_guard<std::mutex> lock(software_frame_mutex_);
+        software_present_stop_ = false;
+        active_capture_slot_ = kNoSoftwareFrameSlot;
+        software_drop_pending_ = false;
+        for (auto& slot : software_frame_slots_) slot.state = SoftwareFrameState::Free;
+    }
+
+    void run_one_core_frame_locked() {
+        const auto began = std::chrono::steady_clock::now();
+        active_trace_sample_ = {};
+        active_trace_sample_.frame_id = ++frame_id_;
+        active_trace_sample_.core_deadline_ns = trace_now_ns() + core_budget_ns_;
+        active_trace_sample_.input_sample_ns = trace_now_ns();
+        if (last_frame_begin_ns_) {
+            active_trace_sample_.frame_interval_ns = trace_now_ns() - last_frame_begin_ns_;
+            frame_interval_timings_.add(active_trace_sample_.frame_interval_ns, core_budget_ns_);
+        }
+        last_frame_begin_ns_ = trace_now_ns();
+        current_frame_id_ = active_trace_sample_.frame_id;
+        trace_frame_active_ = trace_.enabled();
+        core_.run();
+        resolve_pending_save_ram_restore();
+        flush_pending_audio_samples();
+        const auto ended = std::chrono::steady_clock::now();
+        const auto elapsed_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(ended - began).count());
+        active_trace_sample_.emu_begin_ns = trace_now_ns() - elapsed_ns;
+        active_trace_sample_.emu_end_ns = trace_now_ns();
+        emulate_timings_.add(ended - began);
+        emulate_detail_timings_.add(elapsed_ns, core_budget_ns_);
+        active_game_seconds_ += 1.0 / core_fps_;
+        if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
+            std::string save_error;
+            if (save_auto_state_locked(save_error, false)) last_autosave_game_seconds_ = active_game_seconds_;
+            else if (!save_error.empty()) message_ = save_error;
+        }
+        if (active_game_seconds_ - last_save_ram_game_seconds_ >= 5.0) {
+            std::string save_error;
+            if (!flush_save_ram_locked(save_error, false) && !save_error.empty()) message_ = save_error;
+            const std::string background_error = persistence_writer_.take_background_error();
+            if (!background_error.empty()) message_ = background_error;
+            last_save_ram_game_seconds_ = active_game_seconds_;
+        }
+        active_trace_sample_.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
+            g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
+        active_trace_sample_.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
+                                           g_audio_overruns.load(std::memory_order_relaxed);
+        active_trace_sample_.rss_bytes = current_rss_bytes();
+        const bool queued_for_present = publish_software_frame();
+        if (trace_frame_active_ && !queued_for_present) trace_.add(active_trace_sample_);
+        trace_frame_active_ = false;
+    }
+
+    void core_thread_loop() {
+        auto next_deadline = std::chrono::steady_clock::now();
+        for (;;) {
+            double speed = 1.0;
+            {
+                std::lock_guard<std::mutex> lock(state_mutex_);
+                if (software_present_stop_ || !running_) return;
+                run_one_core_frame_locked();
+                speed = speed_;
+            }
+            const double rate = std::max(1.0, core_fps_ * std::clamp(speed, 0.25, 8.0));
+            const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(1.0 / rate));
+            next_deadline += period;
+            const auto now = std::chrono::steady_clock::now();
+            if (next_deadline + period * 4 < now) next_deadline = now;
+            std::unique_lock<std::mutex> lock(software_frame_mutex_);
+            software_frame_condition_.wait_until(lock, next_deadline, [this] {
+                return software_present_stop_.load(std::memory_order_acquire);
+            });
+            if (software_present_stop_) return;
+        }
+    }
+
+    void present_pending_software_frame() {
+        if (!async_software_presentation_) return;
+        size_t selected = kNoSoftwareFrameSlot;
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            // Keep close cadence FIFO. Selecting the oldest ready frame avoids
+            // throwing away otherwise renderable frames during normal display
+            // jitter; only a genuinely full bounded ring overwrites a frame.
+            uint64_t oldest_frame = std::numeric_limits<uint64_t>::max();
+            for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
+                auto& slot = software_frame_slots_[index];
+                if (slot.state != SoftwareFrameState::Ready) continue;
+                if (selected == kNoSoftwareFrameSlot || slot.trace_sample.frame_id < oldest_frame) {
+                    selected = index;
+                    oldest_frame = slot.trace_sample.frame_id;
+                }
+            }
+            if (selected == kNoSoftwareFrameSlot) {
+                // Leave the lock before touching the renderer. The producer
+                // must be able to publish the next core frame while a
+                // duplicate is being submitted to Vulkan.
+            } else {
+                software_frame_slots_[selected].state = SoftwareFrameState::Presenting;
+            }
+        }
+
+        if (selected == kNoSoftwareFrameSlot) {
+            if (!has_presented_software_frame_) return;
+            // The last drawable remains visible until a newer submission is
+            // available. Record the display opportunity as a duplicate without
+            // submitting another Vulkan frame, which would add a needless GPU
+            // synchronization bubble on the main thread.
+            const uint64_t displayed = trace_now_ns();
+            auto duplicate = last_presented_trace_sample_;
+            duplicate.video_ready_ns = 0;
+            duplicate.gpu_submit_ns = 0;
+            duplicate.emu_begin_ns = 0;
+            duplicate.emu_end_ns = 0;
+            duplicate.frame_interval_ns = 0;
+            duplicate.frame_queue_depth = 0;
+            duplicate.present_call_ns = 0;
+            duplicate.present_duration_ns = 0;
+            duplicate.presentation_interval_ns = last_presented_ns_
+                ? displayed - last_presented_ns_ : 0;
+            duplicate.displayed_ns = displayed;
+            duplicate.dropped = false;
+            duplicate.duplicated = true;
+            duplicate.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
+                g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
+            duplicate.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
+                                    g_audio_overruns.load(std::memory_order_relaxed);
+            duplicate.rss_bytes = current_rss_bytes();
+            duplicate_frames_.fetch_add(1, std::memory_order_relaxed);
+            trace_.add(duplicate);
+            last_presented_trace_sample_ = duplicate;
+            last_presented_ns_ = displayed;
+            return;
+        }
+
+        auto& slot = software_frame_slots_[selected];
+        const uint64_t present_began = trace_now_ns();
+        if (slot.duplicate) {
+            vulkan_.present_software(nullptr, slot.width, slot.height, 0, slot.pixel_format);
+        } else if (!slot.pixels.empty()) {
+            vulkan_.present_software(slot.pixels.data(), slot.width, slot.height,
+                                     slot.pitch, slot.pixel_format);
+        }
+        const uint64_t displayed = trace_now_ns();
+        slot.trace_sample.present_call_ns = present_began;
+        slot.trace_sample.present_duration_ns = displayed >= present_began ? displayed - present_began : 0;
+        slot.trace_sample.presentation_interval_ns = last_presented_ns_
+            ? displayed - last_presented_ns_ : 0;
+        slot.trace_sample.displayed_ns = displayed;
+        last_presented_ns_ = displayed;
+        last_presented_trace_sample_ = slot.trace_sample;
+        has_presented_software_frame_ = true;
+        trace_.add(slot.trace_sample);
+
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            slot.state = SoftwareFrameState::Free;
+        }
+        software_frame_condition_.notify_one();
+    }
+
+    bool begin_software_frame(const void* data, unsigned width, unsigned height,
+                              size_t pitch, int pixel_format, bool duplicate) {
+        if (!async_software_presentation_ || !width || !height) return false;
+        const size_t bytes_per_pixel = pixel_format == RETRO_PIXEL_FORMAT_XRGB8888 ? 4u : 2u;
+        if (!duplicate && (!data || (pixel_format != RETRO_PIXEL_FORMAT_0RGB1555 &&
+                                     pixel_format != RETRO_PIXEL_FORMAT_XRGB8888 &&
+                                     pixel_format != RETRO_PIXEL_FORMAT_RGB565) ||
+                             pitch < static_cast<size_t>(width) * bytes_per_pixel)) {
+            active_trace_sample_.dropped = true;
+            software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+
+        size_t selected = kNoSoftwareFrameSlot;
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            if (active_capture_slot_ != kNoSoftwareFrameSlot) {
+                selected = active_capture_slot_;
+            } else {
+                for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
+                    if (software_frame_slots_[index].state == SoftwareFrameState::Free) {
+                        selected = index;
+                        break;
+                    }
+                }
+                if (selected == kNoSoftwareFrameSlot) {
+                    uint64_t oldest_frame = std::numeric_limits<uint64_t>::max();
+                    for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
+                        if (software_frame_slots_[index].state == SoftwareFrameState::Ready) {
+                            const uint64_t frame = software_frame_slots_[index].trace_sample.frame_id;
+                            if (selected == kNoSoftwareFrameSlot || frame < oldest_frame) {
+                                selected = index;
+                                oldest_frame = frame;
+                            }
+                        }
+                    }
+                    if (selected != kNoSoftwareFrameSlot) {
+                        software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+                        software_drop_pending_ = true;
+                    }
+                }
+                if (selected == kNoSoftwareFrameSlot) {
+                    active_trace_sample_.dropped = true;
+                    software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+                    return false;
+                }
+                software_frame_slots_[selected].state = SoftwareFrameState::Writing;
+                active_capture_slot_ = selected;
+            }
+        }
+
+        auto& slot = software_frame_slots_[selected];
+        slot.width = width;
+        slot.height = height;
+        slot.pitch = static_cast<size_t>(width) * bytes_per_pixel;
+        slot.pixel_format = pixel_format;
+        slot.duplicate = duplicate;
+        if (!duplicate) {
+            slot.pixels.resize(slot.pitch * static_cast<size_t>(height));
+            const auto* source = static_cast<const uint8_t*>(data);
+            for (unsigned row = 0; row < height; ++row) {
+                std::memcpy(slot.pixels.data() + static_cast<size_t>(row) * slot.pitch,
+                            source + static_cast<size_t>(row) * pitch, slot.pitch);
+            }
+        } else {
+            slot.pixels.clear();
+        }
+        if (trace_frame_active_) active_trace_sample_.video_ready_ns = trace_now_ns();
+        return true;
+    }
+
+    bool publish_software_frame() {
+        if (!async_software_presentation_) return false;
+        size_t selected = kNoSoftwareFrameSlot;
+        {
+            std::lock_guard<std::mutex> lock(software_frame_mutex_);
+            selected = active_capture_slot_;
+            if (selected == kNoSoftwareFrameSlot) return false;
+            auto& slot = software_frame_slots_[selected];
+            slot.trace_sample = active_trace_sample_;
+            slot.trace_sample.dropped = slot.trace_sample.dropped || software_drop_pending_;
+            software_drop_pending_ = false;
+            uint32_t depth = 1;
+            for (const auto& candidate : software_frame_slots_) {
+                if (candidate.state == SoftwareFrameState::Ready ||
+                    candidate.state == SoftwareFrameState::Presenting) {
+                    ++depth;
+                }
+            }
+            slot.trace_sample.frame_queue_depth = depth;
+            software_queue_depth_max_.store(
+                std::max(software_queue_depth_max_.load(std::memory_order_relaxed), depth),
+                std::memory_order_relaxed);
+            slot.state = SoftwareFrameState::Ready;
+            active_capture_slot_ = kNoSoftwareFrameSlot;
+        }
+        software_frame_condition_.notify_one();
         return true;
     }
 
     void stop() {
         running_snapshot_.store(false, std::memory_order_release);
         menu_navigation_active_.store(false, std::memory_order_relaxed);
+        stop_core_thread();
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (running_ && auto_save_enabled_) {
             std::string save_error;
@@ -751,6 +1060,7 @@ class AzaharHost {
         rom_data_.clear();
         rom_id_.clear();
         system_.clear();
+        async_software_presentation_ = false;
         last_video_width_ = 0;
         last_video_height_ = 0;
         last_draw_time_ = {};
@@ -1047,6 +1357,11 @@ class AzaharHost {
     }
 
     void draw() {
+        if (async_software_presentation_) {
+            present_pending_software_frame();
+            note_audio_underrun();
+            return;
+        }
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (!running_ || !core_.run || !vulkan_.ready()) return;
         // At normal speed preserve the historical scheduler: one core frame
@@ -1067,51 +1382,7 @@ class AzaharHost {
             speed_budget_ = 0.0;
         }
         for (unsigned index = 0; index < std::min(runs, 8u); ++index) {
-            const auto began = std::chrono::steady_clock::now();
-            active_trace_sample_ = {};
-            active_trace_sample_.frame_id = ++frame_id_;
-            active_trace_sample_.core_deadline_ns = trace_now_ns() + core_budget_ns_;
-            active_trace_sample_.input_sample_ns = trace_now_ns();
-            if (last_frame_begin_ns_) {
-                active_trace_sample_.frame_interval_ns = trace_now_ns() - last_frame_begin_ns_;
-                frame_interval_timings_.add(active_trace_sample_.frame_interval_ns, core_budget_ns_);
-            }
-            last_frame_begin_ns_ = trace_now_ns();
-            current_frame_id_ = active_trace_sample_.frame_id;
-            trace_frame_active_ = trace_.enabled();
-            core_.run();
-            resolve_pending_save_ram_restore();
-            flush_pending_audio_samples();
-            const auto ended = std::chrono::steady_clock::now();
-            const auto elapsed_ns = static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(ended - began).count());
-            active_trace_sample_.emu_begin_ns = trace_now_ns() - elapsed_ns;
-            active_trace_sample_.emu_end_ns = trace_now_ns();
-            emulate_timings_.add(ended - began);
-            emulate_detail_timings_.add(elapsed_ns, core_budget_ns_);
-            active_game_seconds_ += 1.0 / core_fps_;
-            if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
-                std::string save_error;
-                if (save_auto_state_locked(save_error, false)) last_autosave_game_seconds_ = active_game_seconds_;
-                else if (!save_error.empty()) message_ = save_error;
-            }
-            if (active_game_seconds_ - last_save_ram_game_seconds_ >= 5.0) {
-                std::string save_error;
-                if (!flush_save_ram_locked(save_error, false) && !save_error.empty()) message_ = save_error;
-                const std::string background_error = persistence_writer_.take_background_error();
-                if (!background_error.empty()) message_ = background_error;
-                last_save_ram_game_seconds_ = active_game_seconds_;
-            }
-            active_trace_sample_.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
-                g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
-            active_trace_sample_.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
-                                               g_audio_overruns.load(std::memory_order_relaxed);
-            active_trace_sample_.frame_queue_depth = 0;
-            if (trace_frame_active_) {
-                active_trace_sample_.rss_bytes = current_rss_bytes();
-                trace_.add(active_trace_sample_);
-            }
-            trace_frame_active_ = false;
+            run_one_core_frame_locked();
         }
         note_audio_underrun();
     }
@@ -1434,7 +1705,11 @@ class AzaharHost {
             // subset rather than probing a partially implemented v2 path.
             return false;
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            if (system_ == "3ds" || !data) return false;
+            // Software frames are copied into the bounded presenter queue at
+            // the callback boundary. Returning false here keeps cores from
+            // borrowing a Vulkan staging slot whose ownership would outlive
+            // the emulation callback.
+            if (system_ == "3ds" || async_software_presentation_ || !data) return false;
             auto* framebuffer = static_cast<retro_framebuffer*>(data);
             if (!framebuffer->width || !framebuffer->height ||
                 !(framebuffer->access_flags & RETRO_MEMORY_ACCESS_WRITE)) {
@@ -1471,29 +1746,40 @@ class AzaharHost {
 
     void on_video(const void* data, unsigned width, unsigned height, size_t pitch) {
         if (!vulkan_.ready()) return;
-        const uint64_t present_began = trace_now_ns();
-        if (trace_frame_active_) {
-            active_trace_sample_.video_ready_ns = present_began;
-            active_trace_sample_.present_call_ns = present_began;
-        }
         if (system_ == "3ds" && width && height && reinterpret_cast<uintptr_t>(data) == RETRO_HW_FRAME_BUFFER_VALID) {
+            const uint64_t present_began = trace_now_ns();
+            if (trace_frame_active_) {
+                active_trace_sample_.video_ready_ns = present_began;
+                active_trace_sample_.present_call_ns = present_began;
+            }
             last_video_width_ = width;
             last_video_height_ = height;
             vulkan_.present(width, height);
         } else if (system_ != "3ds" && data && width && height) {
             last_video_width_ = width;
             last_video_height_ = height;
-            vulkan_.present_software(data, width, height, pitch, pixel_format_);
+            (void)begin_software_frame(data, width, height, pitch, pixel_format_, false);
         } else if (!data && last_video_width_ && last_video_height_) {
             // Libretro permits a null frame to duplicate the last image.
             duplicate_frames_.fetch_add(1, std::memory_order_relaxed);
             if (trace_frame_active_) active_trace_sample_.duplicated = true;
-            if (system_ == "3ds") vulkan_.present(last_video_width_, last_video_height_);
-            else vulkan_.present_software(nullptr, last_video_width_, last_video_height_, 0, pixel_format_);
-        }
-        if (trace_frame_active_) {
-            active_trace_sample_.present_duration_ns = trace_now_ns() - present_began;
-            active_trace_sample_.displayed_ns = trace_now_ns();
+            if (system_ == "3ds") {
+                const uint64_t present_began = trace_now_ns();
+                if (trace_frame_active_) {
+                    active_trace_sample_.video_ready_ns = present_began;
+                    active_trace_sample_.present_call_ns = present_began;
+                }
+                vulkan_.present(last_video_width_, last_video_height_);
+                if (trace_frame_active_) {
+                    active_trace_sample_.present_duration_ns = trace_now_ns() - present_began;
+                    active_trace_sample_.displayed_ns = trace_now_ns();
+                }
+            } else {
+                (void)begin_software_frame(nullptr, last_video_width_, last_video_height_, 0, pixel_format_, true);
+            }
+        } else if (system_ != "3ds" && async_software_presentation_) {
+            active_trace_sample_.dropped = true;
+            software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
         }
     }
 
@@ -1562,6 +1848,7 @@ class AzaharHost {
     perf::TimingSeries save_snapshot_timings_;
     perf::TraceBuffer trace_;
     perf::FrameSample active_trace_sample_{};
+    perf::FrameSample last_presented_trace_sample_{};
     std::chrono::steady_clock::time_point trace_epoch_{};
     uint64_t frame_id_ = 0;
     uint64_t current_frame_id_ = 0;
@@ -1582,6 +1869,18 @@ class AzaharHost {
     bool auto_save_on_exit_ = false;
     unsigned auto_save_interval_seconds_ = 60;
     mutable std::mutex state_mutex_;
+    std::array<SoftwareFrameSlot, kSoftwareFrameQueueCapacity> software_frame_slots_{};
+    std::mutex software_frame_mutex_;
+    std::condition_variable software_frame_condition_;
+    std::thread software_core_thread_;
+    std::atomic<bool> software_present_stop_{false};
+    size_t active_capture_slot_ = kNoSoftwareFrameSlot;
+    bool software_drop_pending_ = false;
+    std::atomic<uint64_t> software_dropped_frames_{0};
+    std::atomic<uint32_t> software_queue_depth_max_{0};
+    uint64_t last_presented_ns_ = 0;
+    bool has_presented_software_frame_ = false;
+    bool async_software_presentation_ = false;
     SavePersistenceWorker persistence_writer_;
     int pixel_format_ = RETRO_PIXEL_FORMAT_RGB565;
     bool initialized_ = false;
@@ -2045,6 +2344,20 @@ static void submit_audio(const int16_t* data, size_t frames) {
     std::lock_guard<std::mutex> lock(g_audio_mutex);
     if (!data || !frames || !g_audio_player || !g_audio_format || !g_audio_core_format || !g_audio_converter) return;
     record_input_pcm(data, frames);
+    // AVAudioPlayerNode can stop after a route interruption or a long-lived
+    // output glitch while the native core keeps producing audio. Do not let
+    // the stale scheduled-buffer count permanently reject every later batch:
+    // discard the node's flushed queue, restart it once, and resume through
+    // the normal bounded priming path.
+    if (g_audio_playing && !g_audio_player.isPlaying) {
+        [g_audio_player stop];
+        g_audio_frames_queued.store(0, std::memory_order_relaxed);
+        g_audio_playing = false;
+        g_audio_underruns.fetch_add(1, std::memory_order_relaxed);
+        g_audio_underrun_latched.store(true, std::memory_order_relaxed);
+        [g_audio_player play];
+        g_audio_playing = g_audio_player.isPlaying;
+    }
     const size_t queued = g_audio_frames_queued.load(std::memory_order_relaxed);
     const size_t output_capacity = static_cast<size_t>(std::ceil(frames * g_audio_output_sample_rate /
                                                                   g_audio_effective_input_rate)) + 8u;
@@ -2173,6 +2486,7 @@ NativeRendererMetrics AzaharHost::renderer_metrics() const {
     snapshot.frame_over_150x = frame.over_150x;
     snapshot.frame_over_2x = frame.over_2x;
     snapshot.frame_over_3x = frame.over_3x;
+    snapshot.dropped_frames += software_dropped_frames_.load(std::memory_order_relaxed);
     snapshot.duplicated_frames = duplicate_frames_.load(std::memory_order_relaxed);
     snapshot.emulate_p50_us = to_us(emulate.p50_ns);
     snapshot.emulate_p95_us = to_us(emulate.p95_ns);
@@ -2184,6 +2498,8 @@ NativeRendererMetrics AzaharHost::renderer_metrics() const {
     snapshot.save_io_p95_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p95_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
     snapshot.save_io_p99_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p99_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
     snapshot.save_io_count = save_io.count;
+    snapshot.queue_depth_max = std::max(snapshot.queue_depth_max,
+                                        software_queue_depth_max_.load(std::memory_order_relaxed));
     snapshot.perf_trace_enabled = trace_.enabled();
     snapshot.perf_trace_samples = trace_.sample_count();
     snapshot.audio_queue_depth_frames = static_cast<uint32_t>(std::min<size_t>(
@@ -3377,7 +3693,6 @@ static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSContr
     }
     [self updateFpsOverlay];
     [self updateAudioDiagnostics];
-    [self syncSpeedControls];
 }
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {

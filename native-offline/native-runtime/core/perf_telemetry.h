@@ -16,7 +16,10 @@ namespace an3::perf {
 // The runtime keeps only a small recent window in memory.  Threshold counters
 // are cumulative, so a long run does not need an ever-growing log or queue.
 constexpr std::size_t kTimingSamples = 512;
-constexpr std::size_t kTraceSamples = 4096;
+// Keep enough bounded history for a warm-up plus a several-minute acceptance
+// run without turning tracing into an unbounded log. At 60 Hz this covers more
+// than 18 minutes of frame samples.
+constexpr std::size_t kTraceSamples = 65536;
 
 struct TimingSummary {
     uint64_t count = 0;
@@ -122,6 +125,7 @@ struct FrameSample {
     uint64_t present_duration_ns = 0;
     uint64_t displayed_ns = 0;
     uint64_t frame_interval_ns = 0;
+    uint64_t presentation_interval_ns = 0;
     uint32_t frame_queue_depth = 0;
     uint32_t audio_fill_frames = 0;
     uint64_t audio_xruns = 0;
@@ -188,6 +192,7 @@ class TraceBuffer {
                    << ",\"present_duration_ns\":" << sample.present_duration_ns
                    << ",\"displayed_ns\":" << sample.displayed_ns
                    << ",\"frame_interval_ns\":" << sample.frame_interval_ns
+                   << ",\"presentation_interval_ns\":" << sample.presentation_interval_ns
                    << ",\"frame_queue_depth\":" << sample.frame_queue_depth
                    << ",\"audio_fill_frames\":" << sample.audio_fill_frames
                    << ",\"audio_xruns\":" << sample.audio_xruns

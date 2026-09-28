@@ -147,12 +147,19 @@ class NativeRegressionGuardTests(unittest.TestCase):
         draw = HOST[HOST.index("void draw()") : HOST.index("bool validate_state_slot")]
         self.assertIn("unsigned runs = 1;", draw)
         self.assertIn("if (std::abs(speed_ - 1.0) >= 0.001)", draw)
-        self.assertIn("core_.run();", draw)
+        self.assertIn("run_one_core_frame_locked();", draw)
+        core_frame = HOST[HOST.index("void run_one_core_frame_locked()") : HOST.index("void core_thread_loop()")]
+        self.assertIn("core_.run();", core_frame)
 
     def test_single_sample_audio_callbacks_are_not_dropped(self):
         self.assertIn("append_audio_sample(left, right)", HOST)
         self.assertIn("flush_pending_audio_samples();", HOST)
         self.assertIn("g_audio_player.isPlaying", HOST)
+
+    def test_audio_node_restart_clears_stale_queue_after_route_stop(self):
+        self.assertIn("if (g_audio_playing && !g_audio_player.isPlaying)", HOST)
+        self.assertIn("g_audio_frames_queued.store(0, std::memory_order_relaxed)", HOST)
+        self.assertIn("[g_audio_player play]", HOST)
 
     def test_escape_and_menu_share_non_save_close(self):
         close = HOST.split("- (void)closeMenuDiscardingDraft {", 1)[1].split("\n}", 1)[0]
@@ -247,8 +254,9 @@ class NativeRegressionGuardTests(unittest.TestCase):
         start = HOST.index("void draw()")
         draw = HOST[start : HOST.index("\n  private:", start)]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", draw)
-        self.assertIn("save_auto_state_locked(save_error, false)", draw)
-        self.assertIn("flush_save_ram_locked(save_error, false)", draw)
+        core_frame = HOST[HOST.index("void run_one_core_frame_locked()") : HOST.index("void core_thread_loop()")]
+        self.assertIn("save_auto_state_locked(save_error, false)", core_frame)
+        self.assertIn("flush_save_ram_locked(save_error, false)", core_frame)
         for operation in (
             "write_bytes_atomically",
             "write_and_wait",
@@ -258,7 +266,7 @@ class NativeRegressionGuardTests(unittest.TestCase):
             "::fsync",
             "::rename",
         ):
-            self.assertNotIn(operation, draw)
+            self.assertNotIn(operation, draw + core_frame)
         stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
         self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", stop)
         self.assertIn("save_auto_state_locked(save_error, true)", stop)

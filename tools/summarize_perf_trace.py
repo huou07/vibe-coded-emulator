@@ -18,8 +18,12 @@ def percentile(values: list[float], percent: float) -> float:
     return ordered[min(rank, len(ordered) - 1)]
 
 
-def numbers(frames: Iterable[dict], key: str) -> list[float]:
-    return [float(frame[key]) for frame in frames if frame.get(key) is not None and float(frame[key]) >= 0]
+def numbers(frames: Iterable[dict], key: str, *, positive: bool = False) -> list[float]:
+    return [
+        float(frame[key])
+        for frame in frames
+        if frame.get(key) is not None and (float(frame[key]) > 0 if positive else float(frame[key]) >= 0)
+    ]
 
 
 def summarize(path: Path, budget_us: float | None = None) -> dict:
@@ -34,7 +38,9 @@ def summarize(path: Path, budget_us: float | None = None) -> dict:
         elif record.get("type") == "frame":
             frames.append(record)
 
-    intervals = numbers(frames, "frame_interval_ns")
+    presentation_intervals = numbers(frames, "presentation_interval_ns", positive=True)
+    intervals = presentation_intervals if presentation_intervals else numbers(frames, "frame_interval_ns", positive=True)
+    core_intervals = numbers(frames, "frame_interval_ns", positive=True)
     if budget_us is None and metadata.get("budget_ns"):
         budget_us = float(metadata["budget_ns"]) / 1000.0
     if budget_us is None:
@@ -71,6 +77,12 @@ def summarize(path: Path, budget_us: float | None = None) -> dict:
             "p99": percentile(intervals, 99) / 1000.0,
             "max": max(intervals, default=0.0) / 1000.0,
             **budget_counts(intervals),
+        },
+        "core_interval_us": {
+            "p50": percentile(core_intervals, 50) / 1000.0,
+            "p95": percentile(core_intervals, 95) / 1000.0,
+            "p99": percentile(core_intervals, 99) / 1000.0,
+            "max": max(core_intervals, default=0.0) / 1000.0,
         },
         "emulation_us": {
             "p50": percentile(emu, 50) / 1000.0,

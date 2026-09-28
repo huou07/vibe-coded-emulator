@@ -23,7 +23,7 @@ def load_summarizer():
 class PerformanceTelemetryTests(unittest.TestCase):
     def test_contract_is_bounded_opt_in_and_local(self):
         self.assertIn("kTimingSamples = 512", HEADER)
-        self.assertIn("kTraceSamples = 4096", HEADER)
+        self.assertIn("kTraceSamples = 65536", HEADER)
         self.assertIn('AN3_PERF_TRACE', HEADER)
         self.assertIn('AN3_PERF_TRACE_PATH', HEADER)
         self.assertIn("std::ofstream output(path_", HEADER)
@@ -32,6 +32,7 @@ class PerformanceTelemetryTests(unittest.TestCase):
             "frame_id", "core_deadline_ns", "input_sample_ns", "emu_begin_ns",
             "emu_end_ns", "video_ready_ns", "frame_queue_depth", "acquire_wait_us",
             "fence_wait_us", "gpu_submit_ns", "present_call_ns", "displayed_ns",
+            "presentation_interval_ns",
             "audio_fill_frames", "audio_xruns", "save_snapshot_us", "save_io_ms",
             "rss_bytes", "dropped", "duplicated",
         ):
@@ -68,6 +69,23 @@ class PerformanceTelemetryTests(unittest.TestCase):
         self.assertEqual(summary["duplicated_frames"], 1)
         self.assertEqual(summary["audio_xruns"], 1)
         self.assertEqual(summary["rss_bytes"]["peak"], 1020)
+
+    def test_summarizer_ignores_zero_core_interval_for_display_duplicates(self):
+        summarizer = load_summarizer()
+        with tempfile.TemporaryDirectory() as directory:
+            trace = Path(directory) / "trace.jsonl"
+            records = [
+                {"type": "meta", "schema": 1, "core_id": "gba", "budget_ns": 16_666_667},
+                {"type": "frame", "frame_id": 1, "frame_interval_ns": 16_000_000,
+                 "presentation_interval_ns": 16_000_000, "emu_begin_ns": 1, "emu_end_ns": 2},
+                {"type": "frame", "frame_id": 1, "frame_interval_ns": 0,
+                 "presentation_interval_ns": 16_700_000, "emu_begin_ns": 0, "emu_end_ns": 0,
+                 "duplicated": True},
+            ]
+            trace.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+            summary = summarizer.summarize(trace)
+        self.assertEqual(summary["core_interval_us"]["p50"], 16000.0)
+        self.assertEqual(summary["duplicated_frames"], 1)
 
 
 if __name__ == "__main__":

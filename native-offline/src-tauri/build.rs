@@ -3,6 +3,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/azahar_host.h");
     println!("cargo:rerun-if-changed=src/vulkan_frontend.mm");
     println!("cargo:rerun-if-changed=src/vulkan_frontend.h");
+    println!("cargo:rerun-if-changed=src/save_persistence_worker.h");
+    println!("cargo:rerun-if-changed=../native-runtime/core/perf_telemetry.h");
     println!("cargo:rerun-if-changed=src/hosted_frame_consumer.mm");
     println!("cargo:rerun-if-changed=src/hosted_frame_consumer.h");
     println!("cargo:rerun-if-changed=../../native/eden-bridge/src/an3_eden_hosted_frame.c");
