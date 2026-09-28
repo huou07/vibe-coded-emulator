@@ -3,8 +3,8 @@
 ## Scope and baseline
 
 - Source baseline: `80c3fe48a0d7da204a19a8a22abb98905da43145` (`v3.3.1`).
-- Worktree/branch: `/Users/meomeo/Documents/an3-runtime-performance` /
-  `perf/runtime-architecture`.
+- Worktree/branch: `perf/runtime-architecture` (local checkout path intentionally
+  omitted from the release-facing checkpoint).
 - This checkpoint covers the macOS runtime performance remediation only. It does
   not publish, tag, deploy, or change the Android tao/Tauri teardown blocker.
 - The lawful M5 fixture is the generated GBA homebrew fixture from
@@ -120,8 +120,8 @@ presented-frame counter to advance.
 | core | runtime evidence | measured result | remaining limit |
 | --- | --- | --- | --- |
 | NDS / melonDS | Packaged macOS launch passed (`1/1`). The ten-minute health run collected 30/30 structured samples; all were `running=true`, with strictly increasing presented frames (`536→35,387`) and no failed reads. A normal Escape shutdown emitted trace `/tmp/an3-nds-trace2-session-20260928.jsonl` (2,226 frames, 37.12 seconds of traced cadence; SHA-256 `67348c0274e8c1f25775e7805adc6568f0e217f9908304218d42a243f43872c1`). | Core interval p50/p95/p99/max `16.722/18.093/19.007/19.708 ms`; presentation interval `16.662/17.596/17.773/33.017 ms`; emulation `2.051/3.030/3.158/3.448 ms`; presentation duration `0.441/0.597/0.724/51.182 ms`; queue max `3` (capacity 3); `3` drops, `5` duplicate opportunities, `2` audio xruns, and `save_io_ms=0`. | The generated Picking example has no save-game roundtrip. Keyboard D-pad/A/B/Start events were dispatched through the native window while frames continued to advance (`705→770`); this proves the input path stayed live, not a fixture-specific visual effect. Audible output was not captured. |
-| 3DS / Azahar | Packaged macOS launch passed (`1/1`). The ten-minute health run collected 30/30 samples; all were `running=true`, with strictly increasing presented frames (`383→35,334`). Trace `/tmp/an3-3ds-trace-session-20260928.jsonl` spans 622.56 seconds of frame cadence (37,332 frames; SHA-256 `3475fa3627ab3cabf5d69f683adc5a74fffd11c4c436414b05f64055ff9881b2`). | Synchronous core interval p50/p95/p99/max `16.666/17.317/17.568/155.260 ms`; emulation duration `0.797/1.056/1.179/152.956 ms`; `0` drops, `0` duplicates, queue `0`, audio xruns `0`, and `save_io_ms=0`. The p99 remains close to budget; the single 155 ms outlier is not recurring. | 3DS initialization, renderer, input, layout, and backend selection were not modified. The fixture has no save-game roundtrip; keyboard D-pad/A/B/Start events were dispatched while frames continued (`590→655`). Audible output was not physically captured. Shader-cache/hardware-vs-software A/B was not changed or claimed. |
-| Switch / Eden companion | The current bundled companion binary (manifest SHA-256 `f2658152c3d57f461dfb71e1f4b8d2728ae241a8a720a7bf19e5a3735d749708`) loaded the official NRO. The 65-second run `/tmp/an3-switch-sustained-20260928.log` ended normally with `AN3CTL_STATUS ... mode=stopped ... frames=3883 ... result=PASS`; hosted-frame hooks published real 1280×720 IOSurface frames. | Approximately 59.7 frames/s; 3,870 sampled publishes, `dropped=0`, `rejected=0`, `copy_errors=0`; first-frame import reported 3,686,400 bytes and non-zero pixels. Input protocol accepted A down/up and left-stick `(0.5,-0.25)` with `AN3CTL_ACK`. Audio reported `available=true`, backend `auto`, 2 channels, volume `1.0`. Isolated save/lifecycle/audio suites: `8/8` tests passed. | Audible output and a game-level save roundtrip remain unverified because nx-hbmenu writes no game save and no loopback capture was available. Startup logs include expected host limitations (4K fast-memory mapping, optional MoltenVK feature warnings, no network interface); none caused a frame drop or process failure. |
+| 3DS / Azahar | Packaged macOS launch passed (`1/1`). The ten-minute health run collected 30/30 samples; all were `running=true`, with strictly increasing presented frames (`383→35,334`). Trace `/tmp/an3-3ds-trace-session-20260928.jsonl` spans 622.56 seconds of frame cadence (37,332 frames; SHA-256 `3475fa3627ab3cabf5d69f683adc5a74fffd11c4c436414b05f64055ff9881b2`). | Synchronous core interval p50/p95/p99/max `16.666/17.317/17.568/155.260 ms`; emulation duration `0.797/1.056/1.179/152.956 ms`; `0` drops, `0` duplicates, queue `0`, audio xruns `0`, and `save_io_ms=0`. Frame-interval outliers were `>1.5B/>2B/>3B = 4/4/3`: three startup events and one 33.52 ms late-run event; they were isolated rather than recurring. | 3DS initialization, renderer, input, layout, and backend selection were not modified. The fixture has no save-game roundtrip; keyboard D-pad/A/B/Start events were dispatched while frames continued (`590→655`). Audible output was not physically captured. Shader-cache/hardware-vs-software A/B was not changed or claimed. |
+| Switch / Eden companion | The current bundled companion binary (manifest SHA-256 `f2658152c3d57f461dfb71e1f4b8d2728ae241a8a720a7bf19e5a3735d749708`) loaded the official NRO. The 620-second run `/tmp/an3-switch-soak-20260928.log` ended normally with `AN3CTL_STATUS ... mode=stopped ... frames=37179 ... result=PASS`; hosted-frame hooks published real 1280×720 IOSurface frames. | 37,140 sampled publishes (1,239 sampled hook records), `dropped=0`, `rejected=0`, `copy_errors=0`; 63 status records all remained `PASS`; first-frame import reported 3,686,400 bytes and non-zero pixels. Input protocol, audio diagnostics, and isolated save/lifecycle/audio suites remain `8/8` as recorded above. Log SHA-256: `34956e054d27f6960856bdd9ae3d0f4c88e55b5c032a68de01ab2f195b90e156`. | Audible output and a game-level save roundtrip remain unverified because nx-hbmenu writes no game save and no loopback capture was available. The 14 logged errors were the known host/teardown conditions (4K fast-memory mapping, optional MoltenVK features, no network interface, abandoned shutdown queue, and missing Eden play-time file); none caused a frame drop, restart, or non-PASS exit. |
 
 The acceptance evidence does not identify a new recurring NDS, 3DS, or Switch
 presentation bottleneck. The measured risk remains the original macOS callback
@@ -144,6 +144,11 @@ sustained run.
 - Fixture acceptance: packaged NDS and 3DS E2E passed `1/1` each; Switch
   companion save/audio/lifecycle suites passed `8/8`; Eden bridge null CTest
   passed `1/1`; focused contracts and regression guards passed `54` tests.
+- Current-head deterministic gates: Python product/runtime suites passed `71`
+  tests with one fixture-gated skip; core-only/API/integration/release-scan
+  suites passed `80`; Node suites passed `77` with two environment skips; the
+  portable Rust gateway passed `8`; `npm run check`, Python syntax, and
+  post-baseline Gitleaks passed.
 - `git diff --check`: passed before the implementation commit and will be
   rerun for this checkpoint commit.
 - The four generated schema files and generated Android/vendor outputs were not
@@ -160,8 +165,96 @@ sustained run.
 | Android / Windows / Linux absolute performance | `UNVERIFIED` | source and contract coverage only; no hosted M5 acceptance |
 | tao/Tauri Android teardown | `BLOCKED_UPSTREAM` | separate known issue; not changed here |
 
+## AN3 CROSS-PLATFORM RELEASE READINESS
+
+This is a readiness determination only. No tag, release, deployment, or public
+push was performed.
+
+| field | value |
+| --- | --- |
+| `FINAL_SOURCE_SHA` | `37197079ec58757bf4719df609194498c18d4c2b` |
+| `PRODUCT_CHANGE_SHA` | `580ca82854ee7a7c8e80fb54c138892069a2971d` |
+| `PRODUCT_TREE_SHA/IDENTITY` | `044cfd6ad0f6ea1695deb0fe8a7ec29b80e29633` / Vibe Coded Emulator native runtime |
+| `CURRENT_HEAD_TREE_SHA` | `df46629f6379fab49fd9df38e7105bf4ee411d48` (checkpoint-only changes after the product tree) |
+| `HOSTED_CI_RUN` | `BLOCKED_EXTERNAL`: neither `580ca82` nor `3719707` exists on a public GitHub ref. The nearest successful reference matrix is [run 36294640316](https://github.com/huou07/vibe-coded-emulator/actions/runs/36294640316) at unrelated snapshot `9b7d7be`; it is not evidence for this source. |
+| `ARTIFACT_MANIFEST` | `UNAVAILABLE_EXACT_SOURCE`: no CI-produced DMG/APK/EXE/DEB/Flatpak exists for `3719707`; local temporary bundles are not substituted. |
+
+### Core × platform matrix
+
+| core | macOS | Android | Windows | Linux |
+| --- | --- | --- | --- | --- |
+| GBA | `PHYSICAL_VERIFIED` local packaged M5 and SRAM readback | `UNVERIFIED_PHYSICAL_DEVICE` / exact-source hosted run unavailable | `UNVERIFIED_PHYSICAL_DEVICE` | `BLOCKED_EXTERNAL` exact-source package unavailable; public baseline hit a melonDS pin failure in the shared Linux build path |
+| NDS | `INTEGRATION_VERIFIED` lawful fixture, launch, health, trace, input | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `BLOCKED_EXTERNAL` exact-source package unavailable |
+| 3DS | `INTEGRATION_VERIFIED` lawful fixture, launch, health, trace, input | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `BLOCKED_EXTERNAL` exact-source package unavailable |
+| Switch | `INTEGRATION_VERIFIED` Eden companion soak and service suites | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` |
+
+### Gate matrix
+
+| gate | macOS | Android | Windows | Linux |
+| --- | --- | --- | --- | --- |
+| Build/package | `INTEGRATION_VERIFIED` local product tree | `BLOCKED_EXTERNAL` exact SHA absent from GitHub | `BLOCKED_EXTERNAL` exact SHA absent from GitHub | `BLOCKED_EXTERNAL` exact SHA absent from GitHub |
+| Launch/input | `INTEGRATION_VERIFIED` for GBA/NDS/3DS; Switch companion protocol | `UNVERIFIED` current source | `UNVERIFIED` current source | `UNVERIFIED` current source |
+| Audio | `INTEGRATION_VERIFIED` diagnostics; audible capture remains unverified for NDS/3DS/Switch | `UNVERIFIED` | `UNVERIFIED` | `UNVERIFIED` |
+| Save | `PHYSICAL_VERIFIED` GBA SRAM; Switch service-level only | `UNVERIFIED` current source | `UNVERIFIED` current source | `UNVERIFIED` current source |
+| Frame pacing | `PHYSICAL_VERIFIED` GBA; `INTEGRATION_VERIFIED` NDS/3DS | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` |
+| Sustained run | `PHYSICAL_VERIFIED` GBA/NDS/3DS; Switch 620-second companion soak | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` |
+| Physical hardware | `PHYSICAL_VERIFIED` Apple M5 host | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` | `UNVERIFIED_PHYSICAL_DEVICE` |
+
+### Performance gates
+
+- GBA post-warm-up presentation p95/p99 were `17.963/18.636 ms` against
+  `B=16.743 ms` (`1.073B/1.113B`), with `>2B=0`, `>3B=0`, audio xruns `0`,
+  emulation p95/p99 `1.157/1.366 ms`, queue p95/max `2/2` of capacity `3`,
+  and save-worker I/O off the core/draw path.
+- NDS trace budget was `16.715 ms`; presentation p95/p99 were
+  `17.596/17.774 ms`, `>2B=0`, `>3B=0`, emulation p95/p99 `3.030/3.158 ms`,
+  queue max `3`, and no acquire/fence or save I/O. The paired ten-minute
+  health run was `30/30`.
+- 3DS trace budget was `16.667 ms`; frame p95/p99 were `17.317/17.568 ms`,
+  emulation p95/p99 `1.056/1.179 ms`, and the four isolated tail events are
+  classified above. Its synchronous path has no presentation queue telemetry.
+- Switch's static homebrew fixture does not provide meaningful frame-pacing
+  percentiles; the 620-second hosted-frame soak is the applicable gate.
+
+### Architecture invariants
+
+The current-head suites continue to verify the owned macOS software-core
+worker, bounded three-slot presentation FIFO, save-worker ownership of file I/O,
+audio recovery, telemetry bounds, input semantics, capability/settings parity,
+and absence of Phone Controller, LAN Sync, Full Library Sync, account/login, and
+cloud runtime. No production architecture changed after `580ca82`.
+
+### Known limitations and blockers
+
+- Exact-source GitHub Actions and exact-source packaged artifact verification
+  cannot occur until this local-only revision is made available on a review ref;
+  this session is not authorized to push it.
+- The latest public baseline matrix [run 36350670791](https://github.com/huou07/vibe-coded-emulator/actions/runs/36350670791)
+  failed Linux DEB because the mutable melonDS nightly extracted SHA is now
+  `3a2533677b458e1f2199748a001465a95c7a2e5f8b725ba054e1db93ebe39b77`, while
+  the source pins `a217ebd98a68745591cf68bdf35342d73b9044f2a3e6a6071c165dc632ae7cf9`.
+  No speculative pin update was made.
+- The same public run's Android settings job hit the known tao/Tauri FORTIFY
+  abort in an unexpected process; it remains `BLOCKED_UPSTREAM`.
+- Android, Windows, and Linux absolute performance and physical hardware remain
+  unverified. NDS/3DS fixture save roundtrips and audible output remain
+  unverified where the lawful fixtures do not exercise them.
+
+### Release readiness
+
+`NOT_RELEASE_READY` — no new macOS runtime regression was found, but the exact
+source hosted matrix and artifact provenance gates are incomplete, and the
+public build path currently has a reproducible Linux dependency-pin failure plus
+the known Android tao/Tauri blocker.
+
+### Commits
+
+- `580ca82854ee7a7c8e80fb54c138892069a2971d` — production runtime remediation.
+- `37197079ec58757bf4719df609194498c18d4c2b` — lawful fixture/runtime evidence.
+- This session adds only the readiness/checkpoint documentation above.
+
 ## Next action
 
-Run cross-platform hosted/physical acceptance and release review in a separate
-authorized session. This branch is not pushed, tagged, released, or deployed by
-this performance-remediation session.
+Publish this exact source on an authorized review ref, run the full hosted
+matrix from `37197079ec58757bf4719df609194498c18d4c2b`, and verify the resulting
+artifact manifest before any release decision.
