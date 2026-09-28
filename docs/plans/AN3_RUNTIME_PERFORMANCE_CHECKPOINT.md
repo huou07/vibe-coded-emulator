@@ -111,8 +111,8 @@ from `0f` to `10`, and its timestamp advanced after a fresh launch/close.
 | scope | status | evidence/limit |
 | --- | --- | --- |
 | macOS GBA M5 | `INTEGRATION_VERIFIED` | packaged FIFO trace, audio, queue, and SRAM readback above |
-| macOS NDS | `UNIT_VERIFIED` | shared-host contracts only; no lawful runtime fixture |
-| macOS 3DS | `UNIT_VERIFIED` | synchronous path kept unchanged; no lawful runtime fixture |
+| macOS NDS | `UNVERIFIED_NO_LAWFUL_FIXTURE` | shared-host/unit contracts pass; no lawful runtime fixture |
+| macOS 3DS | `UNVERIFIED_NO_LAWFUL_FIXTURE` | synchronous path kept unchanged; no lawful runtime fixture |
 | Switch | `UNVERIFIED_NO_LAWFUL_FIXTURE` | no lawful runtime fixture supplied |
 | Android / Windows / Linux absolute performance | `UNVERIFIED` | source and contract coverage only; no hosted M5 acceptance |
 | tao/Tauri Android teardown | `BLOCKED_UPSTREAM` | separate known issue; not changed here |
