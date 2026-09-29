@@ -317,3 +317,77 @@ the next implementation phase; audio and 3DS renderer work remain deferred.
 Phase D: add a bounded two- or three-slot software-frame handoff for portable
 GBA/NDS presenters without changing the macOS queue, 3DS hardware ownership,
 or the established input/save contracts.
+
+## PHASE_D — BOUNDED PORTABLE SOFTWARE-FRAME HANDOFF
+
+### Implementation
+
+Phase D commit: `257cb98e1b5dc60efa2ed7b4437696858727b076`
+(`fix(runtime): decouple portable software presentation`).
+
+- Added `NativeSoftwareFrameQueue`, a reusable three-slot handoff for the
+  portable SDL/Vulkan/OpenGL GBA/NDS path. The core-owner callback publishes
+  immutable slot contents and returns; the SDL/GTK platform thread drains the
+  oldest ready slot and owns the wrapped presenter call.
+- The queue is FIFO at normal depth, replaces only the oldest ready slot when
+  all three slots are full, and never overwrites a slot being presented. It
+  accepts direct framebuffer writes when the core provides them, copies only
+  when the callback buffer or pitch requires it, bounds frame geometry and
+  storage, records drops/duplicates/maximum depth, and releases incomplete
+  direct-frame slots after each `retro_run`.
+- Linux and Windows non-3DS runtime wiring now keeps SDL/GL/Vulkan presentation
+  off the core-owner critical path. The existing Linux/Windows 3DS
+  core-provided hardware path remains direct. Android presentation remains on
+  its runtime-owned render thread because its Vulkan/GL surface context cannot
+  safely be consumed by a separate presenter in this phase; no Android surface
+  or teardown behavior was changed. macOS v3.3.2 is untouched.
+- Build source lists and the focused queue fixture cover the new portable
+  adapter. No core-specific rendering, input, layout, backend selection,
+  3DS initialization, Switch/Eden transport, or removed network feature was
+  changed.
+
+### Phase D verification
+
+- Portable contract/regression suite: 70 tests passed, including the Linux
+  queue wiring and metric guards.
+- Standalone warning-enabled queue fixture: `SOFTWARE_FRAME_QUEUE=PASS`;
+  three-frame FIFO order, oldest-ready replacement under a full queue,
+  bounded depth, duplicate opportunity accounting, incomplete-frame release,
+  and shutdown behavior all passed.
+- Portable owner-thread fixture after the Phase D source changes:
+  `NATIVE_CORE_SESSION=PASS`.
+- Shared save worker regression after the Phase D source changes:
+  `SAVE_PERSISTENCE_WORKER=PASS`.
+- Lawful generated GBA native save/state roundtrip after the Phase D source
+  changes: `RESULT: PASS`, including frame presentation, A-button mutation,
+  state restoration, 32 KiB SRAM durability, and fresh-host SRAM restoration.
+- Android native runtime contracts: 26 passed with the existing read-only
+  MoltenVK header dependency supplied from the release worktree. The fresh
+  checkout-only fixture remains `BLOCKED_EXTERNAL` solely because that
+  dependency is intentionally untracked here.
+- `git diff --check` and staged `git diff --cached --check` passed before the
+  implementation commit. Only the nine Phase D implementation/build/test
+  files were staged for `257cb98e1b5dc60efa2ed7b4437696858727b076`.
+
+### Evidence classification
+
+- Portable bounded frame handoff and presenter-thread ownership:
+  `INTEGRATION_VERIFIED` with the native queue fixture and contract suite.
+- GBA save/state and SRAM behavior: `INTEGRATION_VERIFIED`.
+- Android packaged presentation, Linux/Windows packaged frame pacing, and
+  physical-device performance: `UNVERIFIED`; no packaged runtime was rebuilt
+  or claimed here.
+- macOS v3.3.2 runtime behavior, 3DS hardware rendering, and Switch/Eden
+  hosted transport: preserved and not refactored in Phase D.
+
+## PHASE_D_STATUS
+
+`IMPLEMENTED` and `INTEGRATION_VERIFIED` for the portable Linux/Windows
+software-presenter boundary. Phase E (portable audio cleanup) is next; no
+audio defaults were changed in Phase D.
+
+## NEXT
+
+Phase E: investigate portable Android AAudio and Linux/Windows SDL audio
+buffering/allocation behavior with bounded measurements, preserving safe
+fallbacks and avoiding any change to the accepted macOS, 3DS, or Switch paths.
