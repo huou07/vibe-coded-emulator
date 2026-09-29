@@ -16,15 +16,23 @@ struct AAudioStreamStruct {
     int32_t sample_rate = 1000;
     int32_t channels = 2;
     aaudio_format_t format = AAUDIO_FORMAT_PCM_I16;
+    aaudio_sharing_mode_t sharing = AAUDIO_SHARING_MODE_EXCLUSIVE;
+    int32_t frames_per_burst = 16;
+    int32_t buffer_capacity = 128;
+    int32_t buffer_size = 64;
+    int32_t xruns = 0;
 };
 
 struct AAudioStreamBuilderStruct {
     int32_t requested_rate = 0;
+    aaudio_sharing_mode_t sharing = AAUDIO_SHARING_MODE_SHARED;
     AAudioStream_dataCallback data_callback = nullptr;
     void* data_user = nullptr;
     AAudioStream_errorCallback error_callback = nullptr;
     void* error_user = nullptr;
 };
+
+bool fail_exclusive_open = false;
 
 extern "C" {
 
@@ -44,7 +52,9 @@ void AAudioStreamBuilder_setChannelCount(AAudioStreamBuilder*, int32_t) {}
 void AAudioStreamBuilder_setSampleRate(AAudioStreamBuilder* builder, int32_t rate) {
     builder->requested_rate = rate;
 }
-void AAudioStreamBuilder_setSharingMode(AAudioStreamBuilder*, aaudio_sharing_mode_t) {}
+void AAudioStreamBuilder_setSharingMode(AAudioStreamBuilder* builder, aaudio_sharing_mode_t mode) {
+    builder->sharing = mode;
+}
 void AAudioStreamBuilder_setPerformanceMode(AAudioStreamBuilder*, aaudio_performance_mode_t) {}
 void AAudioStreamBuilder_setDataCallback(AAudioStreamBuilder* builder,
                                           AAudioStream_dataCallback callback, void* user) {
@@ -59,8 +69,13 @@ void AAudioStreamBuilder_setErrorCallback(AAudioStreamBuilder* builder,
 
 aaudio_result_t AAudioStreamBuilder_openStream(AAudioStreamBuilder* builder,
                                                AAudioStream** stream) {
+    if (fail_exclusive_open && builder->sharing == AAUDIO_SHARING_MODE_EXCLUSIVE) {
+        *stream = nullptr;
+        return AAUDIO_ERROR_UNAVAILABLE;
+    }
     (void)builder;
     *stream = new AAudioStreamStruct;
+    (*stream)->sharing = builder->sharing;
     return AAUDIO_OK;
 }
 
@@ -78,6 +93,12 @@ aaudio_result_t AAudioStream_requestStop(AAudioStream*) { return AAUDIO_OK; }
 int32_t AAudioStream_getSampleRate(AAudioStream* stream) { return stream->sample_rate; }
 int32_t AAudioStream_getChannelCount(AAudioStream* stream) { return stream->channels; }
 aaudio_format_t AAudioStream_getFormat(AAudioStream* stream) { return stream->format; }
+aaudio_sharing_mode_t AAudioStream_getSharingMode(AAudioStream* stream) { return stream->sharing; }
+aaudio_performance_mode_t AAudioStream_getPerformanceMode(AAudioStream*) { return AAUDIO_PERFORMANCE_MODE_LOW_LATENCY; }
+int32_t AAudioStream_getFramesPerBurst(AAudioStream* stream) { return stream->frames_per_burst; }
+int32_t AAudioStream_getBufferCapacityInFrames(AAudioStream* stream) { return stream->buffer_capacity; }
+int32_t AAudioStream_getBufferSizeInFrames(AAudioStream* stream) { return stream->buffer_size; }
+int32_t AAudioStream_getXRunCount(AAudioStream* stream) { return stream->xruns; }
 
 } // extern "C"
 
@@ -130,6 +151,12 @@ int main() {
     auto metrics = backend.metrics();
     assert(metrics.requested_sample_rate == 1500);
     assert(metrics.sample_rate == 1000);
+    assert(metrics.sharing_mode == AAUDIO_SHARING_MODE_EXCLUSIVE);
+    assert(metrics.performance_mode == AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    assert(metrics.frames_per_burst == 16);
+    assert(metrics.buffer_capacity_frames == 128);
+    assert(metrics.buffer_size_frames == 64);
+    assert(metrics.xrun_count == 0);
     assert(std::fabs(metrics.input_frames_per_output_frame - 1.5) < 1e-12);
     assert(metrics.latency_ms == 64);
     assert(metrics.capacity_frames == 64);
@@ -146,6 +173,11 @@ int main() {
     assert(backend.set_latency_ms(32));
     assert(backend.metrics().capacity_frames == 32);
     assert(!backend.set_latency_ms(33));
+    backend.shutdown();
+
+    fail_exclusive_open = true;
+    assert(backend.initialize(1500.0, error));
+    assert(backend.metrics().sharing_mode == AAUDIO_SHARING_MODE_SHARED);
     backend.shutdown();
     return 0;
 }

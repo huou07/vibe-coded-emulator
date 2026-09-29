@@ -50,7 +50,8 @@ bool AAudioBackend::initialize(double sample_rate, std::string& error) {
         return false;
     }
 
-    const auto open_stream = [&](int32_t requested, AAudioStream** stream) {
+    const auto open_stream = [&](int32_t requested, aaudio_sharing_mode_t sharing,
+                                 AAudioStream** stream) {
         AAudioStreamBuilder* builder = nullptr;
         aaudio_result_t open_result = AAudio_createStreamBuilder(&builder);
         if (open_result != AAUDIO_OK || builder == nullptr) {
@@ -61,7 +62,7 @@ bool AAudioBackend::initialize(double sample_rate, std::string& error) {
         AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
         AAudioStreamBuilder_setChannelCount(builder, kChannelCount);
         AAudioStreamBuilder_setSampleRate(builder, requested);
-        AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
+        AAudioStreamBuilder_setSharingMode(builder, sharing);
         AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
         AAudioStreamBuilder_setDataCallback(builder, &AAudioBackend::data_callback, this);
         AAudioStreamBuilder_setErrorCallback(builder, &AAudioBackend::error_callback, this);
@@ -71,22 +72,45 @@ bool AAudioBackend::initialize(double sample_rate, std::string& error) {
         return open_result;
     };
 
+    const auto try_open = [&](int32_t requested, aaudio_sharing_mode_t sharing,
+                              AAudioStream** stream) {
+        *stream = nullptr;
+        const aaudio_result_t result = open_stream(requested, sharing, stream);
+        if (result != AAUDIO_OK || *stream == nullptr) {
+            if (*stream != nullptr) AAudioStream_close(*stream);
+            *stream = nullptr;
+        }
+        return result;
+    };
+
     AAudioStream* opened_stream = nullptr;
-    aaudio_result_t result = open_stream(requested_rate, &opened_stream);
-    const aaudio_result_t requested_result = result;
-    if ((result != AAUDIO_OK || opened_stream == nullptr) && requested_rate != AAUDIO_UNSPECIFIED) {
-        // Some AAudio devices cannot open an exact, unusual integer rate even
-        // though shared mode can negotiate a valid device rate. Let the
-        // stream choose in that case and use the reported actual rate below.
-        if (opened_stream != nullptr) AAudioStream_close(opened_stream);
-        opened_stream = nullptr;
-        result = open_stream(AAUDIO_UNSPECIFIED, &opened_stream);
+    aaudio_sharing_mode_t selected_request = AAUDIO_SHARING_MODE_EXCLUSIVE;
+    // Exclusive low-latency output is an optimization, never a requirement.
+    // Devices that reject it fall back to the existing shared-mode path.
+    aaudio_result_t exclusive_result = try_open(requested_rate, selected_request, &opened_stream);
+    if ((exclusive_result != AAUDIO_OK || opened_stream == nullptr) &&
+        requested_rate != AAUDIO_UNSPECIFIED) {
+        // Some devices cannot open an exact, unusual integer rate even though
+        // the same low-latency mode can negotiate a valid device rate.
+        exclusive_result = try_open(AAUDIO_UNSPECIFIED, selected_request, &opened_stream);
     }
+    aaudio_result_t shared_result = AAUDIO_ERROR_UNAVAILABLE;
+    if (exclusive_result != AAUDIO_OK || opened_stream == nullptr) {
+        selected_request = AAUDIO_SHARING_MODE_SHARED;
+        shared_result = try_open(requested_rate, selected_request, &opened_stream);
+        if ((shared_result != AAUDIO_OK || opened_stream == nullptr) &&
+            requested_rate != AAUDIO_UNSPECIFIED) {
+            // Shared mode remains the compatibility fallback when an exact
+            // rate is unavailable on a particular Android audio route.
+            shared_result = try_open(AAUDIO_UNSPECIFIED, selected_request, &opened_stream);
+        }
+        exclusive_result = shared_result;
+    }
+    aaudio_result_t result = exclusive_result;
     if (result != AAUDIO_OK || opened_stream == nullptr) {
         error = aaudio_error("AAudioStreamBuilder_openStream", result);
-        if (requested_result != result) {
-            error += "; requested integer rate failed with " +
-                     std::to_string(requested_result);
+        if (shared_result != AAUDIO_ERROR_UNAVAILABLE && shared_result != result) {
+            error += "; shared fallback failed with " + std::to_string(shared_result);
         }
         last_error_.store(result, std::memory_order_relaxed);
         return false;
@@ -95,6 +119,11 @@ bool AAudioBackend::initialize(double sample_rate, std::string& error) {
     const int32_t actual_rate = AAudioStream_getSampleRate(opened_stream);
     const int32_t actual_channels = AAudioStream_getChannelCount(opened_stream);
     const aaudio_format_t actual_format = AAudioStream_getFormat(opened_stream);
+    const auto actual_sharing = AAudioStream_getSharingMode(opened_stream);
+    const auto actual_performance = AAudioStream_getPerformanceMode(opened_stream);
+    const int32_t actual_burst = AAudioStream_getFramesPerBurst(opened_stream);
+    const int32_t actual_capacity = AAudioStream_getBufferCapacityInFrames(opened_stream);
+    const int32_t actual_buffer = AAudioStream_getBufferSizeInFrames(opened_stream);
     if (actual_rate < 1 || actual_rate > static_cast<int32_t>(kMaxSampleRate) ||
         actual_channels != static_cast<int32_t>(kChannelCount) ||
         actual_format != AAUDIO_FORMAT_PCM_I16) {
@@ -110,6 +139,12 @@ bool AAudioBackend::initialize(double sample_rate, std::string& error) {
 
     requested_sample_rate_ = static_cast<uint32_t>(requested_rate);
     sample_rate_ = static_cast<uint32_t>(actual_rate);
+    sharing_mode_ = actual_sharing;
+    performance_mode_ = actual_performance;
+    frames_per_burst_ = actual_burst > 0 ? static_cast<uint32_t>(actual_burst) : 0;
+    buffer_capacity_frames_ = actual_capacity > 0 ? static_cast<uint32_t>(actual_capacity) : 0;
+    buffer_size_frames_ = actual_buffer > 0 ? static_cast<uint32_t>(actual_buffer) : 0;
+    xrun_count_ = 0;
     capacity_frames_.store(capacity_for_latency(latency_ms_.load(std::memory_order_relaxed)),
                            std::memory_order_release);
     core_sample_rate_ = sample_rate;
@@ -438,6 +473,14 @@ AAudioMetrics AAudioBackend::metrics() const noexcept {
     value.requested_sample_rate = requested_sample_rate_;
     value.sample_rate = sample_rate_;
     value.capacity_frames = capacity_frames_.load(std::memory_order_acquire);
+    value.frames_per_burst = frames_per_burst_;
+    value.buffer_capacity_frames = buffer_capacity_frames_;
+    value.buffer_size_frames = buffer_size_frames_;
+    if (stream_ != nullptr) {
+        const int32_t xruns = AAudioStream_getXRunCount(stream_);
+        if (xruns >= 0) xrun_count_ = xruns;
+    }
+    value.xrun_count = xrun_count_;
     value.core_sample_rate = core_sample_rate_;
     value.input_frames_per_output_frame =
         input_frames_per_output_frame_.load(std::memory_order_relaxed);
@@ -456,6 +499,8 @@ AAudioMetrics AAudioBackend::metrics() const noexcept {
     value.queued_frames = write >= read
                               ? std::min<uint64_t>(write - read, kMaxBufferedFrames)
                               : 0;
+    value.sharing_mode = sharing_mode_;
+    value.performance_mode = performance_mode_;
     value.rendered_frames = rendered_frames_.load(std::memory_order_relaxed);
     value.overflow_frames = overflow_frames_.load(std::memory_order_relaxed);
     value.underrun_frames = underrun_frames_.load(std::memory_order_relaxed);

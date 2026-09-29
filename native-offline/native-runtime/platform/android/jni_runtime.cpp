@@ -225,6 +225,9 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
                 <<"us speed="<<speed<<" audio="<<a.rendered_frames<<" nonzero="<<a.rendered_nonzero_samples<<" underrun="<<a.underrun_frames
                 <<"\nFrame interval p95/p99="<<interval_percentile(95)<<"/"<<interval_percentile(99)<<"us samples="<<interval_count
                 <<"\nAudio rate="<<a.core_sample_rate<<"→"<<a.sample_rate<<" volume="<<a.volume<<" mute="<<a.muted<<" latency="<<a.latency_ms<<"ms quality="<<int(a.resampler_quality)
+                <<" sharing="<<int(a.sharing_mode)<<" performance="<<int(a.performance_mode)
+                <<" burst="<<a.frames_per_burst<<" buffer="<<a.buffer_size_frames<<"/"<<a.buffer_capacity_frames
+                <<" xruns="<<a.xrun_count
                 <<"\n"<<v.device_details<<"\n"<<message;
             if (!fallback.empty()) text<<" Vulkan initialization: "<<fallback;
             report(text.str());last_report=now;

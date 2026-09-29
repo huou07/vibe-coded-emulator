@@ -21,6 +21,10 @@ enum class AAudioResamplerQuality : uint8_t {
 struct AAudioMetrics {
     uint32_t sample_rate = 0;
     uint32_t capacity_frames = 0;
+    uint32_t frames_per_burst = 0;
+    uint32_t buffer_capacity_frames = 0;
+    uint32_t buffer_size_frames = 0;
+    int32_t xrun_count = 0;
     // submitted_frames counts accepted core/input frames. The output queue
     // has its own counters because resampling changes the frame count.
     uint64_t submitted_frames = 0;
@@ -43,6 +47,8 @@ struct AAudioMetrics {
     AAudioResamplerQuality resampler_quality = AAudioResamplerQuality::Medium;
     uint64_t output_queued_frames = 0;
     uint64_t queued_frames = 0;
+    aaudio_sharing_mode_t sharing_mode = AAUDIO_SHARING_MODE_SHARED;
+    aaudio_performance_mode_t performance_mode = AAUDIO_PERFORMANCE_MODE_NONE;
 };
 
 class AAudioBackend final : public NativeAudioBackend {
@@ -97,6 +103,12 @@ private:
     // submit already in flight can finish without racing mutable ring geometry.
     uint32_t requested_sample_rate_ = 0;
     uint32_t sample_rate_ = 0;
+    uint32_t frames_per_burst_ = 0;
+    uint32_t buffer_capacity_frames_ = 0;
+    uint32_t buffer_size_frames_ = 0;
+    mutable int32_t xrun_count_ = 0;
+    aaudio_sharing_mode_t sharing_mode_ = AAUDIO_SHARING_MODE_SHARED;
+    aaudio_performance_mode_t performance_mode_ = AAUDIO_PERFORMANCE_MODE_NONE;
     std::atomic<uint32_t> capacity_frames_{0};
     double core_sample_rate_ = 0.0;
     // Number of core frames represented by one native output frame.

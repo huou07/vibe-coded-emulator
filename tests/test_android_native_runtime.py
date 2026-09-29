@@ -90,6 +90,23 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertRegex(result.stdout, r"NATIVE_CORE_SESSION=PASS frames=\d+")
 
+    def test_android_audio_tries_exclusive_then_keeps_shared_fallback(self):
+        audio = source(ROOT / "native-offline/native-runtime/platform/android/aaudio_backend.cpp")
+        header = source(ROOT / "native-offline/native-runtime/platform/android/aaudio_backend.h")
+        for token in ("AAUDIO_SHARING_MODE_EXCLUSIVE", "AAUDIO_SHARING_MODE_SHARED",
+                      "AAudioStream_getSharingMode", "AAudioStream_getFramesPerBurst",
+                      "AAudioStream_getBufferCapacityInFrames", "AAudioStream_getBufferSizeInFrames",
+                      "AAudioStream_getXRunCount"):
+            self.assertIn(token, audio)
+        self.assertIn("sharing_mode", header)
+        self.assertIn("frames_per_burst", header)
+        self.assertIn("xrun_count", header)
+        self.assertIn("Exclusive low-latency output is an optimization, never a requirement", audio)
+        jni = source(JNI)
+        for token in ("a.sharing_mode", "a.performance_mode", "a.frames_per_burst",
+                      "a.buffer_size_frames", "a.buffer_capacity_frames", "a.xrun_count"):
+            self.assertIn(token, jni)
+
     def test_fake_libretro_host_survives_renderer_drops_and_keeps_state_paths_separate(self):
         """A lost presentation target must not stop or deadlock the core loop."""
 
