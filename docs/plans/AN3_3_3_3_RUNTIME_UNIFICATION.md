@@ -179,10 +179,72 @@ The baseline output is preserved at `/tmp/an3-333-phase-a-baseline.log`.
 `IMPLEMENTED` (checkpoint-only documentation) and `UNIT_VERIFIED` for the
 baseline contracts listed above. No product implementation was changed.
 
+## PHASE_B — SHARED ASYNCHRONOUS SAVE PERSISTENCE
+
+### Implementation
+
+Phase B commit: `f6478e4` (`fix(runtime): move portable save writes to bounded worker`).
+
+- The bounded/coalescing `SavePersistenceWorker` now lives in
+  `native-offline/native-runtime/core/save_persistence_worker.h`, with the
+  previous macOS include path retained as a thin compatibility include.
+- The shared worker owns temporary-file write, flush, POSIX fsync or Windows
+  commit, and atomic replacement. It coalesces repeated snapshots by path,
+  bounds distinct pending paths at sixteen, bounds asynchronous completions at
+  sixteen per path, propagates failures, and drains accepted work on shutdown.
+- The worker is named `AN3 Save Worker` on Apple, Linux, and Android. The
+  existing macOS `AzaharHost` behavior and API remain source-compatible.
+- `NativeCoreHost` now copies core-owned state/SRAM bytes under its core mutex,
+  releases that ownership, and then submits the immutable snapshot to the
+  worker. Manual/final `write_and_wait` calls wait only after the core lock is
+  released. Shutdown captures SRAM before unloading the core, then waits for
+  durability outside the lock.
+- `queue_save_auto()` and `queue_save_ram()` are explicit nonblocking APIs for
+  periodic saves. Android and the shared Linux/Windows runtime use them for
+  periodic autosave/SRAM persistence. Manual commands and final shutdown saves
+  retain durable completion semantics. Background worker failures are surfaced
+  through `NativeCoreHost::status()`.
+- No core-specific rendering, input, layout, hardware backend, 3DS path,
+  Switch/Eden path, or removed network feature was changed.
+
+### Phase B verification
+
+- `native-offline/tests/test_save_persistence_worker.cpp`: `SAVE_PERSISTENCE_WORKER=PASS`.
+  This covers worker-thread ownership, same-path latest-snapshot coalescing,
+  bounded distinct paths and completions, nonblocking periodic enqueue while a
+  write is held, atomic replacement, failure propagation, durable completion,
+  and shutdown drain.
+- Native/runtime contracts and regressions: 75 tests passed.
+- Android native runtime contracts: 24 tests passed when the existing
+  read-only MoltenVK header dependency was supplied; the checkout-only run is
+  `BLOCKED_EXTERNAL` for that absent untracked header, with no source assertion
+  failure.
+- Lawful generated GBA native host save/state roundtrip: `RESULT: PASS`.
+  The run proved presented frames, A-button mutation, slot restoration, 32 KiB
+  SRAM durability, and fresh-host SRAM restoration (`AN3B` counter `00` to
+  `01`) using the existing mGBA dependency copy and
+  `tools/testrom/gba_homebrew_test.py` fixture.
+- `git diff --check`: passed before the implementation commit. Only the ten
+  Phase B files were staged for `f6478e4`.
+
+### Evidence classification
+
+- Shared worker contracts and portable API boundary: `UNIT_VERIFIED`.
+- Lawful GBA state/SRAM host roundtrip: `INTEGRATION_VERIFIED`.
+- Android/Linux/Windows packaged performance and physical-device behavior:
+  `UNVERIFIED`; no platform package was rebuilt in this phase.
+- macOS v3.3.2 runtime behavior: preserved by the compatibility include and
+  existing macOS regression contracts; no new packaged macOS run was claimed.
+
+## PHASE_B_STATUS
+
+`IMPLEMENTED` and `UNIT_VERIFIED`, with the lawful native GBA save roundtrip
+`INTEGRATION_VERIFIED`. The portable production source no longer performs
+frontend filesystem write/fsync/rename work on periodic save cadence.
+
 ## NEXT
 
-Phase B: introduce one shared bounded/coalescing portable save-persistence
-worker. First prove worker-thread ownership, latest-snapshot/coalescing,
-bounded backlog, atomic durability, failure propagation, clean drain, and
-manual-wait-outside-core-ownership contracts before changing Android/Linux/
-Windows production behavior.
+Phase C: give portable GBA/NDS sessions one explicit core-owner thread on
+Android/Linux/Windows. Keep input as atomic/latest state plus bounded discrete
+commands, preserve 3DS hardware ownership, and do not begin frame-handoff or
+audio changes until the owner-thread boundary is tested.
