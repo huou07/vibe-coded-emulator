@@ -488,9 +488,9 @@ context are unavailable in this checkout.
 
 ## PHASE_F_STATUS
 
-`UNVERIFIED_NO_LAWFUL_FIXTURE`; the software default and all existing NDS
-core/layout/input contracts are preserved. No speculative hardware renderer
-enablement was attempted.
+`UNVERIFIED`; no lawful NDS fixture is present for the A/B. The software
+default and all existing NDS core/layout/input contracts are preserved, and no
+speculative hardware renderer enablement was attempted.
 
 ## FINAL_RUNTIME_UNIFICATION_STATUS
 
@@ -498,3 +498,143 @@ Phases A–E are implemented with focused commits and deterministic host/contrac
 verification. Phase F is intentionally evidence-limited as recorded above.
 The branch remains development-only: `main`, `v3.3.2`, and all release or
 production deployment state are unchanged.
+
+## REQUIRED FINAL CHECKPOINT
+
+### BASE
+
+`v3.3.2`: `7110fc3977233b006b6905c50e6dd081b714d4a9`
+
+### FINAL_CANDIDATE_SHA
+
+`5240c1b6e08aa3fd1dbeacd0b7397d4f4ce48dbc` (last product-source commit;
+the later commits on this branch are checkpoint documentation only).
+
+### PRODUCT_COMMITS
+
+- `f6478e4eb438c30069f73f395517146f3972d10b` — shared bounded async save worker
+- `dbf869856c86ee0bb61590acff0019ac86bbc2e7` — portable single core owner
+- `257cb98e1b5dc60efa2ed7b4437696858727b076` — bounded software presentation
+- `ff5010f0903d4c57f8d64ce5a93f6ed9b62a7c7b` — bounded SDL audio buffering
+- `e655001e4e277b1f7f8a061ab1a1d633b918c209` — AAudio negotiation/telemetry
+- `5240c1b6e08aa3fd1dbeacd0b7397d4f4ce48dbc` — capped SDL conversion staging
+
+### HOSTED CI
+
+`UNVERIFIED`: no GitHub-hosted workflow was started in this development-only
+session. Local NDK-targeted syntax and deterministic native fixtures were run.
+
+### ARCHITECTURE BEFORE
+
+Portable Linux/Windows ran the core, synchronous presenter, and SDL event loop
+in one cadence path; portable save/state persistence could enter filesystem I/O
+from core-owned operations; Android had a core worker but synchronous software
+presentation and no negotiated AAudio mode telemetry. macOS GBA/NDS already had
+the accepted owner/FIFO/save-worker architecture and was left intact.
+
+### ARCHITECTURE AFTER
+
+The portable runtime now has one core owner for active software sessions,
+immutable save snapshots handed to a bounded persistence worker, and a bounded
+three-slot FIFO software-frame handoff for Linux/Windows GBA/NDS. The platform
+presenter owns SDL/GL/Vulkan presentation; 3DS hardware and Switch/Eden remain
+on their existing ownership paths. Android retains its runtime-owned render
+thread and bounded backend slots, with safe AAudio exclusive/shared fallback.
+
+### SAVE PERSISTENCE
+
+- macOS: existing v3.3.2 `SavePersistenceWorker` — `INTEGRATION_VERIFIED` by
+  preserved contracts.
+- Android: shared snapshot worker and owner-thread command boundary —
+  `UNIT_VERIFIED`; physical package behavior `UNVERIFIED`.
+- Windows: shared snapshot worker through the portable session —
+  `UNIT_VERIFIED`; packaged behavior `UNVERIFIED`.
+- Linux: shared snapshot worker through the portable session —
+  `INTEGRATION_VERIFIED` in host fixtures; packaged behavior `UNVERIFIED`.
+
+### CORE OWNERSHIP
+
+- macOS: existing dedicated software core thread — `INTEGRATION_VERIFIED` by
+  preserved v3.3.2 contracts.
+- Android: existing native worker plus protected option cache — `UNIT_VERIFIED`.
+- Windows: `NativeCoreSession` owner thread — `INTEGRATION_VERIFIED`.
+- Linux: `NativeCoreSession` owner thread — `INTEGRATION_VERIFIED`.
+
+### PRESENTATION
+
+- macOS: existing three-slot software FIFO — preserved, `INTEGRATION_VERIFIED`.
+- Android: runtime-owned bounded Vulkan/GLES slots; no unsafe separate presenter
+  introduced — `UNIT_VERIFIED`, device behavior `UNVERIFIED`.
+- Windows: three-slot FIFO consumed by the platform loop; 3DS remains direct
+  hardware — `INTEGRATION_VERIFIED` by the queue fixture.
+- Linux: three-slot FIFO consumed by the SDL/GTK loop; 3DS remains direct
+  hardware — `INTEGRATION_VERIFIED` by the queue fixture.
+
+### AUDIO
+
+- macOS: accepted v3.3.2 path preserved — `UNIT_VERIFIED` by existing guards.
+- Android: exclusive low-latency attempt with shared fallback, burst/buffer/
+  xrun telemetry — `INTEGRATION_VERIFIED` by the deterministic stub; physical
+  latency `UNVERIFIED`.
+- Windows: bounded SDL queue and reusable conversion staging — `UNIT_VERIFIED`;
+  physical latency/underruns `UNVERIFIED`.
+- Linux: bounded SDL queue and reusable conversion staging — `UNIT_VERIFIED`;
+  physical latency/underruns `UNVERIFIED`.
+
+### GBA
+
+Lawful generated mGBA fixture save/state/SRAM roundtrip —
+`INTEGRATION_VERIFIED` (`RESULT: PASS`), including input mutation, state
+restoration, atomic 32 KiB SRAM persistence, and fresh-host readback.
+
+### NDS
+
+Software renderer remains forced and its core/layout/input contracts remain
+`UNIT_VERIFIED`. Renderer A/B launch/performance is `UNVERIFIED` because no
+lawful `.nds`/`.dsi` fixture exists in the repository or supplied workspace.
+
+### 3DS
+
+Existing Vulkan/OpenGL hardware ownership, shader guards, and backend contracts
+were preserved — `UNIT_VERIFIED`; runtime launch/performance is `UNVERIFIED`
+without a lawful fixture/device run.
+
+### SWITCH
+
+Eden hosted-frame transport was not refactored. Existing hosted-frame ring and
+core-only surface contracts remained green — `UNIT_VERIFIED`.
+
+### PERFORMANCE RESULTS
+
+- Bounded software queue fixture: `SOFTWARE_FRAME_QUEUE=PASS`.
+- Core-owner fixture: `NATIVE_CORE_SESSION=PASS`.
+- Save worker fixture: `SAVE_PERSISTENCE_WORKER=PASS`.
+- Final broad source/contract suite: 107 tests `UNIT_VERIFIED`/`INTEGRATION_VERIFIED`.
+- Post-cap Linux audio suite: 14 tests passed; Android suite: 27 tests passed.
+- No absolute FPS/latency improvement claim is made for packaged or physical
+  Android/Linux/Windows devices without those runs.
+
+### KNOWN LIMITATIONS
+
+- The fresh worktree intentionally lacks the untracked MoltenVK header copy;
+  fixture invocations that use the checkout path are `BLOCKED_EXTERNAL`. Runs
+  using the existing read-only dependency copy passed.
+- GTK development headers and full Linux package dependencies are not installed
+  on this Mac, so no packaged Linux/Windows runtime was rebuilt locally.
+- No lawful NDS/3DS ROM fixture was used or fabricated; Phase F is
+  `UNVERIFIED` for that reason.
+- The known tao/Tauri Android teardown issue remains `BLOCKED_UPSTREAM` and was
+  not changed.
+
+### REGRESSIONS
+
+`git diff --check` and staged checks passed for every logical commit. The
+v3.3.2 base tag and the release worktree remain untouched. No Sync, Phone
+Controller, LAN, account, cloud, or other removed feature was restored.
+
+### RELEASE READINESS
+
+`REVIEW_ONLY`: source changes are committed on
+`perf/3.3.3-runtime-unification`; `main`, `v3.3.2`, GitHub release state, and
+production deployment were not changed. A separate hosted-CI and release
+acceptance session is required before publishing any v3.3.3 candidate.
