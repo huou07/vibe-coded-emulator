@@ -792,16 +792,22 @@ upgrade or tao/Tauri source patch was made.
 - Independent hosted settings jobs: `109312015159`, `109319062421`,
   `109320065137`, `109321050600`, `109321982029`, `109323135814`,
   `109324099318`, `109325048826`, `109326289285`, `109327485545`.
-- Assertions: `10/10` pass, each with
+  runs: `10` independent hosted settings jobs.
+- Assertion pass: `10/10`, each with
   `AN3_ACCEPTANCE: ASSERTIONS_PASSED:NativeSettingsTabsTest`.
-- Activity teardown: `STOPPED` and `DESTROYED` observed after the marker in
+- Destroy pass: `10/10`; `STOPPED` and `DESTROYED` observed after the marker in
   all `10/10` diagnostics.
 - `FORTIFY`: `0`; `SIGABRT`: `0`; `SIGSEGV`: `0`; fatal exception: `0`;
   ANR: `0`; instrumentation hangs/timeouts: `0`.
-- Relaunch evidence: ten independent hosted emulator app launches followed by
-  ActivityScenario close/teardown, exceeding the required five cycles. This is
-  recorded as independent launch/teardown cycles, not as a claim that one
-  instrumentation process performed ten in-process relaunches.
+
+### RELAUNCH RESULT
+
+`PASS`: ten independent hosted emulator app launches followed by
+`ActivityScenario` close/teardown, exceeding the required five cycles. The
+hosted instrumentation harness provisions a disposable emulator for each job;
+no manual kill or crash suppression was used. This is recorded as independent
+launch/teardown cycles, not as a claim that one instrumentation process
+performed ten in-process relaunches.
 
 ### REGRESSION TESTS
 
