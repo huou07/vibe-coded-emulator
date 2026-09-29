@@ -163,7 +163,9 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
     def test_sdl_audio_keeps_conversion_and_queue_work_bounded(self):
         self.assertIn("conversion_buffer_.resize(static_cast<std::size_t>(queue_limit_frames_) * bytes_per_frame)", AUDIO)
         self.assertIn("const int available_bytes = SDL_AudioStreamAvailable(stream_)", AUDIO)
-        self.assertIn("if (required_bytes > conversion_buffer_.size()) conversion_buffer_.resize(required_bytes)", AUDIO)
+        self.assertIn("if (input_bytes > conversion_buffer_.size())", AUDIO)
+        self.assertIn("int remaining_bytes = available_bytes", AUDIO)
+        self.assertIn("dropped_frames_ += static_cast<std::size_t>(received) / bytes_per_frame", AUDIO)
         self.assertIn("queue_limit_frames", AUDIO_HEADER)
         self.assertIn("queue_max_frames", AUDIO_HEADER)
         self.assertIn("dropped_frames_ += available_frames - accepted_frames", AUDIO)

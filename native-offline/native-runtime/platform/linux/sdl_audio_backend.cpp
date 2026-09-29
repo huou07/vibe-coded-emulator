@@ -80,6 +80,10 @@ std::size_t LinuxSdlAudioBackend::submit(const int16_t* samples, std::size_t fra
     }
     const std::size_t input_bytes = frames * sizeof(int16_t) * 2;
     if (input_bytes / (sizeof(int16_t) * 2) != frames || input_bytes > static_cast<std::size_t>(std::numeric_limits<int>::max())) return 0;
+    if (input_bytes > conversion_buffer_.size()) {
+        dropped_frames_ += frames;
+        return frames;
+    }
     if (SDL_AudioStreamPut(stream_, samples, static_cast<int>(input_bytes)) != 0) {
         dropped_frames_ += frames;
         return 0;
@@ -89,13 +93,28 @@ std::size_t LinuxSdlAudioBackend::submit(const int16_t* samples, std::size_t fra
         dropped_frames_ += frames;
         return 0;
     }
-    const std::size_t required_bytes = static_cast<std::size_t>(available_bytes);
-    if (required_bytes > conversion_buffer_.size()) conversion_buffer_.resize(required_bytes);
-    if (available_bytes > 0 && SDL_AudioStreamGet(stream_, conversion_buffer_.data(), available_bytes) < 0) {
-        dropped_frames_ += frames;
-        return 0;
+    std::size_t retained_bytes = 0;
+    int remaining_bytes = available_bytes;
+    while (remaining_bytes > 0) {
+        const std::size_t free_bytes = conversion_buffer_.size() - retained_bytes;
+        const std::size_t chunk_bytes = free_bytes != 0
+            ? std::min<std::size_t>(free_bytes, static_cast<std::size_t>(remaining_bytes))
+            : std::min<std::size_t>(conversion_buffer_.size(), static_cast<std::size_t>(remaining_bytes));
+        auto* destination = conversion_buffer_.data() + (free_bytes != 0 ? retained_bytes : 0);
+        const int received = SDL_AudioStreamGet(stream_, destination, static_cast<int>(chunk_bytes));
+        if (received < 0) {
+            dropped_frames_ += frames;
+            return 0;
+        }
+        if (received == 0) break;
+        if (free_bytes != 0) {
+            retained_bytes += std::min<std::size_t>(free_bytes, static_cast<std::size_t>(received));
+        } else {
+            dropped_frames_ += static_cast<std::size_t>(received) / bytes_per_frame;
+        }
+        remaining_bytes -= received;
     }
-    const uint32_t available_frames = static_cast<uint32_t>(required_bytes / bytes_per_frame);
+    const uint32_t available_frames = static_cast<uint32_t>(retained_bytes / bytes_per_frame);
     const uint32_t writable_frames = queue_limit_frames_ > queued_frames ? queue_limit_frames_ - queued_frames : 0;
     const uint32_t accepted_frames = std::min(available_frames, writable_frames);
     dropped_frames_ += available_frames - accepted_frames;
