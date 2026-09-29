@@ -875,7 +875,7 @@ async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let _ = tauri::async_runtime::spawn_blocking(|| {
@@ -949,9 +949,25 @@ pub fn run() {
                 // created on mobile. The Activity owns the initial navigation.
             }
             Ok(())
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running VibeCodedEmulator");
+        });
+
+    #[cfg(target_os = "android")]
+    {
+        // tao's Android EventLoop::run calls run_return and then performs a
+        // process-level exit. Use Tauri's returning API so its Exit cleanup
+        // completes before the mobile entry point returns naturally.
+        let app = builder
+            .build(tauri::generate_context!())
+            .expect("error while building VibeCodedEmulator");
+        let _exit_code = app.run_return(|_app_handle, _event| {});
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        builder
+            .run(tauri::generate_context!())
+            .expect("error while running VibeCodedEmulator");
+    }
 }
 
 #[cfg(test)]

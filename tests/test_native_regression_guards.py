@@ -28,6 +28,23 @@ TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="u
 
 
 class NativeRegressionGuardTests(unittest.TestCase):
+    def test_android_entry_returns_from_tauri_without_process_exit(self):
+        run_start = TAURI_LIB.index("pub fn run() {")
+        run_end = TAURI_LIB.index("\n#[cfg(test)]", run_start)
+        run = TAURI_LIB[run_start:run_end]
+        self.assertIn("let builder = tauri::Builder::default()", run)
+        android_start = run.index('#[cfg(target_os = "android")]')
+        desktop_start = run.index('#[cfg(not(target_os = "android"))]', android_start)
+        android = run[android_start:desktop_start]
+        desktop = run[desktop_start:]
+
+        self.assertIn(".build(tauri::generate_context!())", android)
+        self.assertIn("app.run_return(|_app_handle, _event| {})", android)
+        self.assertNotIn(".run(tauri::generate_context!())", android)
+        self.assertNotIn("std::process::exit", android)
+        self.assertIn(".run(tauri::generate_context!())", desktop)
+        self.assertNotIn("std::process::exit", run)
+
     def test_01_quick_slots_remain_exactly_one_through_ten(self):
         self.assertIn("constexpr unsigned kMaxQuickStateSlot = 10", HOST)
         self.assertIn("Array.from({length:10}", OFFLINE)
