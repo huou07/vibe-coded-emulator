@@ -160,6 +160,16 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn("mutable std::mutex mutex_", AUDIO_HEADER)
         self.assertIn("std::lock_guard<std::mutex> lock(mutex_)", AUDIO)
 
+    def test_sdl_audio_keeps_conversion_and_queue_work_bounded(self):
+        self.assertIn("conversion_buffer_.resize(static_cast<std::size_t>(queue_limit_frames_) * bytes_per_frame)", AUDIO)
+        self.assertIn("const int available_bytes = SDL_AudioStreamAvailable(stream_)", AUDIO)
+        self.assertIn("if (required_bytes > conversion_buffer_.size()) conversion_buffer_.resize(required_bytes)", AUDIO)
+        self.assertIn("queue_limit_frames", AUDIO_HEADER)
+        self.assertIn("queue_max_frames", AUDIO_HEADER)
+        self.assertIn("dropped_frames_ += available_frames - accepted_frames", AUDIO)
+        self.assertIn("current.audio.queue_limit_frames", CONTROLS)
+        self.assertIn("current.audio.dropped_frames", CONTROLS)
+
     def test_portable_software_frames_use_a_bounded_fifo_handoff(self):
         self.assertIn("kCapacity = 3", FRAME_QUEUE_H)
         self.assertIn("SlotState::Ready", FRAME_QUEUE_CPP)

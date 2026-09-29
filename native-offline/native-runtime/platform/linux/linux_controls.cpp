@@ -614,7 +614,8 @@ class LinuxControlPanel::Impl {
         if (audio_label_) {
             std::ostringstream text;
             text << "Audio: " << current.audio.sample_rate << " Hz · queued " << current.audio.queued_frames
-                 << " frames · volume " << static_cast<int>(std::lround(current.audio.volume * 100.0f)) << "%";
+                 << "/" << current.audio.queue_limit_frames << " frames · volume "
+                 << static_cast<int>(std::lround(current.audio.volume * 100.0f)) << "%";
             if (current.audio.muted) text << " · muted";
             gtk_label_set_text(GTK_LABEL(audio_label_), text.str().c_str());
         }
@@ -625,7 +626,9 @@ class LinuxControlPanel::Impl {
                  << "Renderer: " << current.video.effective << " · ring " << current.video.frames_in_flight << "\n"
                  << "Uploads direct/copied/converted: " << current.video.frames.direct_software_uploads << "/"
                  << current.video.frames.copied_software_uploads << "/" << current.video.frames.converted_software_uploads << "\n"
-                 << "Audio queue: " << current.audio.queued_frames << " frames\n"
+                 << "Audio queue: " << current.audio.queued_frames << "/" << current.audio.queue_limit_frames
+                 << " frames · max " << current.audio.queue_max_frames << " · dropped "
+                 << current.audio.dropped_frames << "\n"
                  << "Last runtime message: " << (current.last_message.empty() ? "—" : current.last_message);
             gtk_label_set_text(GTK_LABEL(diagnostics_label_), text.str().c_str());
         }
