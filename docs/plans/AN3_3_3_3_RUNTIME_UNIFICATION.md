@@ -467,30 +467,72 @@ change.
 
 ## PHASE_F — NDS RENDERER A/B
 
-No renderer change was made. The portable host still deliberately forces
-`melonds_render_mode=software`, and its hardware-render callback negotiation is
-reserved for the existing 3DS path. The NDS software renderer therefore stays
-the accepted default while a lawful A/B fixture and a supported NDS hardware
-context are unavailable in this checkout.
+No renderer change was made. The pinned melonDS core still receives
+`melonds_render_mode=software` and `melonds_threaded_renderer=enabled`. The
+macOS host accepts hardware-render callbacks only for `system == "3ds"`; an
+NDS `RETRO_ENVIRONMENT_SET_HW_RENDER` request is rejected and no supported
+NDS hardware context is exposed. The accepted NDS default therefore remains
+software.
+
+### Lawful fixture provenance recovered
+
+| System | Upstream provenance and license | Artifact and reproducible acquisition | Previous AN3 evidence |
+| --- | --- | --- | --- |
+| NDS | [`devkitPro/nds-examples`](https://github.com/devkitPro/nds-examples), commit `f1ba715a451c6407f8b0f805999d0153062ff552`, selected `Graphics/3D/Picking`; `main.cpp` contains an explicit public-domain dedication. The repository root has no separate license file, so no repository-wide license is assumed. | Build the selected example with `devkitpro/devkitarm:20260610` (image digest `sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5`); output `Picking.nds`, 196,608 bytes, SHA-256 `90f13a49ff06ce60e91a69df2ae9ffe6bb32a523a9f65f5845f3ea1fab14f61b`. | Packaged launch `1/1`, ten-minute health `30/30`, approximately 59.8 FPS, trace and keyboard-path evidence recorded in commit `37197079ec58757bf4719df609194498c18d4c2b`. |
+| 3DS | [`16BitWonder/3DS-TEST`](https://github.com/16BitWonder/3DS-TEST), commit `e5b13872f0c1207cb9c86e18e710c8f1fa269fb8`, MIT license. | Artifact `3DS-TEST.3dsx`, 1,020,500 bytes, SHA-256 `a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050`, acquired from the pinned public repository commit. | Packaged launch `1/1`, ten-minute health `30/30`, approximately 60 FPS, trace and keyboard-path evidence recorded in commit `37197079ec58757bf4719df609194498c18d4c2b`. |
+| Switch | [`switchbrew/nx-hbmenu`](https://github.com/switchbrew/nx-hbmenu), tag `v3.6.1` / commit `fd26270a4e4b6994886a57b0738d98229ab4094e`, ISC license (`LICENSE.md`). | Official release asset `nx-hbmenu_v3.6.1.zip` (SHA-256 `4790c58fdd75c4bcc644fa8135fa11c380cb3ebaf685e400e336031972410ee7`); extracted `hbmenu.nro`, 2,455,539 bytes, SHA-256 `6cf6d130515723ebe0041c2479420caf9726895087439ff7b2e528c2ed39c100`. | Existing 620-second Eden soak: 37,179 frames, 37,140 publishes, zero drops/rejections/copy errors, normal shutdown, recorded in commit `80e6db23cb0e714409ff55dfca4fb93587e23d84`. |
 
 ### Phase F verification
 
-- Repository fixture inventory found no `.nds` or `.dsi` fixture. The checkout
-  contains the mGBA-generated lawful GBA fixture only; no commercial ROM was
-  downloaded or fabricated.
-- Source/contract regressions passed in the final 71-test portable suite and
-  the 27-test Android suite. They continue to cover the forced melonDS
-  software option, the non-3DS hardware-render rejection boundary, and the
-  bounded software presenter.
-- No valid same-fixture software-versus-hardware NDS run, visual comparison,
-  frame-pacing measurement, GPU wait measurement, or device audio xrun sample
-  can be claimed without the missing lawful fixture and backend context.
+- Current-candidate NDS packaged E2E passed `1/1`. The 620-second run collected
+  121/121 five-second health samples; every sample stayed `running=true`, the
+  presented-frame counter increased strictly from `9` to `36,874` (delta
+  `36,865`), and shutdown emitted trace `/tmp/an3-333-nds-trace.jsonl`
+  (37,332 samples; SHA-256
+  `175e27a654be4c0574de8034c4b6cb476636b0e80b3f83b65f5774524f39a06f`).
+  After a 30-second warm-up, frame interval p50/p95/p99/max was
+  `16.667833/17.754875/18.386916/25.763375 ms`; emulation
+  `2.906249/3.143083/3.253124/5.020124 ms`; presentation
+  `0.516125/0.613500/0.680666/0.863125 ms`; queue p95/max `2/2` (host
+  capacity `3`); drops/duplicates `0/0`; audio xrun high-water `1`; RSS
+  `384,958,464→384,401,408` bytes, peak `384,991,232`. The generated fixture
+  has no save-game roundtrip or reliable audible output.
+- A same-fixture NDS software-versus-hardware A/B was not runnable: the
+  current pinned host rejects NDS hardware negotiation by contract and only
+  exposes hardware callbacks to the existing 3DS path. Status:
+  `UNVERIFIED_UNSUPPORTED_BY_PINNED_CORE`. No default change or speculative
+  renderer enablement was attempted.
+- Current-candidate 3DS packaged E2E passed `1/1`. The 620-second run collected
+  121/121 health samples; every sample stayed `running=true`, the presented
+  frame counter increased strictly from `5` to `36,879` (delta `36,874`),
+  and shutdown emitted trace `/tmp/an3-333-3ds-trace.jsonl` (37,228 samples;
+  SHA-256 `296776b561e10eaf38e6518ce84cf56702ef80b729e191dde716457c6c3dda09`).
+  After warm-up, synchronous core interval p50/p95/p99/max was
+  `16.666834/17.509208/17.616666/1058.400375 ms`; emulation
+  `0.887791/1.070042/1.166249/1045.151333 ms`; drops/duplicates/audio
+  xruns `0/0/0`. The one approximately 1.06-second interval at 527.57
+  seconds was isolated; no recurring late-run stall appeared. Direct hardware
+  presentation does not populate the software presentation-duration/queue
+  fields. 3DS initialization, renderer, input, layout, and backend selection
+  were not modified.
+- Current-candidate Switch regression used the exact recorded companion
+  (`an3_switch_companion` SHA-256
+  `f2658152c3d57f461dfb71e1f4b8d2728ae241a8a720a7bf19e5a3735d749708`) and
+  the verified `hbmenu.nro`: lifecycle stress and audio-path suites passed
+  `5/5`, including five clean cycles, rapid stop, crash/restart, a real audio
+  backend, and stable diagnostics. The Eden source/hosted-frame tree is
+  unchanged from `v3.3.2`, so the prior 620-second soak remains valid for this
+  candidate: 37,179 frames, 37,140 publishes, zero drops/rejections/copy
+  errors, normal shutdown.
 
 ## PHASE_F_STATUS
 
-`UNVERIFIED`; no lawful NDS fixture is present for the A/B. The software
-default and all existing NDS core/layout/input contracts are preserved, and no
-speculative hardware renderer enablement was attempted.
+`CURRENT_CANDIDATE_VERIFIED_WITH_LIMITATIONS`: lawful NDS, 3DS, and Switch
+fixtures were recovered and current-candidate runtime evidence was collected.
+The NDS software default remains accepted; the requested hardware A/B is
+`UNVERIFIED_UNSUPPORTED_BY_PINNED_CORE`. Fixture save roundtrips and physical
+audible output remain unverified where the lawful test images do not provide a
+reliable observable path.
 
 ## FINAL_RUNTIME_UNIFICATION_STATUS
 
@@ -521,8 +563,9 @@ the later commits on this branch are checkpoint documentation only).
 
 ### HOSTED CI
 
-`UNVERIFIED`: no GitHub-hosted workflow was started in this development-only
-session. Local NDK-targeted syntax and deterministic native fixtures were run.
+`PENDING`: the exact candidate has not yet been dispatched to the GitHub-hosted
+workflow. This checkpoint will be updated with the review-branch head SHA,
+workflow run ID, and job results before any release decision.
 
 ### ARCHITECTURE BEFORE
 
@@ -590,14 +633,16 @@ restoration, atomic 32 KiB SRAM persistence, and fresh-host readback.
 ### NDS
 
 Software renderer remains forced and its core/layout/input contracts remain
-`UNIT_VERIFIED`. Renderer A/B launch/performance is `UNVERIFIED` because no
-lawful `.nds`/`.dsi` fixture exists in the repository or supplied workspace.
+`UNIT_VERIFIED`. Current-candidate launch/performance is `INTEGRATION_VERIFIED` by the
+recovered `Picking.nds` fixture and the 620-second trace above. Renderer A/B
+is `UNVERIFIED_UNSUPPORTED_BY_PINNED_CORE`.
 
 ### 3DS
 
 Existing Vulkan/OpenGL hardware ownership, shader guards, and backend contracts
-were preserved — `UNIT_VERIFIED`; runtime launch/performance is `UNVERIFIED`
-without a lawful fixture/device run.
+were preserved — `UNIT_VERIFIED`; current-candidate packaged launch and
+620-second runtime are `INTEGRATION_VERIFIED` with the recovered lawful
+`3DS-TEST.3dsx` fixture.
 
 ### SWITCH
 
@@ -621,8 +666,10 @@ core-only surface contracts remained green — `UNIT_VERIFIED`.
   using the existing read-only dependency copy passed.
 - GTK development headers and full Linux package dependencies are not installed
   on this Mac, so no packaged Linux/Windows runtime was rebuilt locally.
-- No lawful NDS/3DS ROM fixture was used or fabricated; Phase F is
-  `UNVERIFIED` for that reason.
+- The lawful NDS/3DS/Switch fixture provenance is recorded above; their
+  binaries remain outside the AN3 repository. NDS hardware A/B remains
+  `UNVERIFIED_UNSUPPORTED_BY_PINNED_CORE`; fixture save/audio limits remain
+  explicit.
 - The known tao/Tauri Android teardown issue remains `BLOCKED_UPSTREAM` and was
   not changed.
 
