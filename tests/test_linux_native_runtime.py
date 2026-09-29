@@ -19,8 +19,11 @@ BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encod
 FLATPAK_INSTALL_VERIFY = (ROOT / "native-offline/scripts/verify-flatpak-install.sh").read_text(encoding="utf-8")
 RUNTIME = (LINUX / "linux_runtime.cpp").read_text(encoding="utf-8")
 CONTROLS = (LINUX / "linux_controls.cpp").read_text(encoding="utf-8")
+SESSION_H = (ROOT / "native-offline/native-runtime/core/native_core_session.h").read_text(encoding="utf-8")
+SESSION_CPP = (ROOT / "native-offline/native-runtime/core/native_core_session.cpp").read_text(encoding="utf-8")
 GL = (LINUX / "sdl_gl_backend.cpp").read_text(encoding="utf-8")
 AUDIO = (LINUX / "sdl_audio_backend.cpp").read_text(encoding="utf-8")
+AUDIO_HEADER = (LINUX / "sdl_audio_backend.h").read_text(encoding="utf-8")
 SURFACE = (LINUX / "sdl_window_surface.h").read_text(encoding="utf-8")
 FLATPAK = (ROOT / "native-offline/flatpak/space.an3tocom.offline.yml").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/native-runtime/video/vulkan/vulkan_backend.cpp").read_text(encoding="utf-8")
@@ -31,6 +34,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertNotIn("LINUX_NATIVE_RUNTIME=BLOCKED", BUILD)
         for required in ("libretro_host.cpp", "vulkan_backend.cpp", "linux_runtime.cpp",
                          "linux_controls.cpp", "sdl_audio_backend.cpp", "sdl_gl_backend.cpp",
+                         "native_core_session.cpp",
                          "bundle-linux-runtime.mjs", "npm run tauri -- build --bundles deb",
                          "flatpak-builder", "fetch-linux-gba-nds-libretro.mjs"):
             self.assertIn(required, BUILD)
@@ -81,12 +85,12 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertLess(GL.index("SDL_GL_SetAttribute"), GL.index("surface->recreate_for_opengl"))
 
     def test_f1_uses_the_shared_layout_state_and_persists_the_live_choice(self):
-        self.assertIn("host.set_screen_layout(value, detail)", RUNTIME)
+        self.assertIn("session.set_screen_layout(value, detail)", RUNTIME)
         self.assertIn("std::ofstream output(layout_file, std::ios::trunc)", RUNTIME)
         self.assertIn("output << options.layout", RUNTIME)
         self.assertIn("next_supported_layout(options.system, options.layout)", RUNTIME)
         self.assertIn("is_supported_layout(options.system, options.layout)", RUNTIME)
-        self.assertIn("set_touch(host.input(), options.system, options.layout", RUNTIME)
+        self.assertIn("set_touch(session.input(), options.system, options.layout", RUNTIME)
 
     def test_linux_toolbar_save_exposes_ten_slots_and_menu_owns_pointer(self):
         self.assertIn("void show_save_menu()", CONTROLS)
@@ -110,10 +114,10 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertNotIn("Auto Save (state snapshot)", CONTROLS)
         for speed in ("player_ui::toolbar_speed[0]", "player_ui::toolbar_speed[1]", "player_ui::toolbar_speed[2]"):
             self.assertIn(speed, CONTROLS)
-        self.assertIn("host_.core_options()", CONTROLS)
-        self.assertIn("host_.set_core_option", CONTROLS)
-        self.assertIn("host_.save_state", CONTROLS)
-        self.assertIn("host_.load_state", CONTROLS)
+        self.assertIn("session_.core_options()", CONTROLS)
+        self.assertIn("session_.set_core_option", CONTROLS)
+        self.assertIn("session_.save_state", CONTROLS)
+        self.assertIn("session_.load_state", CONTROLS)
         self.assertIn("callbacks_.set_layout", CONTROLS)
         for forbidden in ("WebView", "OffscreenCanvas", "glReadPixels", "glFinish"):
             self.assertNotIn(forbidden, CONTROLS)
@@ -130,6 +134,26 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         native = (ROOT / "native-offline/shared/generated/player_ui.h").read_text(encoding="utf-8")
         for token in ('"off"', '"exit"', '"30"', '"10"', '"5"'):
             self.assertIn(token, native)
+
+    def test_portable_runtime_has_one_bounded_core_owner(self):
+        self.assertIn("class NativeCoreSession", SESSION_H)
+        self.assertIn("kMaxPendingCommands = 128", SESSION_H)
+        self.assertIn("std::thread worker_", SESSION_H)
+        self.assertIn("std::deque<Command> commands_", SESSION_H)
+        self.assertIn("host_.run_one(error", SESSION_CPP)
+        self.assertIn("host_.shutdown();", SESSION_CPP)
+        self.assertIn("commands_.size() >= kMaxPendingCommands", SESSION_CPP)
+        self.assertIn("session.start(error, options.frames)", RUNTIME)
+        self.assertIn("session.stop();", RUNTIME)
+        self.assertIn("LinuxControlPanel>(session, audio", RUNTIME)
+        interactive = RUNTIME[RUNTIME.index("NativeCoreSession session(host);"):]
+        self.assertNotIn("host.run_one(", interactive)
+
+    def test_presenter_and_audio_metrics_are_safe_with_the_owner_thread(self):
+        self.assertIn("mutable std::mutex status_mutex", GL)
+        self.assertIn("std::lock_guard<std::mutex> lock(impl_->status_mutex)", GL)
+        self.assertIn("mutable std::mutex mutex_", AUDIO_HEADER)
+        self.assertIn("std::lock_guard<std::mutex> lock(mutex_)", AUDIO)
 
 
 if __name__ == "__main__":

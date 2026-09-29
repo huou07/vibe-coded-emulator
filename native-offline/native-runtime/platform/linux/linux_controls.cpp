@@ -148,9 +148,9 @@ std::string user_facing_error(const std::string& operation, bool ok, const std::
 
 class LinuxControlPanel::Impl {
   public:
-    Impl(NativeCoreHost& host, LinuxSdlAudioBackend& audio, std::string system,
+    Impl(NativeCoreSession& session, LinuxSdlAudioBackend& audio, std::string system,
          LinuxControlCallbacks callbacks)
-        : host_(host), audio_(audio), system_(std::move(system)), callbacks_(std::move(callbacks)) {}
+        : session_(session), audio_(audio), system_(std::move(system)), callbacks_(std::move(callbacks)) {}
 
     ~Impl() {
         if (window_) gtk_widget_destroy(window_);
@@ -263,7 +263,7 @@ class LinuxControlPanel::Impl {
 
     GtkWidget* input_button(const std::string& label, unsigned id) {
         GtkWidget* result = gtk_button_new_with_label(label.c_str());
-        input_actions_.push_back(std::make_unique<InputSignal>(InputSignal{&host_.input(), id}));
+        input_actions_.push_back(std::make_unique<InputSignal>(InputSignal{&session_.input(), id}));
         auto* action = input_actions_.back().get();
         g_signal_connect(result, "pressed", G_CALLBACK(input_pressed), action);
         g_signal_connect(result, "released", G_CALLBACK(input_released), action);
@@ -334,7 +334,7 @@ class LinuxControlPanel::Impl {
         gtk_box_pack_start(GTK_BOX(box), make_label("Keyboard input is sampled by the same native input state as the SDL window. It never depends on GUI redraw cadence."), false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), make_label("Arrows: D-pad\nZ / X: B / A\nA / S: Y / X\nL / J: L / R\nSpace / Return: Select / Start\nP: pause · F1: layout · F2: menu · F3: pad · F4: fullscreen · F5/F9: quick save/load slot 1"), false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), button("Release held native input", [this] {
-            host_.input().clear();
+            session_.input().clear();
             status("Held keyboard and controller input released.");
         }), false, false, 0);
         return box;
@@ -348,7 +348,7 @@ class LinuxControlPanel::Impl {
         gtk_widget_set_halign(joystick, GTK_ALIGN_START);
         gtk_widget_set_tooltip_text(joystick, "Analog Joystick");
         gtk_widget_add_events(joystick, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK);
-        analog_ = std::make_unique<AnalogSignal>(AnalogSignal{&host_.input(), system_ != "3ds", false, {}, joystick});
+        analog_ = std::make_unique<AnalogSignal>(AnalogSignal{&session_.input(), system_ != "3ds", false, {}, joystick});
         g_signal_connect(joystick, "draw", G_CALLBACK(analog_draw), analog_.get());
         g_signal_connect(joystick, "button-press-event", G_CALLBACK(analog_press), analog_.get());
         g_signal_connect(joystick, "motion-notify-event", G_CALLBACK(analog_motion), analog_.get());
@@ -388,7 +388,7 @@ class LinuxControlPanel::Impl {
         }
         gtk_box_pack_start(GTK_BOX(box), speeds, false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), make_label("Core options · some options require restart"), false, false, 0);
-        const auto options = host_.core_options();
+        const auto options = session_.core_options();
         if (options.empty()) {
             gtk_box_pack_start(GTK_BOX(box), make_label("The active core has not announced options."), false, false, 0);
         }
@@ -410,7 +410,7 @@ class LinuxControlPanel::Impl {
             combos_.push_back(std::make_unique<ComboSignal>(ComboSignal{[this, key, values = std::move(values)](int index) {
                 if (index < 0 || static_cast<size_t>(index) >= values.size()) return;
                 std::string error;
-                status(user_facing_error("Core option", host_.set_core_option(key, values[static_cast<size_t>(index)], error), error));
+                status(user_facing_error("Core option", session_.set_core_option(key, values[static_cast<size_t>(index)], error), error));
             }}));
             g_signal_connect(chooser, "changed", G_CALLBACK(combo_changed), combos_.back().get());
             gtk_box_pack_start(GTK_BOX(box), chooser, false, false, 0);
@@ -440,7 +440,7 @@ class LinuxControlPanel::Impl {
         g_signal_connect(mode, "changed", G_CALLBACK(combo_changed), combos_.back().get());
         gtk_box_pack_start(GTK_BOX(box), mode, false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), button("Load Auto Save", [this] {
-            std::string error; status(user_facing_error("Load Auto Save", host_.load_auto(error), error));
+            std::string error; status(user_facing_error("Load Auto Save", session_.load_auto(error), error));
         }), false, false, 0);
         gtk_box_pack_start(GTK_BOX(box), make_label("Quick saves use raw native core state bytes and remain distinct from Auto Save."), false, false, 0);
         GtkWidget* slots = gtk_grid_new();
@@ -448,10 +448,10 @@ class LinuxControlPanel::Impl {
         gtk_grid_set_column_spacing(GTK_GRID(slots), 4);
         for (unsigned slot = 1; slot <= 10; ++slot) {
             gtk_grid_attach(GTK_GRID(slots), button("Save " + std::to_string(slot), [this, slot] {
-                std::string error; status(user_facing_error("Quick save " + std::to_string(slot), host_.save_state(slot, error), error));
+                std::string error; status(user_facing_error("Quick save " + std::to_string(slot), session_.save_state(slot, error), error));
             }), 0, static_cast<int>(slot - 1), 1, 1);
             gtk_grid_attach(GTK_GRID(slots), button("Load " + std::to_string(slot), [this, slot] {
-                std::string error; status(user_facing_error("Quick load " + std::to_string(slot), host_.load_state(slot, error), error));
+                std::string error; status(user_facing_error("Quick load " + std::to_string(slot), session_.load_state(slot, error), error));
             }), 1, static_cast<int>(slot - 1), 1, 1);
         }
         gtk_box_pack_start(GTK_BOX(box), slots, false, false, 0);
@@ -560,7 +560,7 @@ class LinuxControlPanel::Impl {
                 GtkWidget* item = gtk_menu_item_new_with_label(("Slot " + std::to_string(slot)).c_str());
                 menu_actions_.push_back(std::make_unique<ActionSignal>(ActionSignal{[this, save, slot] {
                     std::string error;
-                    const bool ok = save ? host_.save_state(slot, error) : host_.load_state(slot, error);
+                    const bool ok = save ? session_.save_state(slot, error) : session_.load_state(slot, error);
                     status(user_facing_error((save ? "Quick Save " : "Quick Load ") + std::to_string(slot), ok, error));
                 }}));
                 g_signal_connect(item, "activate", G_CALLBACK(action_clicked), menu_actions_.back().get());
@@ -574,11 +574,11 @@ class LinuxControlPanel::Impl {
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
         add_item("Auto Save now", [this] {
             std::string error;
-            status(user_facing_error("Auto Save", host_.save_auto(error), error));
+            status(user_facing_error("Auto Save", session_.save_auto(error), error));
         });
         add_item("Load Auto Save", [this] {
             std::string error;
-            status(user_facing_error("Load Auto Save", host_.load_auto(error), error));
+            status(user_facing_error("Load Auto Save", session_.load_auto(error), error));
         });
         g_signal_connect(menu, "deactivate", G_CALLBACK(gtk_widget_destroy), nullptr);
         gtk_widget_show_all(menu);
@@ -589,7 +589,7 @@ class LinuxControlPanel::Impl {
         const auto path = state_path(export_state);
         if (!path) return;
         std::string error;
-        const bool ok = export_state ? host_.export_state(*path, error) : host_.import_state(*path, error);
+        const bool ok = export_state ? session_.export_state(*path, error) : session_.import_state(*path, error);
         status(user_facing_error(export_state ? "Export Save State" : "Import Save State", ok, error));
     }
 
@@ -631,7 +631,7 @@ class LinuxControlPanel::Impl {
         }
     }
 
-    NativeCoreHost& host_;
+    NativeCoreSession& session_;
     LinuxSdlAudioBackend& audio_;
     std::string system_;
     LinuxControlCallbacks callbacks_;
@@ -655,9 +655,9 @@ class LinuxControlPanel::Impl {
     std::unique_ptr<AnalogSignal> analog_;
 };
 
-LinuxControlPanel::LinuxControlPanel(NativeCoreHost& host, LinuxSdlAudioBackend& audio,
+LinuxControlPanel::LinuxControlPanel(NativeCoreSession& session, LinuxSdlAudioBackend& audio,
                                      std::string system, LinuxControlCallbacks callbacks)
-    : impl_(std::make_unique<Impl>(host, audio, std::move(system), std::move(callbacks))) {}
+    : impl_(std::make_unique<Impl>(session, audio, std::move(system), std::move(callbacks))) {}
 
 LinuxControlPanel::~LinuxControlPanel() = default;
 bool LinuxControlPanel::initialize(std::string& error) { return impl_->initialize(error); }

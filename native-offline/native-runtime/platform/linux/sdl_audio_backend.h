@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace an3 {
@@ -39,6 +40,7 @@ class LinuxSdlAudioBackend final : public NativeAudioBackend {
     SDL_AudioSpec obtained_{};
     uint32_t queue_limit_frames_ = 0;
     std::vector<uint8_t> conversion_buffer_;
+    mutable std::mutex mutex_;
     std::atomic<float> volume_{1.0f};
     std::atomic<bool> muted_{false};
 };

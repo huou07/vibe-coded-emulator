@@ -21,6 +21,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / "native-offline/native-runtime/core/libretro_host.cpp"
+SESSION = ROOT / "native-offline/native-runtime/core/native_core_session.cpp"
 VULKAN = ROOT / "native-offline/native-runtime/video/vulkan/vulkan_backend.cpp"
 GLES = ROOT / "native-offline/native-runtime/video/opengl/gles3_backend.cpp"
 VULKAN_SOFTWARE = ROOT / "native-offline/native-runtime/video/vulkan/software_backend.h"
@@ -34,6 +35,7 @@ ANDROID_BUILD = ROOT / "native-offline/src-tauri/gen/android/app/build.gradle.kt
 ANDROID_BOOTSTRAP = ROOT / "native-offline/web/native-bootstrap.js"
 OFFLINE_LIBRARY = ROOT / "static/offline.js"
 HARNESS = ROOT / "tests/native/android_host_harness.cpp"
+SESSION_HARNESS = ROOT / "tests/native/native_core_session_harness.cpp"
 FAKE_SYMBOLS = ROOT / "tests/native/fake_libretro_symbols.cpp"
 DIRECT_CORE = ROOT / "native-offline/tests/mock_direct_frame_core.cpp"
 VULKAN_HEADERS = ROOT / "native-offline/vendor/moltenvk/macos-arm64/include"
@@ -51,6 +53,43 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_portable_core_session_runs_frames_on_one_owner_thread(self):
+        compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("clang++") or shutil.which("g++")
+        if not compiler:
+            self.skipTest("no C++ compiler available for the portable session fixture")
+        if os.name == "nt":
+            self.skipTest("the local fixture build currently targets Unix-like native hosts")
+
+        with tempfile.TemporaryDirectory(prefix="an3-native-session-") as temporary:
+            temporary_path = Path(temporary)
+            core_library = temporary_path / ("fixture.dylib" if os.uname().sysname == "Darwin" else "fixture.so")
+            harness_binary = temporary_path / "native-core-session-harness"
+            workdir = temporary_path / "work"
+            compile_core = [
+                compiler, "-std=c++20", "-fPIC",
+                "-dynamiclib" if os.uname().sysname == "Darwin" else "-shared",
+                "-I", str(ROOT / "native-offline/native-runtime/core/vendor"),
+                str(DIRECT_CORE), str(FAKE_SYMBOLS), "-o", str(core_library),
+            ]
+            compile_harness = [
+                compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-O0", "-g",
+                "-I", str(VULKAN_HEADERS),
+                "-I", str(ROOT / "native-offline/native-runtime/core"),
+                "-I", str(ROOT / "native-offline/native-runtime/core/vendor"),
+                str(HOST), str(SESSION), str(SESSION_HARNESS), "-pthread", "-o", str(harness_binary),
+            ]
+            if os.uname().sysname != "Darwin":
+                compile_harness.append("-ldl")
+            for command in (compile_core, compile_harness):
+                result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run(
+                [str(harness_binary), str(core_library), str(workdir)],
+                cwd=ROOT, text=True, capture_output=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertRegex(result.stdout, r"NATIVE_CORE_SESSION=PASS frames=\d+")
+
     def test_fake_libretro_host_survives_renderer_drops_and_keeps_state_paths_separate(self):
         """A lost presentation target must not stop or deadlock the core loop."""
 
@@ -303,6 +342,18 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             body = jni[jni.index(f"Java_space_an3tocom_offline_NativeGameActivity_{method}") :]
             body = body[: body.find("\nextern \"C\"", 1)] if "\nextern \"C\"" in body else body
             self.assertIn("owns(e,activity)", body, method)
+
+    def test_android_core_options_are_cached_from_the_owner_thread(self):
+        jni = source(JNI)
+        self.assertIn('std::string options_json = "[]";', jni)
+        self.assertIn('s.options_json=s.host.core_options_json();', jni)
+        native_options = between(
+            jni,
+            'Java_space_an3tocom_offline_NativeGameActivity_nativeOptions',
+            'Java_space_an3tocom_offline_NativeGameActivity_nativeCancelPointer',
+        )
+        self.assertIn('session->options_json.c_str()', native_options)
+        self.assertNotIn('session->host.core_options_json()', native_options)
 
     def test_android_native_autosave_uses_the_single_shared_mode(self):
         jni = source(JNI)

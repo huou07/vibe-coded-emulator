@@ -53,6 +53,7 @@ bool LinuxSdlAudioBackend::initialize(double sample_rate, std::string& error) {
 }
 
 std::size_t LinuxSdlAudioBackend::submit(const int16_t* samples, std::size_t frames) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!device_ || !stream_ || !samples || !frames) return 0;
     const uint32_t bytes_per_frame = static_cast<uint32_t>(SDL_AUDIO_BITSIZE(obtained_.format) / 8) * obtained_.channels;
     if (!bytes_per_frame) return 0;
@@ -94,6 +95,7 @@ void LinuxSdlAudioBackend::set_muted(bool value) noexcept {
 }
 
 LinuxSdlAudioMetrics LinuxSdlAudioBackend::metrics() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
     LinuxSdlAudioMetrics result;
     result.sample_rate = obtained_.freq > 0 ? static_cast<uint32_t>(obtained_.freq) : 0;
     const uint32_t bytes_per_frame = static_cast<uint32_t>(SDL_AUDIO_BITSIZE(obtained_.format) / 8) * obtained_.channels;
@@ -104,6 +106,7 @@ LinuxSdlAudioMetrics LinuxSdlAudioBackend::metrics() const noexcept {
 }
 
 void LinuxSdlAudioBackend::shutdown() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (device_) SDL_CloseAudioDevice(device_);
     device_ = 0;
     if (stream_) SDL_FreeAudioStream(stream_);

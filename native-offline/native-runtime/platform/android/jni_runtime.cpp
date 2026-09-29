@@ -32,6 +32,7 @@ struct Session {
     NativeCoreHost host;
     std::deque<std::pair<std::string,std::string>> commands;
     std::string diagnostics = "Initializing native runtime";
+    std::string options_json = "[]";
 };
 std::shared_ptr<Session> session;
 std::mutex runtime_serial;
@@ -114,6 +115,10 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         else if (!s.host.import_state(saves+"/.suspend.state",error)) message="Resume state unavailable: "+error;
         else message="Native session resumed";
     }
+    {
+        std::lock_guard lock(s.mutex);
+        s.options_json=s.host.core_options_json();
+    }
     uint64_t core_frames=0;
     std::array<int64_t,240> frame_intervals{};
     size_t interval_count=0, interval_cursor=0;
@@ -154,7 +159,13 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
             else if(cmd=="option") {
                 const auto split=value.find('\t');
                 if(split==std::string::npos){ok=false;error="Invalid core option";}
-                else ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
+                else {
+                    ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
+                    if (ok) {
+                        std::lock_guard lock(s.mutex);
+                        s.options_json=s.host.core_options_json();
+                    }
+                }
             }
             else if (cmd=="layout") ok=s.host.set_screen_layout(value,error);
             else if (cmd=="save") ok=value=="auto"?s.host.save_auto(error):s.host.save_state((value=="10"?10u:(value.size()==1 && value[0]>='1' && value[0]<='9'?unsigned(value[0]-'0'):0u)),error);
@@ -269,7 +280,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActiv
 extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeOptions(JNIEnv* e,jobject activity) {
     std::lock_guard lock(lifecycle);
     if(!owns(e,activity) || !session)return e->NewStringUTF("[]");
-    return e->NewStringUTF(session->host.core_options_json().c_str());
+    std::lock_guard data_lock(session->mutex);
+    return e->NewStringUTF(session->options_json.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeCancelPointer(JNIEnv* e,jobject activity) {
