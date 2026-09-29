@@ -458,3 +458,37 @@ Phase F: perform the final NDS renderer software-versus-hardware A/B only where
 lawful fixtures and backend support exist; preserve the software default unless
 measured correctness and performance evidence justify a platform-specific
 change.
+
+## PHASE_F — NDS RENDERER A/B
+
+No renderer change was made. The portable host still deliberately forces
+`melonds_render_mode=software`, and its hardware-render callback negotiation is
+reserved for the existing 3DS path. The NDS software renderer therefore stays
+the accepted default while a lawful A/B fixture and a supported NDS hardware
+context are unavailable in this checkout.
+
+### Phase F verification
+
+- Repository fixture inventory found no `.nds` or `.dsi` fixture. The checkout
+  contains the mGBA-generated lawful GBA fixture only; no commercial ROM was
+  downloaded or fabricated.
+- Source/contract regressions passed in the final 71-test portable suite and
+  the 27-test Android suite. They continue to cover the forced melonDS
+  software option, the non-3DS hardware-render rejection boundary, and the
+  bounded software presenter.
+- No valid same-fixture software-versus-hardware NDS run, visual comparison,
+  frame-pacing measurement, GPU wait measurement, or device audio xrun sample
+  can be claimed without the missing lawful fixture and backend context.
+
+## PHASE_F_STATUS
+
+`UNVERIFIED_NO_LAWFUL_FIXTURE`; the software default and all existing NDS
+core/layout/input contracts are preserved. No speculative hardware renderer
+enablement was attempted.
+
+## FINAL_RUNTIME_UNIFICATION_STATUS
+
+Phases A–E are implemented with focused commits and deterministic host/contract
+verification. Phase F is intentionally evidence-limited as recorded above.
+The branch remains development-only: `main`, `v3.3.2`, and all release or
+production deployment state are unchanged.
