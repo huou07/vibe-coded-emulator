@@ -396,12 +396,14 @@ fallbacks and avoiding any change to the accepted macOS, 3DS, or Switch paths.
 
 ### Implementation
 
-Phase E was split into two focused commits:
+Phase E was split into three focused commits:
 
 - `ff5010f0903d4c57f8d64ce5a93f6ed9b62a7c7b`
   (`fix(audio): bound portable SDL audio buffering`)
 - `e655001e4e277b1f7f8a061ab1a1d633b918c209`
   (`perf(android): qualify low-latency AAudio negotiation`)
+- `5240c1b6e08aa3fd1dbeacd0b7397d4f4ce48dbc`
+  (`fix(audio): cap SDL conversion staging`)
 
 The Linux/Windows SDL backend now allocates one reusable conversion buffer for
 the existing bounded output queue. Normal submits reuse that storage; a resize
@@ -409,7 +411,10 @@ is allowed only when SDL reports more converted data than the initialized
 capacity. Queue limit, observed maximum depth, submitted frames, and dropped
 frames are exposed in the native diagnostics panel. The existing 160 ms queue
 policy was deliberately left unchanged because no physical device measurements
-were available to justify a new latency target.
+were available to justify a new latency target. Oversized input batches are
+consumed/dropped, and converted output larger than the reusable staging buffer
+is drained in fixed-size chunks, so the SDL stream and staging path remain
+bounded under unusual rate-conversion ratios.
 
 The Android AAudio backend now tries low-latency exclusive mode first, retries
 with an unspecified rate when an exact rate is rejected, and falls back through
@@ -422,9 +427,9 @@ path, and no default was changed based on unmeasured hardware behavior.
 
 ### Phase E verification
 
-- Linux SDL audio source contracts: 14 tests passed; the backend also passed
-  C++20 warning-enabled syntax compilation with SDL2 and the existing external
-  Vulkan headers.
+- Linux SDL audio source contracts: 14 tests passed after the staging cap; the
+  backend also passed C++20 warning-enabled syntax compilation with SDL2 and
+  the existing external Vulkan headers.
 - Android native runtime contracts: 27 passed with the existing read-only
   MoltenVK header dependency supplied from the release worktree. The fresh
   checkout-only fixture remains `BLOCKED_EXTERNAL` solely for that absent
@@ -433,9 +438,10 @@ path, and no default was changed based on unmeasured hardware behavior.
   `jni_runtime.cpp`, and the AAudio fixture. A host stub run of the AAudio
   fixture passed both exclusive success and simulated shared fallback paths;
   the fixture also verified the new stream telemetry fields.
-- `git diff --check` and staged checks passed for both focused commits. Only
-  the four SDL-audio files and five Android-audio files belonging to their
-  respective logical changes were staged.
+- `git diff --check` and staged checks passed for all three focused commits.
+  Only the SDL-audio files and matching regression tests or the Android-audio
+  files and matching regression tests belonging to each logical change were
+  staged.
 
 ### Evidence classification
 
