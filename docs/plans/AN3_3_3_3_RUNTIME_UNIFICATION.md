@@ -792,6 +792,9 @@ upgrade or tao/Tauri source patch was made.
 - Independent hosted settings jobs: `109312015159`, `109319062421`,
   `109320065137`, `109321050600`, `109321982029`, `109323135814`,
   `109324099318`, `109325048826`, `109326289285`, `109327485545`.
+- Exact diagnostics artifacts (in cycle order): `11019369783`, `11020833453`,
+  `11021092644`, `11020679786`, `11021355272`, `11021580983`, `11021586503`,
+  `11021692199`, `11021631758`, `11022217616`.
   runs: `10` independent hosted settings jobs.
 - Assertion pass: `10/10`, each with
   `AN3_ACCEPTANCE: ASSERTIONS_PASSED:NativeSettingsTabsTest`.
