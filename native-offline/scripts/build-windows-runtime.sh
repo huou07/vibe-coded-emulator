@@ -10,6 +10,7 @@ g++ -std=c++20 -O2 -DNDEBUG -DNOMINMAX -DSDL_MAIN_HANDLED -Wall -Wextra \
   -Inative-runtime \
   native-runtime/core/libretro_host.cpp \
   native-runtime/core/native_core_session.cpp \
+  native-runtime/video/software_frame_queue.cpp \
   native-runtime/video/vulkan/vulkan_backend.cpp \
   native-runtime/platform/linux/linux_runtime.cpp \
   native-runtime/platform/linux/linux_controls.cpp \

@@ -10,6 +10,7 @@
 #include "../../core/libretro_host.h"
 #include "../../core/native_core_session.h"
 #include "../../core/png_writer.h"
+#include "../../video/software_frame_queue.h"
 #include "../../video/capture/capture_backend.h"
 #include "../../video/vulkan/hardware_backend.h"
 #include "../../video/vulkan/software_backend.h"
@@ -455,20 +456,31 @@ int main(int argc, char** argv) {
         ready = video->initialize(surface, error);
     }
     if (!ready) { std::cerr << error << "\n"; SDL_Quit(); return 1; }
+    std::unique_ptr<NativeSoftwareFrameQueue> frame_queue;
+    NativeVideoBackend* runtime_video = video.get();
+    if (options.system != "3ds") {
+        frame_queue = std::make_unique<NativeSoftwareFrameQueue>(*video);
+        runtime_video = frame_queue.get();
+    }
     LinuxSdlAudioBackend audio;
     NativeCoreHost host;
-    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *video, audio, error, options.layout)) {
+    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
+        if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 1;
     }
     if (!options.load_state.empty() && !host.import_state(options.load_state.string(), error)) {
         std::cerr << "Could not load save state: " << error << "\n";
+        host.shutdown();
+        if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 6;
     }
     NativeCoreSession session(host);
     if (!session.start(error, options.frames)) {
         std::cerr << "Native core session startup failed: " << error << "\n";
-        host.shutdown(); video->shutdown(); SDL_Quit(); return 1;
+        host.shutdown();
+        if (frame_queue) frame_queue->shutdown();
+        video->shutdown(); SDL_Quit(); return 1;
     }
 
     SDL_GameController* controller = nullptr;
@@ -499,7 +511,7 @@ int main(int argc, char** argv) {
             runtime_message = std::string("Fullscreen change failed: ") + SDL_GetError();
             return;
         }
-        video->resize();
+        runtime_video->resize();
         runtime_message = fullscreen ? "Exited fullscreen." : "Entered fullscreen.";
     };
 
@@ -507,7 +519,7 @@ int main(int argc, char** argv) {
     control_callbacks.snapshot = [&] {
         LinuxControlSnapshot value;
         value.core = session.status();
-        value.video = video->metrics();
+        value.video = runtime_video->metrics();
         value.audio = audio.metrics();
         value.paused = session.paused();
         value.auto_save_mode = auto_save_mode;
@@ -562,11 +574,12 @@ int main(int argc, char** argv) {
             }
         }
         if (options.control_stdin) {
-            const auto video_status = video->metrics();
+            const auto video_status = runtime_video->metrics();
             std::cout << "AN3_NATIVE_READY " << video_status.effective << std::endl;
             std::cout << "AN3_NATIVE_DEVICE " << video_status.device_details << std::endl;
         }
         while (running && session.running() && !parent->quit) {
+            if (frame_queue) frame_queue->present_pending();
             if (controls) controls->pump();
             SDL_Event event{};
             while (SDL_PollEvent(&event)) {
@@ -646,7 +659,7 @@ int main(int argc, char** argv) {
             }
             if (options.control_stdin) {
                 if (core_status.core_frames >= last_reported_core_frames + 120) {
-                    const auto video_status = video->metrics();
+                    const auto video_status = runtime_video->metrics();
                     std::cout << "AN3_NATIVE_STATUS core=" << core_status.core_frames
                               << " present=" << video_status.frames.presented_frames
                               << " drops=" << video_status.frames.dropped_frames
@@ -659,6 +672,7 @@ int main(int argc, char** argv) {
                 last_auto = now;
             }
             if (controls) controls->pump();
+            if (frame_queue) frame_queue->present_pending();
             SDL_Delay(1);
         }
     }
@@ -666,6 +680,13 @@ int main(int argc, char** argv) {
     // stops. Periodic modes already saved on their own timer.
     if (auto_save.on_exit && session.running()) session.save_auto(error);
     if (!options.save_state.empty() && session.running()) session.export_state(options.save_state.string(), error);
-    session.stop(); video->shutdown(); if (controller) SDL_GameControllerClose(controller); SDL_Quit();
+    session.stop();
+    if (frame_queue) {
+        while (frame_queue->present_pending()) {}
+        frame_queue->shutdown();
+    }
+    video->shutdown();
+    if (controller) SDL_GameControllerClose(controller);
+    SDL_Quit();
     return 0;
 }

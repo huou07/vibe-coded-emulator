@@ -22,6 +22,10 @@ public:
     virtual bool begin_frame() = 0;
     virtual bool acquire_software_framebuffer(unsigned,unsigned,int,void*&,std::size_t&) = 0;
     virtual void present_software(const void*,unsigned,unsigned,std::size_t,int) = 0;
+    // Called after one retro_run returns. Queueing adapters use this to release
+    // an incomplete direct-frame slot when a core produced no video callback;
+    // existing synchronous backends keep the default no-op behavior.
+    virtual void finish_frame() {}
     // A backend may reject hardware frames; it must never emulate support by readback.
     // The host calls this after the core has loaded and before context_reset,
     // matching libretro's Vulkan hardware-render lifecycle.

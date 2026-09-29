@@ -390,6 +390,7 @@ bool NativeCoreHost::Impl::run_one(std::string& error, bool present) {
     sampled_pointer_x_=input_.pointer_x_.load(std::memory_order_relaxed);
     sampled_pointer_y_=input_.pointer_y_.load(std::memory_order_relaxed);
     core_.retro_run();
+    video_->finish_frame();
     core_frames_.fetch_add(1,std::memory_order_relaxed);
     return true;
 }

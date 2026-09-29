@@ -122,6 +122,7 @@ mkdir -p "$build" "$release"
   -I"$root/native-runtime" \
   "$root/native-runtime/core/libretro_host.cpp" \
   "$root/native-runtime/core/native_core_session.cpp" \
+  "$root/native-runtime/video/software_frame_queue.cpp" \
   "$root/native-runtime/video/vulkan/vulkan_backend.cpp" \
   "$root/native-runtime/platform/linux/linux_runtime.cpp" \
   "$root/native-runtime/platform/linux/linux_controls.cpp" \

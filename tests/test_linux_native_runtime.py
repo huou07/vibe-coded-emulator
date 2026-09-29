@@ -10,6 +10,9 @@ path.
 
 from pathlib import Path
 import json
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 
@@ -21,6 +24,8 @@ RUNTIME = (LINUX / "linux_runtime.cpp").read_text(encoding="utf-8")
 CONTROLS = (LINUX / "linux_controls.cpp").read_text(encoding="utf-8")
 SESSION_H = (ROOT / "native-offline/native-runtime/core/native_core_session.h").read_text(encoding="utf-8")
 SESSION_CPP = (ROOT / "native-offline/native-runtime/core/native_core_session.cpp").read_text(encoding="utf-8")
+FRAME_QUEUE_CPP = (ROOT / "native-offline/native-runtime/video/software_frame_queue.cpp").read_text(encoding="utf-8")
+FRAME_QUEUE_H = (ROOT / "native-offline/native-runtime/video/software_frame_queue.h").read_text(encoding="utf-8")
 GL = (LINUX / "sdl_gl_backend.cpp").read_text(encoding="utf-8")
 AUDIO = (LINUX / "sdl_audio_backend.cpp").read_text(encoding="utf-8")
 AUDIO_HEADER = (LINUX / "sdl_audio_backend.h").read_text(encoding="utf-8")
@@ -34,7 +39,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertNotIn("LINUX_NATIVE_RUNTIME=BLOCKED", BUILD)
         for required in ("libretro_host.cpp", "vulkan_backend.cpp", "linux_runtime.cpp",
                          "linux_controls.cpp", "sdl_audio_backend.cpp", "sdl_gl_backend.cpp",
-                         "native_core_session.cpp",
+                         "native_core_session.cpp", "software_frame_queue.cpp",
                          "bundle-linux-runtime.mjs", "npm run tauri -- build --bundles deb",
                          "flatpak-builder", "fetch-linux-gba-nds-libretro.mjs"):
             self.assertIn(required, BUILD)
@@ -154,6 +159,38 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn("std::lock_guard<std::mutex> lock(impl_->status_mutex)", GL)
         self.assertIn("mutable std::mutex mutex_", AUDIO_HEADER)
         self.assertIn("std::lock_guard<std::mutex> lock(mutex_)", AUDIO)
+
+    def test_portable_software_frames_use_a_bounded_fifo_handoff(self):
+        self.assertIn("kCapacity = 3", FRAME_QUEUE_H)
+        self.assertIn("SlotState::Ready", FRAME_QUEUE_CPP)
+        self.assertIn("choose_oldest_ready_slot_locked", FRAME_QUEUE_CPP)
+        self.assertIn("finish_frame()", FRAME_QUEUE_CPP)
+        self.assertIn("runtime_video = frame_queue.get()", RUNTIME)
+        self.assertIn("frame_queue->present_pending()", RUNTIME)
+        self.assertIn("software_frame_queue.cpp", BUILD)
+
+    def test_portable_software_frame_queue_fixture(self):
+        compiler = shutil.which("c++") or shutil.which("clang++") or shutil.which("g++")
+        if not compiler:
+            self.skipTest("no C++ compiler available for the frame queue fixture")
+        with tempfile.TemporaryDirectory(prefix="an3-frame-queue-test-") as temporary:
+            binary = Path(temporary) / "frame-queue"
+            command = [
+                compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic",
+                "-I", "/Users/meomeo/Documents/an3-runtime-performance/native-offline/vendor/moltenvk/macos-arm64/include",
+                "-I", str(ROOT / "native-offline/native-runtime"),
+                "-I", str(ROOT / "native-offline/native-runtime/core"),
+                str(ROOT / "native-offline/native-runtime/video/software_frame_queue.cpp"),
+                str(ROOT / "tests/native/software_frame_queue_harness.cpp"),
+                "-pthread", "-o", str(binary),
+            ]
+            result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30)
+            if result.returncode != 0 and "vulkan/vulkan.h" in result.stderr:
+                self.skipTest("the checkout lacks the external MoltenVK Vulkan header dependency")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run([str(binary)], cwd=ROOT, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("SOFTWARE_FRAME_QUEUE=PASS", result.stdout)
 
 
 if __name__ == "__main__":
