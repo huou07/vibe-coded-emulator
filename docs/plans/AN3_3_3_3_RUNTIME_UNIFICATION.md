@@ -22,10 +22,9 @@ verified public release point).
 
 ## WORKTREE
 
-`/Users/meomeo/Documents/an3-333-runtime-unification`
+`the integration worktree`
 
-The existing `/Users/meomeo/Documents/an3-runtime-performance` release/checkpoint
-worktree and all other worktrees were left untouched.
+The preserved release/checkpoint worktree and all other worktrees were left untouched.
 
 ## CURRENT_RUNTIME_TOPOLOGY
 
@@ -157,7 +156,7 @@ its local C++ fixture build because this fresh worktree does not contain the
 untracked `native-offline/vendor/moltenvk/macos-arm64/include/vulkan` headers
 required by the test's compile command. No source assertion failed. The same
 fixture was rerun without source changes using the existing read-only MoltenVK
-header copy from `/Users/meomeo/Documents/an3-runtime-performance` and passed
+header copy from the preserved release worktree and passed
 (`1/1`, native harness exit 0, expected `frames=5 begin=5 presented=5 states=3`).
 
 The baseline output is preserved at `/tmp/an3-333-phase-a-baseline.log`.
