@@ -726,3 +726,118 @@ Controller, LAN, account, cloud, or other removed feature was restored.
 `perf/3.3.3-runtime-unification`; `main`, `v3.3.2`, GitHub release state, and
 production deployment were not changed. A separate hosted-CI and release
 acceptance session is required before publishing any v3.3.3 candidate.
+
+## ANDROID TEARDOWN INVESTIGATION
+
+Verified on 2026-09-29 against the exact review head after the focused
+Android entry-point change. This section supersedes the earlier
+`BLOCKED_UPSTREAM` teardown result for this candidate; the earlier failure
+evidence remains above unchanged.
+
+### PINNED DEPENDENCIES
+
+- `tao`: `0.35.3`, local source VCS ref
+  `5a14e624c81b7a799728129417e9218be25f17d9`
+- `tauri`: `2.11.5`, local source VCS ref
+  `7cd71369c00978a3783b6ae3e9972358abbe4ae6`
+- `tauri-runtime-wry`: `2.11.4`, local source VCS ref
+  `ca90b46b2e2cbbc981dae1b809f4af4343fe0558`
+- `wry`: `0.55.1`, local source VCS ref
+  `a5bf203a1c8dbb3583588382538d6521655222a8`
+
+### OLD CONTROL FLOW
+
+The failing Android path was `tauri::App::run` -> runtime
+`run` -> `tao::EventLoop::run` -> tao `run_return` ->
+`std::process::exit(exit_code)`. The hosted backtrace placed that forced
+process exit after `ActivityScenario` had reported `STOPPED`/`DESTROYED`, while
+Android WebView/HWUI teardown was still finalizing. The old settings acceptance
+runs then reported `FORTIFY: pthread_mutex_lock called on a destroyed mutex` in
+the AN3 main process.
+
+### UPSTREAM SOURCE EVIDENCE
+
+- `tao-0.35.3/src/platform_impl/android/mod.rs:209-218` implements
+  `EventLoop::run`
+  as a never-returning wrapper that calls `run_return` and then
+  `std::process::exit`.
+- `tao-0.35.3/src/platform/run_return.rs:13-38` exposes the returning Android
+  event loop API.
+- `tauri-2.11.5/src/app.rs:1344-1414` documents `App::run` as process-exiting and
+  provides `App::run_return` returning an exit code.
+- `tauri-runtime-wry-2.11.4/src/lib.rs:3244-3251` forwards its returning API
+  to tao's `EventLoopExtRunReturn`.
+
+### HYPOTHESIS
+
+The abort was caused by the tao Android process-level exit running during or
+after WebView/HWUI destruction. The destroyed mutex was not AN3-owned; AN3's
+native cleanup had already reached the ActivityScenario teardown boundary.
+
+### PATCH
+
+Commit `4665a7cbd6874596359be33c674cf6579b36dcbf` changes only
+`native-offline/src-tauri/src/lib.rs` and
+`tests/test_native_regression_guards.py`. Android now builds the Tauri `App`
+and calls `app.run_return(...)`, allowing Tauri exit cleanup and the mobile
+entry point to return naturally. Desktop retains `builder.run(...)`. The
+source contract rejects an Android `.run(...)` or explicit process exit.
+The implementation is at `native-offline/src-tauri/src/lib.rs:954-969`, with
+the contract at `tests/test_native_regression_guards.py:31-46`. No dependency
+upgrade or tao/Tauri source patch was made.
+
+### ANDROID SETTINGS REPEATED RESULT
+
+- Native workflow: `36537159639` at `4665a7cbd6874596359be33c674cf6579b36dcbf`.
+- Independent hosted settings jobs: `109312015159`, `109319062421`,
+  `109320065137`, `109321050600`, `109321982029`, `109323135814`,
+  `109324099318`, `109325048826`, `109326289285`, `109327485545`.
+- Assertions: `10/10` pass, each with
+  `AN3_ACCEPTANCE: ASSERTIONS_PASSED:NativeSettingsTabsTest`.
+- Activity teardown: `STOPPED` and `DESTROYED` observed after the marker in
+  all `10/10` diagnostics.
+- `FORTIFY`: `0`; `SIGABRT`: `0`; `SIGSEGV`: `0`; fatal exception: `0`;
+  ANR: `0`; instrumentation hangs/timeouts: `0`.
+- Relaunch evidence: ten independent hosted emulator app launches followed by
+  ActivityScenario close/teardown, exceeding the required five cycles. This is
+  recorded as independent launch/teardown cycles, not as a claim that one
+  instrumentation process performed ten in-process relaunches.
+
+### REGRESSION TESTS
+
+- Focused contract: `test_android_entry_returns_from_tauri_without_process_exit`
+  passed.
+- Source/contract workflow `36537160069`: success; all five jobs passed,
+  including secret scan and static checks.
+- Native workflow `36537159639`: success; Linux DEB/Flatpak, macOS DMG,
+  Windows EXE, Android package/JVM, Android library UI, Android GBA SRAM, and
+  all ten Android settings cycles passed.
+- Local native verification: Rust library `13 passed, 0 failed`; Android
+  native runtime suite `27 passed, 0 failed`; Python source/core/release
+  regressions `57 passed`; host and Android `cargo check --locked` passed.
+- `git diff --check` passed; staged changes for the fix were limited to the
+  two focused files.
+
+### HOSTED RUN
+
+- Source/contract: [run 36537160069](https://github.com/huou07/vibe-coded-emulator/actions/runs/36537160069)
+  — `success`.
+- Exact-source native matrix and repeated settings evidence:
+  [run 36537159639](https://github.com/huou07/vibe-coded-emulator/actions/runs/36537159639)
+  — `success`.
+- Earlier pre-fix settings failures remain recorded in run `36528656411` and
+  are the reason for the change.
+
+### FINAL_CANDIDATE_SHA
+
+`4665a7cbd6874596359be33c674cf6579b36dcbf`
+
+### TEARDOWN STATUS
+
+`FIXED`
+
+### RELEASE READINESS
+
+`REVIEW_ONLY`: the teardown blocker is resolved and the exact hosted matrix is
+green. No merge, tag, release, production deployment, or dependency upgrade
+was performed in this investigation.
