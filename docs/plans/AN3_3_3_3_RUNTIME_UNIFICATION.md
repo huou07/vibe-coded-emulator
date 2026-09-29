@@ -248,3 +248,72 @@ Phase C: give portable GBA/NDS sessions one explicit core-owner thread on
 Android/Linux/Windows. Keep input as atomic/latest state plus bounded discrete
 commands, preserve 3DS hardware ownership, and do not begin frame-handoff or
 audio changes until the owner-thread boundary is tested.
+
+## PHASE_C — PORTABLE SINGLE CORE-OWNER RUNTIME
+
+### Implementation
+
+Phase C commit: `dbf869856c86ee0bb61590acff0019ac86bbc2e7`
+(`fix(runtime): give portable sessions one core owner`).
+
+- Added shared `NativeCoreSession`, which schedules `NativeCoreHost::run_one`
+  and all running-core mutations on one owner thread. Save/load state, auto
+  save, SRAM queue/flush, state import/export, layout, core options, pause, and
+  speed cross a bounded 128-command queue. Rapid pause/resume/speed controls
+  coalesce; discrete save/load and layout commands remain queued in order.
+- Linux and Windows now start the session worker after initial core setup and
+  use the session for input, controls, saves, layout, and status. The SDL/GTK
+  loop no longer runs the core or schedules frames; it only pumps platform
+  events and bounded persistence commands. Bounded `--frames` runs pause the
+  owner at the requested boundary so final state export and `stop()` still use
+  the owner thread.
+- Android's existing session worker remains the core owner. Core-option JSON is
+  now refreshed by that worker and returned from a protected cache, removing
+  the last direct option query from the Android UI thread.
+- Linux SDL/OpenGL metrics and SDL audio metrics are protected for concurrent
+  owner-thread presentation/audio callbacks and UI diagnostics. The existing
+  3DS hardware path and Switch/Eden path were not changed.
+- Build scripts include the shared session source for Linux staging and
+  Windows runtime builds. No removed networking or Sync surface was restored.
+
+### Phase C verification
+
+- Portable owner-thread fixture harness: `NATIVE_CORE_SESSION=PASS`; six
+  bounded frames ran on a thread different from the caller, the session stayed
+  commandable at the boundary, an owner-thread save produced a state file, and
+  `stop()` left the host stopped.
+- Android native runtime contracts and fixture tests: 26 passed with the
+  existing read-only MoltenVK header dependency supplied. The normal checkout
+  invocation remains `BLOCKED_EXTERNAL` only for that absent untracked header.
+- Linux/portable contracts and regressions: 68 passed.
+- Save persistence regression: `SAVE_PERSISTENCE_WORKER=PASS`.
+- Lawful generated GBA native save/state roundtrip: `RESULT: PASS`, including
+  frame presentation, A-button mutation, state restoration, 32 KiB SRAM
+  durability, and fresh-host SRAM restoration.
+- `native_core_session.cpp` passed C++20 warning-enabled syntax compilation;
+  `git diff --check` passed before commit. Only Phase C implementation,
+  synchronization, fixture, build, and matching regression files were staged
+  for `dbf869856c86ee0bb61590acff0019ac86bbc2e7`.
+
+### Evidence classification
+
+- Portable core-owner boundary and bounded command behavior:
+  `INTEGRATION_VERIFIED` with the native fixture harness.
+- Android owner-thread option boundary: `UNIT_VERIFIED`; packaged Android
+  performance and physical-device behavior remain `UNVERIFIED`.
+- Linux/Windows packaged runtime and physical-device behavior:
+  `UNVERIFIED`; this phase did not rebuild or launch packaged desktop
+  artifacts.
+- macOS v3.3.2 runtime behavior: preserved; no macOS runtime code was changed.
+
+## PHASE_C_STATUS
+
+`IMPLEMENTED` and `INTEGRATION_VERIFIED` for the portable owner-thread
+boundary. Phase D (bounded software-frame handoff/presentation decoupling) is
+the next implementation phase; audio and 3DS renderer work remain deferred.
+
+## NEXT
+
+Phase D: add a bounded two- or three-slot software-frame handoff for portable
+GBA/NDS presenters without changing the macOS queue, 3DS hardware ownership,
+or the established input/save contracts.
