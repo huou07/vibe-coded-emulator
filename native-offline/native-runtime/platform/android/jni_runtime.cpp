@@ -185,10 +185,10 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         } else { deadline=Clock::now()+std::chrono::milliseconds(20);previous_frame={}; }
         auto now=Clock::now();
         if (auto_save.enabled && now-last_auto>=std::chrono::seconds(auto_save.interval)) {
-            message=s.host.save_auto(error)?"Auto Save completed":"Auto Save failed: "+error;
+            message=s.host.queue_save_auto(error)?"Auto Save queued":"Auto Save failed: "+error;
             // Battery save is frontend-owned; flush it on the same cadence so an
             // abrupt process kill cannot lose in-game progress between snapshots.
-            std::string save_error; (void)s.host.flush_save_ram(save_error);
+            std::string save_error; (void)s.host.queue_save_ram(save_error);
             last_auto=now;
         }
         if (now-last_report>=std::chrono::seconds(1)) {

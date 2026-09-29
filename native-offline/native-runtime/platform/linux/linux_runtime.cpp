@@ -661,7 +661,7 @@ int main(int argc, char** argv) {
                 deadline = now + std::chrono::milliseconds(20);
             }
             if (auto_save.enabled && now - last_auto >= std::chrono::seconds(auto_save.interval)) {
-                runtime_message = host.save_auto(error) ? "Auto Save completed." : "Auto Save failed: " + error;
+                runtime_message = host.queue_save_auto(error) ? "Auto Save queued." : "Auto Save failed: " + error;
                 last_auto = now;
             }
             if (controls) controls->pump();

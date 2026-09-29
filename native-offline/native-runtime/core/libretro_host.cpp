@@ -3,6 +3,7 @@
 #include "libretro_host.h"
 
 #include "core_options.h"
+#include "save_persistence_worker.h"
 #include "vendor/libretro.h"
 
 #include <algorithm>
@@ -23,8 +24,6 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
-#include <fcntl.h>
-#include <unistd.h>
 #endif
 
 #if defined(__ANDROID__)
@@ -162,48 +161,36 @@ bool read_bounded(const std::filesystem::path& path, std::vector<std::uint8_t>& 
     return true;
 }
 
-bool write_atomic(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes,
-                  std::string& error) {
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec) { error = "Could not prepare native save-state storage."; return false; }
-    const auto temporary = path.string() + ".tmp";
-    {
-        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        output.flush();
-        if (!output) { output.close(); std::filesystem::remove(temporary, ec); error = "Could not write the save state."; return false; }
-    }
-#if !defined(_WIN32)
-    const int fd = ::open(temporary.c_str(), O_RDONLY);
-    if (fd >= 0) { (void)::fsync(fd); (void)::close(fd); }
-#endif
-    std::filesystem::rename(temporary, path, ec);
-#if defined(_WIN32)
-    if (ec) { ec.clear(); std::filesystem::remove(path, ec); ec.clear(); std::filesystem::rename(temporary, path, ec); }
-#endif
-    if (ec) { std::filesystem::remove(temporary, ec); error = "Could not atomically finish the save state."; return false; }
-    return true;
-}
-
 } // namespace
 
 class NativeCoreHost::Impl {
 public:
+    struct SaveSnapshot {
+        std::filesystem::path path;
+        std::vector<std::uint8_t> bytes;
+        std::string description;
+        bool ready = false;
+    };
+
     bool initialize(const std::string& core_path, const std::string& rom_path,
                     const std::string& save_directory, NativeVideoBackend& video,
                     NativeAudioBackend& audio, std::string& error, const std::string& nds_layout,
                     const std::string& graphics_api);
     bool run_one(std::string& error, bool present);
     void shutdown();
+    void shutdown_locked(SaveSnapshot& snapshot);
     void shutdown_locked();
     bool state(bool save, const std::filesystem::path& path, std::string& error);
+    bool queue_state(const std::filesystem::path& path, const std::string& description,
+                    std::string& error);
     // Battery save (SRAM/Flash/EEPROM) is owned by the frontend. The core only
     // exposes the buffer; it never writes the .srm itself.
     std::string save_ram_path() const;
-    bool write_save_ram(std::string& error);
+    bool capture_save_ram_locked(SaveSnapshot& snapshot, std::string& error);
+    bool persist_snapshot(SaveSnapshot snapshot, bool wait_for_write, std::string& error);
     void load_save_ram();
     bool flush_save_ram(std::string& error);
+    bool queue_save_ram(std::string& error);
     bool environment(unsigned command, void* data);
     void video(const void* data, unsigned width, unsigned height, std::size_t pitch);
     int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) const;
@@ -285,6 +272,7 @@ public:
     bool sampled_pointer_pressed_=false;
     int16_t sampled_pointer_x_=0,sampled_pointer_y_=0;
     std::atomic<bool> running_{false};
+    mutable SavePersistenceWorker persistence_writer_;
     static Impl* active_;
 };
 
@@ -407,16 +395,27 @@ bool NativeCoreHost::Impl::run_one(std::string& error, bool present) {
 }
 
 void NativeCoreHost::Impl::shutdown() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    shutdown_locked();
+    SaveSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        shutdown_locked(snapshot);
+    }
+    if (snapshot.ready) {
+        std::string persistence_error;
+        if (!persist_snapshot(std::move(snapshot), true, persistence_error) && !persistence_error.empty()) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            message_ = persistence_error;
+        }
+    }
 }
 
-void NativeCoreHost::Impl::shutdown_locked() {
+void NativeCoreHost::Impl::shutdown_locked(SaveSnapshot& snapshot) {
     running_ = false;
     if (hardware_context_ready_ && hardware_callbacks_.context_destroy) hardware_callbacks_.context_destroy();
     hardware_context_ready_ = false;
-    // Flush the battery save before unload_game frees the core's save buffer.
-    if (loaded_) { std::string flush_error; (void)write_save_ram(flush_error); }
+    // Copy the battery buffer before unload_game frees it. The actual file
+    // write is performed by shutdown() after this core-owned lock is released.
+    if (loaded_) (void)capture_save_ram_locked(snapshot, message_);
     if (loaded_) core_.retro_unload_game();
     loaded_ = false;
     if (initialized_) core_.retro_deinit();
@@ -432,20 +431,64 @@ void NativeCoreHost::Impl::shutdown_locked() {
     gl_hardware_ = false;
 }
 
+void NativeCoreHost::Impl::shutdown_locked() {
+    SaveSnapshot snapshot;
+    shutdown_locked(snapshot);
+    if (!snapshot.ready) return;
+    std::string persistence_error;
+    if (!persist_snapshot(std::move(snapshot), false, persistence_error) && !persistence_error.empty()) {
+        message_ = persistence_error;
+    }
+}
+
 bool NativeCoreHost::Impl::state(bool save, const std::filesystem::path& path, std::string& error) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_) { error = "No native core is running."; return false; }
     if (save) {
-        const std::size_t size = core_.retro_serialize_size();
-        if (!size || size > kMaxStateBytes) { error = "The core reported an invalid save-state size."; return false; }
-        std::vector<std::uint8_t> bytes(size);
-        if (!core_.retro_serialize(bytes.data(), bytes.size())) { error = "The core could not create a save state."; return false; }
-        return write_atomic(path, bytes, error);
+        SaveSnapshot snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!running_) { error = "No native core is running."; return false; }
+            const std::size_t size = core_.retro_serialize_size();
+            if (!size || size > kMaxStateBytes) { error = "The core reported an invalid save-state size."; return false; }
+            snapshot.bytes.resize(size);
+            if (!core_.retro_serialize(snapshot.bytes.data(), snapshot.bytes.size())) {
+                error = "The core could not create a save state.";
+                return false;
+            }
+            snapshot.path = path;
+            snapshot.description = "save state";
+            snapshot.ready = true;
+        }
+        // The durable wait is deliberately outside the core ownership lock.
+        return persist_snapshot(std::move(snapshot), true, error);
     }
     std::vector<std::uint8_t> bytes;
     if (!read_bounded(path, bytes, error)) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_) { error = "No native core is running."; return false; }
     if (!core_.retro_unserialize(bytes.data(), bytes.size())) { error = "The core rejected this incompatible save state."; return false; }
     return true;
+}
+
+bool NativeCoreHost::Impl::queue_state(const std::filesystem::path& path,
+                                       const std::string& description,
+                                       std::string& error) {
+    SaveSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!running_) { error = "No native core is running."; return false; }
+        const std::size_t size = core_.retro_serialize_size();
+        if (!size || size > kMaxStateBytes) { error = "The core reported an invalid save-state size."; return false; }
+        snapshot.bytes.resize(size);
+        if (!core_.retro_serialize(snapshot.bytes.data(), snapshot.bytes.size())) {
+            error = "The core could not create a save state.";
+            return false;
+        }
+        snapshot.path = path;
+        snapshot.description = description;
+        snapshot.ready = true;
+    }
+    // Periodic autosave queues immutable bytes and never waits for storage.
+    return persist_snapshot(std::move(snapshot), false, error);
 }
 
 std::string NativeCoreHost::Impl::save_ram_path() const {
@@ -457,14 +500,31 @@ std::string NativeCoreHost::Impl::save_ram_path() const {
 // itself, the frontend does. mGBA returns a full 0xFF-filled buffer even while
 // the GBA save type is still AUTODETECT, so the buffer is valid to read/write
 // before the game's first save access resolves SRAM/Flash/EEPROM.
-bool NativeCoreHost::Impl::write_save_ram(std::string& error) {
+bool NativeCoreHost::Impl::capture_save_ram_locked(SaveSnapshot& snapshot, std::string& error) {
     if (!initialized_ || !loaded_) return true;
     void* data = core_.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     const std::size_t size = core_.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
     if (!data || size == 0 || size > kMaxSaveRamBytes) return true;
     const auto* begin = static_cast<const std::uint8_t*>(data);
-    const std::vector<std::uint8_t> bytes(begin, begin + size);
-    return write_atomic(save_ram_path(), bytes, error);
+    snapshot.path = save_ram_path();
+    snapshot.bytes.assign(begin, begin + size);
+    snapshot.description = "cartridge save";
+    snapshot.ready = true;
+    error.clear();
+    return true;
+}
+
+bool NativeCoreHost::Impl::persist_snapshot(SaveSnapshot snapshot, bool wait_for_write, std::string& error) {
+    if (!snapshot.ready) {
+        error.clear();
+        return true;
+    }
+    if (wait_for_write) {
+        return persistence_writer_.write_and_wait(std::move(snapshot.path), std::move(snapshot.bytes),
+                                                  std::move(snapshot.description), error);
+    }
+    return persistence_writer_.write_async(std::move(snapshot.path), std::move(snapshot.bytes),
+                                           std::move(snapshot.description), error);
 }
 
 void NativeCoreHost::Impl::load_save_ram() {
@@ -482,8 +542,22 @@ void NativeCoreHost::Impl::load_save_ram() {
 }
 
 bool NativeCoreHost::Impl::flush_save_ram(std::string& error) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return write_save_ram(error);
+    SaveSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!capture_save_ram_locked(snapshot, error)) return false;
+    }
+    // Manual/final durability waits must not hold the core ownership lock.
+    return persist_snapshot(std::move(snapshot), true, error);
+}
+
+bool NativeCoreHost::Impl::queue_save_ram(std::string& error) {
+    SaveSnapshot snapshot;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!capture_save_ram_locked(snapshot, error)) return false;
+    }
+    return persist_snapshot(std::move(snapshot), false, error);
 }
 
 bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
@@ -666,14 +740,29 @@ bool NativeCoreHost::run_one(std::string& e,bool p){return impl_->run_one(e,p);}
 void NativeCoreHost::shutdown(){if(impl_)impl_->shutdown();}
 bool NativeCoreHost::running()const noexcept{return impl_->running_.load(std::memory_order_relaxed);}
 std::chrono::nanoseconds NativeCoreHost::frame_duration()const noexcept{return std::chrono::nanoseconds(impl_->frame_duration_ns_.load(std::memory_order_relaxed));}
-NativeCoreStatus NativeCoreHost::status()const{std::lock_guard<std::mutex>l(impl_->mutex_);NativeCoreStatus s;s.system=impl_->system_;s.core_name=impl_->core_name_;s.core_version=impl_->core_version_;s.last_message=impl_->message_;s.core_fps=impl_->core_fps_;s.core_frames=impl_->core_frames_.load(std::memory_order_relaxed);s.hardware_render_rejected=impl_->hardware_render_rejected_;return s;}
+NativeCoreStatus NativeCoreHost::status() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    const std::string background_error = impl_->persistence_writer_.take_background_error();
+    if (!background_error.empty()) impl_->message_ = background_error;
+    NativeCoreStatus status;
+    status.system = impl_->system_;
+    status.core_name = impl_->core_name_;
+    status.core_version = impl_->core_version_;
+    status.last_message = impl_->message_;
+    status.core_fps = impl_->core_fps_;
+    status.core_frames = impl_->core_frames_.load(std::memory_order_relaxed);
+    status.hardware_render_rejected = impl_->hardware_render_rejected_;
+    return status;
+}
 NativeInput& NativeCoreHost::input()noexcept{return impl_->input_;}
 const NativeInput& NativeCoreHost::input()const noexcept{return impl_->input_;}
 bool NativeCoreHost::save_state(unsigned s,std::string&e){if(s<1||s>kMaxStateSlot){e="Quick-save slots range from 1 to 10.";return false;}return impl_->state(true,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".slot"+std::to_string(s)+".state"),e);}
 bool NativeCoreHost::load_state(unsigned s,std::string&e){if(s<1||s>kMaxStateSlot){e="Quick-save slots range from 1 to 10.";return false;}return impl_->state(false,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".slot"+std::to_string(s)+".state"),e);}
 bool NativeCoreHost::save_auto(std::string&e){return impl_->state(true,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".autosave.state"),e);}
+bool NativeCoreHost::queue_save_auto(std::string&e){return impl_->queue_state(std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".autosave.state"),"save state",e);}
 bool NativeCoreHost::load_auto(std::string&e){return impl_->state(false,std::filesystem::path(impl_->save_path_)/"states"/(impl_->rom_id_+".autosave.state"),e);}
 bool NativeCoreHost::flush_save_ram(std::string&e){return impl_?impl_->flush_save_ram(e):true;}
+bool NativeCoreHost::queue_save_ram(std::string&e){return impl_?impl_->queue_save_ram(e):true;}
 bool NativeCoreHost::export_state(const std::string&p,std::string&e){return impl_->state(true,p,e);}
 bool NativeCoreHost::import_state(const std::string&p,std::string&e){return impl_->state(false,p,e);}
 bool NativeCoreHost::set_core_option(const std::string&k,const std::string&v,std::string&e){std::lock_guard<std::mutex>l(impl_->mutex_);if(!impl_->options_.set(k,v)){e="Unknown core option or unsupported value.";return false;}return true;}

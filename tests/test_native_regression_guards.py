@@ -13,7 +13,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = (ROOT / "native-offline/src-tauri/src/azahar_host.mm").read_text(encoding="utf-8")
-PERSISTENCE = (ROOT / "native-offline/src-tauri/src/save_persistence_worker.h").read_text(encoding="utf-8")
+PERSISTENCE = (ROOT / "native-offline/native-runtime/core/save_persistence_worker.h").read_text(encoding="utf-8")
 OPTIONS = (ROOT / "native-offline/native-runtime/core/core_options.h").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/src-tauri/src/vulkan_frontend.mm").read_text(encoding="utf-8")
 BOOTSTRAP = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
@@ -291,8 +291,31 @@ class NativeRegressionGuardTests(unittest.TestCase):
         self.assertIn('path.string() + ".tmp"', writer)
         for operation in ("create_directories", "std::ofstream", "output.flush()", "::open", "::fsync", "::rename"):
             self.assertIn(operation, writer)
+        posix_start = writer.index("#else", writer.index("#if defined(_WIN32)"))
+        posix_end = writer.index("#endif", posix_start)
+        posix = writer[posix_start:posix_end]
         self.assertLess(writer.index("output.flush()"), writer.index("::fsync"))
-        self.assertLess(writer.index("::fsync"), writer.index("::rename"))
+        self.assertLess(posix.index("::fsync"), posix.index("::rename"))
+
+    def test_portable_runtime_queues_periodic_saves_and_waits_outside_core_lock(self):
+        portable = (ROOT / "native-offline/native-runtime/core/libretro_host.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "native-offline/native-runtime/core/libretro_host.h").read_text(encoding="utf-8")
+        android = (ROOT / "native-offline/native-runtime/platform/android/jni_runtime.cpp").read_text(encoding="utf-8")
+        linux = (ROOT / "native-offline/native-runtime/platform/linux/linux_runtime.cpp").read_text(encoding="utf-8")
+        self.assertIn('#include "save_persistence_worker.h"', portable)
+        self.assertIn("SavePersistenceWorker persistence_writer_", portable)
+        self.assertIn("bool queue_save_auto", header)
+        self.assertIn("bool queue_save_ram", header)
+        self.assertIn("queue_save_auto", android)
+        self.assertIn("queue_save_ram", android)
+        self.assertIn("queue_save_auto", linux)
+        self.assertIn("take_background_error", portable)
+        self.assertNotIn("write_atomic(", portable)
+        state = portable[portable.index("bool NativeCoreHost::Impl::state"):portable.index("std::string NativeCoreHost::Impl::save_ram_path")]
+        self.assertIn("std::lock_guard<std::mutex> lock(mutex_)", state)
+        self.assertIn("persist_snapshot(std::move(snapshot), true", state)
+        self.assertLess(state.index("snapshot.ready = true"), state.index("persist_snapshot(std::move(snapshot), true"))
+        self.assertIn("// Manual/final durability waits must not hold the core ownership lock.", portable)
 
 if __name__ == "__main__":
     unittest.main()
