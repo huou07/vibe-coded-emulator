@@ -538,7 +538,9 @@ reliable observable path.
 Phases A–E are implemented with focused commits and deterministic host/contract
 verification. Phase F is intentionally evidence-limited as recorded above.
 The branch remains development-only: `main`, `v3.3.2`, and all release or
-production deployment state are unchanged.
+production deployment state are unchanged. The exact-source hosted matrix is
+green for source/contract checks and every packaged target except the known
+Android tao/Tauri teardown gate documented below.
 
 ## REQUIRED FINAL CHECKPOINT
 
@@ -562,9 +564,49 @@ the later commits on this branch are checkpoint documentation only).
 
 ### HOSTED CI
 
-`PENDING`: the exact candidate has not yet been dispatched to the GitHub-hosted
-workflow. This checkpoint will be updated with the review-branch head SHA,
-workflow run ID, and job results before any release decision.
+Review branch: `review/3.3.3-runtime-unification-20260929`.
+
+The exact review head was
+`a60803097f9541e56650d15b5b822dad7d4861b8`; the product-source candidate
+remains `5240c1b6e08aa3fd1dbeacd0b7397d4f4ce48dbc` and the later commits are
+checkpoint/CI configuration only.
+
+- Source/contract workflow run
+  [`36528937723`](https://github.com/huou07/vibe-coded-emulator/actions/runs/36528937723)
+  at the exact review head: `success`. Node, Python, portable Rust, static
+  checks, dependency/input verification, and Gitleaks all passed.
+- Native workflow run
+  [`36528656411`](https://github.com/huou07/vibe-coded-emulator/actions/runs/36528656411),
+  attempt 1, at the same head: macOS ARM64 DMG (`109278353265`), Linux DEB
+  (`109278353194`), Linux Flatpak (`109285540175`), Windows EXE
+  (`109278353234`), Android package/JVM (`109278353288`), Android library UI
+  smoke (`109288126811`), and Android GBA SRAM save/restore (`109288126858`)
+  passed. Android settings UI acceptance (`109288126895`) failed only during
+  app teardown after its explicit `AN3_ACCEPTANCE: ASSERTIONS_PASSED` marker.
+- The failed settings job was rerun without source changes (same run,
+  attempt 2; job `109290732037`). It again ended with the instrumentation
+  process reporting `Process crashed` after the assertion marker and lifecycle
+  teardown. This rules out a one-off assertion failure, but does not turn the
+  known crash into a product pass.
+
+The attempt-1 diagnostic artifact records `STOPPED`/`DESTROYED` for
+`MainActivity`, then `FORTIFY: pthread_mutex_lock called on a destroyed mutex`
+in the AN3 main process (PID 3080). The native backtrace contains
+`std::process::exit`, `tao::platform_impl::platform::EventLoop::run`,
+`tauri_runtime_wry`, and Android `WebViewFunctor` destruction. The workflow
+guard also saw the crash-dump helper PID (3745), so it reported the job as a
+failure instead of emitting its intended `BLOCKED_UPSTREAM` summary. No
+product or dependency change was made to hide or suppress this abort.
+
+Hosted CI status: `SOURCE_CI_GREEN_NATIVE_MATRIX_BLOCKED_UPSTREAM`.
+
+### RELEASE_READINESS
+
+`NOT_RELEASE_READY`: the architecture/source gates and all non-settings native
+jobs passed, but the exact Android settings acceptance still terminates the
+AN3 main process during tao/Tauri teardown. This is recorded as
+`BLOCKED_UPSTREAM`; no merge, tag, release, deployment, or dependency upgrade
+is authorized by this checkpoint.
 
 ### ARCHITECTURE BEFORE
 
