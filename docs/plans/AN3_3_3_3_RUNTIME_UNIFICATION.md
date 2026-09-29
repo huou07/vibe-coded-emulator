@@ -391,3 +391,70 @@ audio defaults were changed in Phase D.
 Phase E: investigate portable Android AAudio and Linux/Windows SDL audio
 buffering/allocation behavior with bounded measurements, preserving safe
 fallbacks and avoiding any change to the accepted macOS, 3DS, or Switch paths.
+
+## PHASE_E — PORTABLE AUDIO CLEANUP
+
+### Implementation
+
+Phase E was split into two focused commits:
+
+- `ff5010f0903d4c57f8d64ce5a93f6ed9b62a7c7b`
+  (`fix(audio): bound portable SDL audio buffering`)
+- `e655001e4e277b1f7f8a061ab1a1d633b918c209`
+  (`perf(android): qualify low-latency AAudio negotiation`)
+
+The Linux/Windows SDL backend now allocates one reusable conversion buffer for
+the existing bounded output queue. Normal submits reuse that storage; a resize
+is allowed only when SDL reports more converted data than the initialized
+capacity. Queue limit, observed maximum depth, submitted frames, and dropped
+frames are exposed in the native diagnostics panel. The existing 160 ms queue
+policy was deliberately left unchanged because no physical device measurements
+were available to justify a new latency target.
+
+The Android AAudio backend now tries low-latency exclusive mode first, retries
+with an unspecified rate when an exact rate is rejected, and falls back through
+the existing shared-mode exact/unspecified-rate path. Exclusive mode is
+optional; shared mode remains a complete compatibility path. The actual sharing
+mode, performance mode, frames per burst, buffer size/capacity, and AAudio xrun
+count are captured in `AAudioMetrics` and included in the native diagnostics.
+No API-28-only usage/content-type setters were added to the API-26 product
+path, and no default was changed based on unmeasured hardware behavior.
+
+### Phase E verification
+
+- Linux SDL audio source contracts: 14 tests passed; the backend also passed
+  C++20 warning-enabled syntax compilation with SDL2 and the existing external
+  Vulkan headers.
+- Android native runtime contracts: 27 passed with the existing read-only
+  MoltenVK header dependency supplied from the release worktree. The fresh
+  checkout-only fixture remains `BLOCKED_EXTERNAL` solely for that absent
+  untracked header.
+- Android NDK 28 targeted syntax compilation passed for `aaudio_backend.cpp`,
+  `jni_runtime.cpp`, and the AAudio fixture. A host stub run of the AAudio
+  fixture passed both exclusive success and simulated shared fallback paths;
+  the fixture also verified the new stream telemetry fields.
+- `git diff --check` and staged checks passed for both focused commits. Only
+  the four SDL-audio files and five Android-audio files belonging to their
+  respective logical changes were staged.
+
+### Evidence classification
+
+- Bounded SDL conversion storage and AAudio negotiation/fallback contracts:
+  `UNIT_VERIFIED` and `INTEGRATION_VERIFIED` with deterministic fixtures.
+- Physical Android latency, xrun rate, exclusive-mode availability, and
+  Linux/Windows device latency/underrun behavior: `UNVERIFIED`; no claim of
+  improvement is made without hardware measurements.
+- macOS audio, Android surface/render teardown, 3DS audio/render ownership,
+  and Switch/Eden audio transport: preserved and not refactored in Phase E.
+
+## PHASE_E_STATUS
+
+`IMPLEMENTED` and `UNIT_VERIFIED` for bounded portable audio storage and safe
+AAudio negotiation. Device-level performance remains explicitly unverified.
+
+## NEXT
+
+Phase F: perform the final NDS renderer software-versus-hardware A/B only where
+lawful fixtures and backend support exist; preserve the software default unless
+measured correctness and performance evidence justify a platform-specific
+change.
