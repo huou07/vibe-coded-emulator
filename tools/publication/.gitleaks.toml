@@ -10,6 +10,8 @@ description = "localStorage key-name assignment, not a secret"
 paths = ['static/player-runtime\.js$']
 regexTarget = "match"
 regexes = ['an3-presentation-renderer-v1']
+# The same public key was introduced in older commits; stopwords keeps full-history scans deterministic.
+stopwords = ['an3-presentation-renderer-v1']
 
 [[allowlists]]
 description = "The public AN3 account-provider origin is required runtime configuration, not private infrastructure"
