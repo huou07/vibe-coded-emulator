@@ -1,111 +1,111 @@
 {
   "schema_version": 1,
-  "source_commit": "70f5d9821220311e14be96786b196a2662565b94",
-  "source_fingerprint": "f98989bd2f662d4e93bb99392dd8ea53bc0c65862f624daba83c79c227d0f51a",
-  "release_candidate": "3.3.0-staging",
-  "build_id": "source-f98989bd2f662d4e",
+  "source_commit": "7110fc3977233b006b6905c50e6dd081b714d4a9",
+  "source_fingerprint": "e03b440fe781134bce7e772b6cc25bf2d97f637897b594e382bbb000f692a450",
+  "release_candidate": "3.3.2-staging-core-only",
+  "build_id": "source-e03b440fe781134b",
   "artifacts": [
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "macOS",
       "architecture": "arm64",
       "format": "DMG",
-      "filename": "vibecodedemulator-3.3.0-macos-aarch64.dmg",
-      "size": 66482395,
-      "sha256": "7f128cc7ba7c81f89181b55866c117ea231ec7c0175567e2dc9528292e71b901",
+      "filename": "vibecodedemulator-3.3.2-macos-aarch64.dmg",
+      "size": 66749313,
+      "sha256": "1fc8812f706ce94a7a351d6acc423bc2305f739f267d2d83932444794a3c4d58",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Ad-hoc signed native staging package; not notarized.",
-      "runtime_status": "Fresh arm64 3.3.0 DMG; hdiutil checksum validation passed. Gameplay acceptance for this exact DMG is unverified."
+      "signature_status": "Ad-hoc signed only; not notarized.",
+      "runtime_status": "Exact-source M5 packaged run on this source tree stayed near 60 FPS for more than 120 seconds with no recurring stalls or crash. Holding macOS Z (mapped to GBA A) changed the lawful generated GBA fixture from blue to green end-to-end. Current release-source input guards cover D-pad, A, B, Start and key release semantics. Native save-worker and GBA SRAM fresh-core roundtrip tests pass. Lawful GBA/NDS/3DS/Switch runtime acceptance is recorded in the release checkpoint; fixture-limited NDS/3DS/Switch save or audible-output checks remain documented there."
     },
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "Android",
       "architecture": "arm64",
       "format": "APK",
-      "filename": "vibecodedemulator-3.3.0-android-arm64-staging.apk",
-      "size": 63574966,
-      "sha256": "3fba0a93bca648d6f1d45df23b9838849fedafdae74da4de66b656d36a5c9c29",
+      "filename": "vibecodedemulator-3.3.2-android-arm64-staging.apk",
+      "size": 61292003,
+      "sha256": "9d4c5991347b114be43aaa7a9ca405509e07b08f33589f3283853aeb30bcee57",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Android APK signed with the existing debug identity.",
-      "runtime_status": "Exact release APK package/version and MainActivity launch verified on API 35 emulator. 3.3.0 smoke, Settings, GBA import/launch and two-run SRAM assertions completed; test-runner teardown hits the documented BLOCKED_UPSTREAM issue."
+      "signature_status": "Signed with shared Android debug identity; not a production signing identity.",
+      "runtime_status": "Tag-built API 35 library UI, Settings UI, and GBA SRAM save/restore acceptance jobs passed. The previously documented tao/Tauri Android teardown remains BLOCKED_UPSTREAM and was not changed."
     },
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "Android",
       "architecture": "arm64",
       "format": "AAB",
-      "filename": "vibecodedemulator-3.3.0-android-arm64-staging.aab",
-      "size": 62978973,
-      "sha256": "a734c95c0d6f17c8c49b488e3a62e3e60bd5b1ca362707418c5e14abcdf4799f",
+      "filename": "vibecodedemulator-3.3.2-android-arm64-staging.aab",
+      "size": 60695318,
+      "sha256": "8940644cf0b5ba7a96d41967a717e7fcd0979a57b230dbd96d52ddc9b1ca8543",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Android App Bundle signed with the existing debug identity.",
-      "runtime_status": "Signature verification passed. The bundle was not installed from AAB; runtime acceptance for this exact bundle is unverified."
+      "signature_status": "Signed with shared Android debug identity; not a production signing identity.",
+      "runtime_status": "Tag-built signature/package artifact verified; the AAB itself was not installed for runtime acceptance."
     },
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-3.3.0-linux-amd64.deb",
-      "size": 58204314,
-      "sha256": "5c261b7321b58f27a195b1ce66de99b2ac557c516be31a0edc8a83281467bc0b",
+      "filename": "vibecodedemulator-3.3.2-linux-amd64.deb",
+      "size": 59833458,
+      "sha256": "9d871e10663b022cfd2990b63dc09ebe8880c16039597a0ff23389875926fc79",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Unsigned staging Debian package built on the authorized Linux builder.",
-      "runtime_status": "Fresh 3.3.0 DEB built on the authorized Debian builder; package name, version and architecture metadata verified. Gameplay/runtime acceptance for this exact package is unverified."
+      "signature_status": "Unsigned staging package.",
+      "runtime_status": "Built and verified by the successful exact-source tag matrix from merge commit 7110fc3977233b006b6905c50e6dd081b714d4a9; gameplay runtime is unverified."
     },
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-3.3.0-linux-amd64-staging.flatpak",
-      "size": 37596488,
-      "sha256": "338519f40c4710675cfe5dbf74c459368d5e5b4018855a8687bd8d5323169dad",
+      "filename": "an3-offline-3.3.2-linux-amd64-staging.flatpak",
+      "size": 38708584,
+      "sha256": "70b8d82c5c82be5a92045da9f9e930849eeaa01c300ab1e95b7a3faa0d42f333",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Unsigned staging Flatpak built on the authorized Linux builder.",
-      "runtime_status": "Fresh 3.3.0 Flatpak bundle built on the authorized Linux builder with the pinned Eden companion; gameplay/runtime acceptance for this exact bundle is unverified."
+      "signature_status": "Unsigned staging bundle.",
+      "runtime_status": "Built and verified by the successful exact-source tag matrix from merge commit 7110fc3977233b006b6905c50e6dd081b714d4a9; uses the verified DEB input from that matrix. Gameplay runtime is unverified."
     },
     {
-      "version": "3.3.0",
+      "version": "3.3.2",
       "platform": "Windows",
       "architecture": "x64",
       "format": "EXE",
-      "filename": "vibecodedemulator-3.3.0-windows-x64-staging.exe",
-      "size": 57886141,
-      "sha256": "81a9600b2ad47058518bebab1797315acaea8cec59ebf3065a5867207eaa8b3b",
+      "filename": "vibecodedemulator-3.3.2-windows-x64-staging.exe",
+      "size": 56956882,
+      "sha256": "f608ac9ceb67eed87d702f699c87f53ab2ddf71b44a8210405c775754b07e1c2",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar",
         "Eden"
       ],
-      "signature_status": "Windows staging NSIS installer; unsigned staging artifact.",
-      "runtime_status": "Fresh 3.3.0 x64 NSIS installer built on the authorized Windows builder. Native runtime dependencies and 47 PE files passed integrity checks; gameplay/runtime acceptance for this exact installer is unverified.",
+      "signature_status": "Unsigned NSIS installer; not Authenticode-signed.",
+      "runtime_status": "Tag workflow Windows native runtime verification and canonical installer packaging passed; gameplay runtime is unverified.",
       "release_gate": "PASS"
     }
   ]
