@@ -38,7 +38,26 @@ HARNESS = ROOT / "tests/native/android_host_harness.cpp"
 SESSION_HARNESS = ROOT / "tests/native/native_core_session_harness.cpp"
 FAKE_SYMBOLS = ROOT / "tests/native/fake_libretro_symbols.cpp"
 DIRECT_CORE = ROOT / "native-offline/tests/mock_direct_frame_core.cpp"
-VULKAN_HEADERS = ROOT / "native-offline/vendor/moltenvk/macos-arm64/include"
+# Vulkan headers are a fetched build input, not tracked source. Resolve them the
+# same way the build does instead of assuming one untracked path exists, so a
+# fresh checkout compiles or reports exactly what to run.
+VULKAN_HEADER_CANDIDATES = (
+    ROOT / "native-offline/vendor/moltenvk/macos-arm64/include",
+    Path("/usr/include"),
+    Path("/usr/local/include"),
+)
+
+
+def vulkan_include_flags() -> list[str]:
+    """Return include flags for a directory that actually holds vulkan.h."""
+    for candidate in VULKAN_HEADER_CANDIDATES:
+        if (candidate / "vulkan" / "vulkan.h").is_file():
+            return ["-I", str(candidate)]
+    raise unittest.SkipTest(
+        "Vulkan headers are unavailable; run `npm --prefix native-offline run "
+        "prepare-moltenvk` (or install the Vulkan SDK headers) to build the "
+        "native fixtures"
+    )
 
 
 def source(path: Path) -> str:
@@ -73,7 +92,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             ]
             compile_harness = [
                 compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-O0", "-g",
-                "-I", str(VULKAN_HEADERS),
+                *vulkan_include_flags(),
                 "-I", str(ROOT / "native-offline/native-runtime/core"),
                 "-I", str(ROOT / "native-offline/native-runtime/core/vendor"),
                 str(HOST), str(SESSION), str(SESSION_HARNESS), "-pthread", "-o", str(harness_binary),
@@ -171,8 +190,7 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
                 "-std=c++20",
                 "-O0",
                 "-g",
-                "-I",
-                str(VULKAN_HEADERS),
+                *vulkan_include_flags(),
                 "-I",
                 str(ROOT / "native-offline/native-runtime/core"),
                 "-I",

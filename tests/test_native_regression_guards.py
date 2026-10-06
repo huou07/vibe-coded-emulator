@@ -28,6 +28,20 @@ TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="u
 
 
 class NativeRegressionGuardTests(unittest.TestCase):
+    def test_ui_control_bridge_is_absent_from_distribution_builds(self):
+        """The test-only bridge must not be compiled into a release binary.
+
+        `mod ui_control;` used to be unconditional, so `AN3_UI_CONTROL_FILE`
+        was present in every distribution executable even though the bridge was
+        inert. `tests/test_macos_automation_app.py` catches this on the built
+        binary; this guard makes the intent fail fast at the source boundary.
+        """
+        build_rs = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
+        self.assertIn('#[cfg(feature = "ui-control")]\nmod ui_control;', TAURI_LIB)
+        self.assertIn("CARGO_FEATURE_UI_CONTROL", build_rs)
+        self.assertIn('commands.push("ui_control_result")', build_rs)
+        self.assertNotIn('            "ui_control_result",\n', build_rs)
+
     def test_android_entry_returns_from_tauri_without_process_exit(self):
         run_start = TAURI_LIB.index("pub fn run() {")
         run_end = TAURI_LIB.index("\n#[cfg(test)]", run_start)

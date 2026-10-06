@@ -195,9 +195,12 @@ console.log(JSON.stringify(result));
         self.assertFalse(any(command.startswith("native_controller_") or command.startswith("native_latency_") for command in commands))
         self.assertNotIn("set_native_input", commands)
         build_rs = (native_root / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        manifest = build_rs[build_rs.index(".commands(&["):]
-        manifest = manifest[:manifest.index("]")]
+        # `ui_control_result` is feature-gated (test-only automation bridge), so
+        # it is pushed conditionally instead of appearing in the literal list.
+        manifest = build_rs[build_rs.index("let mut commands = vec!["):]
+        manifest = manifest[:manifest.index("];")]
         declared = re.findall(r'"([a-z0-9_]+)"', manifest)
+        declared.append("ui_control_result")
         self.assertEqual(sorted(declared), sorted(commands), "build.rs commands must match the #[tauri::command] set")
         for command in commands:
             permission = "allow-" + command.replace("_", "-")

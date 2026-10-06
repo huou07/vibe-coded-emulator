@@ -6,7 +6,9 @@ mod azahar;
 mod hosted_frame;
 mod native_rom_library;
 mod switch_companion;
-// Test-only structured UI bridge; inert unless the `ui-control` feature is on.
+// Test-only structured UI bridge. The whole module is behind the feature so a
+// distribution binary contains neither the bridge nor its env-var marker.
+#[cfg(feature = "ui-control")]
 mod ui_control;
 use azahar::{native_capabilities, start_native_game, stop_native_game};
 use serde::Serialize;
@@ -912,6 +914,7 @@ pub fn run() {
             switch_companion_hosted_frame_stop,
             switch_companion_hosted_frame_stats,
             switch_companion_hosted_frame_verify,
+            #[cfg(feature = "ui-control")]
             ui_control::ui_control_result
         ])
         .setup(|_app| {

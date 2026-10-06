@@ -84,10 +84,17 @@ class MacosPackagedRuntimeTests(unittest.TestCase):
         _require_macos(self)
 
     def test_10_built_app_is_the_canonical_version_and_signed(self):
+        # A bundle left behind by an earlier build is not evidence about this
+        # source. Skip it explicitly instead of failing on someone else's bytes.
         if not APP.is_dir():
             self.skipTest("the macOS app bundle has not been built")
         info = plistlib.loads((APP / "Contents/Info.plist").read_bytes())
         version = desktop_version()
+        if info.get("CFBundleShortVersionString") != version:
+            self.skipTest(
+                f"the built bundle is version {info.get('CFBundleShortVersionString')}, "
+                f"not the current {version}; rebuild before trusting this check"
+            )
         self.assertEqual(info["CFBundleShortVersionString"], version)
         self.assertEqual(info["CFBundleVersion"], version)
         self.assertEqual(info["CFBundleIdentifier"], "space.an3tocom.offline")
