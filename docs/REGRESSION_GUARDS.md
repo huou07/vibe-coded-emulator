@@ -104,6 +104,20 @@ recommends independent work.
   denied` reason; the previous false `loaded: true` result is fixed. This does
   not establish gameplay acceptance through the in-app import flow.
 
+## Android native launch thread stack — RG-138, 2026-10-08
+
+- RG-138: Native GBA/NDS/3DS startup must keep large ROM-identity hash buffers
+  off the emulation thread's stack. The prior 1 MiB local array overflowed the
+  Android `:game` thread stack before core initialization and crashed in
+  `std::mutex::lock`; the buffer is now heap-backed. Automated guard:
+  `tests.test_android_native_runtime.test_rom_identity_hash_buffer_is_not_on_the_game_thread_stack`,
+  plus the Android native-runtime, renderer, and native-regression suites.
+  Packaged runtime validation: Android 15 APK 3.2.3 imported the generated GBA
+  fixture through the system picker, resumed `NativeGameActivity`, completed
+  Quick Save/Load Slot 1, remained active for 60 seconds with zero fatal
+  signals, returned cleanly to the library, and relaunched the game. This does
+  not establish commercial/homebrew gameplay or audio acceptance.
+
 ## Current authority — Switch/Eden bridge, 2026-09-17
 
 - RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N] [--seconds N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **FIXED 2026-09-17 (sustained rendering).** Root cause: the bare `CAMetalLayer` in `src/cocoa_surface.mm` had zero bounds, so MoltenVK created `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` then failed with `kIOGPUCommandBufferCallbackErrorInvalidInput` → `VK_ERROR_OUT_OF_DEVICE_MEMORY: Lost VkDevice` → an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread → SIGABRT (the ABI cannot catch a foreign-thread throw; same class as RG-111). Fix: host the layer on a hidden `NSWindow`/`NSView` (AppKit), giving it a real drawable size and letting Core Animation recycle drawables. Validation: swapchain now reports `size (1280, 720)`, created once. `--frames 1|5|10|30|60|120|300|600` all PASS (exit 0); `--frames 600` 8/8 runs PASS; sustained `--seconds 65` (3883 frames), `--seconds 60` ×2 (3583 frames each) all PASS with **0 MoltenVK errors** and clean shutdown. Reproduce: `LIBVULKAN_PATH=<moltenvklib> an3_eden_bridge_smoke --json --seconds 60 <nx-hbmenu.nro>`. Frame *delivery to a caller* is still later milestone D work; this guard covers process stability only.

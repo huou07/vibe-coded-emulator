@@ -141,7 +141,7 @@ std::string rom_game_identity(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) return {};
     uint64_t hash = 1469598103934665603ull;
-    std::array<char, 1024 * 1024> buffer{};
+    std::vector<char> buffer(1024 * 1024);
     while (input) {
         input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
         const auto count = input.gcount();

@@ -52,6 +52,11 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_rom_identity_hash_buffer_is_not_on_the_game_thread_stack(self):
+        host = source(ROOT / "native-offline/native-runtime/core/libretro_host.cpp")
+        self.assertIn("std::vector<char> buffer(1024 * 1024);", host)
+        self.assertNotIn("std::array<char, 1024 * 1024> buffer{}", host)
+
     def test_fake_libretro_host_survives_renderer_drops_and_keeps_state_paths_separate(self):
         """A lost presentation target must not stop or deadlock the core loop."""
 
