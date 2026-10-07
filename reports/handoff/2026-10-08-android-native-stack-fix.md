@@ -49,6 +49,29 @@ The earlier 3.2.2 tombstone remains in the isolated emulator's crash history;
 the 3.2.3 session produced no new fatal signal. The isolated emulator was
 stopped after validation.
 
+### Lawful GBA gameplay follow-up
+
+After the synthetic startup check, the 3.2.3 APK was installed on a fresh,
+isolated Android 15 AVD and exercised with the project's previously documented
+lawful 16 MiB GBA fixture from the Dell builder. Only the fixture was copied to
+a temporary test path; it was not added to the repository. The real Add ROM →
+Android document picker → library card flow completed. The packaged core showed
+the game's animated opening scene and title screen. Start opened the game menu;
+A selected New Game and advanced the professor dialogue. Directional input
+moved the name-entry selection, and A inserted a character.
+
+The Android Quick Save Slot 1 / Quick Load Slot 1 flow was also exercised in
+the name-entry scene. After changing the name buffer, loading Slot 1 restored
+the saved buffer and the game activity remained resumed. During a 60-second
+soak, the `:game` PID remained 4271, `NativeGameActivity` stayed resumed, and
+logcat showed no fatal signal or ANR.
+
+This is real packaged gameplay and input evidence, beyond the synthetic startup
+fixture. Overworld movement, audio output, settings changes, persisted in-game
+progress after exiting/relaunching, and longer play sessions remain unverified.
+Screenshots and the lawful ROM stayed in temporary local paths and are not
+release artifacts.
+
 ## Remaining work
 
 The APK is staged locally. It is not pushed or deployed. Public GitHub `main`
