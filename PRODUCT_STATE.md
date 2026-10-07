@@ -108,6 +108,12 @@ all five native libraries and a 3.3.3 About asset; the DEB control stanza reads
 3.3.3; the Linux installer's catalog-resolution and checksum logic accepts these
 exact DEB bytes.
 
+The macOS binary was additionally launched from the mounted DMG copy with an
+isolated `HOME`: it bound its loopback runtime on `127.0.0.1:38471`, served the
+shell (`/` 200), `site.css` and `offline.js`, held steady at 0% CPU and ~103 MB
+RSS, did **not** create the `AN3_UI_CONTROL_FILE` bridge (confirming the feature
+gate on the shipped bytes), and exited cleanly on `SIGTERM`.
+
 ## Exact next step
 
 **Physical-device gameplay acceptance for the published v3.3.3 binaries**:
