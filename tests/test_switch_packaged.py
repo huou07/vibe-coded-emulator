@@ -31,6 +31,18 @@ class SwitchPackagedTests(unittest.TestCase):
     def setUp(self):
         if not APP.exists():
             self.skipTest("the macOS app bundle has not been built")
+        # The Switch companion is compiled inside an out-of-tree Eden checkout
+        # (`npm run build:macos-eden-companion`). A bundle staged without it has
+        # an empty `bundledLibraries` list; skip rather than assert against a
+        # bundle that was never built with the companion.
+        manifest_path = APP / "Contents/Resources/switch/macos-arm64/manifest.json"
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not manifest.get("bundledLibraries"):
+                self.skipTest(
+                    "the bundle carries no Eden companion libraries; rebuild with "
+                    "`npm run build:macos-eden-companion`"
+                )
         self.resources = APP / "Contents/Resources"
         self.companion = self.resources / "switch/macos-arm64/an3_switch_companion"
         self.moltenvk = self.resources / "azahar/macos-arm64/libMoltenVK.dylib"

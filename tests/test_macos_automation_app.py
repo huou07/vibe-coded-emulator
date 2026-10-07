@@ -74,6 +74,23 @@ def _require_automation_app(testcase: unittest.TestCase) -> None:
             "the macOS automation app has not been built "
             "(npm run build:macos-automation)"
         )
+    # The separation guard compares the automation bundle against the
+    # distribution bundle. A distribution bundle from an earlier build (or from
+    # a version that predates the source under test) is not evidence either way,
+    # so require the distribution app to match the current version first.
+    distribution = _binary(DISTRIBUTION_APP)
+    if not distribution.is_file():
+        testcase.skipTest(
+            "the macOS distribution app has not been built "
+            "(npm run build:macos); the automation/distribution separation "
+            "cannot be judged without it"
+        )
+    info = plistlib.loads((DISTRIBUTION_APP / "Contents/Info.plist").read_bytes())
+    if info.get("CFBundleShortVersionString") != desktop_version():
+        testcase.skipTest(
+            f"the distribution bundle is version {info.get('CFBundleShortVersionString')}, "
+            f"not the current {desktop_version()}; rebuild before trusting this check"
+        )
 
 
 def _runtime_port_free() -> bool:

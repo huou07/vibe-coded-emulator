@@ -96,11 +96,18 @@ public:
     bool save_state(unsigned slot, std::string& error); // slots 1..10
     bool load_state(unsigned slot, std::string& error);
     bool save_auto(std::string& error);
+    // Queue an immutable state snapshot without waiting for filesystem
+    // durability. Core-owned serialization remains synchronous; only the
+    // write/fsync/rename work is deferred to the save worker.
+    bool queue_save_auto(std::string& error);
     bool load_auto(std::string& error);
     // Persist the core's battery save (SRAM/Flash/EEPROM) to the frontend save
     // directory. Called automatically on shutdown; adapters may also call it on
     // a timer or before suspension so a save survives an abrupt process kill.
     bool flush_save_ram(std::string& error);
+    // Capture the core-owned battery buffer and queue its durable write. This
+    // periodic path never waits for storage from the emulation cadence.
+    bool queue_save_ram(std::string& error);
     bool export_state(const std::string& path, std::string& error);
     bool import_state(const std::string& path, std::string& error);
 

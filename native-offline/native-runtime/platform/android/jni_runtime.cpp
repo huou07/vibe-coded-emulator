@@ -32,6 +32,7 @@ struct Session {
     NativeCoreHost host;
     std::deque<std::pair<std::string,std::string>> commands;
     std::string diagnostics = "Initializing native runtime";
+    std::string options_json = "[]";
 };
 std::shared_ptr<Session> session;
 std::mutex runtime_serial;
@@ -114,6 +115,10 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         else if (!s.host.import_state(saves+"/.suspend.state",error)) message="Resume state unavailable: "+error;
         else message="Native session resumed";
     }
+    {
+        std::lock_guard lock(s.mutex);
+        s.options_json=s.host.core_options_json();
+    }
     uint64_t core_frames=0;
     std::array<int64_t,240> frame_intervals{};
     size_t interval_count=0, interval_cursor=0;
@@ -154,7 +159,13 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
             else if(cmd=="option") {
                 const auto split=value.find('\t');
                 if(split==std::string::npos){ok=false;error="Invalid core option";}
-                else ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
+                else {
+                    ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
+                    if (ok) {
+                        std::lock_guard lock(s.mutex);
+                        s.options_json=s.host.core_options_json();
+                    }
+                }
             }
             else if (cmd=="layout") ok=s.host.set_screen_layout(value,error);
             else if (cmd=="save") ok=value=="auto"?s.host.save_auto(error):s.host.save_state((value=="10"?10u:(value.size()==1 && value[0]>='1' && value[0]<='9'?unsigned(value[0]-'0'):0u)),error);
@@ -185,10 +196,10 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         } else { deadline=Clock::now()+std::chrono::milliseconds(20);previous_frame={}; }
         auto now=Clock::now();
         if (auto_save.enabled && now-last_auto>=std::chrono::seconds(auto_save.interval)) {
-            message=s.host.save_auto(error)?"Auto Save completed":"Auto Save failed: "+error;
+            message=s.host.queue_save_auto(error)?"Auto Save queued":"Auto Save failed: "+error;
             // Battery save is frontend-owned; flush it on the same cadence so an
             // abrupt process kill cannot lose in-game progress between snapshots.
-            std::string save_error; (void)s.host.flush_save_ram(save_error);
+            std::string save_error; (void)s.host.queue_save_ram(save_error);
             last_auto=now;
         }
         if (now-last_report>=std::chrono::seconds(1)) {
@@ -214,6 +225,9 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
                 <<"us speed="<<speed<<" audio="<<a.rendered_frames<<" nonzero="<<a.rendered_nonzero_samples<<" underrun="<<a.underrun_frames
                 <<"\nFrame interval p95/p99="<<interval_percentile(95)<<"/"<<interval_percentile(99)<<"us samples="<<interval_count
                 <<"\nAudio rate="<<a.core_sample_rate<<"→"<<a.sample_rate<<" volume="<<a.volume<<" mute="<<a.muted<<" latency="<<a.latency_ms<<"ms quality="<<int(a.resampler_quality)
+                <<" sharing="<<int(a.sharing_mode)<<" performance="<<int(a.performance_mode)
+                <<" burst="<<a.frames_per_burst<<" buffer="<<a.buffer_size_frames<<"/"<<a.buffer_capacity_frames
+                <<" xruns="<<a.xrun_count
                 <<"\n"<<v.device_details<<"\n"<<message;
             if (!fallback.empty()) text<<" Vulkan initialization: "<<fallback;
             report(text.str());last_report=now;
@@ -269,7 +283,8 @@ extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActiv
 extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeOptions(JNIEnv* e,jobject activity) {
     std::lock_guard lock(lifecycle);
     if(!owns(e,activity) || !session)return e->NewStringUTF("[]");
-    return e->NewStringUTF(session->host.core_options_json().c_str());
+    std::lock_guard data_lock(session->mutex);
+    return e->NewStringUTF(session->options_json.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeCancelPointer(JNIEnv* e,jobject activity) {

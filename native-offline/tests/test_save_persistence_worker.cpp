@@ -202,6 +202,7 @@ int main() {
         const bool entered = wait_for_writer(gate);
         check(active_accepted && entered, "bounded-queue test holds one active write");
 
+        const auto queue_began = std::chrono::steady_clock::now();
         bool coalesced_accepted = entered;
         std::vector<uint8_t> newest;
         const auto coalesced_path = root / "bounded-coalesced.srm";
@@ -224,6 +225,7 @@ int main() {
             distinct_accepted = worker.write_async(path, {static_cast<uint8_t>(index)}, "test save", error) && distinct_accepted;
         }
         const bool overflow_accepted = worker.write_async(root / "bounded-overflow.srm", {1}, "test save", error);
+        const auto queue_elapsed = std::chrono::steady_clock::now() - queue_began;
         check(coalesced_accepted, "same-path motion snapshots coalesce while the writer is busy");
         check(callbacks_accepted, "same-path asynchronous completions stay bounded at sixteen");
         check(!callback_overflow_accepted && callback_overflow_error.find("completion queue is full") != std::string::npos,
@@ -231,6 +233,8 @@ int main() {
         check(distinct_accepted, "the worker accepts its bounded set of distinct pending paths");
         check(!overflow_accepted && error.find("queue is full") != std::string::npos,
               "the seventeenth pending path is rejected");
+        check(queue_elapsed < std::chrono::milliseconds(500),
+              "periodic save enqueue returns while a prior filesystem write is blocked");
 
         release_writer(gate);
         check(worker.flush(error), "the bounded pending queue drains successfully");

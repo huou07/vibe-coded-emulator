@@ -4,7 +4,7 @@
 
 #include "sdl_audio_backend.h"
 
-#include "../../core/libretro_host.h"
+#include "../../core/native_core_session.h"
 #include "../../core/video_backend.h"
 
 #include <functional>
@@ -14,8 +14,8 @@
 namespace an3 {
 
 // This is a native GTK companion to the SDL game window. It deliberately
-// owns controls only: the portable core continues to run in the existing SDL
-// loop and the Vulkan/OpenGL presenters remain untouched.
+// owns controls only: the portable core runs in NativeCoreSession's owner
+// thread and the Vulkan/OpenGL presenters remain untouched.
 struct LinuxControlSnapshot {
     NativeCoreStatus core;
     NativeVideoStatus video;
@@ -39,7 +39,7 @@ struct LinuxControlCallbacks {
 
 class LinuxControlPanel {
   public:
-    LinuxControlPanel(NativeCoreHost& host, LinuxSdlAudioBackend& audio,
+    LinuxControlPanel(NativeCoreSession& session, LinuxSdlAudioBackend& audio,
                       std::string system, LinuxControlCallbacks callbacks);
     ~LinuxControlPanel();
 

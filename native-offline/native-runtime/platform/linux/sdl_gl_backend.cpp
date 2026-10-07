@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ struct LinuxSdlGlBackend::Impl {
     unsigned active_slot = 0;
     bool active = false;
     NativeVideoStatus status{};
+    mutable std::mutex status_mutex;
 
     bool current() const { return window && context && SDL_GL_MakeCurrent(window, context) == 0; }
 };
@@ -105,6 +107,7 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
     std::size_t bytes = 0;
     if (!framebuffer || (format != kPixelXrgb8888 && format != kPixelRgb565 && format != kPixel0Rgb1555) ||
         !valid_frame(width, height, bytes_per_pixel, bytes) || pitch < static_cast<std::size_t>(width) * bytes_per_pixel) {
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
         ++impl_->status.frames.dropped_frames;
         return;
     }
@@ -119,6 +122,7 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
         if (format == kPixelXrgb8888) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, framebuffer);
         else if (format == kPixelRgb565) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, framebuffer);
         else glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, framebuffer);
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
         ++impl_->status.frames.direct_software_uploads;
     } else {
         auto& slot = impl_->staging[impl_->active_slot];
@@ -128,9 +132,13 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
         if (format == kPixelXrgb8888) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGRA, GL_UNSIGNED_BYTE, slot.data());
         else if (format == kPixelRgb565) glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, slot.data());
         else glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, slot.data());
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
         ++impl_->status.frames.copied_software_uploads;
     }
-    ++impl_->status.frames.software_uploads;
+    {
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
+        ++impl_->status.frames.software_uploads;
+    }
     int drawable_width = 1, drawable_height = 1;
     SDL_GL_GetDrawableSize(impl_->window, &drawable_width, &drawable_height);
     const double source_aspect = static_cast<double>(width) / height;
@@ -144,16 +152,26 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
     glTexCoord2f(0, 1); glVertex2f(-1, -1); glTexCoord2f(1, 1); glVertex2f(1, -1);
     glTexCoord2f(0, 0); glVertex2f(-1, 1); glTexCoord2f(1, 0); glVertex2f(1, 1);
     glEnd(); glDisable(GL_TEXTURE_2D);
-    if (glGetError() != GL_NO_ERROR) { ++impl_->status.frames.dropped_frames; return; }
+    if (glGetError() != GL_NO_ERROR) {
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
+        ++impl_->status.frames.dropped_frames;
+        return;
+    }
     SDL_GL_SwapWindow(impl_->window);
-    ++impl_->status.frames.presented_frames;
+    {
+        std::lock_guard<std::mutex> lock(impl_->status_mutex);
+        ++impl_->status.frames.presented_frames;
+    }
     (void)upload_start;
     impl_->active_slot = (impl_->active_slot + 1) % impl_->staging.size();
 }
 
 bool LinuxSdlGlBackend::receive_native_gpu_frame(const void*, std::string& error) { error = "hardware-frame: desktop OpenGL fallback cannot consume Vulkan images"; return false; }
 void LinuxSdlGlBackend::present_native_gpu_frame(unsigned, unsigned) {}
-NativeVideoStatus LinuxSdlGlBackend::metrics() const { return impl_->status; }
+NativeVideoStatus LinuxSdlGlBackend::metrics() const {
+    std::lock_guard<std::mutex> lock(impl_->status_mutex);
+    return impl_->status;
+}
 
 void LinuxSdlGlBackend::shutdown() {
     if (impl_ && impl_->context && impl_->current() && impl_->texture) glDeleteTextures(1, &impl_->texture);

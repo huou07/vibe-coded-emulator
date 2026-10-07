@@ -8,7 +8,9 @@
 #include "../../core/auto_save_mode.h"
 #include "../../../shared/generated/native_layouts.h"
 #include "../../core/libretro_host.h"
+#include "../../core/native_core_session.h"
 #include "../../core/png_writer.h"
+#include "../../video/software_frame_queue.h"
 #include "../../video/capture/capture_backend.h"
 #include "../../video/vulkan/hardware_backend.h"
 #include "../../video/vulkan/software_backend.h"
@@ -454,32 +456,46 @@ int main(int argc, char** argv) {
         ready = video->initialize(surface, error);
     }
     if (!ready) { std::cerr << error << "\n"; SDL_Quit(); return 1; }
+    std::unique_ptr<NativeSoftwareFrameQueue> frame_queue;
+    NativeVideoBackend* runtime_video = video.get();
+    if (options.system != "3ds") {
+        frame_queue = std::make_unique<NativeSoftwareFrameQueue>(*video);
+        runtime_video = frame_queue.get();
+    }
     LinuxSdlAudioBackend audio;
     NativeCoreHost host;
-    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *video, audio, error, options.layout)) {
+    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
+        if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 1;
     }
     if (!options.load_state.empty() && !host.import_state(options.load_state.string(), error)) {
         std::cerr << "Could not load save state: " << error << "\n";
+        host.shutdown();
+        if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 6;
+    }
+    NativeCoreSession session(host);
+    if (!session.start(error, options.frames)) {
+        std::cerr << "Native core session startup failed: " << error << "\n";
+        host.shutdown();
+        if (frame_queue) frame_queue->shutdown();
+        video->shutdown(); SDL_Quit(); return 1;
     }
 
     SDL_GameController* controller = nullptr;
     for (int index = 0; index < SDL_NumJoysticks(); ++index) if (SDL_IsGameController(index)) { controller = SDL_GameControllerOpen(index); if (controller) break; }
     std::array<bool, 4> physical_dpad{}, analog_dpad{};
-    auto apply_dpad = [&] { for (unsigned offset = 0; offset < 4; ++offset) host.input().set_button(4 + offset, physical_dpad[offset] || analog_dpad[offset]); };
+    auto apply_dpad = [&] { for (unsigned offset = 0; offset < 4; ++offset) session.input().set_button(4 + offset, physical_dpad[offset] || analog_dpad[offset]); };
     int mouse_x = 0, mouse_y = 0;
-    bool mouse_pressed = false, running = true, paused = false;
-    double speed = 1.0;
+    bool mouse_pressed = false, running = true;
     std::string auto_save_mode = "off";
     AutoSaveSettings auto_save = parse_auto_save_mode(auto_save_mode).value_or(AutoSaveSettings{});
-    uint64_t scheduled_frames = 0;
     std::string runtime_message;
-    auto deadline = std::chrono::steady_clock::now();
-    auto last_auto = deadline;
+    auto last_auto = std::chrono::steady_clock::now();
+    uint64_t last_reported_core_frames = 0;
     auto set_layout = [&](const std::string& value, std::string& detail) {
-        if (!host.set_screen_layout(value, detail)) return false;
+        if (!session.set_screen_layout(value, detail)) return false;
         options.layout = value;
         std::ofstream output(layout_file, std::ios::trunc);
         output << options.layout;
@@ -495,28 +511,27 @@ int main(int argc, char** argv) {
             runtime_message = std::string("Fullscreen change failed: ") + SDL_GetError();
             return;
         }
-        video->resize();
+        runtime_video->resize();
         runtime_message = fullscreen ? "Exited fullscreen." : "Entered fullscreen.";
     };
 
     LinuxControlCallbacks control_callbacks;
     control_callbacks.snapshot = [&] {
         LinuxControlSnapshot value;
-        value.core = host.status();
-        value.video = video->metrics();
+        value.core = session.status();
+        value.video = runtime_video->metrics();
         value.audio = audio.metrics();
-        value.paused = paused;
+        value.paused = session.paused();
         value.auto_save_mode = auto_save_mode;
-        value.speed = speed;
+        value.speed = session.speed();
         value.layout = options.layout;
         value.last_message = runtime_message.empty() ? value.core.last_message : runtime_message;
         return value;
     };
-    control_callbacks.set_paused = [&](bool value) { paused = value; host.input().clear(); deadline = std::chrono::steady_clock::now(); };
+    control_callbacks.set_paused = [&](bool value) { session.set_paused(value); session.input().clear(); };
     control_callbacks.set_speed = [&](double value) {
         if (value == .5 || value == 1.0 || value == 2.0 || value == 4.0 || value == 8.0) {
-            speed = value;
-            deadline = std::chrono::steady_clock::now();
+            session.set_speed(value);
         }
     };
     control_callbacks.set_auto_save_mode = [&](const std::string& value) {
@@ -549,7 +564,7 @@ int main(int argc, char** argv) {
     {
         std::unique_ptr<LinuxControlPanel> controls;
         if (!options.no_controls) {
-            controls = std::make_unique<LinuxControlPanel>(host, audio, options.system, std::move(control_callbacks));
+            controls = std::make_unique<LinuxControlPanel>(session, audio, options.system, std::move(control_callbacks));
             std::string controls_error;
             if (!controls->initialize(controls_error)) {
                 std::cerr << controls_error << " Continuing without the companion controls window.\n";
@@ -559,24 +574,25 @@ int main(int argc, char** argv) {
             }
         }
         if (options.control_stdin) {
-            const auto video_status = video->metrics();
+            const auto video_status = runtime_video->metrics();
             std::cout << "AN3_NATIVE_READY " << video_status.effective << std::endl;
             std::cout << "AN3_NATIVE_DEVICE " << video_status.device_details << std::endl;
         }
-        while (running && host.running() && !parent->quit) {
+        while (running && session.running() && !parent->quit) {
+            if (frame_queue) frame_queue->present_pending();
             if (controls) controls->pump();
             SDL_Event event{};
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) { running = false; break; }
                 if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-                    host.input().clear(); mouse_pressed = false;
+                    session.input().clear(); mouse_pressed = false;
                     physical_dpad.fill(false); analog_dpad.fill(false);
                 }
                 if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
                     const bool pressed = event.type == SDL_KEYDOWN;
                     if (pressed && event.key.repeat) continue;
                     if (pressed && event.key.keysym.sym == SDLK_ESCAPE) {
-                        if (controls && controls->visible()) { controls->hide(); host.input().clear(); continue; }
+                        if (controls && controls->visible()) { controls->hide(); session.input().clear(); continue; }
                         running = false;
                         break;
                     }
@@ -588,21 +604,21 @@ int main(int argc, char** argv) {
                     if (pressed && event.key.keysym.sym == SDLK_F2 && controls) { controls->toggle(); continue; }
                     if (pressed && event.key.keysym.sym == SDLK_F3 && controls) { controls->show_pad(); continue; }
                     if (pressed && event.key.keysym.sym == SDLK_F4) { toggle_fullscreen(); continue; }
-                    if (pressed && event.key.keysym.sym == SDLK_p) { paused = !paused; host.input().clear(); deadline = std::chrono::steady_clock::now(); continue; }
+                    if (pressed && event.key.keysym.sym == SDLK_p) { session.set_paused(!session.paused()); session.input().clear(); continue; }
                     if (pressed && event.key.keysym.sym == SDLK_F5) {
-                        runtime_message = host.save_state(1, error) ? "Quick save 1 completed." : "Quick save 1 failed: " + error;
+                        runtime_message = session.save_state(1, error) ? "Quick save 1 completed." : "Quick save 1 failed: " + error;
                         continue;
                     }
                     if (pressed && event.key.keysym.sym == SDLK_F9) {
-                        runtime_message = host.load_state(1, error) ? "Quick load 1 completed." : "Quick load 1 failed: " + error;
+                        runtime_message = session.load_state(1, error) ? "Quick load 1 completed." : "Quick load 1 failed: " + error;
                         continue;
                     }
                     const uint32_t button = keyboard_button(event.key.keysym.sym);
-                    if (button < 32) host.input().set_button(button, pressed);
+                    if (button < 32) session.input().set_button(button, pressed);
                 }
                 if (event.type == SDL_CONTROLLERBUTTONDOWN || event.type == SDL_CONTROLLERBUTTONUP) {
                     const uint32_t button = controller_button(event.cbutton.button); const bool pressed = event.type == SDL_CONTROLLERBUTTONDOWN;
-                    if (button >= 4 && button <= 7) physical_dpad[button - 4] = pressed; else if (button < 32) host.input().set_button(button, pressed);
+                    if (button >= 4 && button <= 7) physical_dpad[button - 4] = pressed; else if (button < 32) session.input().set_button(button, pressed);
                     apply_dpad();
                 }
                 if (event.type == SDL_CONTROLLERAXISMOTION) {
@@ -610,7 +626,7 @@ int main(int argc, char** argv) {
                     static int16_t axis_x = 0, axis_y = 0;
                     if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) axis_x = value;
                     if (event.caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) axis_y = value;
-                    host.input().set_analog(axis_x, axis_y);
+                    session.input().set_analog(axis_x, axis_y);
                     if (options.system != "3ds") {
                         constexpr int16_t dead_zone = 11'469;
                         analog_dpad = {axis_y < -dead_zone, axis_y > dead_zone, axis_x < -dead_zone, axis_x > dead_zone};
@@ -626,52 +642,51 @@ int main(int argc, char** argv) {
                     // An open controls panel owns pointer input; a tap on a menu
                     // row must never also drive the emulated touchscreen.
                     if (controls && controls->visible()) {
-                        if (mouse_pressed) host.input().cancel_pointer();
+                        if (mouse_pressed) session.input().cancel_pointer();
                         mouse_pressed = false;
                     } else {
                         int width = 1, height = 1; SDL_GetWindowSize(surface.window(), &width, &height);
-                        set_touch(host.input(), options.system, options.layout, mouse_x, mouse_y, width, height, mouse_pressed);
+                        set_touch(session.input(), options.system, options.layout, mouse_x, mouse_y, width, height, mouse_pressed);
                     }
                 }
             }
             const auto now = std::chrono::steady_clock::now();
-            if (!paused && now >= deadline) {
-                const unsigned present_stride = speed > 1.0 ? static_cast<unsigned>(speed) : 1u;
-                if (!host.run_one(error, scheduled_frames % present_stride == 0)) { std::cerr << "Native core stopped: " << error << "\n"; break; }
-                ++scheduled_frames;
-                // A bounded run (`--frames N`) exits after N emulated frames so a
-                // test can drive the player deterministically from the CLI.
-                if (options.frames >= 0 && scheduled_frames >= static_cast<uint64_t>(options.frames)) running = false;
-                // The owned parent pipe has no network listener. Emit a
-                // bounded, path-free heartbeat for package/runtime testing
-                // and for the Windows shell to distinguish an initialized
-                // game window from a merely spawned process.
-                if (options.control_stdin && scheduled_frames % 120 == 0) {
-                    const auto core_status = host.status();
-                    const auto video_status = video->metrics();
+            // The session owns frame scheduling and all core calls. The SDL/GTK
+            // thread only pumps input, controls, and bounded persistence commands.
+            const auto core_status = session.status();
+            if (options.frames >= 0 && core_status.core_frames >= static_cast<uint64_t>(options.frames)) {
+                running = false;
+            }
+            if (options.control_stdin) {
+                if (core_status.core_frames >= last_reported_core_frames + 120) {
+                    const auto video_status = runtime_video->metrics();
                     std::cout << "AN3_NATIVE_STATUS core=" << core_status.core_frames
                               << " present=" << video_status.frames.presented_frames
                               << " drops=" << video_status.frames.dropped_frames
                               << " renderer=" << video_status.effective << std::endl;
+                    last_reported_core_frames = core_status.core_frames;
                 }
-                const auto scaled_duration = std::chrono::nanoseconds(static_cast<int64_t>(std::llround(host.frame_duration().count() / speed)));
-                deadline += scaled_duration;
-                if (deadline < now - std::chrono::milliseconds(100)) deadline = now;
-            } else if (paused) {
-                deadline = now + std::chrono::milliseconds(20);
             }
             if (auto_save.enabled && now - last_auto >= std::chrono::seconds(auto_save.interval)) {
-                runtime_message = host.save_auto(error) ? "Auto Save completed." : "Auto Save failed: " + error;
+                runtime_message = session.queue_save_auto(error) ? "Auto Save queued." : "Auto Save failed: " + error;
                 last_auto = now;
             }
             if (controls) controls->pump();
-            if (now < deadline) SDL_Delay(1);
+            if (frame_queue) frame_queue->present_pending();
+            SDL_Delay(1);
         }
     }
     // A save-on-exit mode writes one final atomic snapshot as the session
     // stops. Periodic modes already saved on their own timer.
-    if (auto_save.on_exit) host.save_auto(error);
-    if (!options.save_state.empty()) host.export_state(options.save_state.string(), error);
-    host.shutdown(); video->shutdown(); if (controller) SDL_GameControllerClose(controller); SDL_Quit();
+    if (auto_save.on_exit && session.running()) session.save_auto(error);
+    if (!options.save_state.empty() && session.running()) session.export_state(options.save_state.string(), error);
+    session.stop();
+    if (frame_queue) {
+        while (frame_queue->present_pending()) {}
+        frame_queue->shutdown();
+    }
+    video->shutdown();
+    if (controller) SDL_GameControllerClose(controller);
+    SDL_Quit();
     return 0;
 }

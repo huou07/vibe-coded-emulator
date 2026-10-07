@@ -46,6 +46,20 @@ bool LinuxSdlAudioBackend::initialize(double sample_rate, std::string& error) {
     // 160 ms is enough to absorb OS scheduling jitter without building a
     // latency-inducing, unbounded presentation queue.
     queue_limit_frames_ = static_cast<uint32_t>(std::max(2'048, obtained_.freq * 16 / 100));
+    const uint32_t bytes_per_frame = static_cast<uint32_t>(SDL_AUDIO_BITSIZE(obtained_.format) / 8) * obtained_.channels;
+    if (!bytes_per_frame || static_cast<std::size_t>(queue_limit_frames_) >
+            std::numeric_limits<std::size_t>::max() / bytes_per_frame) {
+        error = "SDL audio reported an invalid bounded queue geometry.";
+        shutdown();
+        return false;
+    }
+    // Keep one reusable conversion buffer sized for the bounded output queue.
+    // A larger buffer is only allocated if SDL reports a genuine format or
+    // stream-capacity change; normal submits never resize or allocate.
+    conversion_buffer_.resize(static_cast<std::size_t>(queue_limit_frames_) * bytes_per_frame);
+    submitted_frames_ = 0;
+    dropped_frames_ = 0;
+    queue_max_frames_ = 0;
     volume_.store(1.0f, std::memory_order_relaxed);
     muted_.store(false, std::memory_order_relaxed);
     SDL_PauseAudioDevice(device_, 0);
@@ -53,19 +67,57 @@ bool LinuxSdlAudioBackend::initialize(double sample_rate, std::string& error) {
 }
 
 std::size_t LinuxSdlAudioBackend::submit(const int16_t* samples, std::size_t frames) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!device_ || !stream_ || !samples || !frames) return 0;
     const uint32_t bytes_per_frame = static_cast<uint32_t>(SDL_AUDIO_BITSIZE(obtained_.format) / 8) * obtained_.channels;
     if (!bytes_per_frame) return 0;
     const uint32_t queued_frames = SDL_GetQueuedAudioSize(device_) / bytes_per_frame;
-    if (queued_frames >= queue_limit_frames_) return 0;
+    queue_max_frames_ = std::max(queue_max_frames_, queued_frames);
+    submitted_frames_ += frames;
+    if (queued_frames >= queue_limit_frames_) {
+        dropped_frames_ += frames;
+        return frames;
+    }
     const std::size_t input_bytes = frames * sizeof(int16_t) * 2;
     if (input_bytes / (sizeof(int16_t) * 2) != frames || input_bytes > static_cast<std::size_t>(std::numeric_limits<int>::max())) return 0;
-    if (SDL_AudioStreamPut(stream_, samples, static_cast<int>(input_bytes)) != 0) return 0;
-    conversion_buffer_.resize(static_cast<size_t>(SDL_AudioStreamAvailable(stream_)));
-    if (!conversion_buffer_.empty() && SDL_AudioStreamGet(stream_, conversion_buffer_.data(), static_cast<int>(conversion_buffer_.size())) < 0) return 0;
-    const uint32_t available_frames = static_cast<uint32_t>(conversion_buffer_.size() / bytes_per_frame);
+    if (input_bytes > conversion_buffer_.size()) {
+        dropped_frames_ += frames;
+        return frames;
+    }
+    if (SDL_AudioStreamPut(stream_, samples, static_cast<int>(input_bytes)) != 0) {
+        dropped_frames_ += frames;
+        return 0;
+    }
+    const int available_bytes = SDL_AudioStreamAvailable(stream_);
+    if (available_bytes < 0) {
+        dropped_frames_ += frames;
+        return 0;
+    }
+    std::size_t retained_bytes = 0;
+    int remaining_bytes = available_bytes;
+    while (remaining_bytes > 0) {
+        const std::size_t free_bytes = conversion_buffer_.size() - retained_bytes;
+        const std::size_t chunk_bytes = free_bytes != 0
+            ? std::min<std::size_t>(free_bytes, static_cast<std::size_t>(remaining_bytes))
+            : std::min<std::size_t>(conversion_buffer_.size(), static_cast<std::size_t>(remaining_bytes));
+        auto* destination = conversion_buffer_.data() + (free_bytes != 0 ? retained_bytes : 0);
+        const int received = SDL_AudioStreamGet(stream_, destination, static_cast<int>(chunk_bytes));
+        if (received < 0) {
+            dropped_frames_ += frames;
+            return 0;
+        }
+        if (received == 0) break;
+        if (free_bytes != 0) {
+            retained_bytes += std::min<std::size_t>(free_bytes, static_cast<std::size_t>(received));
+        } else {
+            dropped_frames_ += static_cast<std::size_t>(received) / bytes_per_frame;
+        }
+        remaining_bytes -= received;
+    }
+    const uint32_t available_frames = static_cast<uint32_t>(retained_bytes / bytes_per_frame);
     const uint32_t writable_frames = queue_limit_frames_ > queued_frames ? queue_limit_frames_ - queued_frames : 0;
     const uint32_t accepted_frames = std::min(available_frames, writable_frames);
+    dropped_frames_ += available_frames - accepted_frames;
     const float requested_volume = muted_.load(std::memory_order_relaxed)
                                        ? 0.0f
                                        : volume_.load(std::memory_order_relaxed);
@@ -79,7 +131,11 @@ std::size_t LinuxSdlAudioBackend::submit(const int16_t* samples, std::size_t fra
                 static_cast<int>(std::numeric_limits<int16_t>::max())));
         }
     }
-    if (accepted_frames && SDL_QueueAudio(device_, conversion_buffer_.data(), accepted_frames * bytes_per_frame) != 0) return 0;
+    if (accepted_frames && SDL_QueueAudio(device_, conversion_buffer_.data(), accepted_frames * bytes_per_frame) != 0) {
+        dropped_frames_ += accepted_frames;
+        return 0;
+    }
+    queue_max_frames_ = std::max(queue_max_frames_, queued_frames + accepted_frames);
     return frames;
 }
 
@@ -94,22 +150,31 @@ void LinuxSdlAudioBackend::set_muted(bool value) noexcept {
 }
 
 LinuxSdlAudioMetrics LinuxSdlAudioBackend::metrics() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
     LinuxSdlAudioMetrics result;
     result.sample_rate = obtained_.freq > 0 ? static_cast<uint32_t>(obtained_.freq) : 0;
     const uint32_t bytes_per_frame = static_cast<uint32_t>(SDL_AUDIO_BITSIZE(obtained_.format) / 8) * obtained_.channels;
     result.queued_frames = device_ && bytes_per_frame ? SDL_GetQueuedAudioSize(device_) / bytes_per_frame : 0;
+    result.queue_limit_frames = queue_limit_frames_;
+    result.queue_max_frames = queue_max_frames_;
+    result.submitted_frames = submitted_frames_;
+    result.dropped_frames = dropped_frames_;
     result.volume = volume_.load(std::memory_order_relaxed);
     result.muted = muted_.load(std::memory_order_relaxed);
     return result;
 }
 
 void LinuxSdlAudioBackend::shutdown() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (device_) SDL_CloseAudioDevice(device_);
     device_ = 0;
     if (stream_) SDL_FreeAudioStream(stream_);
     stream_ = nullptr;
     queue_limit_frames_ = 0;
     conversion_buffer_.clear();
+    submitted_frames_ = 0;
+    dropped_frames_ = 0;
+    queue_max_frames_ = 0;
     volume_.store(1.0f, std::memory_order_relaxed);
     muted_.store(false, std::memory_order_relaxed);
 }

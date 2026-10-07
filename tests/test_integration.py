@@ -106,31 +106,50 @@ class ReleaseArtifactTests(unittest.TestCase):
                 app.NATIVE_RELEASE_CATALOG = original_catalog
 
     def test_current_staging_catalog_names_only_the_current_verified_installers(self):
-        import app
-        available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
+        """The tracked catalog names exactly the installers of one release.
+
+        The literal list used to be pinned to 3.3.0 while the published release
+        moved on, so it went stale instead of catching drift. Derive the
+        expected names from the release-train naming convention and require one
+        single version across every artifact.
+        """
+        catalog = json.loads(
+            open(os.path.join(ROOT, "native-offline/releases/catalog.json"), encoding="utf-8").read()
+        )
+        available = [item for item in catalog["artifacts"] if item["filename"]]
+        versions = {item["version"] for item in available}
+        self.assertEqual(len(versions), 1, f"catalog mixes versions: {sorted(versions)}")
+        version = versions.pop()
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
         self.assertEqual(
             [item["filename"] for item in available],
             [
-                "vibecodedemulator-3.3.0-macos-aarch64.dmg",
-                "vibecodedemulator-3.3.0-android-arm64-staging.apk",
-                "vibecodedemulator-3.3.0-android-arm64-staging.aab",
-                "vibecodedemulator-3.3.0-linux-amd64.deb",
-                "an3-offline-3.3.0-linux-amd64-staging.flatpak",
-                "vibecodedemulator-3.3.0-windows-x64-staging.exe",
+                f"vibecodedemulator-{version}-macos-aarch64.dmg",
+                f"vibecodedemulator-{version}-android-arm64-staging.apk",
+                f"vibecodedemulator-{version}-android-arm64-staging.aab",
+                f"vibecodedemulator-{version}-linux-amd64.deb",
+                f"an3-offline-{version}-linux-amd64-staging.flatpak",
+                f"vibecodedemulator-{version}-windows-x64-staging.exe",
             ],
         )
         self.assertEqual(
-            {item["format"]: item["version"] for item in available},
-            {
-                "DMG": "3.3.0",
-                "APK": "3.3.0",
-                "AAB": "3.3.0",
-                "DEB": "3.3.0",
-                "Flatpak": "3.3.0",
-                "EXE": "3.3.0",
-            },
+            {item["format"] for item in available},
+            {"DMG", "APK", "AAB", "DEB", "Flatpak", "EXE"},
         )
-        self.assertTrue(all(item["size"] and item["sha256"] for item in available))
+        for item in available:
+            with self.subTest(format=item["format"]):
+                self.assertTrue(item["size"] and item["sha256"])
+                self.assertRegex(item["sha256"], r"^[0-9a-f]{64}$")
+                self.assertIn(
+                    version, item["filename"],
+                    "every artifact filename must carry the catalog version",
+                )
+        # The Windows installer is only publishable behind a passed release gate.
+        windows = next(item for item in available if item["format"] == "EXE")
+        self.assertEqual(windows.get("release_gate"), "PASS")
+        # The catalog must name a real commit identity, not a placeholder.
+        self.assertRegex(catalog["source_commit"], r"^[0-9a-f]{40}$")
+        self.assertNotIn("YOUR_GITHUB", json.dumps(catalog))
 
 
     def test_static_asset_version_includes_nested_assets(self):

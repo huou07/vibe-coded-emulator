@@ -7,7 +7,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 VULKAN = (ROOT / "native-offline" / "src-tauri" / "src" / "vulkan_frontend.mm").read_text(encoding="utf-8")
 HOST = (ROOT / "native-offline" / "src-tauri" / "src" / "azahar_host.mm").read_text(encoding="utf-8")
-PERSISTENCE = (ROOT / "native-offline" / "src-tauri" / "src" / "save_persistence_worker.h").read_text(encoding="utf-8")
+PERSISTENCE = (ROOT / "native-offline" / "native-runtime" / "core" / "save_persistence_worker.h").read_text(encoding="utf-8")
 HEADER = (ROOT / "native-offline" / "src-tauri" / "src" / "vulkan_frontend.h").read_text(encoding="utf-8")
 SMOKE = (ROOT / "native-offline" / "tests" / "native_smoke.mm").read_text(encoding="utf-8")
 DIRECT_CORE = (ROOT / "native-offline" / "tests" / "mock_direct_frame_core.cpp").read_text(encoding="utf-8")

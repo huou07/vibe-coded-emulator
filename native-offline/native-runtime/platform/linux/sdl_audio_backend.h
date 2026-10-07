@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace an3 {
@@ -16,6 +17,10 @@ namespace an3 {
 struct LinuxSdlAudioMetrics {
     uint32_t sample_rate = 0;
     uint32_t queued_frames = 0;
+    uint32_t queue_limit_frames = 0;
+    uint32_t queue_max_frames = 0;
+    uint64_t submitted_frames = 0;
+    uint64_t dropped_frames = 0;
     float volume = 1.0f;
     bool muted = false;
 };
@@ -39,6 +44,10 @@ class LinuxSdlAudioBackend final : public NativeAudioBackend {
     SDL_AudioSpec obtained_{};
     uint32_t queue_limit_frames_ = 0;
     std::vector<uint8_t> conversion_buffer_;
+    mutable std::mutex mutex_;
+    uint64_t submitted_frames_ = 0;
+    uint64_t dropped_frames_ = 0;
+    uint32_t queue_max_frames_ = 0;
     std::atomic<float> volume_{1.0f};
     std::atomic<bool> muted_{false};
 };
