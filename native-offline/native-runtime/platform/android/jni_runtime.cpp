@@ -67,7 +67,10 @@ struct FinishGuard {
 void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume,std::string netplay_role,std::string netplay_address,uint16_t netplay_port) {
     FinishGuard finish_guard{s.finished};
     std::lock_guard runtime_lock(runtime_serial);
-    const bool can_resume=resume && resumable_save_path==saves;
+    // A recreated Activity may run in a new process, where the in-memory
+    // marker is gone. A present snapshot is safe to import: suspend export is
+    // atomic and its failure path removes any older snapshot.
+    const bool can_resume=resume && (resumable_save_path==saves || std::filesystem::exists(saves+"/.suspend.state"));
     resumable_save_path.clear();
     AndroidWindowSurface surface(window);
     ANativeWindow_release(window);

@@ -29,7 +29,10 @@ import kotlin.math.roundToInt
 
 /** The WebView owns the library only. This activity owns native gameplay. */
 class NativeGameActivity : Activity(), SurfaceHolder.Callback {
-    companion object { init { System.loadLibrary("an3_runtime") } }
+    companion object {
+        private const val STATE_RESUMED = "an3-native-surface-resumed"
+        init { System.loadLibrary("an3_runtime") }
+    }
     private external fun nativeStart(surface: Surface, core: String, rom: String, saves: String, backend: String, layout: String, system: String, autoSaveMode: String, resume: Boolean, netplayRole: String, netplayAddress: String, netplayPort: Int)
     private external fun nativeStop(suspend: Boolean)
     private external fun nativeButton(button: Int, pressed: Boolean)
@@ -47,6 +50,7 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
     private val preferences by lazy { getSharedPreferences("an3-native-game", MODE_PRIVATE) }
     private var active = false
     private var surfaceStarted = false
+    private var resumeRequested = false
     private val pendingCommands = mutableListOf<Pair<String, String>>()
     private fun commandWhenReady(command: String, value: String) {
         if (active) nativeCommand(command, value) else if (pendingCommands.size < 128) pendingCommands.add(command to value)
@@ -158,6 +162,7 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        resumeRequested = savedInstanceState?.getBoolean(STATE_RESUMED) == true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         romId = intent.getStringExtra("romId") ?: ""
@@ -212,9 +217,10 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
             else -> "libazahar_libretro_android.so"
         }
         val saves = File(filesDir, "native-states-v1/$system/$romId").apply { mkdirs() }
-        nativeStart(holder.surface, File(applicationInfo.nativeLibraryDir, core).path, rom!!.path, saves.path, backend, layout, system, NativeAutoSave.resolve(preferences), surfaceStarted, netplayRole, netplayAddress, netplayPort)
+        nativeStart(holder.surface, File(applicationInfo.nativeLibraryDir, core).path, rom!!.path, saves.path, backend, layout, system, NativeAutoSave.resolve(preferences), surfaceStarted || resumeRequested, netplayRole, netplayAddress, netplayPort)
         active = true
         surfaceStarted = true
+        resumeRequested = false
         for ((command, value) in pendingCommands) nativeCommand(command, value)
         pendingCommands.clear()
         applySavedSettings()
@@ -240,6 +246,11 @@ class NativeGameActivity : Activity(), SurfaceHolder.Callback {
         if (active) nativeStop(false)
         active = false
         super.onDestroy()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_RESUMED, surfaceStarted)
     }
 
     private fun stopController() { try { overlay.stopController() } catch (_: Exception) {} }

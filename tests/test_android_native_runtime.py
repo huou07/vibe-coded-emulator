@@ -339,6 +339,22 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn('std::filesystem::remove(saves+"/.suspend.state",ignored);', failed_export)
         self.assertIn('report("Native resume snapshot failed: "+error);', failed_export)
 
+    def test_recreated_activity_resumes_instead_of_cold_booting(self):
+        activity = source(GAME_ACTIVITY)
+        self.assertIn('STATE_RESUMED = "an3-native-surface-resumed"', activity)
+        self.assertIn("savedInstanceState?.getBoolean(STATE_RESUMED) == true", activity)
+        self.assertIn("surfaceStarted || resumeRequested", activity)
+        self.assertIn("outState.putBoolean(STATE_RESUMED, surfaceStarted)", activity)
+        surface = between(activity, "override fun surfaceCreated", "override fun surfaceChanged")
+        self.assertIn("resumeRequested = false", surface)
+
+    def test_process_death_recovers_from_on_disk_suspend_snapshot(self):
+        jni = source(JNI)
+        self.assertIn(
+            'resumable_save_path==saves || std::filesystem::exists(saves+"/.suspend.state")',
+            jni,
+        )
+
     def test_native_state_picker_catches_cache_temp_creation_failure(self):
         activity = source(GAME_ACTIVITY)
 
