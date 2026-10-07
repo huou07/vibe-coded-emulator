@@ -162,6 +162,51 @@ class ReleaseCatalogGeneratorTests(unittest.TestCase):
         self.assertFalse((self.tree / "native-offline/releases/catalog.json").exists())
         self.assertFalse((self.tree.parent / "catalog.json").exists())
 
+    def test_nested_github_download_layout_is_resolved(self):
+        """The release workflow downloads one folder per GitHub artifact."""
+        nested = self.scratch / "dist"
+        nested.mkdir()
+        for index, template in enumerate(FILENAMES):
+            folder = nested / f"artifact-{index}"
+            folder.mkdir()
+            (folder / template.format(v=self.version)).write_bytes(os.urandom(2048))
+        result = subprocess.run(
+            [sys.executable, "tools/build-release-catalog.py",
+             "--source-commit", self.commit,
+             "--releases", str(nested)],
+            cwd=self.tree, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        catalog = json.loads((nested / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(catalog["artifacts"]), len(FILENAMES))
+        for entry in catalog["artifacts"]:
+            with self.subTest(format=entry["format"]):
+                matches = list(nested.glob(f"*/{entry['filename']}"))
+                self.assertEqual(len(matches), 1)
+                self.assertTrue(
+                    matches[0].with_name(matches[0].name + ".sha256").is_file()
+                )
+
+    def test_duplicate_nested_installers_fail_closed(self):
+        nested = self.scratch / "dist"
+        nested.mkdir()
+        first = nested / "android-apk"
+        second = nested / "android-apk-duplicate"
+        first.mkdir()
+        second.mkdir()
+        filename = FILENAMES[1].format(v=self.version)
+        first.joinpath(filename).write_bytes(os.urandom(2048))
+        second.joinpath(filename).write_bytes(os.urandom(2048))
+        result = subprocess.run(
+            [sys.executable, "tools/build-release-catalog.py",
+             "--source-commit", self.commit,
+             "--releases", str(nested)],
+            cwd=self.tree, capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ambiguous installer", result.stderr)
+        self.assertFalse((nested / "catalog.json").exists())
+
     def test_dry_run_writes_nothing(self):
         self.stage_artifacts()
         before = sorted(path.name for path in self.releases.iterdir())

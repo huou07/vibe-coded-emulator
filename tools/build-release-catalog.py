@@ -80,6 +80,17 @@ def write_sidecar(path: Path) -> Path:
     return sidecar
 
 
+def find_release_file(releases: Path, filename: str):
+    """Find one installer, including GitHub's per-artifact download folders."""
+    matches = sorted(
+        path for path in releases.rglob(filename)
+        if path.is_file() and not path.is_symlink()
+    )
+    if len(matches) > 1:
+        raise ValueError(f"ambiguous installer {filename}: {len(matches)} matches")
+    return matches[0] if matches else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-commit", required=True)
@@ -108,8 +119,11 @@ def main() -> int:
     missing = []
     for platform, fmt, architecture, template in LAYOUT:
         filename = template.format(v=version)
-        path = releases / filename
-        if not path.is_file():
+        try:
+            path = find_release_file(releases, filename)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if path is None:
             missing.append(filename)
             continue
         entry = {
@@ -159,7 +173,9 @@ def main() -> int:
     catalog_path = releases / "catalog.json"
     catalog_path.write_text(body, encoding="utf-8")
     for entry in artifacts:
-        write_sidecar(releases / entry["filename"])
+        source = find_release_file(releases, entry["filename"])
+        assert source is not None  # already required above; keeps mypy honest
+        write_sidecar(source)
     print(f"RELEASE_CATALOG_WRITTEN version={version} artifacts={len(artifacts)} path={catalog_path}")
     for entry in artifacts:
         print(f"  {entry['format']:8} {entry['filename']} {entry['sha256'][:16]}")

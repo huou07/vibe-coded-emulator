@@ -1,7 +1,8 @@
 # AN3 / Vibe Coded Emulator — durable project state
 
-Last updated: 2026-10-07, after publishing v3.3.3. This file is the resume
-point; it replaces reading the historical checkpoint documents.
+Last updated: 2026-10-07T03:05Z, during post-release `native-build` for `9fb51b8`.
+This file is the resume point; it replaces reading the historical checkpoint
+documents.
 
 **Shipped:** v3.3.3 is live. The runtime-unification work, the Android exit fix
 and five product repairs are in a published release with verified artifacts.
@@ -61,9 +62,14 @@ playback journey.
 - **Web surface**: `app.py` is the authoritative server; the native apps are the
   primary client. Core-only product decision stands (no cloud, account, LAN
   sync, peer discovery).
+Resolved this session: the catalog drift (`ff2fca0`, `e5b6d1a`, `e4672d4`) and the
+test that had been asserting stale names (`51b15b2`).
 
-Resolved this session: the catalog drift (`ff2fca0`, `e5b6d1a`, `e4672d4`) and
-the test that had been asserting stale names (`51b15b2`).
+In-progress continuation repair: make `tools/build-release-catalog.py` resolve
+installers recursively, because tag-release downloads place each GitHub artifact
+in its own subdirectory. Duplicate installer names fail closed; sidecars are
+written beside the resolved artifact. Covered by two regression tests.
+
 
 ## Verification commands
 
