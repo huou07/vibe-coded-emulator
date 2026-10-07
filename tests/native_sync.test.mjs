@@ -5,6 +5,17 @@ import vm from "node:vm";
 
 const source = await readFile(new URL("../native-offline/web/native-sync.js", import.meta.url), "utf8");
 
+test("Android packaged sync scripts match their source files", async () => {
+  const androidAssets = new URL("../native-offline/src-tauri/gen/android/app/src/main/assets/", import.meta.url);
+  const [packagedSync, appSource, packagedApp] = await Promise.all([
+    readFile(new URL("native-sync.js", androidAssets), "utf8"),
+    readFile(new URL("../native-offline/web/native-app.js", import.meta.url), "utf8"),
+    readFile(new URL("native-app.js", androidAssets), "utf8"),
+  ]);
+  assert.equal(packagedSync, source);
+  assert.equal(packagedApp, appSource);
+});
+
 const loadSync = (calls = [], statusPayload = null, overrides = {}, account = null) => {
   const storageValues = new Map();
   const invoke = async (name, args) => {

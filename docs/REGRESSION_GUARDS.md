@@ -56,9 +56,11 @@ recommends independent work.
   `native-offline/web/native-sync.js`, `native-offline/web/native-app.js`.
   Blast: native Android/desktop save sync startup and user feedback.
 - Automated validation: `node --test tests/native_sync.test.mjs
-  tests/sync_transfer.test.mjs` passes 21/21, including a no-peer assertion
+  tests/sync_transfer.test.mjs` passes 22/22, including a no-peer assertion
   that `native_sync_game_identity` is never invoked and a connected-peer
-  progress-order assertion. Both edited JavaScript files pass `node --check`.
+  progress-order assertion. The same suite now checks that the Android
+  packaged `native-app.js` and `native-sync.js` exactly match their source
+  files. Both edited JavaScript files pass `node --check`.
 - Live acceptance: install the 3.2.1 package, verify no-peer rejection with a
   large ROM, then connect a peer and verify the identity/transfer messages,
   save comparison, and persisted result. **UNVERIFIED**: no Android device or

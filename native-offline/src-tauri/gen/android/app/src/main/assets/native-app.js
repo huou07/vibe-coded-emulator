@@ -657,12 +657,17 @@
           button.textContent = "Sync save";
           button.addEventListener("click", async () => {
             button.disabled = true;
+            button.textContent = "Checking connection…";
+            setMessage("Checking for a connected, trusted sync peer…");
             try {
-              const result = await window.AN3NativeSync.syncGame(system, romId, "save");
+              const result = await window.AN3NativeSync.syncGame(system, romId, "save", message => {
+                button.textContent = message.startsWith("Reading") ? "Reading game file…" : "Syncing save…";
+                setMessage(message);
+              });
               renderConflicts(result, system, romId);
               setMessage("Save set sync complete: " + result.counts.uploaded + " sent, " + result.counts.downloaded + " received" + (result.counts.conflicts ? "; conflict needs a choice" : "") + ".");
             } catch (error) { setMessage(error.message || String(error)); }
-            finally { button.disabled = false; }
+            finally { button.textContent = "Sync save"; button.disabled = false; }
           });
           actions.appendChild(button);
         }
