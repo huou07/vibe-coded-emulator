@@ -51,5 +51,6 @@ release parity.
 
 Packaged Android Activity recreation, process-death recovery, rendered frame,
 input, and console/runtime-error acceptance were not exercised in this session.
-No Android device or emulator was available. Runtime status is **UNVERIFIED**;
-the source guards do not establish packaged behavior.
+No Android device or running emulator target was available. Two AVD profiles
+are configured, but neither was started. Runtime status is **UNVERIFIED**; the
+source guards and successful package build do not establish runtime behavior.
