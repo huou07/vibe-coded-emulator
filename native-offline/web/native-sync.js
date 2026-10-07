@@ -143,9 +143,14 @@
     }
     return status();
   };
-  const syncGame = async (system, romId, kind = "save") => {
+  const syncGame = async (system, romId, kind = "save", onProgress) => {
     if (!globalThis.AN3SyncTransfer?.sync) throw new Error("The save-sync engine is unavailable.");
+    if (!(await sameAccount({capability: "sync", kind}))) {
+      throw new Error("Connect a compatible sync peer before syncing saves.");
+    }
+    onProgress?.("Reading the game file to verify its identity. Large files can take a while.");
     const identity = await gameIdentity(system, romId);
+    onProgress?.("Comparing and syncing save data…");
     const context = contextFor(kind, system, romId, identity);
     const result = await globalThis.AN3SyncTransfer.sync({
       kind,

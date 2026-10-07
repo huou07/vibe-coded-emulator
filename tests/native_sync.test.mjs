@@ -67,6 +67,35 @@ test("guest connected status is eligible while an unverified account peer is not
   assert.equal(await sync.sameAccount({capability: "sync"}), true);
 });
 
+test("save sync rejects a missing peer before hashing the ROM", async () => {
+  const calls = [];
+  const sync = loadSync(calls);
+  await assert.rejects(sync.syncGame("gba", "game-1"), /Connect a compatible sync peer/);
+  assert.equal(calls.some(call => call.name === "native_sync_game_identity"), false);
+});
+
+test("save sync reports ROM verification and transfer progress after peer preflight", async () => {
+  const calls = [];
+  const messages = [];
+  const sync = loadSync(calls, {
+    running: true,
+    role: "host",
+    mode: "guest",
+    deviceId: "an3-local",
+    peers: [{deviceId: "an3-remote", mode: "guest", state: "connected", accountVerified: false}],
+  }, {
+    native_sync_game_identity: {system: "gba", core: "mgba", gameId: "rom-123", romHash: "a".repeat(64), romId: "game-1"},
+  });
+
+  await sync.syncGame("gba", "game-1", "save", message => messages.push(message));
+
+  assert.deepEqual(messages, [
+    "Reading the game file to verify its identity. Large files can take a while.",
+    "Comparing and syncing save data…",
+  ]);
+  assert.ok(calls.findIndex(call => call.name === "native_sync_status") < calls.findIndex(call => call.name === "native_sync_game_identity"));
+});
+
 test("account peer remains fail-closed until the encrypted-session proof is verified", async () => {
   const calls = [];
   const status = {

@@ -43,6 +43,28 @@ recommends independent work.
   command exposure. Validation: `cargo check --target aarch64-linux-android
   --lib` finished clean (was 2 errors) and the parity test passes.
 
+## Native save sync ROM preflight — RG-129, 2026-10-08
+
+- RG-129: **Native Sync save must reject a missing compatible peer before
+  hashing the ROM, and must show status while a connected-peer sync hashes and
+  transfers saves.** Previously `syncGame()` read and SHA-256 hashed the entire
+  ROM before the transfer engine checked peer authorization; tapping Sync save
+  without a connected peer could leave the button disabled for the duration of
+  a multi-gigabyte read. The check now runs first, and the button/status text
+  identifies connection check, ROM identity verification, and save transfer.
+  The native hash remains on Tauri's blocking worker. Owners:
+  `native-offline/web/native-sync.js`, `native-offline/web/native-app.js`.
+  Blast: native Android/desktop save sync startup and user feedback.
+- Automated validation: `node --test tests/native_sync.test.mjs
+  tests/sync_transfer.test.mjs` passes 21/21, including a no-peer assertion
+  that `native_sync_game_identity` is never invoked and a connected-peer
+  progress-order assertion. Both edited JavaScript files pass `node --check`.
+- Live acceptance: install the 3.2.1 package, verify no-peer rejection with a
+  large ROM, then connect a peer and verify the identity/transfer messages,
+  save comparison, and persisted result. **UNVERIFIED**: no Android device or
+  packaged app was available in this work session; Node evidence does not
+  establish packaged runtime behavior.
+
 ## Current authority — Switch/Eden bridge, 2026-09-17
 
 - RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N] [--seconds N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **FIXED 2026-09-17 (sustained rendering).** Root cause: the bare `CAMetalLayer` in `src/cocoa_surface.mm` had zero bounds, so MoltenVK created `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` then failed with `kIOGPUCommandBufferCallbackErrorInvalidInput` → `VK_ERROR_OUT_OF_DEVICE_MEMORY: Lost VkDevice` → an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread → SIGABRT (the ABI cannot catch a foreign-thread throw; same class as RG-111). Fix: host the layer on a hidden `NSWindow`/`NSView` (AppKit), giving it a real drawable size and letting Core Animation recycle drawables. Validation: swapchain now reports `size (1280, 720)`, created once. `--frames 1|5|10|30|60|120|300|600` all PASS (exit 0); `--frames 600` 8/8 runs PASS; sustained `--seconds 65` (3883 frames), `--seconds 60` ×2 (3583 frames each) all PASS with **0 MoltenVK errors** and clean shutdown. Reproduce: `LIBVULKAN_PATH=<moltenvklib> an3_eden_bridge_smoke --json --seconds 60 <nx-hbmenu.nro>`. Frame *delivery to a caller* is still later milestone D work; this guard covers process stability only.
@@ -584,6 +606,7 @@ the actual feature. A blank live cell is not a PASS.
 | 49 | Artifact publication integrity | explicit allowlist plus size/SHA-256 check | mutate bytes, inspect manifest and route | PASS: byte drift changes availability to blocked, removes URL and returns no published path. |
 | 50 | Blocked release truthfulness | five-category manifest/page contract | inspect cards and links | PASS: DEB, Flatpak and EXE state blockers and have no download URL; unlisted historical files return 404. |
 | 51 | Release cache isolation | service-worker shell/bypass contract | inspect worker and live response | PASS: page/icons packaged; installers/source bypass cache and manifest is network-only. Asset `8ecb7b06ad8c`. |
+| 52 | Native save sync preflight | peer eligibility before ROM hash; status callbacks | absent-peer rejection and connected-peer progress order | UNVERIFIED: no connected device or package runtime available. |
 
 ## Verification levels
 
