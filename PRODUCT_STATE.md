@@ -1,6 +1,6 @@
 # AN3 / Vibe Coded Emulator — durable project state
 
-Last updated: 2026-10-07T03:05Z, during post-release `native-build` for `9fb51b8`.
+Last updated: 2026-10-07T03:13Z, after `native-build` run `37559484898` completed.
 This file is the resume point; it replaces reading the historical checkpoint
 documents.
 
@@ -27,6 +27,7 @@ playback journey.
 | CI at `4665a7c` (pre-merge head) | `ci` 36537160069 success, `native-build` 36537159639 success incl. 10/10 Android settings teardown |
 | CI at `51b15b2` (PR head) | `ci` 37515820061 success, `native-build` 37515820205 success, all 9 jobs |
 | CI at `826516c` (tag head) | `native-release` 37554101292 success: all 9 build/acceptance jobs plus draft release |
+| CI at `9fb51b8` (post-release main) | `ci` 37559484937 success; `native-build` 37559484898 success: all 9 jobs, including API-35 library smoke, settings acceptance, and GBA SRAM |
 | Release catalog | committed at `e4672d4`, generated from the tag-built bytes, also attached to the release |
 
 ## Product defects found and fixed (b699233)
@@ -65,10 +66,13 @@ playback journey.
 Resolved this session: the catalog drift (`ff2fca0`, `e5b6d1a`, `e4672d4`) and the
 test that had been asserting stale names (`51b15b2`).
 
-In-progress continuation repair: make `tools/build-release-catalog.py` resolve
-installers recursively, because tag-release downloads place each GitHub artifact
-in its own subdirectory. Duplicate installer names fail closed; sidecars are
-written beside the resolved artifact. Covered by two regression tests.
+Continuation repair, committed as `b3b0f08`: make
+`tools/build-release-catalog.py` resolve installers recursively, because
+tag-release downloads place each GitHub artifact in its own subdirectory.
+Duplicate installer names fail closed; sidecars are written beside the resolved
+artifact. Covered by two regression tests. It was also validated against the
+real v3.3.3 installer bytes in GitHub-style nested folders: the generated
+artifact identity exactly matches the committed catalog.
 
 
 ## Verification commands
@@ -131,7 +135,21 @@ shell (`/` 200), `site.css` and `offline.js`, held steady at 0% CPU and ~103 MB
 RSS, did **not** create the `AN3_UI_CONTROL_FILE` bridge (confirming the feature
 gate on the shipped bytes), and exited cleanly on `SIGTERM`.
 
-## Exact next step
+## Continuation checkpoint
+
+EXACT NEXT STEP: Commit this checkpoint, then pursue physical-device gameplay
+acceptance for the published v3.3.3 binaries; `native-build` run `37559484898`
+is now fully green.
+CURRENT HEAD: `product/3.3.3-release @ b3b0f08`, synchronized with `github/main` at push time.
+WORKTREE STATUS: 1 tracked modification (`PRODUCT_STATE.md`); 13 untracked local build/vendor paths; do not clean or reset.
+CURRENT WORK: Commit this checkpoint; the repair is already pushed, so only the resume note is pending.
+COMPLETED: `b3b0f08` recursive catalog resolution, duplicate-installer rejection, regression tests, actual nested-layout validation, and publication to `github/main`.
+VERIFIED: builder unit tests `8/8 PASS`; related catalog tests `21/21 PASS`; workflow YAML parses; commit-diff Gitleaks scan has no leaks; nested actual-installer catalog identity exactly matches the committed catalog; local `RELEASE_CATALOG=PASS (6 installers)`; macOS DMG-focused checks `2/2 PASS`.
+UNVERIFIED: physical-device gameplay for v3.3.3; the revised tag-release catalog path in a live tag workflow.
+BLOCKERS: none; low host memory only constrains heavy local builds/emulators.
+IMPORTANT FILES: `tools/build-release-catalog.py`, `tests/test_release_catalog_builder.py`, `.github/workflows/native-release.yml`, `native-offline/releases/catalog.json`, `PRODUCT_STATE.md`.
+TEST RESULTS: `python3 -m unittest tests.test_release_catalog_builder tests.test_release_catalog_invariants tests.test_verify_release_catalog` → `21 OK`; `python3 -m unittest tests.test_macos_packaged_runtime...test_20/21` → `2 OK`.
+RESOURCES STILL RUNNING: none; the prior GitHub matrix finished, and no local emulator or heavy build is running.
 
 **Physical-device gameplay acceptance for the published v3.3.3 binaries**:
 download → install → import a lawful ROM → play → save/load → exit → relaunch,
