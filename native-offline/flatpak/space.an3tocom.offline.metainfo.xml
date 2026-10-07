@@ -4,7 +4,7 @@
   <name>Vibe Coded Emulator</name>
   <summary>Native local-ROM player</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>LicenseRef-proprietary</project_license>
+  <project_license>GPL-3.0-or-later</project_license>
   <description>
     <p>Vibe Coded Emulator plays ROM files selected from the same device. It does not include a web game catalogue, accounts, or administrator dashboard.</p>
   </description>
@@ -13,7 +13,7 @@
     <binary>an3-offline-native</binary>
   </provides>
   <releases>
-    <release version="3.2.1" date="2026-10-08" />
+    <release version="3.2.2" date="2026-10-08" />
     <release version="3.1.0" date="2026-09-20" />
     <release version="3.0.0" date="2026-09-20" />
     <release version="2.4.0" date="2026-09-20" />

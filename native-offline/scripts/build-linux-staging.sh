@@ -92,7 +92,7 @@ if [[ "$target" == "deb" ]]; then
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
   install -m 0644 "$tauri_deb" "$deb_path"
-  sha256sum "$deb_path" > "$deb_path.sha256"
+  (cd "$release" && sha256sum "$deb_name" > "$deb_name.sha256")
   if [[ "$deb_path" != "$flatpak_deb_path" ]]; then
     mkdir -p "$(dirname "$flatpak_deb_path")"
     install -m 0644 "$deb_path" "$flatpak_deb_path"
@@ -119,5 +119,5 @@ flatpak build-bundle "$build/flatpak-repo" \
   "$release/$flatpak_name" \
   space.an3tocom.offline master \
   --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
-sha256sum "$release/$flatpak_name" > "$release/$flatpak_name.sha256"
+(cd "$release" && sha256sum "$flatpak_name" > "$flatpak_name.sha256")
 echo "LINUX_FLATPAK=$release/$flatpak_name"

@@ -127,6 +127,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
         .args(["--rom"]).arg(&rom).args(["--system", system, "--layout", layout, "--storage"])
         .arg(&storage).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
+        .env("AN3_OFFLINE_LIBDIR", runtime.parent().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(errors);

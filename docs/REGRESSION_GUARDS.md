@@ -118,6 +118,24 @@ recommends independent work.
   signals, returned cleanly to the library, and relaunched the game. This does
   not establish commercial/homebrew gameplay or audio acceptance.
 
+## Linux packaged core discovery — RG-139, 2026-10-08
+
+- RG-139: The Tauri shell must pass the installed runtime directory to the
+  bundled Linux player as `AN3_OFFLINE_LIBDIR`. The player uses that directory
+  to find `libretro/` beside itself; relying on `/usr/lib/an3-offline-native`
+  breaks the DEB's actual `/usr/lib/VibeCodedEmulator/runtime/linux-x86_64`
+  layout. Validation: Debian 13 extracted-DEB UI journey imported the lawful
+  16 MiB GBA fixture through the native picker and displayed it in Library;
+  launching it before the fix reported the missing-core path. Post-fix
+  3.2.2 DEB launch used the bundled mGBA 0.11-212 core, rendered Pokémon
+  Emerald's title/menu screens, accepted keyboard Start, and created then
+  reloaded a slot-1 state file. `SDL_AUDIODRIVER=dummy` was required on the
+  headless host, so audible output is **UNVERIFIED**. The Flatpak 3.2.2 bundle
+  installed and launched with the expected UI and GPL metadata, but the host's
+  document portal failed to mount its FUSE path; picker import and gameplay in
+  Flatpak remain **UNVERIFIED**. Performance on a physical Linux GPU and
+  battery-save persistence across app exit/relaunch remain **UNVERIFIED**.
+
 ## Current authority — Switch/Eden bridge, 2026-09-17
 
 - RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N] [--seconds N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **FIXED 2026-09-17 (sustained rendering).** Root cause: the bare `CAMetalLayer` in `src/cocoa_surface.mm` had zero bounds, so MoltenVK created `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` then failed with `kIOGPUCommandBufferCallbackErrorInvalidInput` → `VK_ERROR_OUT_OF_DEVICE_MEMORY: Lost VkDevice` → an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread → SIGABRT (the ABI cannot catch a foreign-thread throw; same class as RG-111). Fix: host the layer on a hidden `NSWindow`/`NSView` (AppKit), giving it a real drawable size and letting Core Animation recycle drawables. Validation: swapchain now reports `size (1280, 720)`, created once. `--frames 1|5|10|30|60|120|300|600` all PASS (exit 0); `--frames 600` 8/8 runs PASS; sustained `--seconds 65` (3883 frames), `--seconds 60` ×2 (3583 frames each) all PASS with **0 MoltenVK errors** and clean shutdown. Reproduce: `LIBVULKAN_PATH=<moltenvklib> an3_eden_bridge_smoke --json --seconds 60 <nx-hbmenu.nro>`. Frame *delivery to a caller* is still later milestone D work; this guard covers process stability only.
