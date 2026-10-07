@@ -281,12 +281,28 @@ export class AndroidAdapter {
     const romId = opts.romId ?? randomUUID();
     const romsDir = `/data/data/${PACKAGE}/an3-roms`;
     await this.adb(["shell", "mkdir", "-p", romsDir], { serial, allowFailure: true });
-    await this.adb(["shell", "cp", remote, `${romsDir}/${romId}${extensionOf(path)}`], { serial, allowFailure: true });
+    const copy = await this.adb(["shell", "cp", remote, `${romsDir}/${romId}${extensionOf(path)}`], { serial, allowFailure: true });
+    if (copy.code !== 0) {
+      const reason = (copy.stderr || copy.stdout || "app-private storage is not writable through adb").trim().slice(0, 240);
+      throw new An3Error("E_ACTION_FAILED", `Could not copy the ROM into app storage: ${reason}. Use the in-app ROM import flow or a debuggable Android build.`);
+    }
     const result = await this.adb(
       ["shell", "am", "start", "-n", GAME_ACTIVITY, "--es", "romId", romId, "--es", "system", system, "--es", "romFilename", `${romId}${extensionOf(path)}`],
       { serial, allowFailure: true },
     );
-    return { loaded: /Starting:/.test(result.stdout), serial, system, romId, remote };
+    const launchOutput = `${result.stdout}\n${result.stderr}`;
+    if (result.code !== 0 || !/Starting:/.test(result.stdout) || /Permission Denial|Error:/i.test(launchOutput)) {
+      throw new An3Error("E_ACTION_FAILED", `Android rejected the game launch: ${launchOutput.trim().slice(0, 300)}`);
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const activities = await this.adb(["shell", "dumpsys", "activity", "activities"], { serial, allowFailure: true });
+      const resumed = activities.stdout.split("\n").some((line) =>
+        /(?:topResumedActivity|mResumedActivity)/.test(line) && /NativeGameActivity/.test(line),
+      );
+      if (resumed) return { loaded: true, serial, system, romId, remote };
+      await sleep(100);
+    }
+    throw new An3Error("E_ACTION_FAILED", "Android accepted the launch request, but NativeGameActivity did not become the resumed activity.");
   }
 }
 
