@@ -15,11 +15,12 @@ playback journey.
 
 | Item | State |
 | --- | --- |
-| Public `main` | `7110fc3` = `v3.3.2` (released, artifacts on the v3.3.2 release) |
-| 3.3.3 candidate | `b699233` on `product/3.3.3-release`, PR #6 open |
+| Public `main` | `741cfe5` (PR #6 merged 2026-10-07) |
+| 3.3.3 candidate | merged to `main`; catalog generator on `product/3.3.3-release` at `e5b6d1a` |
 | Runtime-unification commits | on the branch: async save worker, portable core owner, bounded frame handoff, bounded SDL audio, AAudio negotiation, Android `run_return` |
 | CI at `4665a7c` (pre-merge head) | `ci` 36537160069 success, `native-build` 36537159639 success incl. 10/10 Android settings teardown |
-| CI at `b699233` | `ci` 37514698458 success; `native-build` 37514698459 in progress |
+| CI at `51b15b2` (PR head) | `ci` 37515820061 success, `native-build` 37515820205 success, all 9 jobs |
+| CI at `741cfe5` (`main`) | `ci` 37549936093 success; `native-build` 37549936012 in progress |
 
 ## Product defects found and fixed (b699233)
 
@@ -44,12 +45,6 @@ playback journey.
 
 ## Known open items
 
-- **Tracked `native-offline/releases/catalog.json` still describes 3.3.0**
-  while the published release catalog describes 3.3.2. The catalog is the
-  download page's only artifact source and the Linux installers' only source of
-  truth, so it must be regenerated from the real 3.3.3 artifacts and committed
-  before the release. `tools/verify-release-catalog.py` currently fails on a
-  clean checkout for exactly this reason (installer bytes are gitignored).
 - **v3.3.3 has never been tagged or released.** Native installers for this merge
   do not exist yet.
 - **Packaged-runtime acceptance for 3.3.3 is UNVERIFIED.** Nothing here claims a
@@ -57,6 +52,10 @@ playback journey.
 - **Web surface**: `app.py` is the authoritative server; the native apps are the
   primary client. Core-only product decision stands (no cloud, account, LAN
   sync, peer discovery).
+
+Resolved this session: the catalog drift (`ff2fca0` restored the published
+3.3.2 catalog, `e5b6d1a` added the generator so it cannot recur) and the
+test that had been asserting the stale 3.3.0 names (`51b15b2`).
 
 ## Verification commands
 
@@ -80,7 +79,39 @@ exact merge are in place.
 
 ## Exact next step
 
-Wait for `native-build` 37514698459 on PR #6. If green, merge PR #6 to `main`,
-regenerate `releases/catalog.json` from the tag-built artifacts with matching
-`.sha256` sidecars, then tag `v3.3.3` and review the draft release before
-publishing.
+`main` is `741cfe5` (PR #6 merged; `ci` 37549936093 success at that head,
+`native-build` 37549936012 running). The catalog generator
+(`tools/build-release-catalog.py`, commit `e5b6d1a`) is ready but not yet on
+`main`.
+
+Once `main` CI is green at the merge head:
+
+1. Merge the catalog generator.
+2. Tag `v3.3.3`. `native-release.yml` builds all five platforms through the
+   read-only `native-build.yml` and creates a **draft** release.
+3. Download the tag-built artifacts, then generate the catalog from them:
+   ```bash
+   python3 tools/build-release-catalog.py \
+     --source-commit <tag sha> --release-candidate 3.3.3-staging \
+     --runtime-status "<per-platform acceptance summary>"
+   python3 tools/verify-release-catalog.py   # must print RELEASE_CATALOG=PASS
+   ```
+   Record the real acceptance text per platform. Do not claim a packaged
+   runtime pass that was not exercised.
+4. Commit the generated catalog to `main`, review the draft release, then
+   publish it.
+
+## Known non-blocking upstream advisories
+
+Two moderate Dependabot advisories with **no patched version available**, both
+transitive and both outside the shipped runtime path:
+
+- `rustls 0.23.43` (GHSA-2mjx-qc3c-rqvc) — reachable only through
+  `rust-gateway/`, a staging-only shadow reverse proxy that no shipped artifact
+  contains and that only `ci` builds.
+- `glib 0.18.5` — pulled in by Tauri's GTK/webkit2gtk bindings on Linux. The
+  advisory covers `glib::VariantStrIter` iterator soundness; AN3 does not use
+  that type.
+
+Neither is fixable without an upstream release. Do not attempt a forced
+`--breaking` bump of the pinned Tauri/Toolkit stack.
