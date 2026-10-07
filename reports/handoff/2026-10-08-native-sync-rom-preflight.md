@@ -7,6 +7,7 @@
 - Starting HEAD: `a1a6e3c0a1a003bdfa79d8f177bce1082af82a20`
 - Product fix commit: `d06c7c4` (`fix(sync): preflight peers before ROM hashing`)
 - Sync handoff commit: `cd4246b` (`docs: record native save sync preflight handoff`)
+- Public snapshot cache fix: `eba34c9` (`fix(release): exclude bytecode caches from public snapshots`)
 - Packaged app version: `3.2.1` in `package.json`, `package-lock.json`, and both Tauri configs.
 - Existing unrelated untracked reports, plans, screenshots, and Playwright files remain untouched.
 
@@ -32,8 +33,14 @@ contract and its live acceptance requirement.
   caches containing a developer path. `tools/build-public-snapshot.sh` now
   excludes `__pycache__`; a fresh candidate has 482 files / 11 MB and
   `tools/publication-check.sh` passes (gitleaks: 0 findings; personal-data and
-  infrastructure patterns: clean). A history scan and public push are still
-  pending.
+  infrastructure patterns: clean). The clean candidate's single-commit
+  history scan also passes.
+- Public `main` is `48fb769e875692cb0f775fa89fa2ca8d6b1f776f`. Comparing the
+  sanitized snapshot with that tree reports 335 changed files, about 20,727
+  insertions and 45,991 deletions; the histories are unrelated. The publishing
+  script's `--adopt-remote` merge makes the snapshot win, so no push was made.
+  Reconcile the public base before publication to avoid replacing newer public
+  content.
 
 ## Exact next actions
 
@@ -46,8 +53,9 @@ contract and its live acceptance requirement.
    this checkout without resolving the history decision.
 4. Before changing shared player/host code, repeat the required CodeGraph and
    regression-ledger checks. Do not access production.
-5. Complete clean-snapshot history review and publish only if the required
-   security gates and the remote reconciliation check pass.
+5. Keep this feature branch as the local continuation source. Reconcile its
+   relationship to public `main` before attempting a public snapshot push; do
+   not let the snapshot merge replace the newer public tree by default.
 
 ## Pending shared-app data question
 
