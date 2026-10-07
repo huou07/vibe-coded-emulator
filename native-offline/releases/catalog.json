@@ -25,26 +25,36 @@
    "runtime_status": "Android 15 packaged staging smoke passed ROM import through the system picker, NativeGameActivity launch, Quick Save/Load Slot 1, a 60-second active-process soak, clean return to the library, and relaunch with a generated GBA fixture. Full homebrew gameplay and audio acceptance remain unverified."
   },
   {
-   "version": "2.2.0",
+   "version": "3.2.2",
    "platform": "Linux",
    "architecture": "amd64",
    "format": "DEB",
-   "filename": "vibecodedemulator-2.2.0-linux-amd64.deb",
-   "size": 45647902,
-   "sha256": "deff093d9801d55b82c5b0450054952b1075ccf7df12ec2053f0b760c8c46eb2",
-   "signature_status": "Frozen Debian package; no additional installation check requested.",
-   "runtime_status": "Vibe Coded Emulator 2.2.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0). 2.2.0 is a staging rebuild of the same feature set as 2.1.0: the in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the Automatic sync / room-code multiplayer surfaces."
+   "version": "3.2.2",
+   "platform": "Linux",
+   "architecture": "amd64",
+   "format": "DEB",
+   "filename": "vibecodedemulator-3.2.2-linux-amd64.deb",
+   "size": 46316152,
+   "sha256": "106f796bf8c09f2b8de3e5c6a93eb7ff75aa4ccedd117150c6c284ec1edbff6c",
+   "source_revision": "e054583225f2ba787468ff3126ecf7f8c5ae3d92",
+   "signature_status": "Unsigned local staging DEB; dpkg metadata and SHA-256 sidecar verified.",
+   "runtime_status": "Debian 13 x86_64 extracted-package run: native GTK picker imported the documented lawful 16 MiB GBA fixture; bundled mGBA 0.11-212 rendered Pokémon Emerald title/menu screens; keyboard Start advanced the game; F5 created and F9 reloaded a slot-1 state. The headless host required SDL_AUDIODRIVER=dummy and software rendering. Audible output, physical-GPU performance, apt installation, and battery-save persistence after exit/relaunch remain UNVERIFIED. The DEB includes GPL-3.0-or-later app notices and bundled core licenses."
   },
   {
-   "version": "2.2.0",
+   "version": "3.2.2",
    "platform": "Linux",
    "architecture": "amd64",
    "format": "Flatpak",
-   "filename": "an3-offline-2.2.0-linux-amd64-staging.flatpak",
-   "size": 29187832,
-   "sha256": "3a4528dc5dd3a04ca2cb71f24bc233d0d7a973f01186785b85628922bf73f00a",
-   "signature_status": "Frozen Flatpak bundle; clean-install verified on the authorized builder.",
-   "runtime_status": "Vibe Coded Emulator 2.2.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0). 2.2.0 is a staging rebuild of the same feature set as 2.1.0: the in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the Automatic sync / room-code multiplayer surfaces."
+   "version": "3.2.2",
+   "platform": "Linux",
+   "architecture": "amd64",
+   "format": "Flatpak",
+   "filename": "an3-offline-3.2.2-linux-amd64-staging.flatpak",
+   "size": 29658400,
+   "sha256": "a6a08d4965eccb14905d95582ce411d87c8a9b1087011a34859398a0d6c21477",
+   "source_revision": "e054583225f2ba787468ff3126ecf7f8c5ae3d92",
+   "signature_status": "Unsigned local staging Flatpak bundle; clean per-user installation and SHA-256 sidecar verified.",
+   "runtime_status": "Debian 13 x86_64 clean per-user installation and app launch verified; packaged UI/assets rendered and AppStream reports GPL-3.0-or-later. The headless host document portal could not mount /run/user/1000/doc, so picker import and gameplay are UNVERIFIED for Flatpak. The bundle includes the GPL-3.0-or-later app notices and bundled core licenses."
   },
   {
    "version": "2.2.0",
