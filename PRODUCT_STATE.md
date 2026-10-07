@@ -19,7 +19,7 @@ playback journey.
 
 | Item | State |
 | --- | --- |
-| Public `main` | `e4672d4` |
+| Public `main` | `fb51f6a` |
 | Latest tag | `v3.3.3` -> `826516c` |
 | Latest release | `Vibe Coded Emulator v3.3.3`, **published** 2026-10-07T01:46:24Z |
 | Open PRs | none |
@@ -28,6 +28,7 @@ playback journey.
 | CI at `51b15b2` (PR head) | `ci` 37515820061 success, `native-build` 37515820205 success, all 9 jobs |
 | CI at `826516c` (tag head) | `native-release` 37554101292 success: all 9 build/acceptance jobs plus draft release |
 | CI at `9fb51b8` (post-release main) | `ci` 37559484937 success; `native-build` 37559484898 success: all 9 jobs, including API-35 library smoke, settings acceptance, and GBA SRAM |
+| Continuation repair `b3b0f08` | `ci` 37565381718 success; recursive catalog resolution covered by 8/8 focused tests and validated against the actual nested installer layout |
 | Release catalog | committed at `e4672d4`, generated from the tag-built bytes, also attached to the release |
 
 ## Product defects found and fixed (b699233)
@@ -138,8 +139,8 @@ gate on the shipped bytes), and exited cleanly on `SIGTERM`.
 ## Continuation checkpoint
 
 EXACT NEXT STEP: Commit this checkpoint, then pursue physical-device gameplay
-acceptance for the published v3.3.3 binaries; `native-build` run `37559484898`
-is now fully green.
+acceptance for the published v3.3.3 binaries. Prior and continuation CI are
+green, including completed `native-build` run `37559484898`.
 CURRENT HEAD: `product/3.3.3-release @ b3b0f08`, synchronized with `github/main` at push time.
 WORKTREE STATUS: 1 tracked modification (`PRODUCT_STATE.md`); 13 untracked local build/vendor paths; do not clean or reset.
 CURRENT WORK: Commit this checkpoint; the repair is already pushed, so only the resume note is pending.
@@ -163,15 +164,15 @@ owner approval and is never automatic.
 
 ## Known non-blocking upstream advisories
 
-Two moderate Dependabot advisories with **no patched version available**, both
-transitive and both outside the shipped runtime path:
+Two moderate Dependabot advisories, both transitive and both outside the
+directly exercised product path:
 
-- `rustls 0.23.43` (GHSA-2mjx-qc3c-rqvc) — reachable only through
-  `rust-gateway/`, a staging-only shadow reverse proxy that no shipped artifact
-  contains and that only `ci` builds.
-- `glib 0.18.5` — pulled in by Tauri's GTK/webkit2gtk bindings on Linux. The
-  advisory covers `glib::VariantStrIter` iterator soundness; AN3 does not use
-  that type.
+- `rustls` GHSA-2mjx-qc3c-rqvc is now marked fixed after Dependabot PR #7
+  bumped `rust-gateway` to 0.23.45.
+- `glib 0.18.5` GHSA-wrw7-89jp-8q8g remains open. Upstream fixed the issue in
+  `glib >= 0.20.0`, but the pinned Tauri/webkit2gtk chain still resolves 0.18.5.
+  AN3 source does not name `VariantStrIter`; a transitive call cannot be ruled
+  out from the source grep alone.
 
-Neither is fixable without an upstream release. Do not attempt a forced
-`--breaking` bump of the pinned Tauri/Toolkit stack.
+Do not force a breaking Tauri/GTK-stack bump for the remaining advisory without
+a reproducible runtime failure and a measured migration plan.
