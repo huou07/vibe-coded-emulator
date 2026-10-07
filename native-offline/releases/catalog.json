@@ -20,7 +20,7 @@
         "Eden"
       ],
       "signature_status": "Ad-hoc signed only; not notarized.",
-      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar: mounts read-only, contains VibeCodedEmulator.app 3.3.3/space.an3tocom.offline with the drag-to-Applications install target, codesign --verify --deep --strict passes, no development-machine dylib paths in otool -L, bundled cores (mGBA, melonDS DS, Azahar, MoltenVK) present, and 25 self-contained Eden companion libraries match the companion manifest. The test-only ui-control bridge marker is absent from the shipped executable. Interactive gameplay on this exact DMG is unverified."
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar: mounts read-only, contains VibeCodedEmulator.app 3.3.3/space.an3tocom.offline with the drag-to-Applications install target, codesign --verify --deep --strict passes with the expected JIT entitlements, no development-machine dylib paths in otool -L, bundled cores (mGBA, melonDS DS, Azahar, MoltenVK) present, and 25 self-contained Eden companion libraries matching the companion manifest. The shipped executable contains no ui-control bridge marker. Launched from the mounted DMG copy with an isolated HOME: bound its loopback runtime, served the shell and its assets, held 0% CPU at ~103 MB RSS, created no bridge control file, and exited cleanly on SIGTERM. Interactive gameplay with a user ROM on this exact DMG is unverified."
     },
     {
       "version": "3.3.3",
