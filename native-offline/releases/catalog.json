@@ -3,15 +3,16 @@
  "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
  "artifacts": [
   {
-   "version": "2.2.0",
+   "version": "3.2.3",
    "platform": "macOS",
    "architecture": "arm64",
    "format": "DMG",
-   "filename": "vibecodedemulator-2.2.0-macos-aarch64.dmg",
-   "size": 44894345,
-   "sha256": "9886088642cd471731195272d64c50177919a9cc2f6c3e67a172c01310457d4b",
-   "signature_status": "Ad-hoc native package from frozen source; unsigned/not notarized staging build.",
-   "runtime_status": "Vibe Coded Emulator 2.2.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0). 2.1.0 adds an in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the simple Automatic sync / room-code multiplayer surfaces. 2.2.0 is a staging rebuild of the same feature set as 2.1.0: the in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the Automatic sync / room-code multiplayer surfaces."
+   "filename": "vibecodedemulator-3.2.3-macos-aarch64.dmg",
+   "size": 58209859,
+   "sha256": "6b315534774997c82bbc0e72e7d459f9e8020c75c89a8229f4fdf869d5980d6b",
+   "source_revision": "0021041a8208d29d029a5972f1d181ad981ff2ca",
+   "signature_status": "Ad-hoc signed staging DMG; not notarized.",
+   "runtime_status": "Vibe Coded Emulator 3.2.3 launched and rendered its Play home screen on macOS 27. All six packaged Mach-O files declare minimum macOS 13.4 or earlier and have no Homebrew runtime loads. The pinned Eden Switch companion source build linked at 13.4 and its no-content smoke passed 43 checks. Switch game launch, gameplay, and input are UNVERIFIED because no homebrew fixture or live harness was available. GPL-3.0-or-later app notices and bundled core licenses are included."
   },
   {
    "version": "3.2.3",
