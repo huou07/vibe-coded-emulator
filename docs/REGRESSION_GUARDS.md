@@ -147,6 +147,25 @@ recommends independent work.
   Staging and production were not accessed. Details:
   `reports/handoff/2026-10-08-web-download-path-acceptance.md`.
 
+## macOS Switch companion deployment target — RG-141, 2026-10-08
+
+- RG-141: **The macOS Switch companion must link every Apple framework it
+  uses, and every packaged Mach-O must honor the app's 13.4 minimum.** SDL3's
+  macOS input/file-type implementation references Carbon keyboard APIs and
+  `UniformTypeIdentifiers`; `native/eden-bridge/integration/CMakeLists.txt`
+  now links both explicitly. A fresh source-dependency build of the pinned
+  Eden revision (`7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`) linked without
+  global linker overrides, has no Homebrew runtime dependencies, and reports
+  minOS 13.4. The packaged 3.2.3 app's six Mach-O files all report minOS at or
+  below 13.4, with no `/opt/homebrew` or `/usr/local` loads. The packaged app
+  launched and rendered its home screen; the no-content bridge smoke passed
+  43 checks. **UNVERIFIED:** Switch game launch, gameplay, and input because no
+  homebrew fixture or live Switch harness was available. Rust 1.98 on macOS
+  27 still requires the isolated target-directory/11.0 build workaround for
+  Tauri; the final app metadata remains 13.4 and its bundled Mach-O audit is
+  the authority for the supported minimum. Source guard:
+  `tests.test_eden_switch_bridge` (20 passed, 4 runtime tests skipped).
+
 ## Current authority — Switch/Eden bridge, 2026-09-17
 
 - RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N] [--seconds N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **FIXED 2026-09-17 (sustained rendering).** Root cause: the bare `CAMetalLayer` in `src/cocoa_surface.mm` had zero bounds, so MoltenVK created `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` then failed with `kIOGPUCommandBufferCallbackErrorInvalidInput` → `VK_ERROR_OUT_OF_DEVICE_MEMORY: Lost VkDevice` → an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread → SIGABRT (the ABI cannot catch a foreign-thread throw; same class as RG-111). Fix: host the layer on a hidden `NSWindow`/`NSView` (AppKit), giving it a real drawable size and letting Core Animation recycle drawables. Validation: swapchain now reports `size (1280, 720)`, created once. `--frames 1|5|10|30|60|120|300|600` all PASS (exit 0); `--frames 600` 8/8 runs PASS; sustained `--seconds 65` (3883 frames), `--seconds 60` ×2 (3583 frames each) all PASS with **0 MoltenVK errors** and clean shutdown. Reproduce: `LIBVULKAN_PATH=<moltenvklib> an3_eden_bridge_smoke --json --seconds 60 <nx-hbmenu.nro>`. Frame *delivery to a caller* is still later milestone D work; this guard covers process stability only.

@@ -55,7 +55,9 @@ if(APPLE)
     # Hosted CAMetalLayer surface (cocoa_surface.mm): AppKit hosts the hidden
     # window/view that gives the layer a real size and recycles drawables.
     target_link_libraries(an3_eden_bridge PRIVATE
-        "-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+        "-framework AppKit" "-framework Metal" "-framework QuartzCore" "-framework Foundation"
+        # SDL3 uses legacy keyboard APIs and UTType for macOS input/file types.
+        "-framework Carbon" "-framework UniformTypeIdentifiers")
 endif()
 
 # Eden's own GPU dependencies (FetchContent external projects). Link them
