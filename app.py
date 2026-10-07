@@ -1401,9 +1401,9 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
     # public, account and dashboard surfaces. The existing link remains intact.
     mode_label = "Offline"
     online_target = "/games" if ENVIRONMENT != "production" else "/"
-    mode_aria = tr(lang,"Mở thư viện trực tuyến","Open online library") if offline and ENVIRONMENT != "production" else (tr(lang,"Mở trang tải ứng dụng","Open app downloads") if offline else tr(lang,"Mở thư viện ngoại tuyến","Open offline library"))
+    mode_aria = tr(lang,"Mở thư viện trực tuyến","Open online library") if offline and ENVIRONMENT != "production" else tr(lang,"Mở trang tải ứng dụng","Open app downloads")
     mode_icon = '<span class="ui-mask ui-wifi-off" aria-hidden="true"></span>'
-    mode = f'<a id="modeSwitch" class="mode-switch" href="{online_target if offline else "/offline"}" aria-label="{mode_aria}">{mode_icon}<span>{mode_label}</span></a>'
+    mode = f'<a id="modeSwitch" class="mode-switch" href="{online_target if offline else "/download-app"}" aria-label="{mode_aria}">{mode_icon}<span>{mode_label}</span></a>'
     # The web offline page is a minimal connection notice; the PWA shortcut
     # control belonged to the retired browser-local library and is gone.
     shortcut = ""
@@ -1537,7 +1537,7 @@ def download_app_page(lang, user, csrf):
 <p class="eyebrow">VIBE CODED EMULATOR · OFFLINE</p>
 <h1>{t("TẢI ỨNG DỤNG CHƠI OFFLINE","DOWNLOAD THE OFFLINE APP")}</h1>
 <p>{t("Chạy GBA, NDS và 3DS từ ROM của chính bạn. Không tài khoản. Không cần internet.","Play GBA, NDS and 3DS from your own ROM files. No account. No internet required.")}</p>
-<div class="download-app-actions">{source_action}<a class="button" href="/offline">{t("Mở bản web offline","Open the web offline player")}</a></div>
+<div class="download-app-actions">{source_action}<a class="button" href="#platformTitle">{t("Chọn nền tảng của bạn","Choose your platform")}</a></div>
 </section>
 <section class="download-app-platforms" aria-labelledby="platformTitle">
 <header><p class="eyebrow">{t("NỀN TẢNG","PLATFORMS")}</p><h2 id="platformTitle">{t("Chọn hệ điều hành của bạn","Choose your operating system")}</h2></header>
@@ -1721,7 +1721,7 @@ def home_page(lang, user, csrf):
     collection_games = [game for game in games if game["slug"] not in recommended_slugs] or games
     collection_cards = "".join(card(game, compact=True) for game in collection_games)
     collection = f'''<section class="game-system-section collection-section" data-section-kind="collection"><div class="section-title"><div class="section-heading"><span class="ui-mask ui-gamepad" aria-hidden="true"></span><h2>{tr(lang,"Bộ sưu tập của bạn","Your collection")}</h2></div><button class="section-link collection-link" type="button" data-library-reset>{tr(lang,"Xem tất cả","View all")}<span class="ui-mask ui-chevron-right" aria-hidden="true"></span></button></div><div class="game-grid">{collection_cards}</div></section>'''
-    empty = f'<div class="empty-state"><strong>{tr(lang,"Thư viện đang chờ game đầu tiên.","The library is waiting for its first game.")}</strong><span>{tr(lang,"Bạn vẫn có thể mở ROM riêng đã lưu trên thiết bị.","You can still open a private ROM saved on this device.")}</span><a class="button primary" href="/offline">{tr(lang,"Mở thư viện ngoại tuyến","Open offline library")}</a></div>'
+    empty = f'<div class="empty-state"><strong>{tr(lang,"Thư viện đang chờ game đầu tiên.","The library is waiting for its first game.")}</strong><span>{tr(lang,"Chơi ROM riêng của bạn bằng ứng dụng ngoại tuyến AN3.","Play your own ROMs with the AN3 offline app.")}</span><a class="button primary" href="/download-app">{tr(lang,"Tải ứng dụng ngoại tuyến","Get the offline app")}</a></div>'
     populated_library = f'''<nav id="systemFilters" class="system-filters" aria-label="{tr(lang,"Lọc theo hệ máy","Filter by system")}"><button class="system-filter active" type="button" data-system-filter="all" aria-pressed="true">{tr(lang,"Tất cả","All")}<span>{len(games)}</span></button>{filters}</nav><p id="libraryStatus" class="library-status" aria-live="polite"></p>{recommended}{collection}<div id="libraryNoResults" class="empty-state" hidden><strong>{tr(lang,"Không tìm thấy trò chơi phù hợp.","No matching games found.")}</strong><span>{tr(lang,"Thử từ khóa khác hoặc xóa bộ lọc hệ máy.","Try another search or clear the system filter.")}</span><button id="resetLibrary" class="button" type="button">{tr(lang,"Xóa tìm kiếm và bộ lọc","Clear search and filters")}</button></div>'''
     body = f"""<main class="page library-page"><section class="library-head"><div><p class="eyebrow">an3tocom.space</p><h1>{tr(lang,"Thư viện trò chơi","Game library")}</h1><p class="muted">{tr(lang,"Chọn game và chơi ngay trên thiết bị của bạn.","Choose a game and play it on your own device.")}</p></div></section>
 <section class="library-toolbar" aria-label="{tr(lang,'Tìm và lọc trò chơi','Find and filter games')}"><label class="search" for="gameSearch"><span>{tr(lang,'Tìm trò chơi','Search games')}</span><span class="search-field"><span class="ui-mask ui-search" aria-hidden="true"></span><input id="gameSearch" type="search" placeholder="{tr(lang,'Tìm trò chơi','Search games')}" autocomplete="off"><button id="clearSearch" class="search-clear" type="button" hidden>{tr(lang,'Xóa','Clear')}</button></span></label></section>
