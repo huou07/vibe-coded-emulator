@@ -126,6 +126,42 @@ class ReleaseCatalogGeneratorTests(unittest.TestCase):
                                   expect_success=False)
         self.assertNotEqual(result.returncode, 0)
 
+    def test_releases_and_tauri_conf_overrides_are_honoured(self):
+        """The tag workflow points --releases at its download directory.
+
+        The catalog must land there, not beside the script, and the version must
+        come from the requested tauri.conf.json rather than a path relative to
+        the repository.
+        """
+        self.stage_artifacts()
+        scratch = self.scratch / "dist"
+        scratch.mkdir()
+        for template in FILENAMES:
+            (scratch / template.format(v="9.9.9")).write_bytes(os.urandom(2048))
+        elsewhere = self.scratch / "conf"
+        elsewhere.mkdir()
+        (elsewhere / "tauri.conf.json").write_text(
+            json.dumps({"version": "9.9.9"}), encoding="utf-8"
+        )
+        result = subprocess.run(
+            [sys.executable, "tools/build-release-catalog.py",
+             "--source-commit", self.commit,
+             "--releases", str(scratch),
+             "--tauri-conf", str(elsewhere / "tauri.conf.json"),
+             "--release-candidate", "v9.9.9-staging"],
+            cwd=self.tree, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((scratch / "catalog.json").is_file())
+        catalog = json.loads((scratch / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(catalog["release_candidate"], "v9.9.9-staging")
+        self.assertEqual(
+            {entry["version"] for entry in catalog["artifacts"]}, {"9.9.9"}
+        )
+        # Nothing was written beside the script.
+        self.assertFalse((self.tree / "native-offline/releases/catalog.json").exists())
+        self.assertFalse((self.tree.parent / "catalog.json").exists())
+
     def test_dry_run_writes_nothing(self):
         self.stage_artifacts()
         before = sorted(path.name for path in self.releases.iterdir())

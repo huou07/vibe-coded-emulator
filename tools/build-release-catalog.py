@@ -11,7 +11,8 @@ catalog deterministically.
 
 Usage:
     python3 tools/build-release-catalog.py --source-commit SHA [--version X.Y.Z]
-        [--release-candidate NAME] [--runtime-status TEXT] [--dry-run]
+        [--release-candidate NAME] [--runtime-status TEXT] [--releases DIR]
+        [--dry-run]
 
 The version defaults to the desktop `tauri.conf.json` version, which is what
 `tools/release-train.sh` uses for the artifact filenames, so the catalog and the
@@ -54,8 +55,8 @@ UNSIGNED = {
 }
 
 
-def desktop_version() -> str:
-    return json.loads(TAURI_CONF.read_text(encoding="utf-8"))["version"]
+def desktop_version(tauri_conf: Path) -> str:
+    return json.loads(tauri_conf.read_text(encoding="utf-8"))["version"]
 
 
 def sha256_file(path: Path) -> str:
@@ -86,10 +87,17 @@ def main() -> int:
     parser.add_argument("--release-candidate", default=None)
     parser.add_argument("--runtime-status", default="Generated from built artifacts; runtime acceptance not recorded.")
     parser.add_argument("--core", action="append", dest="cores")
+    parser.add_argument("--releases", default=None,
+                        help="directory holding the built installers (default: native-offline/releases)")
+    parser.add_argument("--tauri-conf", default=None,
+                        help="path to tauri.conf.json (default: native-offline/src-tauri/tauri.conf.json)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    version = args.version or desktop_version()
+    releases = Path(args.releases).resolve() if args.releases else RELEASES
+    tauri_conf = Path(args.tauri_conf).resolve() if args.tauri_conf else TAURI_CONF
+
+    version = args.version or desktop_version(tauri_conf)
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         parser.error(f"invalid version: {version}")
     if not re.fullmatch(r"[0-9a-f]{40}", args.source_commit):
@@ -100,7 +108,7 @@ def main() -> int:
     missing = []
     for platform, fmt, architecture, template in LAYOUT:
         filename = template.format(v=version)
-        path = RELEASES / filename
+        path = releases / filename
         if not path.is_file():
             missing.append(filename)
             continue
@@ -145,10 +153,14 @@ def main() -> int:
         print(body)
         return 0
 
-    CATALOG.write_text(body, encoding="utf-8")
+    # Write beside the artifacts so a caller can point --releases at a scratch
+    # directory (the release workflow downloads into one) without creating a
+    # stray tree next to the script.
+    catalog_path = releases / "catalog.json"
+    catalog_path.write_text(body, encoding="utf-8")
     for entry in artifacts:
-        write_sidecar(RELEASES / entry["filename"])
-    print(f"RELEASE_CATALOG_WRITTEN version={version} artifacts={len(artifacts)}")
+        write_sidecar(releases / entry["filename"])
+    print(f"RELEASE_CATALOG_WRITTEN version={version} artifacts={len(artifacts)} path={catalog_path}")
     for entry in artifacts:
         print(f"  {entry['format']:8} {entry['filename']} {entry['sha256'][:16]}")
     return 0
