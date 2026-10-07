@@ -2,6 +2,8 @@
 
 import http.client
 import pathlib
+import subprocess
+import tempfile
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -72,6 +74,23 @@ class LicenseFileTests(unittest.TestCase):
     def test_no_proprietary_license_reference_remains_in_the_app(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertNotIn("LicenseRef-proprietary", source)
+
+    def test_public_snapshot_keeps_linux_core_licenses_without_binaries(self):
+        licenses = ("mGBA-MPL-2.0.txt", "melonDS-DS-GPL-3.0-or-later.txt")
+        with tempfile.TemporaryDirectory(prefix="an3-public-source-") as temporary:
+            snapshot = pathlib.Path(temporary) / "snapshot"
+            result = subprocess.run(
+                ["bash", str(ROOT / "tools/build-public-snapshot.sh"), "--output", str(snapshot)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            source = ROOT / "native-offline/vendor/libretro/macos-arm64"
+            destination = snapshot / "native-offline/vendor/libretro/macos-arm64"
+            self.assertEqual(sorted(path.name for path in destination.iterdir()), sorted(licenses))
+            for license in licenses:
+                self.assertEqual((destination / license).read_bytes(), (source / license).read_bytes())
 
 
 class LicenseRouteTests(unittest.TestCase):
