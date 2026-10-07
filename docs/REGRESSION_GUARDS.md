@@ -65,6 +65,18 @@ recommends independent work.
   packaged app was available in this work session; Node evidence does not
   establish packaged runtime behavior.
 
+## Public snapshot cache exclusion — RG-130, 2026-10-08
+
+- RG-130: **A public source snapshot must exclude Python `__pycache__` bytecode.**
+  Compiled test files can embed a developer's absolute source path; the public
+  snapshot builder copied `tests/` recursively and its personal-data gate
+  correctly rejected the candidate. `tools/build-public-snapshot.sh` now
+  removes `__pycache__` directories from the candidate. Validation: a fresh
+  snapshot contains no `__pycache__`; `tools/publication-check.sh` reports
+  gitleaks 0 findings, clean personal-data/infra patterns, and `PASS`.
+  Owners: `tools/build-public-snapshot.sh`, public source publication.
+  Blast: public snapshot provenance and privacy.
+
 ## Current authority — Switch/Eden bridge, 2026-09-17
 
 - RG-115: The Eden bridge's deterministic harness (`native/eden-bridge/tests/bridge_smoke.c --json [--frames N] [--seconds N]`) is the Switch regression entry point; it emits one `AN3CTL_STATUS {"target":"switch",...,"result":"PASS|FAIL"}` line. Regression guard for the *error and load paths*: `--json` (no content) = 39 checks PASS; `--json --frames 1 <nx-hbmenu.nro>` = 50 checks PASS. **FIXED 2026-09-17 (sustained rendering).** Root cause: the bare `CAMetalLayer` in `src/cocoa_surface.mm` had zero bounds, so MoltenVK created `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` then failed with `kIOGPUCommandBufferCallbackErrorInvalidInput` → `VK_ERROR_OUT_OF_DEVICE_MEMORY: Lost VkDevice` → an uncaught `Vulkan::vk::Exception` on Eden's `GPU` thread → SIGABRT (the ABI cannot catch a foreign-thread throw; same class as RG-111). Fix: host the layer on a hidden `NSWindow`/`NSView` (AppKit), giving it a real drawable size and letting Core Animation recycle drawables. Validation: swapchain now reports `size (1280, 720)`, created once. `--frames 1|5|10|30|60|120|300|600` all PASS (exit 0); `--frames 600` 8/8 runs PASS; sustained `--seconds 65` (3883 frames), `--seconds 60` ×2 (3583 frames each) all PASS with **0 MoltenVK errors** and clean shutdown. Reproduce: `LIBVULKAN_PATH=<moltenvklib> an3_eden_bridge_smoke --json --seconds 60 <nx-hbmenu.nro>`. Frame *delivery to a caller* is still later milestone D work; this guard covers process stability only.

@@ -54,6 +54,9 @@ cp -R "$ROOT/static/." "$OUT/static/"
 cp -R "$ROOT/tests/." "$OUT/tests/"
 cp -R "$ROOT/native/." "$OUT/native/"
 cp -R "$ROOT/rust-gateway/." "$OUT/rust-gateway/"
+# Python bytecode caches can embed the developer's absolute source paths and
+# are not source; never carry them into the sanitized public candidate.
+find "$OUT" -type d -name '__pycache__' -prune -exec rm -rf {} +
 
 # --- 2. Native project: source only -------------------------------------------
 mkdir -p "$OUT/native-offline"

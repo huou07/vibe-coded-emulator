@@ -6,6 +6,7 @@
 - Branch: `feature/phone-controller-cross-platform`
 - Starting HEAD: `a1a6e3c0a1a003bdfa79d8f177bce1082af82a20`
 - Product fix commit: `d06c7c4` (`fix(sync): preflight peers before ROM hashing`)
+- Sync handoff commit: `cd4246b` (`docs: record native save sync preflight handoff`)
 - Packaged app version: `3.2.1` in `package.json`, `package-lock.json`, and both Tauri configs.
 - Existing unrelated untracked reports, plans, screenshots, and Playwright files remain untouched.
 
@@ -27,6 +28,12 @@ contract and its live acceptance requirement.
 - `git diff --check` — pass.
 - No app package was built. No Android device/emulator or staging runtime was
   available, so packaged save-sync behavior is **UNVERIFIED**.
+- The first public snapshot check correctly rejected copied Python bytecode
+  caches containing a developer path. `tools/build-public-snapshot.sh` now
+  excludes `__pycache__`; a fresh candidate has 482 files / 11 MB and
+  `tools/publication-check.sh` passes (gitleaks: 0 findings; personal-data and
+  infrastructure patterns: clean). A history scan and public push are still
+  pending.
 
 ## Exact next actions
 
@@ -39,6 +46,8 @@ contract and its live acceptance requirement.
    this checkout without resolving the history decision.
 4. Before changing shared player/host code, repeat the required CodeGraph and
    regression-ledger checks. Do not access production.
+5. Complete clean-snapshot history review and publish only if the required
+   security gates and the remote reconciliation check pass.
 
 ## Pending shared-app data question
 
