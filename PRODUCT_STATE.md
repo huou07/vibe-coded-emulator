@@ -82,8 +82,19 @@ not tracked source.
 
 `native-release.yml` is tag-triggered, builds the five platforms through the
 reusable read-only `native-build.yml`, and creates a **draft** release. A human
-then generates the catalog from the downloaded bytes, commits it, reviews and
-publishes. This is the loop v3.3.3 completed.
+then generates the catalog from the downloaded bytes, commits it, uploads it to
+the release, reviews and publishes. This is the loop v3.3.3 completed.
+
+Two gaps worth closing next, both cheap:
+
+- The workflow's generated notes are generic. v3.3.3 needed hand-written
+  per-platform install guidance (Gatekeeper, SmartScreen, unknown-sources) and
+  an honest support matrix. Consider templating them in the workflow from the
+  catalog so every future release gets them automatically.
+- The workflow does not attach `catalog.json`; a human uploads it afterwards.
+  The build job has the bytes, so it could generate and attach the catalog
+  itself with `tools/build-release-catalog.py --source-commit "$GITHUB_SHA"`,
+  leaving only the human `runtime_status` text to fill in.
 
 ## v3.3.3 artifact identity
 
