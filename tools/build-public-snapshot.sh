@@ -140,8 +140,9 @@ done
 cp -R "$TEMPLATES/docs/." "$OUT/docs/"
 
 # --- 5. Overlay the publication templates ------------------------------------
-cp "$TEMPLATES/CONTRIBUTING.md" "$TEMPLATES/SECURITY.md" "$TEMPLATES/.env.example" \
+cp "$TEMPLATES/CONTRIBUTING.md" "$TEMPLATES/SECURITY.md" \
    "$TEMPLATES/.gitleaks.toml" "$TEMPLATES/PROVENANCE.md" "$OUT/"
+cp "$TEMPLATES/env.example.template" "$OUT/.env.example"
 mkdir -p "$OUT/.github/workflows"
 cp "$TEMPLATES/.github/workflows/ci.yml" "$OUT/.github/workflows/ci.yml"
 
