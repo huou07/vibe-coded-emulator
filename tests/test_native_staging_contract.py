@@ -66,7 +66,10 @@ class NativeStagingContractTests(unittest.TestCase):
         self.assertLess(menu, cursor)
         self.assertLess(cursor, library)
         self.assertIn("const bool compact_controls = width < 600.0", HOST)
-        self.assertIn("const CGFloat speed_y = compact_controls ? height - 78.0 : height - 44.0", HOST)
+        self.assertIn(
+            "const CGFloat speed_y = (compact_controls ? height - 78.0 : height - 44.0) - top_safe_inset",
+            HOST,
+        )
         self.assertIn("volume_row.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor", HOST)
         self.assertIn("volume_row.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor", HOST)
         self.assertIn("minimum_slider_width", HOST)

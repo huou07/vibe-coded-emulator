@@ -17,7 +17,33 @@ mkdir -p "$log_root"
 instrumentation_log="$log_root/instrumentation.txt"
 logcat_log="$log_root/logcat.txt"
 
+if ! command -v timeout >/dev/null 2>&1; then
+  if command -v gtimeout >/dev/null 2>&1; then
+    timeout() { gtimeout "$@"; }
+  else
+    timeout() {
+      python3 - "$@" <<'PY'
+import subprocess, sys
+seconds_arg = sys.argv[1]
+seconds = float(seconds_arg[:-1] if seconds_arg.endswith("s") else seconds_arg)
+try:
+    result = subprocess.run(sys.argv[2:], timeout=seconds, check=False)
+except subprocess.TimeoutExpired:
+    raise SystemExit(124)
+raise SystemExit(result.returncode)
+PY
+    }
+  fi
+fi
+
 [[ -s "$app_apk" && -s "$test_apk" ]] || { echo 'App or instrumentation APK is missing.' >&2; exit 2; }
+if [[ "${GITHUB_ACTIONS:-}" != true && "${AN3_DISPOSABLE_AVD:-0}" != 1 ]]; then
+  avd_name="$(timeout 10s adb shell getprop ro.boot.qemu.avd_name 2>/dev/null | tr -d '\r' || true)"
+  if [[ "$avd_name" == "an3qa-api35" ]]; then
+    echo 'Refusing to install tests into the persistent an3qa-api35 profile. Start a disposable AVD data overlay with tools/android/run-with-disposable-avd.sh.' >&2
+    exit 5
+  fi
+fi
 for apk in "$app_apk" "$test_apk"; do
   [[ -s "$apk.sha256" ]] || { echo "Checksum sidecar is missing for $apk." >&2; exit 2; }
   (cd "$(dirname "$apk")" && sha256sum -c "$(basename "$apk").sha256")

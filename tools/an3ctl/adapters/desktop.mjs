@@ -11,6 +11,9 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { An3Error, httpJson, run } from "../lib/core.mjs";
 
+// The native ui-control bridge may wait ten seconds for WebView JavaScript.
+const MACOS_UI_CONTROL_TIMEOUT_MS = 12_000;
+
 export class DesktopAdapter {
   constructor(root) {
     this.root = root;
@@ -62,7 +65,16 @@ export class DesktopAdapter {
     const { port, token } = this.readControl(opts);
     const query = new URLSearchParams(params).toString();
     const path = `${route}${query ? `?${query}` : ""}`;
-    return httpJson(port, path, { headers: { "x-an3-token": token } }).catch(error => {
+    return httpJson(port, path, {
+      timeout: MACOS_UI_CONTROL_TIMEOUT_MS,
+      headers: { "x-an3-token": token },
+    }).then(result => {
+      if (typeof result?.error === "string") {
+        const code = result.error.includes("did not answer in time") ? "E_TIMEOUT" : "E_ACTION_FAILED";
+        throw new An3Error(code, result.error);
+      }
+      return result;
+    }).catch(error => {
       if (error instanceof An3Error) throw error;
       throw new An3Error("E_ACTION_FAILED", `macOS UI bridge call failed (${path}): ${error.message}`);
     });
@@ -72,6 +84,13 @@ export class DesktopAdapter {
     const appPath = opts.app ?? process.env.AN3_MACOS_APP;
     if (!appPath || !existsSync(appPath)) {
       throw new An3Error("E_USAGE", "app start --target macos requires AN3_MACOS_APP (or --app) pointing at the built .app");
+    }
+    const executable = `${appPath}/Contents/MacOS/an3-offline-native`;
+    if (!existsSync(executable) || !readFileSync(executable).includes("AN3_UI_CONTROL_FILE")) {
+      throw new An3Error(
+        "E_TARGET_UNAVAILABLE",
+        "app start --target macos requires the ui-control automation build; --home does not isolate WebKit data for a packaged app, so use a copy with a unique bundle identifier",
+      );
     }
     const controlFile = this.controlFile(opts);
     rmSync(controlFile, { force: true });

@@ -65,13 +65,17 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     if !super::native_file_matches_system(system, &rom) { return Err("The ROM does not match the selected system.".into()); }
     let storage = data.join("native-player").join(system).join(rom_id);
     fs::create_dir_all(&storage).map_err(|e| format!("Cannot prepare native save storage: {e}"))?;
+    let settings_args = crate::native_settings::launch_arguments(
+        &data.join("native-settings.json"),
+        system,
+    )?;
     stop()?;
     let log = storage.join("runtime.log");
     let errors = fs::File::create(&log).map_err(|e| e.to_string())?;
     let layout = match layout { Some("left-right" | "side_by_side") => "left-right", Some("top-bottom" | "top_bottom") => "top-bottom", _ => "preserve" };
     let mut child = Command::new(&runtime)
         .args(["--rom"]).arg(&rom).args(["--system",system,"--layout",layout,"--storage"])
-        .arg(&storage).arg("--control-stdin")
+        .arg(&storage).args(settings_args).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
         .env("GSETTINGS_SCHEMA_DIR", runtime.parent().unwrap().join("share/glib-2.0/schemas"))
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(errors)

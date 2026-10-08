@@ -187,6 +187,37 @@ body.native-app-shell{
 .native-grid .empty-state{grid-column:1/-1;border:1px dashed var(--v-line-2,#38304f);border-radius:12px;padding:26px;text-align:center;color:var(--v-muted,#a5a0b6)}
 .native-grid .empty-state strong{display:block;color:var(--v-text,#f3f1fa);margin-bottom:6px}
 
+/* Active native session controls live in the same VCE shell as Library and Settings. */
+.native-session-card{display:grid;gap:18px;border-color:var(--v-line-2,#38304f)}
+.native-session-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.native-session-heading h2{margin:0 0 6px}
+.native-session-kicker{margin:0 0 5px;color:var(--v-violet-2,#a855f7);font-size:10px;font-weight:750;letter-spacing:.14em}
+.native-session-status{min-height:18px;margin:0;color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-session-group{display:grid;gap:10px;border-top:1px solid var(--v-line,#282238);padding-top:14px}
+.native-session-group h3{margin:0;font-size:13px;font-weight:700;color:var(--v-lavender,#c4b5fd)}
+.native-session-actions,.native-session-save-row{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.native-session-card .button{min-height:42px}
+.native-session-card .button.selected{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent);color:var(--v-text,#f3f1fa)}
+.native-session-save-row .native-field{min-width:84px}
+.native-session-pad{display:flex;align-items:center;flex-wrap:wrap;gap:clamp(14px,3vw,28px);max-width:100%}
+.native-session-cluster{display:grid;gap:6px}
+.native-session-cluster .button{min-width:48px;padding:0 7px;touch-action:none;user-select:none;-webkit-user-select:none}
+.native-session-dpad,.native-session-facepad{grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,46px)}
+.native-session-dpad [data-native-button="4"]{grid-area:1/2}
+.native-session-dpad [data-native-button="6"]{grid-area:2/1}
+.native-session-dpad [data-native-button="5"]{grid-area:2/2}
+.native-session-dpad [data-native-button="7"]{grid-area:2/3}
+.native-session-facepad [data-native-button="1"]{grid-area:1/2}
+.native-session-facepad [data-native-button="9"]{grid-area:2/3}
+.native-session-facepad [data-native-button="0"]{grid-area:3/2}
+.native-session-facepad [data-native-button="8"]{grid-area:2/1}
+.native-session-meta-pad{grid-template-columns:repeat(2,minmax(48px,58px));grid-template-rows:repeat(2,46px)}
+.native-session-meta-pad .button{font-size:12px}
+.native-session-check{display:flex;align-items:center;gap:9px;min-height:42px;color:var(--v-text,#f3f1fa);font-size:13px}
+.native-session-check input{width:18px;height:18px}
+.native-session-layout{max-width:260px}
+.native-session-card input[type="range"]{max-width:360px;accent-color:var(--v-violet-2,#a855f7)}
+
 /* Bottom navigation (portrait) */
 .native-bottomnav{
   position:fixed;left:0;right:0;bottom:0;z-index:30;
@@ -225,6 +256,8 @@ body.native-app-shell{
   .native-topbar{gap:8px;flex-wrap:wrap}
   .native-search{order:3;width:100%}
   .native-title{flex:1}
+  .native-session-heading{flex-direction:column;align-items:stretch}
+  .native-session-heading .button{align-self:flex-start}
 }
 
 /* Game Settings / Application settings (canonical per-core settings UI) */

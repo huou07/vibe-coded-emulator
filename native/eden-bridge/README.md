@@ -51,6 +51,7 @@ cmake -S /tmp/eden -B /tmp/eden-build -G Ninja \
   -DAN3_EDEN_BRIDGE_DIR="$PWD/native/eden-bridge" \
   -DENABLE_QT=OFF -DYUZU_CMD=OFF -DENABLE_LIBUSB=OFF \
   -DENABLE_WERROR=OFF -DENABLE_DEBUG_TOOLS=OFF -DENABLE_RESHADE=OFF \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build /tmp/eden-build --target an3_eden_bridge_smoke -j 10
 ```

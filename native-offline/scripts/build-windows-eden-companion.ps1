@@ -8,7 +8,6 @@ Param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $nativeRoot = Split-Path -Parent $PSScriptRoot
-& (Join-Path $nativeRoot '../tools/disk-preflight.ps1') -Label 'Windows Eden companion build' -Path $nativeRoot
 $commit = if ($env:AN3_EDEN_COMMIT) { $env:AN3_EDEN_COMMIT } else { '7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c' }
 $runnerTemp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { 'C:\AN3' }
 if (-not $EdenRoot) { $EdenRoot = Join-Path $runnerTemp "an3-eden-$commit" }
