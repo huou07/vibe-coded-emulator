@@ -155,6 +155,9 @@ cp "$TEMPLATES/CONTRIBUTING.md" "$TEMPLATES/SECURITY.md" \
 cp "$TEMPLATES/env.example.template" "$OUT/.env.example"
 mkdir -p "$OUT/.github/workflows"
 cp "$TEMPLATES/.github/workflows/ci.yml" "$OUT/.github/workflows/ci.yml"
+native_workflow="$ROOT/.github/workflows/native-build.yml"
+[[ -f "$native_workflow" ]] || native_workflow="$TEMPLATES/.github/workflows/native-build.yml"
+[[ -f "$native_workflow" ]] && cp "$native_workflow" "$OUT/.github/workflows/native-build.yml"
 
 # --- 6. Sanitize personal data and private infrastructure --------------------
 python3 - "$OUT" "$ROOT" <<'PY'
