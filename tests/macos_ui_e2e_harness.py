@@ -201,6 +201,11 @@ def run_native_gameplay(case, label):
 
     # The library UI is present and the capability was detected.
     case.assertTrue(case.wait_ui("game-grid")["ok"])
+    empty_library = case.ui_query("game-card")
+    case.assertIsNone(
+        empty_library["data"]["node"],
+        "the isolated test HOME must not expose an existing library entry",
+    )
 
     # Import through the real picker control (pre-answered only in ui-control
     # builds via AN3_UI_TEST_ROM, so the real import handler still runs).

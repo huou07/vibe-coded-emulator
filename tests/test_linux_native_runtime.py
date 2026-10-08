@@ -189,7 +189,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
             binary = Path(temporary) / "frame-queue"
             command = [
                 compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic",
-                "-I", "/Users/meomeo/Documents/an3-runtime-performance/native-offline/vendor/moltenvk/macos-arm64/include",
+                "-I", "~/<REDACTED_PATH>",
                 "-I", str(ROOT / "native-offline/native-runtime"),
                 "-I", str(ROOT / "native-offline/native-runtime/core"),
                 str(ROOT / "native-offline/native-runtime/video/software_frame_queue.cpp"),

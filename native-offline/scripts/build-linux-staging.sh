@@ -14,6 +14,7 @@ case "$target" in deb|flatpak) ;; *) echo 'Usage: build-linux-staging.sh <deb|fl
 [[ "$(uname -m)" == "x86_64" ]] || { echo 'This staging package currently targets Linux x86_64.' >&2; exit 2; }
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$(dirname "$root")/tools/disk-preflight.sh" "Linux $target staging package" "$(dirname "$root")"
 build="$root/work/linux-build"
 release="${AN3_RELEASE_DIR:-$root/releases}"
 binary="$build/an3-offline-native"
