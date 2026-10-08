@@ -26,6 +26,7 @@ The security-relevant surfaces are:
 - The Python web app (`app.py` and the shared modules) and its HTTP routes.
 - The web player (`static/`) and its Content-Security-Policy handling.
 - The native shells (`native-offline/`) and the Eden bridge (`native/eden-bridge/`).
+- The Google Drive synchronisation and LAN transfer code paths.
 
 ## Secrets and personal data
 

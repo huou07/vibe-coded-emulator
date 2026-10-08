@@ -19,7 +19,7 @@ This gives LAN Sync, Phone Controller and save tests the same real ROM identity
 on two devices without shipping any copyrighted content.
 
 Usage:
-    python3 tools/testrom/gba_homebrew_test.py [output.gba [title]]
+    python3 tools/testrom/gba_homebrew_test.py [output.gba [title] [--latch-input]]
 """
 import struct
 import sys
@@ -48,14 +48,9 @@ LITERALS = [
 ]
 
 
-# The program is emitted as a fixed list of words; the PC-relative offsets for
-# the ldr instructions are computed from the final layout so the literal pool
-# stays in sync.
+# The PC-relative offsets for ldr instructions are computed from the final code
+# layout so the optional input-latch instructions keep the literal pool in sync.
 CODE_WORDS_BEFORE_POOL = 35  # instructions before the literal pool
-
-
-def _pool_base() -> int:
-    return ENTRY_OFFSET + CODE_WORDS_BEFORE_POOL * 4
 
 
 def _strb(rd: int, rn: int, imm: int) -> int:
@@ -72,58 +67,84 @@ def _add(rd: int, rn: int, imm: int) -> int:
     return 0xE2800000 | (rn << 16) | (rd << 12) | (imm & 0xFFF)
 
 
-def build_code() -> bytes:
-    pool = _pool_base()
+def build_code(latch_input: bool = False) -> bytes:
+    code_words = CODE_WORDS_BEFORE_POOL + (3 if latch_input else 0)
+    pool = ENTRY_OFFSET + code_words * 4
+    words: list[int] = []
 
-    def ldr_at(index: int, reg: int, literal: int) -> int:
-        """ldr reg, [pc, #imm] pointing at a literal pool entry."""
-        pc = ENTRY_OFFSET + index * 4 + 8
-        return 0xE59F0000 | (reg << 12) | ((pool + literal * 4 - pc) & 0xFFF)
+    def ldr(reg: int, literal: int) -> tuple[str, int, int]:
+        return ("ldr", reg, literal)
 
-    words = [
-        ldr_at(0, 0, 0),   # ldr r0, DISPCNT
-        ldr_at(1, 1, 1),   # ldr r1, mode 3 | BG2
-        0xE5801000,        # str r1, [r0]
-        ldr_at(3, 0, 2),   # ldr r0, SRAM base
-        _ldrb(1, 0, 0),    # ldrb r1, [r0]   (8-bit read resolves SRAM save type)
-        ldr_at(5, 2, 3),   # ldr r2, 'A'
-        0xE1510002,        # cmp r1, r2      (was a save restored?)
-        ldr_at(7, 8, 4),   # ldr r8, red
-        ldr_at(8, 9, 5),   # ldr r9, green
-        0x01A08009,        # moveq r8, r9    (restored -> green base colour)
-        ldr_at(10, 2, 6),  # ldr r2, 'A'
-        _strb(2, 0, 0),    # strb r2, [r0]     "AN3B" signature
-        ldr_at(12, 2, 7),  # ldr r2, 'N'
-        _strb(2, 0, 1),    # strb r2, [r0, #1]
-        ldr_at(14, 2, 8),  # ldr r2, '3'
-        _strb(2, 0, 2),    # strb r2, [r0, #2]
-        ldr_at(16, 2, 9),  # ldr r2, 'B'
-        _strb(2, 0, 3),    # strb r2, [r0, #3]
-        _ldrb(10, 0, 4),   # ldrb r10, [r0, #4] boot counter
-        _add(10, 10, 1),   # add r10, r10, #1
-        _strb(10, 0, 4),   # strb r10, [r0, #4]
-        ldr_at(21, 7, 10), # ldr r7, KEYINPUT
-        ldr_at(22, 6, 11), # ldr r6, blue
-        ldr_at(23, 2, 12), # loop: ldr r2, VRAM (reset after each fill)
-        0xE1D710B0,        # loop: ldrh r1, [r7]
-        0xE3110001,        # tst r1, #1        (A held?)
-        0x01A05008,        # moveq r5, r8      (base colour)
-        0x11A05006,        # movne r5, r6      (blue)
-        0xE3A03C96,        # mov r3, #0x9600   (240*160 pixels)
-        0xE0C250B2,        # fill: strh r5, [r2], #2
-        0xE2533001,        # subs r3, r3, #1
-        0x1AFFFFFC,        # bne fill
-        0xEAFFFFF5,        # b loop (reload VRAM before the next frame)
-        0xE1A00000,        # nop (pool alignment)
-        0xE1A00000,        # nop
-    ]
-    assert len(words) == CODE_WORDS_BEFORE_POOL, len(words)
+    def emit(items) -> None:
+        for item in items:
+            if isinstance(item, tuple):
+                _, reg, literal = item
+                pc = ENTRY_OFFSET + len(words) * 4 + 8
+                item = 0xE59F0000 | (reg << 12) | ((pool + literal * 4 - pc) & 0xFFF)
+            words.append(item)
+
+    def branch(condition: int, target: int) -> int:
+        offset = target - (len(words) + 2)
+        return (condition << 28) | 0x0A000000 | (offset & 0xFFFFFF)
+
+    emit([
+        ldr(0, 0),          # ldr r0, DISPCNT
+        ldr(1, 1),          # ldr r1, mode 3 | BG2
+        0xE5801000,         # str r1, [r0]
+        ldr(0, 2),          # ldr r0, SRAM base
+        _ldrb(1, 0, 0),     # ldrb r1, [r0]   (8-bit read resolves SRAM save type)
+        ldr(2, 3),          # ldr r2, 'A'
+        0xE1510002,         # cmp r1, r2      (was a save restored?)
+        ldr(8, 4),          # ldr r8, red
+        ldr(9, 5),          # ldr r9, green
+        0x01A08009,         # moveq r8, r9    (restored -> green base colour)
+        ldr(2, 6),          # ldr r2, 'A'
+        _strb(2, 0, 0),     # strb r2, [r0]   "AN3B" signature
+        ldr(2, 7),          # ldr r2, 'N'
+        _strb(2, 0, 1),     # strb r2, [r0, #1]
+        ldr(2, 8),          # ldr r2, '3'
+        _strb(2, 0, 2),     # strb r2, [r0, #2]
+        ldr(2, 9),          # ldr r2, 'B'
+        _strb(2, 0, 3),     # strb r2, [r0, #3]
+        _ldrb(10, 0, 4),    # ldrb r10, [r0, #4] boot counter
+        _add(10, 10, 1),    # add r10, r10, #1
+        _strb(10, 0, 4),    # strb r10, [r0, #4]
+    ])
+    if latch_input:
+        words.append(0xE3A0B000)  # mov r11, #0 (initialize input latch)
+    emit([
+        ldr(7, 10),         # ldr r7, KEYINPUT
+        ldr(6, 11),         # ldr r6, blue
+    ])
+    loop = len(words)
+    emit([
+        ldr(2, 12),         # loop: ldr r2, VRAM (reset after each fill)
+        0xE1D710B0,         # ldrh r1, [r7]
+        0xE3110001,         # tst r1, #1        (A held?)
+    ])
+    if latch_input:
+        words.extend([
+            0x03A0B001,      # moveq r11, #1    (remember any A press)
+            0xE35B0001,      # cmp r11, #1
+        ])
+    fill_colour = len(words)
+    emit([
+        0x01A05008,         # moveq r5, r8      (base colour)
+        0x11A05006,         # movne r5, r6      (blue)
+        0xE3A03C96,         # mov r3, #0x9600   (240*160 pixels)
+        0xE0C250B2,         # fill: strh r5, [r2], #2
+        0xE2533001,         # subs r3, r3, #1
+    ])
+    words.append(branch(1, fill_colour + 3))  # bne fill
+    words.append(branch(14, loop))            # b loop (reload VRAM per frame)
+    words.extend([0xE1A00000, 0xE1A00000])   # nops (pool alignment)
+    assert len(words) == code_words, (len(words), code_words)
     code = b"".join(struct.pack("<I", word) for word in words)
     code += b"".join(struct.pack("<I", literal) for literal in LITERALS)
     return code
 
 
-def build(title: bytes = TITLE) -> bytes:
+def build(title: bytes = TITLE, latch_input: bool = False) -> bytes:
     if not 1 <= len(title) <= 12 or any(
         not (ord("A") <= byte <= ord("Z") or ord("0") <= byte <= ord("9"))
         for byte in title
@@ -141,25 +162,29 @@ def build(title: bytes = TITLE) -> bytes:
     for byte in header[0xA0:0xBD]:
         checksum = (checksum - byte) & 0xFF
     header[0xBD] = (checksum - 0x19) & 0xFF
-    body = bytes(header) + build_code()
+    body = bytes(header) + build_code(latch_input)
     padding = (-len(body)) % 0x200
     return body + b"\0" * padding
 
 
 def main() -> int:
-    if len(sys.argv) > 3:
-        print("usage: gba_homebrew_test.py [output.gba [TITLE]]", file=sys.stderr)
+    args = sys.argv[1:]
+    latch_input = "--latch-input" in args
+    if latch_input:
+        args.remove("--latch-input")
+    if len(args) > 2:
+        print("usage: gba_homebrew_test.py [output.gba [TITLE] [--latch-input]]", file=sys.stderr)
         return 2
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("an3-homebrew-test.gba")
+    out = Path(args[0]) if args else Path("an3-homebrew-test.gba")
     title = TITLE
-    if len(sys.argv) > 2:
+    if len(args) > 1:
         try:
-            title = sys.argv[2].encode("ascii")
+            title = args[1].encode("ascii")
         except UnicodeEncodeError:
             print("GBA title must be ASCII", file=sys.stderr)
             return 2
     try:
-        data = build(title)
+        data = build(title, latch_input)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2

@@ -13,16 +13,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { EmulatorAdapter } from "../tools/an3ctl/adapters/emulator.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
 const FIXTURE = process.env.AN3_FIXTURE ?? "/home/YOUR_GITHUB_USER/an3-verify/legal-gba.gba";
 
-function cli(args, { timeoutMs = 180000 } = {}) {
+function cli(args, { timeoutMs = 180000, env = {} } = {}) {
   return new Promise((resolvePromise) => {
-    const child = spawn(CLI, args, { cwd: ROOT });
+    const child = spawn(CLI, args, { cwd: ROOT, env: { ...process.env, ...env } });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -62,6 +64,35 @@ test("usage: an unknown command is a usage error (exit 2)", async () => {
   assert.equal(envelope.error.code, "E_USAGE");
 });
 
+test("emulator: omit the system flag when it is not specified", () => {
+  const adapter = new EmulatorAdapter(ROOT);
+  assert.deepEqual(adapter.buildArgs({ rom: "fixture.gba", frames: 1 }), [
+    "--rom", "fixture.gba", "--headless", "--no-audio", "--no-controls",
+    "--frames", "1", "--status-json",
+  ]);
+});
+
+test("macOS app start rejects packaged apps before removing control files or launching", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "an3ctl-macos-start-"));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const app = join(temp, "VibeCodedEmulator.app");
+  const executable = join(app, "Contents", "MacOS", "an3-offline-native");
+  const controlFile = join(temp, "ui-control.json");
+  mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+  writeFileSync(executable, "release executable without the test bridge");
+  writeFileSync(controlFile, "keep this file");
+
+  const result = await cli([
+    "app", "start", "--target", "macos", "--app", app,
+    "--home", join(temp, "home"), "--control-file", controlFile, "--json",
+  ]);
+  const envelope = parse(result);
+  assert.equal(result.code, 3);
+  assert.equal(envelope.error.code, "E_TARGET_UNAVAILABLE");
+  assert.match(envelope.error.message, /ui-control automation build/);
+  assert.equal(readFileSync(controlFile, "utf8"), "keep this file");
+});
+
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
   const port = process.env.AN3_TEST_PORT ?? "8097";
   const started = parse(await cli(["app", "start", "--target", "web", "--port", port, "--json"]));
@@ -76,35 +107,44 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
   const state = parse(await cli(["app", "state", "--target", "web", "--json"]));
   assert.equal(state.data.running, true);
 
-  const tree = parse(await cli(["ui", "tree", "--target", "web", "--path", "/games", "--limit", "40", "--json"]));
+  const tree = parse(await cli(["ui", "tree", "--target", "web", "--path", "/offline", "--limit", "40", "--json"]));
   assert.equal(tree.ok, true);
   assert.ok(Array.isArray(tree.data.nodes) && tree.data.nodes.length > 0);
   assert.ok(tree.data.nodes.every((node) => typeof node.role === "string" && typeof node.name === "string"));
 
-  const query = parse(await cli(["ui", "query", "--target", "web", "--path", "/games", "--id", "gameSearch", "--json"]));
+  const query = parse(await cli(["ui", "query", "--target", "web", "--path", "/offline", "--id", "offlineTitle", "--json"]));
   assert.equal(query.data.found, true);
   assert.equal(query.data.node.role, "textbox");
 
-  const fill = parse(await cli(["ui", "fill", "--target", "web", "--path", "/games", "--id", "gameSearch", "--value", "emerald", "--json"]));
+  const fill = parse(await cli(["ui", "fill", "--target", "web", "--path", "/offline", "--id", "offlineTitle", "--value", "AN3 UI check", "--json"]));
   assert.equal(fill.data.performed, true);
 
-  const value = parse(await cli(["ui", "value", "--target", "web", "--path", "/games", "--id", "gameSearch", "--json"]));
-  assert.equal(value.data.value, "emerald");
+  const value = parse(await cli(["ui", "value", "--target", "web", "--path", "/offline", "--id", "offlineTitle", "--json"]));
+  assert.equal(value.data.value, "AN3 UI check");
 
-  const waited = parse(await cli(["ui", "wait", "--target", "web", "--path", "/games", "--id", "gameSearch", "--timeout", "4000", "--json"]));
+  const waited = parse(await cli(["ui", "wait", "--target", "web", "--path", "/offline", "--id", "offlineTitle", "--timeout", "4000", "--json"]));
   assert.equal(waited.data.appeared, true);
 
-  const missing = await cli(["ui", "query", "--target", "web", "--path", "/games", "--testid", "definitely-not-here", "--json"]);
+  const missing = await cli(["ui", "query", "--target", "web", "--path", "/offline", "--testid", "definitely-not-here", "--json"]);
   assert.equal(missing.code, 4, "a missing element must exit 4");
   assert.equal(parse(missing).error.code, "E_NOT_FOUND");
 
-  const timeout = await cli(["ui", "wait", "--target", "web", "--path", "/games", "--testid", "definitely-not-here", "--timeout", "1500", "--json"]);
+  const timeout = await cli(["ui", "wait", "--target", "web", "--path", "/offline", "--testid", "definitely-not-here", "--timeout", "1500", "--json"]);
   assert.equal(timeout.code, 5, "a wait timeout must exit 5");
   assert.equal(parse(timeout).error.code, "E_TIMEOUT");
 
   const logs = parse(await cli(["logs", "--target", "web", "--tail", "20", "--json"]));
   assert.equal(logs.ok, true);
   assert.ok(Array.isArray(logs.data.lines));
+
+  const uploadDir = mkdtempSync(join(tmpdir(), "an3ctl-ui-upload-"));
+  t.after(() => rmSync(uploadDir, { recursive: true, force: true }));
+  const uploadFile = join(uploadDir, "fixture.gba");
+  writeFileSync(uploadFile, Buffer.alloc(512));
+  const upload = parse(await cli(["ui", "fill", "--target", "web", "--path", "/offline", "--id", "offlineFile", "--value", uploadFile, "--json"]));
+  assert.equal(upload.data.performed, true);
+  const selectedFile = parse(await cli(["ui", "value", "--target", "web", "--path", "/offline", "--id", "offlineFile", "--json"]));
+  assert.ok(String(selectedFile.data.value).endsWith("fixture.gba"));
 });
 
 test("android: structured tree and a semantic click", async (t) => {

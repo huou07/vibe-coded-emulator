@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 (() => {
+  const offlineScriptPath = new URL(document.currentScript?.src || "/static/offline.js", location.href).pathname;
   const systems = {
     gb:{label:"Game Boy / Color",channel:"stable"}, gba:{label:"Game Boy Advance",channel:"stable"}, nds:{label:"Nintendo DS",channel:"stable"}, "3ds":{label:"Nintendo 3DS",channel:"latest"}, switch:{label:"Nintendo Switch",channel:"native"}, nes:{label:"NES / Famicom",channel:"stable"}, snes:{label:"SNES / Super Famicom",channel:"stable"}, n64:{label:"Nintendo 64",channel:"stable"}, psx:{label:"PlayStation",channel:"stable"}, psp:{label:"PSP",channel:"stable"}, segaMD:{label:"Mega Drive / Genesis",channel:"stable"}, segaMS:{label:"Master System",channel:"stable"}, segaGG:{label:"Game Gear",channel:"stable"}, sega32x:{label:"Sega 32X",channel:"stable"}, segaCD:{label:"Sega CD",channel:"stable"}, segaSaturn:{label:"Sega Saturn",channel:"stable"}, arcade:{label:"Arcade / FBNeo",channel:"stable"}, "3do":{label:"3DO",channel:"stable"}, atari2600:{label:"Atari 2600",channel:"stable"}, atari7800:{label:"Atari 7800",channel:"stable"}, jaguar:{label:"Atari Jaguar",channel:"stable"}, lynx:{label:"Atari Lynx",channel:"stable"}, pce:{label:"PC Engine",channel:"stable"}, amiga:{label:"Amiga",channel:"stable"}, c64:{label:"Commodore 64",channel:"stable"}, doom:{label:"DOOM / PrBoom",channel:"stable"}, html5:{label:"HTML5",channel:"native"}
   };
@@ -452,7 +453,7 @@
     if(nativeOfflineApp){shell.textContent=text("Đóng gói cùng ứng dụng","Bundled with the app");return;}
     if(!("caches" in globalThis)){shell.textContent=text("Không được hỗ trợ","Not supported");return;}
     try {
-      const required=["/offline","/static/site.css","/static/offline.js"],matches=await Promise.all(required.map(path=>caches.match(path)));
+      const required=["/offline","/static/site.css",offlineScriptPath],matches=await Promise.all(required.map(path=>caches.match(path)));
       shell.textContent=matches.every(Boolean)?text("Đã lưu cho origin này","Cached for this origin"):text("Chưa xác minh đủ","Not fully confirmed");
     } catch (_) { shell.textContent=text("Không kiểm tra được","Could not check"); }
   };

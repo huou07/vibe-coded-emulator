@@ -48,32 +48,15 @@ class ConfigTests(unittest.TestCase):
         config = mod.parse_gitleaks_config(REAL_CONFIG.read_text(encoding="utf-8"))
         self.assertEqual(config["warnings"], [])
         self.assertTrue(config["extend_default"])
-        self.assertEqual(len(config["allowlists"]), 4)
+        self.assertEqual(len(config["allowlists"]), 2)
         allowlist = config["allowlists"][0]
         self.assertEqual(allowlist["paths"], ["static/player-runtime\\.js$"])
         self.assertEqual(allowlist["regexes"], ["an3-presentation-renderer-v1"])
-        account_allowlist = config["allowlists"][1]
         self.assertEqual(
-            account_allowlist["paths"],
-            [
-                "(^|/|!)native-account\\.js$",
-                "(^|/|!)tauri\\.conf\\.json$",
-                "(^|/|!)liban3_offline_native\\.so$",
-                "(^|/|!)an3-offline-native$",
-            ],
-        )
-        self.assertEqual(account_allowlist["regexes"], ["an3tocom\\.space"])
-        self.assertEqual(
-            config["allowlists"][2]["paths"], ["(^|/|!)an3_switch_companion$"]
-        )
-        self.assertEqual(
-            config["allowlists"][2]["regexes"], ["joseignacioechevarria@gmail\\.com"]
-        )
-        self.assertEqual(
-            config["allowlists"][3]["paths"],
+            config["allowlists"][1]["paths"],
             ["(^|/|!)org\\.gnome\\.system\\.proxy\\.gschema\\.xml$"],
         )
-        self.assertEqual(config["allowlists"][3]["regexes"], ["192\\.168\\.0\\.0"])
+        self.assertEqual(config["allowlists"][1]["regexes"], ["192\\.168\\.0\\.0"])
         # Every built-in rule is present; the config only adds to them.
         rule_ids = [rule[0] for rule in config["rules"]]
         self.assertIn("private-key-block", rule_ids)
