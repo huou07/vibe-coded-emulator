@@ -10,6 +10,8 @@ EDEN_BUILD="${AN3_EDEN_BUILD_ROOT:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/an3-eden-buil
 JOBS="${AN3_EDEN_JOBS:-4}"
 export AN3_EDEN_ROOT="$EDEN_ROOT" AN3_EDEN_COMMIT="$EDEN_COMMIT"
 export AN3_EDEN_BRIDGE_ROOT="$REPO_ROOT/native/eden-bridge"
+export MACOSX_DEPLOYMENT_TARGET=13.4
+export CARGO_PROFILE_RELEASE_STRIP=none
 
 [[ "$(uname -s)" == Darwin ]] || { echo 'macOS Eden companion requires a macOS builder.' >&2; exit 2; }
 for tool in cmake ninja autoconf automake glslang; do
@@ -21,6 +23,10 @@ cmake -S "$EDEN_ROOT" -B "$EDEN_BUILD" -G Ninja \
   -DAN3_EDEN_BRIDGE_DIR="$AN3_EDEN_BRIDGE_ROOT" \
   -DENABLE_QT=OFF -DYUZU_CMD=OFF -DENABLE_LIBUSB=OFF \
   -DENABLE_WERROR=OFF -DENABLE_DEBUG_TOOLS=OFF -DENABLE_RESHade=OFF \
+  -DYUZU_STATIC_BUILD=ON -DYUZU_USE_BUNDLED_OPENSSL=OFF \
+  -DCPMUTIL_FORCE_BUNDLED=ON -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
+  -DCMAKE_EXE_LINKER_FLAGS="-framework Carbon -framework AppKit -framework UniformTypeIdentifiers" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "$EDEN_BUILD" --target an3_switch_companion -j "$JOBS"
 

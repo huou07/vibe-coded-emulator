@@ -73,6 +73,13 @@ export class DesktopAdapter {
     if (!appPath || !existsSync(appPath)) {
       throw new An3Error("E_USAGE", "app start --target macos requires AN3_MACOS_APP (or --app) pointing at the built .app");
     }
+    const executable = `${appPath}/Contents/MacOS/an3-offline-native`;
+    if (!existsSync(executable) || !readFileSync(executable).includes("AN3_UI_CONTROL_FILE")) {
+      throw new An3Error(
+        "E_TARGET_UNAVAILABLE",
+        "app start --target macos requires the ui-control automation build; --home does not isolate WebKit data for a packaged app, so use a copy with a unique bundle identifier",
+      );
+    }
     const controlFile = this.controlFile(opts);
     rmSync(controlFile, { force: true });
     const env = [

@@ -110,8 +110,7 @@ install -m 0644 "$eden_lib" "$destination/liban3_eden_android.so"
 # this preserves code and symbols needed by the JNI ABI while preventing local
 # paths from becoming release metadata.
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) eden_ndk_host="darwin-arm64" ;;
-  Darwin-x86_64) eden_ndk_host="darwin-x86_64" ;;
+  Darwin-arm64|Darwin-x86_64) eden_ndk_host="darwin-x86_64" ;;
   Linux-x86_64) eden_ndk_host="linux-x86_64" ;;
   *) echo "Unsupported Android NDK host: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
 esac

@@ -36,6 +36,26 @@
     const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
     return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
   };
+  const base64 = bytes => {
+    let binary = "";
+    for (let offset = 0; offset < bytes.byteLength; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return globalThis.btoa(binary);
+  };
+  const writeBackup = async (key, bytes) => {
+    if (!key || !bytes.byteLength || bytes.byteLength > MAX_BYTES || !globalThis.localStorage?.setItem) return false;
+    const contentHash = await hash(bytes);
+    if (!HASH.test(contentHash)) return false;
+    globalThis.localStorage.setItem(PREFIX + encodeURIComponent(key), JSON.stringify({
+      version: 1,
+      key,
+      contentHash,
+      size: bytes.byteLength,
+      data: base64(bytes),
+    }));
+    return true;
+  };
   const readBackup = async key => {
     if (!key) return null;
     try {
@@ -70,23 +90,57 @@
       catch (error) { if (!fs.analyzePath(current).exists) throw error; }
     });
   };
-  const syncFileSystem = fs => !fs || typeof fs.syncfs !== "function"
+  const syncFileSystem = (fs, populate = false) => !fs || typeof fs.syncfs !== "function"
     ? Promise.resolve()
-    : new Promise((resolve, reject) => fs.syncfs(false, error => error ? reject(error) : resolve()));
+    : new Promise((resolve, reject) => fs.syncfs(populate, error => error ? reject(error) : resolve()));
+  const managerFunctions = manager => typeof manager?.getSaveFilePath === "function" ? manager : manager?.functions ?? manager;
+
+  const populate = async ({manager} = {}) => {
+    if (!manager?.FS) return false;
+    await syncFileSystem(manager.FS, true);
+    return true;
+  };
 
   const restore = async ({manager, identity = {}} = {}) => {
-    if (!manager?.FS || typeof manager.getSaveFilePath !== "function" || typeof manager.getSaveFile !== "function") return false;
-    const path = normalizeSavePath(manager.getSaveFilePath());
-    const existing = await bytesOf(manager.getSaveFile(false));
+    const functions = managerFunctions(manager);
+    if (!manager?.FS || typeof functions?.getSaveFilePath !== "function") return false;
+    const path = normalizeSavePath(functions.getSaveFilePath());
+    // IDBFS may have the previous session's SRAM in IndexedDB while the
+    // mounted in-memory filesystem is still empty. Populate it before deciding
+    // whether there is an existing save or a legacy backup to restore.
+    await populate({manager});
+    const existing = await bytesOf(typeof functions.getSaveFile === "function"
+      ? functions.getSaveFile(false)
+      : manager.FS.analyzePath(path).exists ? manager.FS.readFile(path) : null);
     if (existing.byteLength) return false;
     const backup = await readBackup(saveKey(identity, path));
     if (!backup?.byteLength) return false;
     ensureParent(manager.FS, path);
     manager.FS.writeFile(path, backup);
     await syncFileSystem(manager.FS);
-    if (typeof manager.loadSaveFiles === "function") manager.loadSaveFiles();
+    if (typeof functions.loadSaveFiles === "function") functions.loadSaveFiles();
     return true;
   };
 
-  globalThis.AN3LocalSaveRecovery = Object.freeze({restore});
+  const flush = async ({manager, identity = {}} = {}) => {
+    const functions = managerFunctions(manager);
+    if (!manager?.FS || typeof functions?.saveSaveFiles !== "function") return false;
+    const path = typeof functions.getSaveFilePath === "function" ? normalizeSavePath(functions.getSaveFilePath()) : "";
+    if (path) ensureParent(manager.FS, path);
+    functions.saveSaveFiles();
+    if (path && (identity.core || identity.gameId || identity.game || identity.romHash || identity.saveId)) {
+      try {
+        const value = typeof functions.getSaveFile === "function"
+          ? functions.getSaveFile(false)
+          : manager.FS.analyzePath(path).exists ? manager.FS.readFile(path) : null;
+        await writeBackup(saveKey(identity, path), await bytesOf(value));
+      } catch (_) {
+        // The mounted IDBFS save remains the primary store if backup storage is unavailable.
+      }
+    }
+    await syncFileSystem(manager.FS);
+    return true;
+  };
+
+  globalThis.AN3LocalSaveRecovery = Object.freeze({populate, restore, flush});
 })();

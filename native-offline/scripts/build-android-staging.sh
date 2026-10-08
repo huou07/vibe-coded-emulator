@@ -28,6 +28,9 @@ export JAVA_HOME ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
 export NDK_HOME="${NDK_HOME:-$ANDROID_HOME/ndk/26.3.11579264}"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$NDK_HOME}"
 [[ -x "$JAVA_HOME/bin/java" && -d "$NDK_HOME" ]] || { echo 'Java 17 and Android NDK are required.' >&2; exit 1; }
+if [[ ! -f src-tauri/gen/android/settings.gradle || ! -x src-tauri/gen/android/gradlew ]]; then
+  npm run tauri -- android init --ci --skip-targets-install
+fi
 bash scripts/build-android-runtime.sh
 # The Android package version is authoritative for the About panel and the
 # asset cache-busting query. tauri.android.conf.json overrides package.json, so
@@ -52,6 +55,9 @@ RELEASE_AAB="${AN3_RELEASE_DIR:-releases}/vibecodedemulator-${VERSION}-android-a
 mkdir -p "$(dirname "$RELEASE_APK")"
 install -m 0644 "$SOURCE_APK" "$RELEASE_APK"
 install -m 0644 "$SOURCE_AAB" "$RELEASE_AAB"
+for release_artifact in "$RELEASE_APK" "$RELEASE_AAB"; do
+  (cd "$(dirname "$release_artifact")" && shasum -a 256 "$(basename "$release_artifact")" > "$(basename "$release_artifact").sha256")
+done
 if [[ "${AN3_BUILD_ANDROID_TESTS:-0}" == "1" ]]; then
   gradle_root="src-tauri/gen/android"
   (

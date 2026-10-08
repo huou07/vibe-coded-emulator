@@ -1,6 +1,6 @@
 {
   "name": "an3-offline-native",
-  "version": "3.3.3",
+  "version": "3.3.12",
   "private": true,
   "type": "module",
   "description": "Offline-only local-ROM player for VibeCodedEmulator",

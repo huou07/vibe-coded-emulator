@@ -317,7 +317,7 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         ):
             self.assertFalse((assets / obsolete).exists(), obsolete)
         web_files = ("index.html", "native-app.js", "native-bootstrap.js", "native-support.js", "native.css")
-        static_files = ("offline.js", "player.js", "site.js", "site.css")
+        static_files = ("local-save-recovery.js", "offline.js", "player.js", "site.js", "site.css")
         for current in web_files:
             packaged = (assets / current).read_bytes()
             source = (ROOT / "native-offline" / "web" / current).read_bytes()

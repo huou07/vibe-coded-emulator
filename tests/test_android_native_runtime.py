@@ -32,6 +32,7 @@ GAME_ACTIVITY = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/s
 ANDROID_ACTIVITY = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt"
 ANDROID_MANIFEST = ROOT / "native-offline/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
 ANDROID_BUILD = ROOT / "native-offline/src-tauri/gen/android/app/build.gradle.kts"
+ANDROID_STAGING_BUILD = ROOT / "native-offline/scripts/build-android-staging.sh"
 ANDROID_BOOTSTRAP = ROOT / "native-offline/web/native-bootstrap.js"
 OFFLINE_LIBRARY = ROOT / "static/offline.js"
 HARNESS = ROOT / "tests/native/android_host_harness.cpp"
@@ -72,6 +73,29 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_android_staging_build_initializes_fresh_gradle_project_and_writes_sidecars(self):
+        script = source(ANDROID_STAGING_BUILD)
+        self.assertIn(
+            "if [[ ! -f src-tauri/gen/android/settings.gradle || ! -x src-tauri/gen/android/gradlew ]]; then",
+            script,
+        )
+        init = "npm run tauri -- android init --ci --skip-targets-install"
+        build = "npm run tauri -- android build --target aarch64 --apk --aab"
+        self.assertLess(script.index(init), script.index(build))
+        self.assertIn('for release_artifact in "$RELEASE_APK" "$RELEASE_AAB"; do', script)
+        self.assertIn('shasum -a 256 "$(basename "$release_artifact")"', script)
+
+    def test_macos_ndk_host_tag_uses_the_universal_darwin_directory(self):
+        for name, variable in (
+            ("build-android-runtime.sh", "an3_ndk_host"),
+            ("build-android-eden.sh", "eden_ndk_host"),
+        ):
+            script = source(ROOT / "native-offline/scripts" / name)
+            self.assertIn(
+                f'Darwin-arm64|Darwin-x86_64) {variable}="darwin-x86_64" ;;',
+                script,
+            )
+
     def test_portable_core_session_runs_frames_on_one_owner_thread(self):
         compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("clang++") or shutil.which("g++")
         if not compiler:
