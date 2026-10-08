@@ -1,0 +1,13 @@
+{
+  "engine": "Azahar libretro",
+  "version": "2126.1.1",
+  "platform": "macOS arm64",
+  "core": "azahar_libretro.dylib",
+  "sha256": "90f96cc9b8e6c9570e631fd61d4e8b2ee65de00d2171ffc86068c6eb49b5d5ad",
+  "archiveSha256": "9557400c89d463a7d163d925741172173f0c64d8096e5996239fac46eefdffd5",
+  "sourceUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-unified-source-2126.1.1.tar.xz",
+  "licenseUrl": "https://raw.githubusercontent.com/azahar-emu/azahar/2126.1.1/license.txt",
+  "licenseSha256": "a77e81713ddfe05f9f7f3a3c46de4147f82b5fe9d6e5e24af96e36a6de53f613",
+  "license": "GPL-2.0-or-later",
+  "upstream": "https://github.com/azahar-emu/azahar"
+}

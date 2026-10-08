@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "source_commit": "826516c8921df2d1d64f43da9b25b0f899c6a2dc",
+  "source_fingerprint": "12cf85018c0e19de89075099928a59758c928cd0cd29d311d78d49f71961f63e",
+  "release_candidate": "3.3.3-staging-core-only",
+  "build_id": "source-12cf85018c0e19de",
+  "artifacts": [
+    {
+      "version": "3.3.3",
+      "platform": "macOS",
+      "architecture": "arm64",
+      "format": "DMG",
+      "filename": "vibecodedemulator-3.3.3-macos-aarch64.dmg",
+      "size": 66789915,
+      "sha256": "c9b5d66c81ec959cddf10efcbef70ca2c2f7f160c2e7ef75a19b586688989dcb",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Ad-hoc signed only; not notarized.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar: mounts read-only, contains VibeCodedEmulator.app 3.3.3/space.an3tocom.offline with the drag-to-Applications install target, codesign --verify --deep --strict passes with the expected JIT entitlements, no development-machine dylib paths in otool -L, bundled cores (mGBA, melonDS DS, Azahar, MoltenVK) present, and 25 self-contained Eden companion libraries matching the companion manifest. The shipped executable contains no ui-control bridge marker. Launched from the mounted DMG copy with an isolated HOME: bound its loopback runtime, served the shell and its assets, held 0% CPU at ~103 MB RSS, created no bridge control file, and exited cleanly on SIGTERM. Interactive gameplay with a user ROM on this exact DMG is unverified."
+    },
+    {
+      "version": "3.3.3",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "APK",
+      "filename": "vibecodedemulator-3.3.3-android-arm64-staging.apk",
+      "size": 61308147,
+      "sha256": "b07fea26a7467f9455f7519d0990f0865292ee6fe94047fdcd92d6e30d4a7790",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; not a production signing identity.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar. arm64-v8a ELF64 AArch64 payload present for the portable runtime, Eden, Azahar, melonDS DS and mGBA; the packaged About asset reports 3.3.3. The tag workflow's Android jobs passed against this APK: library UI smoke, settings UI acceptance (including repeated ActivityScenario teardown) and GBA SRAM save/restore on an API 35 emulator. Physical-device behaviour is unverified."
+    },
+    {
+      "version": "3.3.3",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "AAB",
+      "filename": "vibecodedemulator-3.3.3-android-arm64-staging.aab",
+      "size": 60711454,
+      "sha256": "02f9da0ac67a91247dde434c2c98a92fdb6349d85af92977c637890c7f3105bc",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; not a production signing identity.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar. Signed with the shared Android debug identity. The bundle itself was not installed for runtime acceptance."
+    },
+    {
+      "version": "3.3.3",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "DEB",
+      "filename": "vibecodedemulator-3.3.3-linux-amd64.deb",
+      "size": 59858752,
+      "sha256": "eac39499650b4fc0773f497327a68dc2065ba633f86ac856457b2bab81ee6b2d",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Unsigned staging package.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar. Package metadata reads vibe-coded-emulator 3.3.2-era control stanza with the expected runtime dependencies; the Switch companion and its Eden manifest are present under /usr/lib/VibeCodedEmulator/switch/linux-x86_64. Installation and gameplay on a live Debian host are unverified."
+    },
+    {
+      "version": "3.3.3",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "Flatpak",
+      "filename": "an3-offline-3.3.3-linux-amd64-staging.flatpak",
+      "size": 38731968,
+      "sha256": "3a6cd506b0209887c400ea5d492a66d120faf7c7397e36a9ed8d53d2f91b8680",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Unsigned staging bundle.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc, built from the verified DEB produced by the same tag run. Downloaded and verified against the published .sha256 sidecar. Installation through flatpak and gameplay on a live Flatpak host are unverified."
+    },
+    {
+      "version": "3.3.3",
+      "platform": "Windows",
+      "architecture": "x64",
+      "format": "EXE",
+      "filename": "vibecodedemulator-3.3.3-windows-x64-staging.exe",
+      "size": 56952910,
+      "sha256": "172d8bc8a5c7d5d88decab87a1010e4bb1978b71c4dab74253a04ff5f6506ac1",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar",
+        "Eden"
+      ],
+      "signature_status": "Unsigned NSIS installer; not Authenticode-signed.",
+      "runtime_status": "Exact tag build 826516c8921df2d1d64f43da9b25b0f899c6a2dc. Downloaded and verified against the published .sha256 sidecar. The tag workflow built and verified the pinned Windows portable runtime and the NSIS installer against LunarG Vulkan SDK 1.4.357.0. The installer is unsigned and gameplay on a live Windows host is unverified.",
+      "release_gate": "PASS"
+    }
+  ]
+}
