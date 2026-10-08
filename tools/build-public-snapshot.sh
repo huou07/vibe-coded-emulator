@@ -100,11 +100,21 @@ done
 if [[ -d "$OUT/native-offline/src-tauri/gen" ]]; then
   keep="$(mktemp -d)"
   for path in \
+    "gen/schemas" \
     "gen/android/app/src/main/java/space/an3tocom/offline" \
     "gen/android/app/src/main/AndroidManifest.xml" \
     "gen/android/app/src/main/res" \
     "gen/android/app/build.gradle.kts" \
-    "gen/android/app/proguard-rules.pro"; do
+    "gen/android/app/proguard-rules.pro" \
+    "gen/android/app/src/main/assets/index.html" \
+    "gen/android/app/src/main/assets/native-app.js" \
+    "gen/android/app/src/main/assets/native-bootstrap.js" \
+    "gen/android/app/src/main/assets/native-support.js" \
+    "gen/android/app/src/main/assets/native.css" \
+    "gen/android/app/src/main/assets/static/offline.js" \
+    "gen/android/app/src/main/assets/static/player.js" \
+    "gen/android/app/src/main/assets/static/site.js" \
+    "gen/android/app/src/main/assets/static/site.css"; do
     if [[ -e "$OUT/native-offline/src-tauri/$path" ]]; then
       mkdir -p "$keep/$(dirname "$path")"
       cp -R "$OUT/native-offline/src-tauri/$path" "$keep/$path"
