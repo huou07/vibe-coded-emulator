@@ -20,6 +20,18 @@ OUT="${AN3_AUTOMATION_APP:-$ROOT/src-tauri/target/release/bundle/macos/VibeCoded
 }
 [[ "$OUT" != "$APP" ]] || { echo "The automation bundle must not overwrite the distribution app." >&2; exit 1; }
 
+# Tauri derives app-data paths from this compile-time identifier. Changing only
+# Info.plist after the build leaves the automation executable pointed at the
+# distribution profile.
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+case "$BUNDLE_ID" in
+  *.automation) ;;
+  *) BUNDLE_ID="${BUNDLE_ID}.automation" ;;
+esac
+export TAURI_CONFIG="{\"identifier\":\"$BUNDLE_ID\"}"
+
+# Match the canonical macOS build: keep release proc-macro dylibs loadable.
+export CARGO_PROFILE_RELEASE_STRIP=none
 cargo build --release --features ui-control --manifest-path "$ROOT/src-tauri/Cargo.toml"
 
 python3 - "$BIN" <<'PY'
@@ -30,8 +42,10 @@ if b"AN3_UI_CONTROL_FILE" not in data:
 PY
 
 rm -rf "$OUT"
+mkdir -p "$(dirname "$OUT")"
 cp -R "$APP" "$OUT"
 cp "$BIN" "$OUT/Contents/MacOS/an3-offline-native"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$OUT/Contents/Info.plist"
 codesign --force --deep --sign - "$OUT"
 codesign --verify --deep --strict --verbose=2 "$OUT"
 printf 'MACOS_AUTOMATION_APP=%s\n' "$OUT"

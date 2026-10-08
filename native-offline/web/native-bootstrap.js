@@ -15,6 +15,13 @@ window.AN3NativeInvoke = () => {
   const internals = window.__TAURI_INTERNALS__;
   return tauri?.core?.invoke || internals?.invoke;
 };
+if (!an3MobileNativeShell) {
+  window.AN3NativeSettings = {
+    all: () => window.AN3NativeInvoke()("native_settings", {action: "all"}),
+    save: edits => window.AN3NativeInvoke()("native_settings", {action: "save", edits: JSON.parse(edits || "{}")}),
+    resetGraphics: system => window.AN3NativeInvoke()("native_settings", {action: "reset-graphics", system})
+  };
+}
 // This is set from the shell platform, rather than the timing of Tauri's
 // injected bridge. The launcher itself still resolves the bridge at click
 // time, so the library cannot briefly advertise an external native player on

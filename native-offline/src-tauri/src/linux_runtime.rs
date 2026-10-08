@@ -111,6 +111,10 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     }
     let storage = data.join("native-player").join(system).join(rom_id);
     fs::create_dir_all(&storage).map_err(|e| format!("Cannot prepare native save storage: {e}"))?;
+    let settings_args = crate::native_settings::launch_arguments(
+        &data.join("native-settings.json"),
+        system,
+    )?;
     stop()?;
     let log = storage.join("runtime.log");
     let errors = fs::File::create(&log).map_err(|e| e.to_string())?;
@@ -122,7 +126,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     let mut command = Command::new(&runtime);
     command
         .args(["--rom"]).arg(&rom).args(["--system", system, "--layout", layout, "--storage"])
-        .arg(&storage).arg("--control-stdin")
+        .arg(&storage).args(settings_args).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

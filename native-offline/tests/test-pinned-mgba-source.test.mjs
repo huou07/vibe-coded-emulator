@@ -8,6 +8,11 @@ const lock = JSON.parse(await readFile(new URL("../shared/libretro-source-lock.j
 const melonds = JSON.parse(await readFile(new URL("../shared/libretro-source-lock.json", import.meta.url), "utf8")).melondsdsMacos;
 const macCoreBuilder = await readFile(new URL("../scripts/fetch-gba-nds-libretro.mjs", import.meta.url), "utf8");
 const linuxCoreBuilder = await readFile(new URL("../scripts/fetch-linux-gba-nds-libretro.mjs", import.meta.url), "utf8");
+const macEdenBuilder = await readFile(new URL("../scripts/build-macos-eden-companion.sh", import.meta.url), "utf8");
+const macAutomationBuilder = await readFile(new URL("../scripts/build-macos-automation.sh", import.meta.url), "utf8");
+const uiControl = await readFile(new URL("../src-tauri/src/ui_control.rs", import.meta.url), "utf8");
+const prepareEdenSource = await readFile(new URL("../scripts/prepare-eden-source.sh", import.meta.url), "utf8");
+const tauriConfig = JSON.parse(await readFile(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 
 test("mGBA source and license pins identify immutable upstream content", () => {
   assert.equal(lock.sourceUrl, `https://codeload.github.com/mgba-emu/mgba/tar.gz/${lock.sourceRevision}`);
@@ -39,6 +44,42 @@ test("macOS melonDS DS uses the pinned 1.3.1 source at AN3's supported deploymen
   assert.match(macCoreBuilder, /--target", "melondsds_libretro"/);
   assert.match(macCoreBuilder, /CMAKE_OSX_DEPLOYMENT_TARGET=\$\{melonds\.deploymentTarget\}/);
   assert.doesNotMatch(macCoreBuilder, /buildbot\.libretro\.com\/nightly\/apple\/osx\/arm64\/latest/);
+});
+
+test("macOS Eden companion build targets the app's declared minimum", () => {
+  const minimum = tauriConfig.bundle?.macOS?.minimumSystemVersion;
+  assert.ok(minimum);
+  assert.ok(macEdenBuilder.includes(`-DCMAKE_OSX_DEPLOYMENT_TARGET=${minimum}`));
+  assert.ok(macEdenBuilder.includes(`export MACOSX_DEPLOYMENT_TARGET=${minimum}`));
+  assert.match(macEdenBuilder, /export CARGO_PROFILE_RELEASE_STRIP=none/);
+  for (const setting of [
+    "-DYUZU_STATIC_BUILD=ON",
+    "-DYUZU_USE_BUNDLED_OPENSSL=OFF",
+    "-DCPMUTIL_FORCE_BUNDLED=ON",
+    "-DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF",
+    "-framework Carbon -framework AppKit -framework UniformTypeIdentifiers",
+  ]) assert.ok(macEdenBuilder.includes(setting), `missing macOS Eden build setting: ${setting}`);
+  assert.match(prepareEdenSource, /Pinned Eden Apple static-build OpenSSL default has changed/);
+  assert.match(prepareEdenSource, /if\(NOT DEFINED YUZU_USE_BUNDLED_OPENSSL\)/);
+});
+
+test("macOS automation build preserves proc-macro metadata and an isolated output bundle", () => {
+  assert.match(macAutomationBuilder, /export CARGO_PROFILE_RELEASE_STRIP=none/);
+  assert.ok(macAutomationBuilder.includes('mkdir -p "$(dirname "$OUT")"'));
+  assert.match(macAutomationBuilder, /export TAURI_CONFIG=.*identifier.*BUNDLE_ID/);
+  assert.ok(
+    macAutomationBuilder.indexOf("export TAURI_CONFIG=") <
+      macAutomationBuilder.indexOf('cargo build --release --features ui-control'),
+  );
+  assert.match(macAutomationBuilder, /CFBundleIdentifier/);
+  assert.match(macAutomationBuilder, /\.automation/);
+});
+
+test("macOS UI control returns each WebView evaluation through its native callback", () => {
+  assert.match(uiControl, /eval_with_callback/);
+  assert.match(uiControl, /JSON\.stringify/);
+  assert.match(uiControl, /serde_json::from_str\(&encoded\)/);
+  assert.doesNotMatch(uiControl, /ui_control_result|window\.__TAURI__\.core\.invoke/);
 });
 
 test("Linux melonDS DS uses an immutable official v1.3.1 release asset", () => {

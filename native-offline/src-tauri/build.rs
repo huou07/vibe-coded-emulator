@@ -63,6 +63,7 @@ fn main() {
             "start_native_game",
             "stop_native_game",
             "native_rom_library_manifest",
+            "native_settings",
             "switch_companion_detect",
             "switch_companion_launch",
             "switch_companion_launch_rom",

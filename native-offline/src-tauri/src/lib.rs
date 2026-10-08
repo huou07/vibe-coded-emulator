@@ -5,11 +5,15 @@ use include_dir::{include_dir, Dir};
 mod azahar;
 mod hosted_frame;
 mod native_rom_library;
+mod native_settings;
 mod switch_companion;
 // Test-only structured UI bridge. The whole module is behind the feature so a
 // distribution binary contains neither the bridge nor its env-var marker.
 #[cfg(feature = "ui-control")]
 mod ui_control;
+#[cfg(all(not(mobile), feature = "ui-control"))]
+static UI_CONTROL_STARTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 use azahar::{native_capabilities, start_native_game, stop_native_game};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -715,6 +719,23 @@ async fn native_rom_library_manifest(app: AppHandle) -> Result<serde_json::Value
         .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+async fn native_settings(
+    app: AppHandle,
+    action: String,
+    system: Option<String>,
+    edits: Option<serde_json::Map<String, serde_json::Value>>,
+) -> Result<serde_json::Value, String> {
+    let path = app.path().app_data_dir()
+        .map_err(|error| format!("Cannot locate VibeCodedEmulator settings storage: {error}"))?
+        .join("native-settings.json");
+    tauri::async_runtime::spawn_blocking(move || {
+        native_settings::execute(&path, &action, system.as_deref(), edits)
+    })
+    .await
+    .map_err(|error| format!("Native settings operation failed: {error}"))?
+}
+
 // Nintendo Switch runs as a separate companion process (never linked into this
 // binary); these commands are its CompanionSystem lifecycle surface.
 
@@ -878,6 +899,30 @@ async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String>
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .on_page_load(|webview, payload| {
+            #[cfg(all(not(mobile), feature = "ui-control"))]
+            if webview.label() == "main"
+                && payload.event() == tauri::webview::PageLoadEvent::Finished
+                && payload.url().host_str() == Some("127.0.0.1")
+                && std::env::var_os("AN3_UI_CONTROL_FILE").is_some()
+                && UI_CONTROL_STARTED
+                    .compare_exchange(
+                        false,
+                        true,
+                        std::sync::atomic::Ordering::AcqRel,
+                        std::sync::atomic::Ordering::Acquire,
+                    )
+                    .is_ok()
+            {
+                match ui_control::start(webview.app_handle()) {
+                    Ok(port) => eprintln!("an3-ui-control listening on 127.0.0.1:{port}"),
+                    Err(error) => {
+                        UI_CONTROL_STARTED.store(false, std::sync::atomic::Ordering::Release);
+                        eprintln!("an3-ui-control failed: {error}");
+                    }
+                }
+            }
+        })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 let _ = tauri::async_runtime::spawn_blocking(|| {
@@ -899,6 +944,7 @@ pub fn run() {
             start_native_game,
             stop_native_game,
             native_rom_library_manifest,
+            native_settings,
             switch_companion_detect,
             switch_companion_launch,
             switch_companion_launch_rom,
@@ -913,9 +959,7 @@ pub fn run() {
             switch_companion_hosted_frame_start,
             switch_companion_hosted_frame_stop,
             switch_companion_hosted_frame_stats,
-            switch_companion_hosted_frame_verify,
-            #[cfg(feature = "ui-control")]
-            ui_control::ui_control_result
+            switch_companion_hosted_frame_verify
         ])
         .setup(|_app| {
             // Desktop uses the Rust loopback server to stream private ROMs
@@ -923,15 +967,8 @@ pub fn run() {
             // browser storage.
             #[cfg(not(mobile))]
             {
-                #[cfg(feature = "ui-control")]
-                {
-                    if let Ok(control_file) = std::env::var("AN3_UI_CONTROL_FILE") {
-                        match ui_control::start(&_app.handle()) {
-                            Ok(port) => eprintln!("an3-ui-control listening on 127.0.0.1:{port} ({control_file})"),
-                            Err(error) => eprintln!("an3-ui-control failed: {error}"),
-                        }
-                    }
-                }
+                // The test bridge starts from `on_page_load` only after the
+                // loopback runtime is ready to answer WebView evaluations.
                 let runtime =
                     start_runtime_server(&_app.handle()).map_err(std::io::Error::other)?;
                 _app.get_webview_window("main")

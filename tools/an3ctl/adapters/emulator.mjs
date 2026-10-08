@@ -64,7 +64,8 @@ export class EmulatorAdapter {
   // --- one-shot execution --------------------------------------------------
 
   buildArgs(opts) {
-    const args = ["--rom", opts.rom, "--system", opts.system];
+    const args = ["--rom", opts.rom];
+    if (opts.system) args.push("--system", opts.system);
     if (opts.renderer) args.push("--renderer", opts.renderer);
     if (opts.layout) args.push("--layout", opts.layout);
     if (opts.headless !== false) args.push("--headless", "--no-audio", "--no-controls");

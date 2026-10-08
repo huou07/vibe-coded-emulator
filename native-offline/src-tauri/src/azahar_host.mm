@@ -625,25 +625,9 @@ class AzaharHost {
         initialized_ = true;
 
         // Core options are discovered from the core before load_game. Restore
-        // only values announced by this core and namespace them by system so
-        // unrelated cores never inherit one another's settings.
-        for (const auto& option : core_options_.options()) {
-            NSString* defaults_key = [NSString stringWithFormat:@"an3.native-core-option.%@.%s",
-                                      [NSString stringWithUTF8String:core_options_.core_namespace().c_str()], option.key.c_str()];
-            NSString* stored = [[NSUserDefaults standardUserDefaults] stringForKey:defaults_key];
-            // The generic UI originally used the system label as its key.
-            // Read that bounded legacy value once, but all future writes use
-            // the actual core namespace so similarly named options cannot
-            // cross-contaminate cores.
-            if (!stored) {
-                NSString* legacy_key = [NSString stringWithFormat:@"an3.native-core-option.%@.%s",
-                                        [NSString stringWithUTF8String:system_.c_str()], option.key.c_str()];
-                stored = [[NSUserDefaults standardUserDefaults] stringForKey:legacy_key];
-            }
-            if (stored) {
-                core_options_.set_initial(option.key, stored.UTF8String ?: "");
-            }
-        }
+        // values whenever a definition arrives so cores that query settings
+        // during retro_init observe the persisted value on their first read.
+        restore_core_options();
         if (system_ == "nds") {
             // Keep the core's own option snapshot consistent with the
             // protected per-system layout. Some melonDS versions retain that
@@ -1593,6 +1577,24 @@ class AzaharHost {
         if (trace_frame_active_) active_trace_sample_.input_sample_ns = trace_now_ns();
     }
 
+    void restore_core_options() {
+        for (const auto& option : core_options_.options()) {
+            NSString* defaults_key = [NSString stringWithFormat:@"an3.native-core-option.%@.%s",
+                                      [NSString stringWithUTF8String:core_options_.core_namespace().c_str()], option.key.c_str()];
+            NSString* stored = [[NSUserDefaults standardUserDefaults] stringForKey:defaults_key];
+            // The generic UI originally used the system label as its key.
+            // Read that bounded legacy value once, but all future writes use
+            // the actual core namespace so similarly named options cannot
+            // cross-contaminate cores.
+            if (!stored) {
+                NSString* legacy_key = [NSString stringWithFormat:@"an3.native-core-option.%@.%s",
+                                        [NSString stringWithUTF8String:system_.c_str()], option.key.c_str()];
+                stored = [[NSUserDefaults standardUserDefaults] stringForKey:legacy_key];
+            }
+            if (stored) core_options_.set_initial(option.key, stored.UTF8String ?: "");
+        }
+    }
+
     bool environment(unsigned command, void* data) {
         switch (command) {
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
@@ -1656,10 +1658,12 @@ class AzaharHost {
             }
             entries.push_back(nullptr);
             core_options_.capture_legacy_variables(entries.data());
+            restore_core_options();
             return true;
         }
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             core_options_.capture_v2(static_cast<const RetroCoreOptionsV2*>(data));
+            restore_core_options();
             return true;
         }
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
@@ -1668,6 +1672,7 @@ class AzaharHost {
             // with the v1 layout shifts the values array into text pointers
             // and makes the AppKit Core Options popup crash at launch.
             if (intl) core_options_.capture_v2(intl->us ? intl->us : intl->local);
+            restore_core_options();
             return true;
         }
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
@@ -3928,6 +3933,34 @@ extern "C" int an3_native_probe(const char* core_path, char* details, size_t det
     }
     core.close();
     return static_cast<int>(api);
+}
+
+extern "C" int an3_native_apply_core_options(const char* system, const char* options_json) {
+    const std::string system_name = system ?: "";
+    if (system_name != "gba" && system_name != "nds" && system_name != "3ds") return 0;
+    NSString* json = [NSString stringWithUTF8String:options_json ?: ""];
+    NSData* data = [json dataUsingEncoding:NSUTF8StringEncoding];
+    if (!data) return 0;
+    id decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![decoded isKindOfClass:NSArray.class]) return 0;
+    NSArray* entries = (NSArray*)decoded;
+    if (entries.count > 128) return 0;
+    for (id entry in entries) {
+        if (![entry isKindOfClass:NSArray.class] || [entry count] != 2 ||
+            ![entry[0] isKindOfClass:NSString.class] || ![entry[1] isKindOfClass:NSString.class] ||
+            [entry[0] length] == 0 || [entry[0] length] > 128 || [entry[1] length] > 512) {
+            return 0;
+        }
+    }
+    const std::string option_namespace = an3::core_option_namespace_for_system(system_name);
+    NSString* namespace_text = [NSString stringWithUTF8String:option_namespace.c_str()];
+    NSUserDefaults* defaults = [NSUserDefaults standardUserDefaults];
+    for (NSArray* entry in entries) {
+        NSString* defaults_key = [NSString stringWithFormat:@"an3.native-core-option.%@.%@",
+                                    namespace_text, entry[0]];
+        [defaults setObject:entry[1] forKey:defaults_key];
+    }
+    return 1;
 }
 
 extern "C" int an3_native_start(void* content_view,

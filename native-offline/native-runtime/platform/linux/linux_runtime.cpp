@@ -41,6 +41,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace an3 {
 namespace {
@@ -51,6 +53,7 @@ struct Options {
     std::string renderer = "auto";
     std::string layout = "preserve";
     std::filesystem::path storage;
+    std::vector<std::pair<std::string, std::string>> core_options;
     bool control_stdin = false;
     bool pick = false;
     bool no_controls = false;
@@ -198,6 +201,14 @@ std::optional<Options> parse_options(int argc, char** argv) {
         if (argument == "--system") { if (auto item = value()) options.system = *item; else return std::nullopt; continue; }
         if (argument == "--renderer") { if (auto item = value()) options.renderer = *item; else return std::nullopt; continue; }
         if (argument == "--layout") { if (auto item = value()) options.layout = *item; else return std::nullopt; continue; }
+        if (argument == "--core-option") {
+            const auto item = value();
+            if (!item) return std::nullopt;
+            const auto equals = item->find('=');
+            if (equals == std::string::npos || equals == 0 || equals + 1 >= item->size()) return std::nullopt;
+            options.core_options.emplace_back(item->substr(0, equals), item->substr(equals + 1));
+            continue;
+        }
         std::cerr << "Unknown option: " << argument << "\n";
         return std::nullopt;
     }
@@ -379,7 +390,7 @@ int main(int argc, char** argv) {
         std::string error;
         if (!capture_video.initialize(capture_surface, error)) { std::cerr << error << "\n"; return 1; }
         NativeCoreHost host;
-        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout)) {
+        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout, "Vulkan", options.core_options)) {
             std::cerr << "Native core initialization failed: " << error << "\n";
             return 1;
         }
@@ -464,7 +475,7 @@ int main(int argc, char** argv) {
     }
     LinuxSdlAudioBackend audio;
     NativeCoreHost host;
-    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout)) {
+    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout, "Vulkan", options.core_options)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
         if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 1;

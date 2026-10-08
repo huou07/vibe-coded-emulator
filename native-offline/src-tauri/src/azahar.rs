@@ -82,6 +82,10 @@ unsafe extern "C" {
         details: *mut std::ffi::c_char,
         details_length: usize,
     ) -> i32;
+    fn an3_native_apply_core_options(
+        system: *const std::ffi::c_char,
+        options_json: *const std::ffi::c_char,
+    ) -> i32;
     fn an3_native_start(
         content_view: *mut std::ffi::c_void,
         core_path: *const std::ffi::c_char,
@@ -295,6 +299,16 @@ pub fn start_native_game(
         validate_rom_id(&rom_id)?;
         let system = system.trim().to_ascii_lowercase();
         let core_spec = native_core(&system)?;
+        let settings_path = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Cannot locate VibeCodedEmulator local storage: {error}"))?
+            .join("native-settings.json");
+        let core_options = crate::native_settings::launch_core_options(&settings_path, &system)?;
+        let core_options = c_text(
+            &serde_json::to_string(&core_options).map_err(|error| error.to_string())?,
+            "native core settings",
+        )?;
         let directory = app
             .path()
             .app_data_dir()
@@ -343,6 +357,13 @@ pub fn start_native_game(
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
         app.run_on_main_thread(move || {
             let mut details = [0_i8; 512];
+            let options_applied = unsafe {
+                an3_native_apply_core_options(system_text.as_ptr(), core_options.as_ptr()) != 0
+            };
+            if !options_applied {
+                let _ = sender.send((false, "Saved core settings could not be applied.".into()));
+                return;
+            }
             let started = unsafe {
                 an3_native_start(
                     content_view as *mut std::ffi::c_void,
