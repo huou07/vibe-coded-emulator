@@ -131,7 +131,12 @@ git -C "$SNAPSHOT" remote add origin "$REMOTE"
 if [[ -n "$BRANCH" ]]; then
   SNAPSHOT_COMMIT="$(git -C "$SNAPSHOT" rev-parse HEAD)"
   git -C "$SNAPSHOT" fetch -q origin main || die "could not fetch origin/main for the review branch"
-  git -C "$SNAPSHOT" checkout -q -b "$BRANCH" origin/main
+  if git -C "$SNAPSHOT" ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+    git -C "$SNAPSHOT" fetch -q origin "$BRANCH" || die "could not fetch the existing review branch"
+    git -C "$SNAPSHOT" checkout -q -b "$BRANCH" "origin/$BRANCH"
+  else
+    git -C "$SNAPSHOT" checkout -q -b "$BRANCH" origin/main
+  fi
   # Overlay the clean candidate on current public source. Files omitted by the
   # curated snapshot remain intact on main; the development history is never
   # added to this branch.
@@ -142,8 +147,8 @@ if [[ -n "$BRANCH" ]]; then
   fi
   git -C "$SNAPSHOT" \
     -c user.name="$AUTHOR_NAME" -c user.email="$AUTHOR_EMAIL" \
-    commit -q -m "Add local build storage preflight guards" \
-    -m "Clean source snapshot exported from the private development history. See PROVENANCE.md."
+    commit -q -m "Update clean public source snapshot" \
+    -m "Curated source snapshot exported without private development history. See PROVENANCE.md."
   git -C "$SNAPSHOT" push -u origin "$BRANCH"
   pr_body="$(mktemp -t an3-pr-body.XXXXXX)"
   trap 'rm -f "${pr_body:-}"' EXIT
@@ -151,7 +156,7 @@ if [[ -n "$BRANCH" ]]; then
 ## Summary
 
 - Add a non-destructive disk-space preflight to local macOS, Windows, Linux, and Android build entrypoints.
-- Preserve the current public CI workflow in the sanitized snapshot so it matches the current source tree.
+- Keep the sanitized environment example and public CI checks aligned with the current core-only source.
 
 ## Validation
 
@@ -159,9 +164,14 @@ if [[ -n "$BRANCH" ]]; then
 - Snapshot secret and personal-data scans passed.
 - Windows PowerShell preflight execution still needs a Windows runner; platform CI will exercise the Windows build path.
 BODY
-  PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
-    --title "Add local build storage preflight guards" --body-file "$pr_body")" \
-    || die "branch was pushed, but pull request creation failed"
+  if PR_URL="$(gh pr view --repo "$REPO" "$BRANCH" --json url --jq .url 2>/dev/null)"; then
+    gh pr edit --repo "$REPO" "$PR_URL" --body-file "$pr_body" \
+      || die "branch was pushed, but pull request update failed"
+  else
+    PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
+      --title "Add local build storage preflight guards" --body-file "$pr_body")" \
+      || die "branch was pushed, but pull request creation failed"
+  fi
   rm -f "$pr_body"
   trap - EXIT
   step "7/7 review requested"
