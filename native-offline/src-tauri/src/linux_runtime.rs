@@ -16,10 +16,13 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
+type PendingControlResponses =
+    Arc<Mutex<std::collections::HashMap<u64, mpsc::SyncSender<Result<String, String>>>>>;
+
 struct NativeSession {
     child: Child,
     input: ChildStdin,
-    pending: Arc<Mutex<std::collections::HashMap<u64, mpsc::SyncSender<Result<String, String>>>>>,
+    pending: PendingControlResponses,
     next_control_id: u64,
 }
 
@@ -146,7 +149,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     let output = child.stdout.take().ok_or("Native startup channel unavailable")?;
     let input = child.stdin.take().ok_or("Native control channel unavailable")?;
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
-    let pending = Arc::new(Mutex::new(std::collections::HashMap::new()));
+    let pending: PendingControlResponses = Arc::new(Mutex::new(std::collections::HashMap::new()));
     let pending_output = Arc::clone(&pending);
     std::thread::spawn(move || {
         let mut sender = Some(tx);
