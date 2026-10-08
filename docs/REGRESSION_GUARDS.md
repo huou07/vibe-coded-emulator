@@ -1,5 +1,16 @@
 # AN3 Arcade regression guards
 
+## Local package builds preserve a 25 GiB disk reserve
+
+The macOS, Windows, Linux DEB/Flatpak, and Android package entrypoints check free space
+before downloading dependencies or generating build output. Below 40 GiB they
+warn; below the 25 GiB reserve they stop with exit 75 and direct the operator
+to CI or known disposable build outputs. The guard never deletes data.
+
+- Automated: `tests.test_disk_preflight` covers pass, warning, stop, and invalid-threshold behavior with a stubbed `df` result.
+- Entry points: `native-offline/package.json` (`build`, `build:deb`, `android:build`), `native-offline/scripts/build-android-staging.sh`, `native-offline/scripts/build-linux-staging.sh`, and `native-offline/scripts/build-windows-staging.ps1`.
+- Runtime disk snapshot on 2026-10-09: 143 GiB available; no build or emulator process was active. Windows preflight runtime and disposable Android AVD lifecycle remain **UNVERIFIED**.
+
 ## Parallelism history and current guard
 
 The former `an3-parallel-orchestrator` and its autonomous supervisor are retired

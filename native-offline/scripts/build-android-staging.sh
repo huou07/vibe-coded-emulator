@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+repo_root="$(cd .. && pwd)"
+bash "$repo_root/tools/disk-preflight.sh" 'Android staging package' "$repo_root"
 # Prefer rustup's compiler so the installed Android standard library is used.
 if [[ -d /opt/homebrew/opt/rustup/bin ]]; then
   export PATH="/opt/homebrew/opt/rustup/bin:$PATH"

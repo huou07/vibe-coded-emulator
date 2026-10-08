@@ -4,6 +4,7 @@ Param(
 
 $ErrorActionPreference = 'Stop'
 $nativeRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $nativeRoot '../tools/disk-preflight.ps1') -Label 'Windows staging package' -Path $nativeRoot
 
 $runningOnWindows = ($env:OS -eq 'Windows_NT')
 if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
