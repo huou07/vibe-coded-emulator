@@ -13,7 +13,7 @@
     <binary>an3-offline-native</binary>
   </provides>
   <releases>
-    <release version="3.3.12" date="2026-10-08" />
+    <release version="3.3.13" date="2026-10-08" />
     <release version="3.3.4" date="2026-10-07" />
     <release version="3.3.3" date="2026-10-07" />
     <release version="3.3.2" date="2026-09-28" />
