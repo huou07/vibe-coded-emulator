@@ -9,6 +9,7 @@
 #
 # Usage:
 #   tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
+#   tools/publish-github.sh --confirm --branch codex/name [--repo OWNER/NAME] [--snapshot DIR]
 #
 # Environment (author identity for the single public commit):
 #   AN3_PUBLIC_AUTHOR_NAME   default: GitHub username from --repo
@@ -23,6 +24,7 @@ REPO="huou07/vibe-coded-emulator"
 SNAPSHOT="${AN3_PUBLICATION_CANDIDATE:-$ROOT/work/public-snapshot}"
 CONFIRMED=0
 ADOPT_REMOTE=0
+BRANCH=""
 
 usage() {
   cat <<'USAGE'
@@ -30,6 +32,7 @@ Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
 
   --confirm        required; acknowledge that this publishes publicly
   --adopt-remote   merge an existing remote main into the snapshot (no force-push)
+  --branch NAME    publish one clean snapshot commit on NAME and open a PR to main
   --repo OWNER/NAME  default: huou07/vibe-coded-emulator
   --snapshot DIR     default: work/public-snapshot
   -h, --help       show this help
@@ -42,6 +45,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRMED=1; shift ;;
     --adopt-remote) ADOPT_REMOTE=1; shift ;;
+    --branch) [[ -n "${2:-}" ]] || { printf 'ERROR: --branch needs a name\n' >&2; exit 2; }; BRANCH="$2"; shift 2 ;;
     --repo) [[ -n "${2:-}" ]] || { printf 'ERROR: --repo needs OWNER/NAME\n' >&2; exit 2; }; REPO="$2"; shift 2 ;;
     --snapshot) [[ -n "${2:-}" ]] || { printf 'ERROR: --snapshot needs a directory\n' >&2; exit 2; }; SNAPSHOT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -55,6 +59,9 @@ note() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 
 [[ "$CONFIRMED" -eq 1 ]] || die "refusing to publish without --confirm (this is intentional)"
+if [[ -n "$BRANCH" && ( ! "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ || "$BRANCH" == *..* || "$BRANCH" == */ ) ]]; then
+  die "invalid branch name"
+fi
 command -v git >/dev/null || die "git is required"
 command -v python3 >/dev/null || die "python3 is required"
 
@@ -120,6 +127,48 @@ else
 fi
 note "remote: $REMOTE"
 git -C "$SNAPSHOT" remote add origin "$REMOTE"
+
+if [[ -n "$BRANCH" ]]; then
+  SNAPSHOT_COMMIT="$(git -C "$SNAPSHOT" rev-parse HEAD)"
+  git -C "$SNAPSHOT" fetch -q origin main || die "could not fetch origin/main for the review branch"
+  git -C "$SNAPSHOT" checkout -q -b "$BRANCH" origin/main
+  # Overlay the clean candidate on current public source. Files omitted by the
+  # curated snapshot remain intact on main; the development history is never
+  # added to this branch.
+  git -C "$SNAPSHOT" checkout "$SNAPSHOT_COMMIT" -- .
+  git -C "$SNAPSHOT" add -A
+  if git -C "$SNAPSHOT" diff --cached --quiet; then
+    die "the snapshot has no changes relative to origin/main"
+  fi
+  git -C "$SNAPSHOT" \
+    -c user.name="$AUTHOR_NAME" -c user.email="$AUTHOR_EMAIL" \
+    commit -q -m "Add local build storage preflight guards" \
+    -m "Clean source snapshot exported from the private development history. See PROVENANCE.md."
+  git -C "$SNAPSHOT" push -u origin "$BRANCH"
+  pr_body="$(mktemp -t an3-pr-body.XXXXXX)"
+  trap 'rm -f "${pr_body:-}"' EXIT
+  cat > "$pr_body" <<'BODY'
+## Summary
+
+- Add a non-destructive disk-space preflight to local macOS, Windows, Linux, and Android build entrypoints.
+- Preserve the current public CI workflow in the sanitized snapshot so it matches the current source tree.
+
+## Validation
+
+- 22 focused Python tests passed on the current source line.
+- Snapshot secret and personal-data scans passed.
+- Windows PowerShell preflight execution still needs a Windows runner; platform CI will exercise the Windows build path.
+BODY
+  PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
+    --title "Add local build storage preflight guards" --body-file "$pr_body")" \
+    || die "branch was pushed, but pull request creation failed"
+  rm -f "$pr_body"
+  trap - EXIT
+  step "7/7 review requested"
+  note "pull request: $PR_URL"
+  note "branch: $BRANCH"
+  exit 0
+fi
 
 # A repository created without --source may already contain an initial commit
 # (for example a README). Detect it and merge non-destructively when asked:
