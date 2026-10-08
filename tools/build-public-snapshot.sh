@@ -44,10 +44,16 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # --- 1. Product source at the repository root ---------------------------------
-for file in app.py netcode.py sync_engine.py google_sync.py qrcodegen.py \
+for file in app.py netcode.py qrcodegen.py \
             LICENSE THIRD_PARTY_NOTICES.md README.md .gitignore; do
   [[ -f "$ROOT/$file" ]] || die "missing source file: $file"
   cp "$ROOT/$file" "$OUT/"
+done
+# Application modules vary by product generation. Include the first-party
+# modules present in this checkout without requiring obsolete modules that a
+# newer app.py no longer imports.
+for file in bug_report.py google_sync.py sync_engine.py; do
+  [[ -f "$ROOT/$file" ]] && cp "$ROOT/$file" "$OUT/"
 done
 mkdir -p "$OUT/static" "$OUT/tests" "$OUT/native" "$OUT/rust-gateway" "$OUT/docs"
 cp -R "$ROOT/static/." "$OUT/static/"
