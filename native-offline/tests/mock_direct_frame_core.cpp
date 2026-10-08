@@ -89,6 +89,7 @@ struct InputObservation {
 std::array<InputObservation, kMaxInputObservations> input_observations{};
 unsigned input_observation_count = 0;
 std::array<char, 32> layout_seen_at_load{};
+std::array<char, 32> option_seen_at_load{};
 
 void remember_layout(const char* value) {
     unsigned index = 0;
@@ -98,6 +99,16 @@ void remember_layout(const char* value) {
         }
     }
     layout_seen_at_load[index] = '\0';
+}
+
+void remember_option(const char* value) {
+    unsigned index = 0;
+    if (value) {
+        for (; value[index] && index + 1 < option_seen_at_load.size(); ++index) {
+            option_seen_at_load[index] = value[index];
+        }
+    }
+    option_seen_at_load[index] = '\0';
 }
 
 } // namespace
@@ -120,6 +131,7 @@ void retro_set_environment(Environment callback) {
         environment(kEnvironmentSetPixelFormat, &format);
         RetroVariable variables[] = {
             {"melonds_screen_layout1", "top-bottom|left-right"},
+            {"an3_test_mode", "off|on"},
             {nullptr, nullptr},
         };
         environment(kEnvironmentSetVariables, variables);
@@ -137,6 +149,12 @@ bool retro_load_game(const retro_game_info*) {
         remember_layout(variable.value);
     } else {
         remember_layout(nullptr);
+    }
+    RetroVariable option{"an3_test_mode", nullptr};
+    if (environment && environment(kEnvironmentGetVariable, &option)) {
+        remember_option(option.value);
+    } else {
+        remember_option(nullptr);
     }
     return true;
 }
@@ -199,6 +217,10 @@ int an3_test_read_input_observation(unsigned index, std::uint32_t* buttons,
 
 const char* an3_test_layout_seen_at_load() {
     return layout_seen_at_load.data();
+}
+
+const char* an3_test_option_seen_at_load() {
+    return option_seen_at_load.data();
 }
 
 } // extern "C"

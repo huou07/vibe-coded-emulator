@@ -24,13 +24,13 @@ modules:
         # build-linux-staging.sh must place the exact current verified DEB at
         # this path before Flatpak packaging. A stale historical package is
         # never an acceptable Flatpak source.
-        path: ../releases/vibecodedemulator-3.3.3-linux-amd64.deb
+        path: ../releases/vibecodedemulator-3.5.0-linux-amd64.deb
       - type: file
         path: space.an3tocom.offline.metainfo.xml
       - type: file
         path: an3-native-player.sh
     build-commands:
-      - ar -x vibecodedemulator-3.3.3-linux-amd64.deb
+      - ar -x vibecodedemulator-3.5.0-linux-amd64.deb
       - mkdir -p deb-extract
       - "data_archive=$(find . -maxdepth 1 -name 'data.tar.*' -print -quit); test -n \"$data_archive\"; tar -C deb-extract -xf \"$data_archive\""
       # The Tauri shell embeds the local-ROM library/import frontend and loads

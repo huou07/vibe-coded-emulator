@@ -8,6 +8,7 @@ silently reintroduce a prior defect.
 """
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -36,11 +37,14 @@ class NativeRegressionGuardTests(unittest.TestCase):
         inert. `tests/test_macos_automation_app.py` catches this on the built
         binary; this guard makes the intent fail fast at the source boundary.
         """
-        build_rs = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
+        cargo = (ROOT / "native-offline/src-tauri/Cargo.toml").read_text(encoding="utf-8")
         self.assertIn('#[cfg(feature = "ui-control")]\nmod ui_control;', TAURI_LIB)
-        self.assertIn("CARGO_FEATURE_UI_CONTROL", build_rs)
-        self.assertIn('commands.push("ui_control_result")', build_rs)
-        self.assertNotIn('            "ui_control_result",\n', build_rs)
+        feature_block = cargo.split("[features]", 1)[1].split("\n[", 1)[0]
+        self.assertIn("ui-control = []", feature_block)
+        default_features = re.search(r"(?ms)^\s*default\s*=\s*\[([^\]]*)\]", feature_block)
+        self.assertFalse(default_features and "ui-control" in default_features.group(1))
+        build_rs = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
+        self.assertNotIn("ui_control_result", build_rs)
 
     def test_android_entry_returns_from_tauri_without_process_exit(self):
         run_start = TAURI_LIB.index("pub fn run() {")

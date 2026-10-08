@@ -71,6 +71,24 @@ function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
+function minimumMacOS(file) {
+  const output = execFileSync("otool", ["-l", file], { encoding: "utf8" });
+  const version = output.match(/cmd LC_BUILD_VERSION[\s\S]*?\n\s*minos\s+([0-9.]+)/)?.[1]
+    ?? output.match(/cmd LC_VERSION_MIN_MACOSX[\s\S]*?\n\s*version\s+([0-9.]+)/)?.[1];
+  if (!version) fail(`could not read the minimum macOS version from ${file}`);
+  return version;
+}
+
+function compareVersions(left, right) {
+  const a = left.split(".").map(Number);
+  const b = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
 if (!existsSync(SOURCE)) {
   fail(`the companion binary is missing at ${SOURCE}.\nBuild native/eden-bridge (see its README) or set AN3_SWITCH_COMPANION_BUILD.`);
 }
@@ -90,6 +108,19 @@ while (queue.length > 0) {
   for (const nested of dependencies(path)) {
     if (isExternal(nested) && !closure.has(basename(nested))) queue.push(nested);
   }
+}
+
+// Reject incompatible inputs before replacing the previous staged bundle.
+const appMinimum = JSON.parse(readFileSync(join(ROOT, "src-tauri/tauri.conf.json"), "utf8"))
+  .bundle?.macOS?.minimumSystemVersion;
+if (!appMinimum) fail("the app's minimum macOS version is missing from tauri.conf.json");
+const incompatible = [SOURCE, ...closure.values()]
+  .map((file) => ({ file, minimum: minimumMacOS(file) }))
+  .filter(({ minimum }) => compareVersions(minimum, appMinimum) > 0);
+if (incompatible.length > 0) {
+  fail(`app minimum is macOS ${appMinimum}, but bundled inputs require:\n  ${incompatible
+    .map(({ file, minimum }) => `${basename(file)}: macOS ${minimum}`)
+    .join("\n  ")}`);
 }
 
 // 2. Lay out the bundle.

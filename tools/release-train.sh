@@ -457,6 +457,12 @@ PS
   # Emit the evidence bundle next to SOURCE_FROZEN.json after the disposable
   # remote roots are gone, so a failed publication gate cannot leak them.
   emit_release_evidence "$mac_source" "$run_root" "$artifacts" "$evidence_timestamp"
+  if [[ "${AN3_KEEP_LOCAL_BUILD_ROOTS:-0}" != "1" ]]; then
+    # The frozen archive, candidates, checksums and evidence are retained; the
+    # extracted source plus its Cargo target is reproducible build scratch.
+    rm -rf -- "$mac_source"
+    note "LOCAL_BUILD_SCRATCH=REMOVED path=$mac_source"
+  fi
   note "RELEASE_EVIDENCE_DIR=$run_root"
 }
 

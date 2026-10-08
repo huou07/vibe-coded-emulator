@@ -3,12 +3,11 @@
 //
 //! Test-only structured UI control bridge.
 //!
-//! The result receiver command is always compiled (it is inert), while the
-//! loopback HTTP bridge itself is compiled **only** with the `ui-control`
-//! cargo feature, enabled by the automation E2E build and never by a
-//! distribution build. The bridge drives the real WebView by dispatching real
-//! DOM events on real elements (identified by `data-testid`), so a click
-//! exercises the same frontend handler a user would.
+//! The loopback HTTP bridge is compiled **only** with the `ui-control` cargo
+//! feature, enabled by the automation E2E build and never by a distribution
+//! build. The bridge drives the real WebView by dispatching real DOM events on
+//! real elements (identified by `data-testid`), so a click exercises the same
+//! frontend handler a user would.
 //!
 //! Security properties:
 //! - bound to `127.0.0.1` on an ephemeral port only;
@@ -16,25 +15,9 @@
 //! - accepts only a validated `data-testid` (no arbitrary JavaScript);
 //! - the port + token are written to the file named by `AN3_UI_CONTROL_FILE`.
 
-use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 
-static PENDING: Mutex<Option<HashMap<String, Sender<String>>>> = Mutex::new(None);
 static COUNTER: Mutex<u64> = Mutex::new(0);
-
-/// Receives the result of a generated DOM expression from the WebView. Inert
-/// unless a bridge request is waiting.
-#[tauri::command]
-pub fn ui_control_result(request_id: String, payload: String) {
-    if let Ok(mut guard) = PENDING.lock() {
-        if let Some(map) = guard.as_mut() {
-            if let Some(sender) = map.remove(&request_id) {
-                let _ = sender.send(payload);
-            }
-        }
-    }
-}
 
 fn next_id() -> u64 {
     let mut counter = COUNTER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -59,7 +42,7 @@ mod runtime {
     use std::time::Duration;
     use tauri::{AppHandle, Manager};
 
-    use super::{next_id, valid_testid, PENDING};
+    use super::{next_id, valid_testid};
 
     const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -67,26 +50,28 @@ mod runtime {
     /// expression is generated here from a validated test id, never from caller
     /// JavaScript.
     fn evaluate(app: &AppHandle, expression: &str) -> Result<String, String> {
-        let request_id = format!("ui{}", next_id());
         let (sender, receiver) = channel();
-        {
-            let mut guard = PENDING.lock().map_err(|_| "ui control state is poisoned")?;
-            guard
-                .get_or_insert_with(std::collections::HashMap::new)
-                .insert(request_id.clone(), sender);
-        }
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "the main window is unavailable".to_string())?;
-        let id = serde_json::to_string(&request_id).unwrap_or_else(|_| "\"\"".into());
         let js = format!(
-            "(function(){{var v;try{{v={expression};}}catch(e){{v={{error:String(e)}};}}\
-             window.__TAURI__.core.invoke('ui_control_result',{{requestId:{id},payload:JSON.stringify(v===undefined?null:v)}});}})();"
+            "JSON.stringify((function(){{try{{return {expression};}}catch(e){{return {{error:String(e)}};}}}})())"
         );
-        window.eval(&js).map_err(|error| error.to_string())?;
-        receiver
+        window
+            .eval_with_callback(js, move |result| {
+                let _ = sender.send(result);
+            })
+            .map_err(|error| error.to_string())?;
+        let encoded = receiver
             .recv_timeout(EVAL_TIMEOUT)
-            .map_err(|_| "the web UI did not answer in time".to_string())
+            .map_err(|_| "the web UI did not answer in time".to_string())?;
+        let result: String = serde_json::from_str(&encoded).map_err(|error| error.to_string())?;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&result) {
+            if let Some(error) = value.get("error").and_then(serde_json::Value::as_str) {
+                return Err(error.to_owned());
+            }
+        }
+        Ok(result)
     }
 
     fn node_expression(testid: &str) -> String {
