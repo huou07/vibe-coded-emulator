@@ -1,0 +1,2 @@
+# Do not grant turbostat itself or a shell: only the fixed root-owned helper.
+tvshare ALL=(root) NOPASSWD: /usr/local/libexec/an3-arcade-turbostat

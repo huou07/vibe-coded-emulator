@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "description": "Canonical local input contract for the native overlay and physical controller mapping. Gameplay buttons map to the existing libretro joypad ids. Circular D-pad geometry and speed choices are generated into the Android adapter.",
+  "buttons": {
+    "B": {"libretro": 0, "label": "B"},
+    "Y": {"libretro": 1, "label": "Y"},
+    "SELECT": {"libretro": 2, "label": "Select"},
+    "START": {"libretro": 3, "label": "Start"},
+    "UP": {"libretro": 4, "label": "Up"},
+    "DOWN": {"libretro": 5, "label": "Down"},
+    "LEFT": {"libretro": 6, "label": "Left"},
+    "RIGHT": {"libretro": 7, "label": "Right"},
+    "A": {"libretro": 8, "label": "A"},
+    "X": {"libretro": 9, "label": "X"},
+    "L": {"libretro": 10, "label": "L"},
+    "R": {"libretro": 11, "label": "R"}
+  },
+  "directionalControls": [
+    {"id": "dpad", "label": "D-Pad"},
+    {"id": "joystick", "label": "Analog Joystick"},
+    {"id": "circular", "label": "Circular D-pad"}
+  ],
+  "speeds": ["0.5", "1", "2", "4", "8"],
+  "circular": {
+    "deadzone": 0.3,
+    "hysteresisDegrees": 6.0,
+    "sectors": [
+      {"id": "E", "center": 0, "actions": ["RIGHT"]},
+      {"id": "NE", "center": 45, "actions": ["UP", "RIGHT"]},
+      {"id": "N", "center": 90, "actions": ["UP"]},
+      {"id": "NW", "center": 135, "actions": ["UP", "LEFT"]},
+      {"id": "W", "center": 180, "actions": ["LEFT"]},
+      {"id": "SW", "center": 225, "actions": ["DOWN", "LEFT"]},
+      {"id": "S", "center": 270, "actions": ["DOWN"]},
+      {"id": "SE", "center": 315, "actions": ["DOWN", "RIGHT"]}
+    ]
+  }
+}

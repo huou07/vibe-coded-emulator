@@ -1,0 +1,92 @@
+diff --git a/src/video_core/renderer_vulkan/vk_present_manager.cpp b/src/video_core/renderer_vulkan/vk_present_manager.cpp
+index d173a3b..cba3b19 100644
+--- a/src/video_core/renderer_vulkan/vk_present_manager.cpp
++++ b/src/video_core/renderer_vulkan/vk_present_manager.cpp
+@@ -558,7 +558,7 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+     }
+ 
+     // Present
+-    swapchain.Present(render_semaphore);
++    swapchain.Present(render_semaphore, *frame->present_done);
+ }
+ 
+ } // namespace Vulkan
+diff --git a/src/video_core/renderer_vulkan/vk_swapchain.cpp b/src/video_core/renderer_vulkan/vk_swapchain.cpp
+index fea5398..b832870 100644
+--- a/src/video_core/renderer_vulkan/vk_swapchain.cpp
++++ b/src/video_core/renderer_vulkan/vk_swapchain.cpp
+@@ -23,6 +23,16 @@
+ #include "video_core/vulkan_common/vulkan_wrapper.h"
+ #include "vulkan/vulkan_core.h"
+ 
++// AN3 hosted-frame hook (weak symbol): hands the just-presented swapchain
++// image, the Vulkan device context and the per-frame present fence to an
++// out-of-process host. The fence signals once Eden's copy-to-swapchain
++// submission (which leaves the image in PRESENT_SRC_KHR) has completed, so the
++// host can order its read without draining the queue. Absent in builds without
++// the bridge.
++extern "C" void an3_eden_hosted_frame_hook(void* device, unsigned graphics_family, void* image,
++                                           unsigned width, unsigned height, unsigned vk_format,
++                                           void* present_fence) __attribute__((weak));
++
+ namespace Vulkan {
+ 
+ namespace {
+@@ -214,7 +224,16 @@ bool Swapchain::AcquireNextImage() {
+     return is_suboptimal || is_outdated;
+ }
+ 
+-void Swapchain::Present(VkSemaphore render_semaphore) {
++void Swapchain::Present(VkSemaphore render_semaphore, VkFence present_fence) {
++    if (an3_eden_hosted_frame_hook != nullptr) {
++        an3_eden_hosted_frame_hook(reinterpret_cast<void*>(*device.GetLogical()),
++                                   static_cast<unsigned>(device.GetGraphicsFamily()),
++                                   reinterpret_cast<void*>(images[image_index]),
++                                   static_cast<unsigned>(extent.width),
++                                   static_cast<unsigned>(extent.height),
++                                   static_cast<unsigned>(surface_format.format),
++                                   reinterpret_cast<void*>(present_fence));
++    }
+     const auto present_queue{device.GetPresentQueue()};
+     const VkPresentInfoKHR present_info{
+         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+@@ -277,6 +296,17 @@ void Swapchain::CreateSwapchain(const VkSurfaceCapabilitiesKHR& capabilities) {
+     } else {
+         requested_image_count = (std::max)(requested_image_count, 3U);
+     }
++    // AN3 hosted frames: the swapchain image must be copyable by the bridge.
++    // Add TRANSFER_SRC only when the surface actually supports it, and never
++    // drop the required COLOR_ATTACHMENT usage.
++    const VkImageUsageFlags an3_hosted_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
++                                               VK_IMAGE_USAGE_TRANSFER_DST_BIT |
++                                               VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
++    VkImageUsageFlags swapchain_image_usage =
++        an3_hosted_usage & capabilities.supportedUsageFlags;
++    if ((swapchain_image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) == 0) {
++        swapchain_image_usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
++    }
+     VkSwapchainCreateInfoKHR swapchain_ci{
+         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+         .pNext = nullptr,
+@@ -287,7 +317,7 @@ void Swapchain::CreateSwapchain(const VkSurfaceCapabilitiesKHR& capabilities) {
+         .imageColorSpace = surface_format.colorSpace,
+         .imageExtent = {},
+         .imageArrayLayers = 1,
+-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
++        .imageUsage = swapchain_image_usage,
+         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+         .queueFamilyIndexCount = 0,
+         .pQueueFamilyIndices = nullptr,
+diff --git a/src/video_core/renderer_vulkan/vk_swapchain.h b/src/video_core/renderer_vulkan/vk_swapchain.h
+index d926cc1..0f1d31c 100644
+--- a/src/video_core/renderer_vulkan/vk_swapchain.h
++++ b/src/video_core/renderer_vulkan/vk_swapchain.h
+@@ -40,7 +40,7 @@ public:
+     bool AcquireNextImage();
+ 
+     /// Presents the rendered image to the swapchain.
+-    void Present(VkSemaphore render_semaphore);
++    void Present(VkSemaphore render_semaphore, VkFence present_fence);
+ 
+     /// Returns true when the swapchain needs to be recreated.
+     bool NeedsRecreation() const {

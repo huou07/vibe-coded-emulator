@@ -1,0 +1,6811 @@
+{
+  "version": 1,
+  "generatedBy": "native-offline/tools/core_option_probe.cpp",
+  "systems": {
+    "switch": {
+      "engine": null,
+      "version": null,
+      "noGame": false,
+      "options": []
+    },
+    "gba": {
+      "engine": "mGBA",
+      "version": "0.11-219-e31759b",
+      "noGame": false,
+      "options": [
+        {
+          "key": "mgba_gb_model",
+          "label": "Game Boy Model (Restart)",
+          "description": "Runs loaded content with a specific Game Boy model. 'Autodetect' will select the most appropriate model for the current game.",
+          "category": "system",
+          "default": "Autodetect",
+          "values": [
+            {
+              "value": "Autodetect",
+              "label": "Autodetect"
+            },
+            {
+              "value": "Game Boy",
+              "label": "Game Boy"
+            },
+            {
+              "value": "Super Game Boy",
+              "label": "Super Game Boy"
+            },
+            {
+              "value": "Game Boy Color",
+              "label": "Game Boy Color"
+            },
+            {
+              "value": "Super Game Boy Color",
+              "label": "Super Game Boy Color"
+            },
+            {
+              "value": "Game Boy Advance",
+              "label": "Game Boy Advance"
+            }
+          ]
+        },
+        {
+          "key": "mgba_use_bios",
+          "label": "Use BIOS File if Found (Restart)",
+          "description": "Use official BIOS/bootloader for emulated hardware, if present in RetroArch's system directory.",
+          "category": "system",
+          "default": "ON",
+          "values": [
+            {
+              "value": "ON",
+              "label": "enabled"
+            },
+            {
+              "value": "OFF",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_skip_bios",
+          "label": "Skip BIOS Intro (Restart)",
+          "description": "When using an official BIOS/bootloader, skip the start-up logo animation. This setting is ignored when 'Use BIOS File if Found' is disabled.",
+          "category": "system",
+          "default": "OFF",
+          "values": [
+            {
+              "value": "OFF",
+              "label": "disabled"
+            },
+            {
+              "value": "ON",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_gb_colors",
+          "label": "Default Game Boy Palette",
+          "description": "Selects which palette is used for Game Boy games that are not Game Boy Color or Super Game Boy compatible, or if the model is forced to Game Boy.",
+          "category": "video",
+          "default": "Grayscale",
+          "values": [
+            {
+              "value": "Grayscale",
+              "label": "Grayscale"
+            },
+            {
+              "value": "DMG Green",
+              "label": "DMG Green"
+            },
+            {
+              "value": "GB Pocket",
+              "label": "GB Pocket"
+            },
+            {
+              "value": "GB Light",
+              "label": "GB Light"
+            },
+            {
+              "value": "GBC Brown ↑",
+              "label": "GBC Brown ↑"
+            },
+            {
+              "value": "GBC Red ↑A",
+              "label": "GBC Red ↑A"
+            },
+            {
+              "value": "GBC Dark Brown ↑B",
+              "label": "GBC Dark Brown ↑B"
+            },
+            {
+              "value": "GBC Pale Yellow ↓",
+              "label": "GBC Pale Yellow ↓"
+            },
+            {
+              "value": "GBC Orange ↓A",
+              "label": "GBC Orange ↓A"
+            },
+            {
+              "value": "GBC Yellow ↓B",
+              "label": "GBC Yellow ↓B"
+            },
+            {
+              "value": "GBC Blue ←",
+              "label": "GBC Blue ←"
+            },
+            {
+              "value": "GBC Dark Blue ←A",
+              "label": "GBC Dark Blue ←A"
+            },
+            {
+              "value": "GBC Gray ←B",
+              "label": "GBC Gray ←B"
+            },
+            {
+              "value": "GBC Green →",
+              "label": "GBC Green →"
+            },
+            {
+              "value": "GBC Dark Green →A",
+              "label": "GBC Dark Green →A"
+            },
+            {
+              "value": "GBC Reverse →B",
+              "label": "GBC Reverse →B"
+            },
+            {
+              "value": "SGB 1-A",
+              "label": "SGB 1-A"
+            },
+            {
+              "value": "SGB 1-B",
+              "label": "SGB 1-B"
+            },
+            {
+              "value": "SGB 1-C",
+              "label": "SGB 1-C"
+            },
+            {
+              "value": "SGB 1-D",
+              "label": "SGB 1-D"
+            },
+            {
+              "value": "SGB 1-E",
+              "label": "SGB 1-E"
+            },
+            {
+              "value": "SGB 1-F",
+              "label": "SGB 1-F"
+            },
+            {
+              "value": "SGB 1-G",
+              "label": "SGB 1-G"
+            },
+            {
+              "value": "SGB 1-H",
+              "label": "SGB 1-H"
+            },
+            {
+              "value": "SGB 2-A",
+              "label": "SGB 2-A"
+            },
+            {
+              "value": "SGB 2-B",
+              "label": "SGB 2-B"
+            },
+            {
+              "value": "SGB 2-C",
+              "label": "SGB 2-C"
+            },
+            {
+              "value": "SGB 2-D",
+              "label": "SGB 2-D"
+            },
+            {
+              "value": "SGB 2-E",
+              "label": "SGB 2-E"
+            },
+            {
+              "value": "SGB 2-F",
+              "label": "SGB 2-F"
+            },
+            {
+              "value": "SGB 2-G",
+              "label": "SGB 2-G"
+            },
+            {
+              "value": "SGB 2-H",
+              "label": "SGB 2-H"
+            },
+            {
+              "value": "SGB 3-A",
+              "label": "SGB 3-A"
+            },
+            {
+              "value": "SGB 3-B",
+              "label": "SGB 3-B"
+            },
+            {
+              "value": "SGB 3-C",
+              "label": "SGB 3-C"
+            },
+            {
+              "value": "SGB 3-D",
+              "label": "SGB 3-D"
+            },
+            {
+              "value": "SGB 3-E",
+              "label": "SGB 3-E"
+            },
+            {
+              "value": "SGB 3-F",
+              "label": "SGB 3-F"
+            },
+            {
+              "value": "SGB 3-G",
+              "label": "SGB 3-G"
+            },
+            {
+              "value": "SGB 3-H",
+              "label": "SGB 3-H"
+            },
+            {
+              "value": "SGB 4-A",
+              "label": "SGB 4-A"
+            },
+            {
+              "value": "SGB 4-B",
+              "label": "SGB 4-B"
+            },
+            {
+              "value": "SGB 4-C",
+              "label": "SGB 4-C"
+            },
+            {
+              "value": "SGB 4-D",
+              "label": "SGB 4-D"
+            },
+            {
+              "value": "SGB 4-E",
+              "label": "SGB 4-E"
+            },
+            {
+              "value": "SGB 4-F",
+              "label": "SGB 4-F"
+            },
+            {
+              "value": "SGB 4-G",
+              "label": "SGB 4-G"
+            },
+            {
+              "value": "SGB 4-H",
+              "label": "SGB 4-H"
+            }
+          ]
+        },
+        {
+          "key": "mgba_gb_colors_preset",
+          "label": "Hardware Preset Game Boy Palettes (Restart)",
+          "description": "Use the palettes for Game Boy games that have presets on the Game Boy Color or Super Game Boy.",
+          "category": "video",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "Default Game Boy preset"
+            },
+            {
+              "value": "1",
+              "label": "Game Boy Color presets only"
+            },
+            {
+              "value": "2",
+              "label": "Super Game Boy presets only"
+            },
+            {
+              "value": "3",
+              "label": "Any available presets"
+            }
+          ]
+        },
+        {
+          "key": "mgba_sgb_borders",
+          "label": "Use Super Game Boy Borders (Restart)",
+          "description": "Display Super Game Boy borders when running Super Game Boy enhanced games.",
+          "category": "video",
+          "default": "ON",
+          "values": [
+            {
+              "value": "ON",
+              "label": "enabled"
+            },
+            {
+              "value": "OFF",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_color_correction",
+          "label": "Color Correction",
+          "description": "Adjusts output colors to match the display of real GBA/GBC hardware.",
+          "category": "video",
+          "default": "OFF",
+          "values": [
+            {
+              "value": "OFF",
+              "label": "disabled"
+            },
+            {
+              "value": "GBA",
+              "label": "Game Boy Advance"
+            },
+            {
+              "value": "GBC",
+              "label": "Game Boy Color"
+            },
+            {
+              "value": "Auto",
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "key": "mgba_interframe_blending",
+          "label": "Interframe Blending",
+          "description": "Simulates LCD ghosting effects. 'Simple' performs a 50:50 mix of the current and previous frames. 'Smart' attempts to detect screen flickering, and only performs a 50:50 mix on affected pixels. 'LCD Ghosting' mimics natural LCD response times by combining multiple buffered frames. 'Simple' or 'Smart' blending is required when playing games that aggressively exploit LCD ghosting for transparency effects (Wave Race, Chikyuu Kaihou Gun ZAS, F-Zero, the Boktai series...).",
+          "category": "video",
+          "default": "OFF",
+          "values": [
+            {
+              "value": "OFF",
+              "label": "disabled"
+            },
+            {
+              "value": "mix",
+              "label": "Simple"
+            },
+            {
+              "value": "mix_smart",
+              "label": "Smart"
+            },
+            {
+              "value": "lcd_ghosting",
+              "label": "LCD Ghosting (Accurate)"
+            },
+            {
+              "value": "lcd_ghosting_fast",
+              "label": "LCD Ghosting (Fast)"
+            }
+          ]
+        },
+        {
+          "key": "mgba_audio_low_pass_filter",
+          "label": "Audio Filter",
+          "description": "Enables a low pass audio filter to reduce the 'harshness' of generated audio.",
+          "category": "audio",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_audio_low_pass_range",
+          "label": "Audio Filter Level",
+          "description": "Specifies the cut-off frequency of the low pass audio filter. A higher value increases the perceived 'strength' of the filter, since a wider range of the high frequency spectrum is attenuated.",
+          "category": "audio",
+          "default": "60",
+          "values": [
+            {
+              "value": "5",
+              "label": "5%"
+            },
+            {
+              "value": "10",
+              "label": "10%"
+            },
+            {
+              "value": "15",
+              "label": "15%"
+            },
+            {
+              "value": "20",
+              "label": "20%"
+            },
+            {
+              "value": "25",
+              "label": "25%"
+            },
+            {
+              "value": "30",
+              "label": "30%"
+            },
+            {
+              "value": "35",
+              "label": "35%"
+            },
+            {
+              "value": "40",
+              "label": "40%"
+            },
+            {
+              "value": "45",
+              "label": "45%"
+            },
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "55",
+              "label": "55%"
+            },
+            {
+              "value": "60",
+              "label": "60%"
+            },
+            {
+              "value": "65",
+              "label": "65%"
+            },
+            {
+              "value": "70",
+              "label": "70%"
+            },
+            {
+              "value": "75",
+              "label": "75%"
+            },
+            {
+              "value": "80",
+              "label": "80%"
+            },
+            {
+              "value": "85",
+              "label": "85%"
+            },
+            {
+              "value": "90",
+              "label": "90%"
+            },
+            {
+              "value": "95",
+              "label": "95%"
+            }
+          ]
+        },
+        {
+          "key": "mgba_allow_opposing_directions",
+          "label": "Allow Opposing Directional Input",
+          "description": "Enabling this will allow pressing / quickly alternating / holding both left and right (or up and down) directions at the same time. This may cause movement-based glitches.",
+          "category": "input",
+          "default": "no",
+          "values": [
+            {
+              "value": "no",
+              "label": "disabled"
+            },
+            {
+              "value": "yes",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_solar_sensor_level",
+          "label": "Solar Sensor Level",
+          "description": "Sets ambient sunlight intensity. Can be used by games that included a solar sensor in their cartridges, e.g: the Boktai series.",
+          "category": "input",
+          "default": "0",
+          "values": [
+            {
+              "value": "sensor",
+              "label": "Use device sensor if available"
+            },
+            {
+              "value": "0",
+              "label": "0"
+            },
+            {
+              "value": "1",
+              "label": "1"
+            },
+            {
+              "value": "2",
+              "label": "2"
+            },
+            {
+              "value": "3",
+              "label": "3"
+            },
+            {
+              "value": "4",
+              "label": "4"
+            },
+            {
+              "value": "5",
+              "label": "5"
+            },
+            {
+              "value": "6",
+              "label": "6"
+            },
+            {
+              "value": "7",
+              "label": "7"
+            },
+            {
+              "value": "8",
+              "label": "8"
+            },
+            {
+              "value": "9",
+              "label": "9"
+            },
+            {
+              "value": "10",
+              "label": "10"
+            }
+          ]
+        },
+        {
+          "key": "mgba_force_gbp",
+          "label": "Game Boy Player Rumble (Restart)",
+          "description": "Enabling this will allow compatible games with the Game Boy Player boot logo to make the controller rumble. Due to how Nintendo decided this feature should work, it may cause glitches such as flickering or lag in some of these games.",
+          "category": "input",
+          "default": "OFF",
+          "values": [
+            {
+              "value": "OFF",
+              "label": "disabled"
+            },
+            {
+              "value": "ON",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "mgba_idle_optimization",
+          "label": "Idle Loop Removal",
+          "description": "Reduce system load by optimizing so-called 'idle-loops' - sections in the code where nothing happens, but the CPU runs at full speed (like a car revving in neutral). Improves performance, and should be enabled on low-end hardware.",
+          "category": "performance",
+          "default": "Remove Known",
+          "values": [
+            {
+              "value": "Remove Known",
+              "label": "Remove Known"
+            },
+            {
+              "value": "Detect and Remove",
+              "label": "Detect and Remove"
+            },
+            {
+              "value": "Don't Remove",
+              "label": "Don't Remove"
+            }
+          ]
+        },
+        {
+          "key": "mgba_frameskip",
+          "label": "Frameskip",
+          "description": "Skip frames to avoid audio buffer under-run (crackling). Improves performance at the expense of visual smoothness. 'Auto' skips frames when advised by the frontend. 'Auto (Threshold)' utilises the 'Frameskip Threshold (%)' setting. 'Fixed Interval' utilises the 'Frameskip Interval' setting.",
+          "category": "performance",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "auto",
+              "label": "Auto"
+            },
+            {
+              "value": "auto_threshold",
+              "label": "Auto (Threshold)"
+            },
+            {
+              "value": "fixed_interval",
+              "label": "Fixed Interval"
+            }
+          ]
+        },
+        {
+          "key": "mgba_frameskip_threshold",
+          "label": "Frameskip Threshold (%)",
+          "description": "When 'Frameskip' is set to 'Auto (Threshold)', specifies the audio buffer occupancy threshold (percentage) below which frames will be skipped. Higher values reduce the risk of crackling by causing frames to be dropped more frequently.",
+          "category": "performance",
+          "default": "33",
+          "values": [
+            {
+              "value": "15",
+              "label": "15"
+            },
+            {
+              "value": "18",
+              "label": "18"
+            },
+            {
+              "value": "21",
+              "label": "21"
+            },
+            {
+              "value": "24",
+              "label": "24"
+            },
+            {
+              "value": "27",
+              "label": "27"
+            },
+            {
+              "value": "30",
+              "label": "30"
+            },
+            {
+              "value": "33",
+              "label": "33"
+            },
+            {
+              "value": "36",
+              "label": "36"
+            },
+            {
+              "value": "39",
+              "label": "39"
+            },
+            {
+              "value": "42",
+              "label": "42"
+            },
+            {
+              "value": "45",
+              "label": "45"
+            },
+            {
+              "value": "48",
+              "label": "48"
+            },
+            {
+              "value": "51",
+              "label": "51"
+            },
+            {
+              "value": "54",
+              "label": "54"
+            },
+            {
+              "value": "57",
+              "label": "57"
+            },
+            {
+              "value": "60",
+              "label": "60"
+            }
+          ]
+        },
+        {
+          "key": "mgba_frameskip_interval",
+          "label": "Frameskip Interval",
+          "description": "When 'Frameskip' is set to 'Fixed Interval', the value set here is the number of frames omitted after a frame is rendered - i.e. '0' = 60fps, '1' = 30fps, '2' = 15fps, etc.",
+          "category": "performance",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "0"
+            },
+            {
+              "value": "1",
+              "label": "1"
+            },
+            {
+              "value": "2",
+              "label": "2"
+            },
+            {
+              "value": "3",
+              "label": "3"
+            },
+            {
+              "value": "4",
+              "label": "4"
+            },
+            {
+              "value": "5",
+              "label": "5"
+            },
+            {
+              "value": "6",
+              "label": "6"
+            },
+            {
+              "value": "7",
+              "label": "7"
+            },
+            {
+              "value": "8",
+              "label": "8"
+            },
+            {
+              "value": "9",
+              "label": "9"
+            },
+            {
+              "value": "10",
+              "label": "10"
+            }
+          ]
+        }
+      ]
+    },
+    "nds": {
+      "engine": "melonDS DS",
+      "version": "1.3.1",
+      "noGame": true,
+      "options": [
+        {
+          "key": "melonds_mic_input",
+          "label": "Microphone Input Mode",
+          "description": "Choose the sound that the emulated microphone will receive:\n\nSilence: No audio input.\nBlow: Loop a built-in blowing sound.\nNoise: Random white noise.\nMicrophone: Use your real microphone if available, fall back to Silence if not.",
+          "category": "audio",
+          "default": "microphone",
+          "values": [
+            {
+              "value": "silence",
+              "label": "Silence"
+            },
+            {
+              "value": "blow",
+              "label": "Blow"
+            },
+            {
+              "value": "noise",
+              "label": "Noise"
+            },
+            {
+              "value": "microphone",
+              "label": "Microphone"
+            }
+          ]
+        },
+        {
+          "key": "melonds_mic_input_active",
+          "label": "Microphone Button Mode",
+          "description": "Set the behavior of the Microphone button, even if Microphone Input Mode is set to Blow or Noise. The emulated microphone receives silence when disabled by the button.\n\nHold: Button enables mic input while held.\nToggle: Button enables mic input when pressed, disables it when pressed again.\nAlways: Button is ignored, mic input is always enabled.\n\nIgnored if Microphone Input Mode is set to Silence.",
+          "category": "audio",
+          "default": "hold",
+          "values": [
+            {
+              "value": "hold",
+              "label": "Hold"
+            },
+            {
+              "value": "toggle",
+              "label": "Toggle"
+            },
+            {
+              "value": "always",
+              "label": "Always"
+            }
+          ]
+        },
+        {
+          "key": "melonds_audio_bitdepth",
+          "label": "Audio Bit Depth",
+          "description": "The number of bits used for each audio sample. Automatic matches the original hardware's behavior by using 10-bit audio for DS mode and 16-bit audio for DSi mode. If unsure, set to Automatic.",
+          "category": "audio",
+          "default": "auto",
+          "values": [
+            {
+              "value": "auto",
+              "label": "Automatic"
+            },
+            {
+              "value": "10bit",
+              "label": "10-bit"
+            },
+            {
+              "value": "16bit",
+              "label": "16-bit"
+            }
+          ]
+        },
+        {
+          "key": "melonds_audio_interpolation",
+          "label": "Audio Interpolation",
+          "description": "Interpolates audio output for improved quality. Disable this to match the behavior of the original DS hardware.",
+          "category": "audio",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "linear",
+              "label": "Linear"
+            },
+            {
+              "value": "cosine",
+              "label": "Cosine"
+            },
+            {
+              "value": "cubic",
+              "label": "Cubic"
+            },
+            {
+              "value": "gaussian",
+              "label": "Gaussian"
+            }
+          ]
+        },
+        {
+          "key": "melonds_jit_enable",
+          "label": "JIT Recompiler",
+          "description": "Recompiles emulated machine code into native code as it runs, considerably improving performance over plain interpretation. Takes effect at next restart. If unsure, leave enabled.",
+          "category": "cpu",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_jit_block_size",
+          "label": "Block Size",
+          "description": "",
+          "category": "cpu",
+          "default": "32",
+          "values": [
+            {
+              "value": "1",
+              "label": "1"
+            },
+            {
+              "value": "2",
+              "label": "2"
+            },
+            {
+              "value": "3",
+              "label": "3"
+            },
+            {
+              "value": "4",
+              "label": "4"
+            },
+            {
+              "value": "5",
+              "label": "5"
+            },
+            {
+              "value": "6",
+              "label": "6"
+            },
+            {
+              "value": "7",
+              "label": "7"
+            },
+            {
+              "value": "8",
+              "label": "8"
+            },
+            {
+              "value": "9",
+              "label": "9"
+            },
+            {
+              "value": "10",
+              "label": "10"
+            },
+            {
+              "value": "11",
+              "label": "11"
+            },
+            {
+              "value": "12",
+              "label": "12"
+            },
+            {
+              "value": "13",
+              "label": "13"
+            },
+            {
+              "value": "14",
+              "label": "14"
+            },
+            {
+              "value": "15",
+              "label": "15"
+            },
+            {
+              "value": "16",
+              "label": "16"
+            },
+            {
+              "value": "17",
+              "label": "17"
+            },
+            {
+              "value": "18",
+              "label": "18"
+            },
+            {
+              "value": "19",
+              "label": "19"
+            },
+            {
+              "value": "20",
+              "label": "20"
+            },
+            {
+              "value": "21",
+              "label": "21"
+            },
+            {
+              "value": "22",
+              "label": "22"
+            },
+            {
+              "value": "23",
+              "label": "23"
+            },
+            {
+              "value": "24",
+              "label": "24"
+            },
+            {
+              "value": "25",
+              "label": "25"
+            },
+            {
+              "value": "26",
+              "label": "26"
+            },
+            {
+              "value": "27",
+              "label": "27"
+            },
+            {
+              "value": "28",
+              "label": "28"
+            },
+            {
+              "value": "29",
+              "label": "29"
+            },
+            {
+              "value": "30",
+              "label": "30"
+            },
+            {
+              "value": "31",
+              "label": "31"
+            },
+            {
+              "value": "32",
+              "label": "32"
+            }
+          ]
+        },
+        {
+          "key": "melonds_jit_branch_optimisations",
+          "label": "Branch Optimizations",
+          "description": "",
+          "category": "cpu",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_jit_literal_optimisations",
+          "label": "Literal Optimizations",
+          "description": "",
+          "category": "cpu",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_mac_address_mode",
+          "label": "Network MAC Address Mode",
+          "description": "Configures how the emulated console's MAC address is set. Changing this option might make local multiplayer impossible or block access to save files in games that use the MAC address to prevent tampering of save files (i.e. Pokémon).\nNo relation to the direct mode interface. Changes take effect at next restart.\nSee https://bit.ly/4fJtWKN for more information.",
+          "category": "network",
+          "default": "firmware",
+          "values": [
+            {
+              "value": "firmware",
+              "label": "Set from firmware"
+            },
+            {
+              "value": "from-username",
+              "label": "Derive from libretro username"
+            }
+          ]
+        },
+        {
+          "key": "melonds_network_mode",
+          "label": "Networking Mode",
+          "description": "Configures how melonDS DS emulates Nintendo WFC. If unsure, use Indirect mode.\n\nIndirect: Use libslirp to emulate the DS's network stack. Simple and needs no setup.\nDirect: Routes emulated Wi-Fi packets to the host's network interface. Faster and more reliable, but requires an ethernet connection and that libpcap is installed. If unavailable, falls back to Indirect mode.\n\nChanges take effect at next restart. Not related to local multiplayer.",
+          "category": "network",
+          "default": "indirect",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "indirect",
+              "label": "Indirect"
+            },
+            {
+              "value": "direct",
+              "label": "Direct"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_cursor",
+          "label": "Cursor Mode",
+          "description": "Determines when a cursor should appear on the bottom screen. Never is recommended for touch screens; the other settings are best suited for mouse or joystick input.",
+          "category": "screen",
+          "default": "timeout",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "Never"
+            },
+            {
+              "value": "touching",
+              "label": "While Touching"
+            },
+            {
+              "value": "timeout",
+              "label": "Until Timeout"
+            },
+            {
+              "value": "always",
+              "label": "Always"
+            }
+          ]
+        },
+        {
+          "key": "melonds_cursor_timeout",
+          "label": "Cursor Timeout",
+          "description": "If Cursor Mode is set to \"Until Timeout\", then the cursor will be hidden if it hasn't been moved for a certain time.",
+          "category": "screen",
+          "default": "3",
+          "values": [
+            {
+              "value": "1",
+              "label": "1 second"
+            },
+            {
+              "value": "2",
+              "label": "2 seconds"
+            },
+            {
+              "value": "3",
+              "label": "3 seconds"
+            },
+            {
+              "value": "5",
+              "label": "5 seconds"
+            },
+            {
+              "value": "10",
+              "label": "10 seconds"
+            },
+            {
+              "value": "15",
+              "label": "15 seconds"
+            },
+            {
+              "value": "20",
+              "label": "20 seconds"
+            },
+            {
+              "value": "30",
+              "label": "30 seconds"
+            },
+            {
+              "value": "60",
+              "label": "60 seconds"
+            }
+          ]
+        },
+        {
+          "key": "melonds_touch_mode",
+          "label": "Touch Mode",
+          "description": "Determines how the console's touch screen is emulated.\n\nJoystick: Use a joystick to control the cursor. Recommended if you don't have a mouse or a real touch screen available.\nPointer: Use your mouse or touch screen to control the cursor.\nAuto: Use either Joystick or Pointer, depending on which you last touched.\n\nIf unsure, set to Auto.",
+          "category": "screen",
+          "default": "auto",
+          "values": [
+            {
+              "value": "joystick",
+              "label": "Joystick"
+            },
+            {
+              "value": "touch",
+              "label": "Pointer"
+            },
+            {
+              "value": "auto",
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "key": "melonds_joystick_cursor_deadzone",
+          "label": "Joystick Cursor Deadzone",
+          "description": "If the joystick is within this deadzone the cursor will not move.",
+          "category": "screen",
+          "default": "5",
+          "values": [
+            {
+              "value": "0",
+              "label": "0%"
+            },
+            {
+              "value": "5",
+              "label": "5%"
+            },
+            {
+              "value": "10",
+              "label": "10%"
+            },
+            {
+              "value": "15",
+              "label": "15%"
+            },
+            {
+              "value": "20",
+              "label": "20%"
+            },
+            {
+              "value": "25",
+              "label": "25%"
+            },
+            {
+              "value": "30",
+              "label": "30%"
+            },
+            {
+              "value": "35",
+              "label": "35%"
+            }
+          ]
+        },
+        {
+          "key": "melonds_joystick_cursor_maxspeed",
+          "label": "Joystick Cursor Max Speed",
+          "description": "Set the max speed for the joystick cursor.",
+          "category": "screen",
+          "default": "3",
+          "values": [
+            {
+              "value": "1",
+              "label": "1"
+            },
+            {
+              "value": "2",
+              "label": "2"
+            },
+            {
+              "value": "3",
+              "label": "3"
+            },
+            {
+              "value": "4",
+              "label": "4"
+            },
+            {
+              "value": "5",
+              "label": "5"
+            },
+            {
+              "value": "6",
+              "label": "6"
+            },
+            {
+              "value": "7",
+              "label": "7"
+            },
+            {
+              "value": "8",
+              "label": "8"
+            },
+            {
+              "value": "9",
+              "label": "9"
+            }
+          ]
+        },
+        {
+          "key": "melonds_joystick_cursor_response",
+          "label": "Joystick Cursor Response",
+          "description": "Set the response curve for the joystick cursor.\nLinear is a response curve where the cursor speed is 1:1 with the joystick input.\nQuadratic is a response curve that reduces the sensitivity near the joystick center for finer control, but increases the sensitivity near the edges",
+          "category": "screen",
+          "default": "200",
+          "values": [
+            {
+              "value": "100",
+              "label": "Linear"
+            },
+            {
+              "value": "200",
+              "label": "Quadratic"
+            }
+          ]
+        },
+        {
+          "key": "melonds_joystick_cursor_speedup",
+          "label": "Joystick Cursor Multiplier",
+          "description": "Set the multiplier for the joystick cursor when the speedup/slowdown pointer button (L2 by default) is held",
+          "category": "screen",
+          "default": "200",
+          "values": [
+            {
+              "value": "33",
+              "label": "33%"
+            },
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "66",
+              "label": "66%"
+            },
+            {
+              "value": "150",
+              "label": "150%"
+            },
+            {
+              "value": "200",
+              "label": "200%"
+            },
+            {
+              "value": "250",
+              "label": "250%"
+            },
+            {
+              "value": "300",
+              "label": "300%"
+            }
+          ]
+        },
+        {
+          "key": "melonds_number_of_screen_layouts",
+          "label": "# of Screen Layouts",
+          "description": "The number of screen layouts to cycle through with the Next Layout button.",
+          "category": "screen",
+          "default": "2",
+          "values": [
+            {
+              "value": "1",
+              "label": "1"
+            },
+            {
+              "value": "2",
+              "label": "2"
+            },
+            {
+              "value": "3",
+              "label": "3"
+            },
+            {
+              "value": "4",
+              "label": "4"
+            },
+            {
+              "value": "5",
+              "label": "5"
+            },
+            {
+              "value": "6",
+              "label": "6"
+            },
+            {
+              "value": "7",
+              "label": "7"
+            },
+            {
+              "value": "8",
+              "label": "8"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout1",
+          "label": "Screen Layout #1",
+          "description": "",
+          "category": "screen",
+          "default": "top-bottom",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout2",
+          "label": "Screen Layout #2",
+          "description": "",
+          "category": "screen",
+          "default": "left-right",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout3",
+          "label": "Screen Layout #3",
+          "description": "",
+          "category": "screen",
+          "default": "largescreen-top",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout4",
+          "label": "Screen Layout #4",
+          "description": "",
+          "category": "screen",
+          "default": "largescreen-bottom",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout5",
+          "label": "Screen Layout #5",
+          "description": "",
+          "category": "screen",
+          "default": "hybrid-top",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout6",
+          "label": "Screen Layout #6",
+          "description": "",
+          "category": "screen",
+          "default": "hybrid-bottom",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout7",
+          "label": "Screen Layout #7",
+          "description": "",
+          "category": "screen",
+          "default": "top",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_layout8",
+          "label": "Screen Layout #8",
+          "description": "",
+          "category": "screen",
+          "default": "bottom",
+          "values": [
+            {
+              "value": "top-bottom",
+              "label": "Top/Bottom"
+            },
+            {
+              "value": "bottom-top",
+              "label": "Bottom/Top"
+            },
+            {
+              "value": "left-right",
+              "label": "Left/Right"
+            },
+            {
+              "value": "right-left",
+              "label": "Right/Left"
+            },
+            {
+              "value": "top",
+              "label": "Top Only"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom Only"
+            },
+            {
+              "value": "largescreen-top",
+              "label": "Large Screen (Focus Top)"
+            },
+            {
+              "value": "largescreen-bottom",
+              "label": "Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "flipped-largescreen-top",
+              "label": "Flipped Large Screen (Focus Top)"
+            },
+            {
+              "value": "flipped-largescreen-bottom",
+              "label": "Flipped Large Screen (Focus Bottom)"
+            },
+            {
+              "value": "hybrid-top",
+              "label": "Hybrid (Focus Top)"
+            },
+            {
+              "value": "hybrid-bottom",
+              "label": "Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "flipped-hybrid-top",
+              "label": "Flipped Hybrid (Focus Top)"
+            },
+            {
+              "value": "flipped-hybrid-bottom",
+              "label": "Flipped Hybrid (Focus Bottom)"
+            },
+            {
+              "value": "rotate-left",
+              "label": "Rotated Left"
+            },
+            {
+              "value": "rotate-right",
+              "label": "Rotated Right"
+            },
+            {
+              "value": "rotate-180",
+              "label": "Upside Down"
+            }
+          ]
+        },
+        {
+          "key": "melonds_hybrid_ratio",
+          "label": "Hybrid/Largescreen Ratio",
+          "description": "The size of the larger screen relative to the smaller ones when using a hybrid or largescreen layout.",
+          "category": "screen",
+          "default": "2",
+          "values": [
+            {
+              "value": "2",
+              "label": "2:1"
+            },
+            {
+              "value": "3",
+              "label": "3:1"
+            }
+          ]
+        },
+        {
+          "key": "melonds_hybrid_small_screen",
+          "label": "Hybrid Small Screen Mode",
+          "description": "Choose which screens will be shown when using a hybrid layout.",
+          "category": "screen",
+          "default": "both",
+          "values": [
+            {
+              "value": "one",
+              "label": "Show Opposite Screen"
+            },
+            {
+              "value": "both",
+              "label": "Show Both Screens"
+            }
+          ]
+        },
+        {
+          "key": "melonds_opengl_filtering",
+          "label": "Hybrid/Largescreen Filtering",
+          "description": "Affects how the hybrid/largescreen screen is scaled up.\n\nNearest: No filtering. Graphics look blocky.\nLinear: Smooth scaling.\n",
+          "category": "screen",
+          "default": "nearest",
+          "values": [
+            {
+              "value": "nearest",
+              "label": "Nearest"
+            },
+            {
+              "value": "linear",
+              "label": "Linear"
+            }
+          ]
+        },
+        {
+          "key": "melonds_screen_gap",
+          "label": "Screen Gap",
+          "description": "Choose how large the gap between the screens should be. Vertical layouts (including rotations) only. Dimensions exclude the effects of the frontend's scaling.",
+          "category": "screen",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "None"
+            },
+            {
+              "value": "1",
+              "label": "1px"
+            },
+            {
+              "value": "2",
+              "label": "2px"
+            },
+            {
+              "value": "3",
+              "label": "3px"
+            },
+            {
+              "value": "4",
+              "label": "4px"
+            },
+            {
+              "value": "5",
+              "label": "5px"
+            },
+            {
+              "value": "6",
+              "label": "6px"
+            },
+            {
+              "value": "7",
+              "label": "7px"
+            },
+            {
+              "value": "8",
+              "label": "8px"
+            },
+            {
+              "value": "9",
+              "label": "9px"
+            },
+            {
+              "value": "10",
+              "label": "10px"
+            },
+            {
+              "value": "11",
+              "label": "11px"
+            },
+            {
+              "value": "12",
+              "label": "12px"
+            },
+            {
+              "value": "13",
+              "label": "13px"
+            },
+            {
+              "value": "14",
+              "label": "14px"
+            },
+            {
+              "value": "15",
+              "label": "15px"
+            },
+            {
+              "value": "16",
+              "label": "16px"
+            },
+            {
+              "value": "17",
+              "label": "17px"
+            },
+            {
+              "value": "18",
+              "label": "18px"
+            },
+            {
+              "value": "19",
+              "label": "19px"
+            },
+            {
+              "value": "20",
+              "label": "20px"
+            },
+            {
+              "value": "21",
+              "label": "21px"
+            },
+            {
+              "value": "22",
+              "label": "22px"
+            },
+            {
+              "value": "23",
+              "label": "23px"
+            },
+            {
+              "value": "24",
+              "label": "24px"
+            },
+            {
+              "value": "25",
+              "label": "25px"
+            },
+            {
+              "value": "26",
+              "label": "26px"
+            },
+            {
+              "value": "27",
+              "label": "27px"
+            },
+            {
+              "value": "28",
+              "label": "28px"
+            },
+            {
+              "value": "29",
+              "label": "29px"
+            },
+            {
+              "value": "30",
+              "label": "30px"
+            },
+            {
+              "value": "31",
+              "label": "31px"
+            },
+            {
+              "value": "32",
+              "label": "32px"
+            },
+            {
+              "value": "33",
+              "label": "33px"
+            },
+            {
+              "value": "34",
+              "label": "34px"
+            },
+            {
+              "value": "35",
+              "label": "35px"
+            },
+            {
+              "value": "36",
+              "label": "36px"
+            },
+            {
+              "value": "37",
+              "label": "37px"
+            },
+            {
+              "value": "38",
+              "label": "38px"
+            },
+            {
+              "value": "39",
+              "label": "39px"
+            },
+            {
+              "value": "40",
+              "label": "40px"
+            },
+            {
+              "value": "41",
+              "label": "41px"
+            },
+            {
+              "value": "42",
+              "label": "42px"
+            },
+            {
+              "value": "43",
+              "label": "43px"
+            },
+            {
+              "value": "44",
+              "label": "44px"
+            },
+            {
+              "value": "45",
+              "label": "45px"
+            },
+            {
+              "value": "46",
+              "label": "46px"
+            },
+            {
+              "value": "47",
+              "label": "47px"
+            },
+            {
+              "value": "48",
+              "label": "48px"
+            },
+            {
+              "value": "49",
+              "label": "49px"
+            },
+            {
+              "value": "50",
+              "label": "50px"
+            },
+            {
+              "value": "51",
+              "label": "51px"
+            },
+            {
+              "value": "52",
+              "label": "52px"
+            },
+            {
+              "value": "53",
+              "label": "53px"
+            },
+            {
+              "value": "54",
+              "label": "54px"
+            },
+            {
+              "value": "55",
+              "label": "55px"
+            },
+            {
+              "value": "56",
+              "label": "56px"
+            },
+            {
+              "value": "57",
+              "label": "57px"
+            },
+            {
+              "value": "58",
+              "label": "58px"
+            },
+            {
+              "value": "59",
+              "label": "59px"
+            },
+            {
+              "value": "60",
+              "label": "60px"
+            },
+            {
+              "value": "61",
+              "label": "61px"
+            },
+            {
+              "value": "62",
+              "label": "62px"
+            },
+            {
+              "value": "63",
+              "label": "63px"
+            },
+            {
+              "value": "64",
+              "label": "64px"
+            },
+            {
+              "value": "65",
+              "label": "65px"
+            },
+            {
+              "value": "66",
+              "label": "66px"
+            },
+            {
+              "value": "67",
+              "label": "67px"
+            },
+            {
+              "value": "68",
+              "label": "68px"
+            },
+            {
+              "value": "69",
+              "label": "69px"
+            },
+            {
+              "value": "70",
+              "label": "70px"
+            },
+            {
+              "value": "71",
+              "label": "71px"
+            },
+            {
+              "value": "72",
+              "label": "72px"
+            },
+            {
+              "value": "73",
+              "label": "73px"
+            },
+            {
+              "value": "74",
+              "label": "74px"
+            },
+            {
+              "value": "75",
+              "label": "75px"
+            },
+            {
+              "value": "76",
+              "label": "76px"
+            },
+            {
+              "value": "77",
+              "label": "77px"
+            },
+            {
+              "value": "78",
+              "label": "78px"
+            },
+            {
+              "value": "79",
+              "label": "79px"
+            },
+            {
+              "value": "80",
+              "label": "80px"
+            },
+            {
+              "value": "81",
+              "label": "81px"
+            },
+            {
+              "value": "82",
+              "label": "82px"
+            },
+            {
+              "value": "83",
+              "label": "83px"
+            },
+            {
+              "value": "84",
+              "label": "84px"
+            },
+            {
+              "value": "85",
+              "label": "85px"
+            },
+            {
+              "value": "86",
+              "label": "86px"
+            },
+            {
+              "value": "87",
+              "label": "87px"
+            },
+            {
+              "value": "88",
+              "label": "88px"
+            },
+            {
+              "value": "89",
+              "label": "89px"
+            },
+            {
+              "value": "90",
+              "label": "90px"
+            },
+            {
+              "value": "91",
+              "label": "91px"
+            },
+            {
+              "value": "92",
+              "label": "92px"
+            },
+            {
+              "value": "93",
+              "label": "93px"
+            },
+            {
+              "value": "94",
+              "label": "94px"
+            },
+            {
+              "value": "95",
+              "label": "95px"
+            },
+            {
+              "value": "96",
+              "label": "96px"
+            },
+            {
+              "value": "97",
+              "label": "97px"
+            },
+            {
+              "value": "98",
+              "label": "98px"
+            },
+            {
+              "value": "99",
+              "label": "99px"
+            },
+            {
+              "value": "100",
+              "label": "100px"
+            },
+            {
+              "value": "101",
+              "label": "101px"
+            },
+            {
+              "value": "102",
+              "label": "102px"
+            },
+            {
+              "value": "103",
+              "label": "103px"
+            },
+            {
+              "value": "104",
+              "label": "104px"
+            },
+            {
+              "value": "105",
+              "label": "105px"
+            },
+            {
+              "value": "106",
+              "label": "106px"
+            },
+            {
+              "value": "107",
+              "label": "107px"
+            },
+            {
+              "value": "108",
+              "label": "108px"
+            },
+            {
+              "value": "109",
+              "label": "109px"
+            },
+            {
+              "value": "110",
+              "label": "110px"
+            },
+            {
+              "value": "111",
+              "label": "111px"
+            },
+            {
+              "value": "112",
+              "label": "112px"
+            },
+            {
+              "value": "113",
+              "label": "113px"
+            },
+            {
+              "value": "114",
+              "label": "114px"
+            },
+            {
+              "value": "115",
+              "label": "115px"
+            },
+            {
+              "value": "116",
+              "label": "116px"
+            },
+            {
+              "value": "117",
+              "label": "117px"
+            },
+            {
+              "value": "118",
+              "label": "118px"
+            },
+            {
+              "value": "119",
+              "label": "119px"
+            },
+            {
+              "value": "120",
+              "label": "120px"
+            },
+            {
+              "value": "121",
+              "label": "121px"
+            },
+            {
+              "value": "122",
+              "label": "122px"
+            },
+            {
+              "value": "123",
+              "label": "123px"
+            },
+            {
+              "value": "124",
+              "label": "124px"
+            },
+            {
+              "value": "125",
+              "label": "125px"
+            },
+            {
+              "value": "126",
+              "label": "126px"
+            }
+          ]
+        },
+        {
+          "key": "melonds_secondary_screen_scale",
+          "label": "Secondary Screen Scale",
+          "description": "The size of the secondary screen relative to the primary screen. Applies to vertical layouts (Top/Bottom, Bottom/Top). At 100%, both screens are the same size. At 50%, the secondary screen is half the width and height of the primary screen.",
+          "category": "screen",
+          "default": "100",
+          "values": [
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "55",
+              "label": "55%"
+            },
+            {
+              "value": "60",
+              "label": "60%"
+            },
+            {
+              "value": "65",
+              "label": "65%"
+            },
+            {
+              "value": "70",
+              "label": "70%"
+            },
+            {
+              "value": "75",
+              "label": "75%"
+            },
+            {
+              "value": "80",
+              "label": "80%"
+            },
+            {
+              "value": "85",
+              "label": "85%"
+            },
+            {
+              "value": "90",
+              "label": "90%"
+            },
+            {
+              "value": "95",
+              "label": "95%"
+            },
+            {
+              "value": "100",
+              "label": "100%"
+            }
+          ]
+        },
+        {
+          "key": "melonds_secondary_screen_filtering",
+          "label": "Secondary Screen Filtering",
+          "description": "Affects how the secondary screen is scaled down.\n\nNearest: No filtering. Graphics look blocky.\nLinear: Smooth scaling. Recommended when using Secondary Screen Scale below 100%.\n",
+          "category": "screen",
+          "default": "nearest",
+          "values": [
+            {
+              "value": "nearest",
+              "label": "Nearest"
+            },
+            {
+              "value": "linear",
+              "label": "Linear"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_wfc_dns",
+          "label": "DNS Override",
+          "description": "The DNS server to use for the emulated access point (\"melonAP\"). Use this to play online with custom servers that reimplement the discontinued Nintendo Wi-Fi Connection services. Game support depends on the server. \nSome internet service providers may block requests to these servers. If this is the case for you, see https://tinyurl.com/393cb755 for a workaround.\n\nThe listed servers are not affiliated with libretro, Nintendo, the melonDS team, or this core's author. Please respect other players and follow the server's rules.\n\nIf unsure, leave on Kaeru WFC. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "178.62.43.212",
+          "values": [
+            {
+              "value": "178.62.43.212",
+              "label": "Kaeru WFC (178.62.43.212)"
+            },
+            {
+              "value": "172.104.88.237",
+              "label": "AltWFC (172.104.88.237)"
+            },
+            {
+              "value": "95.217.77.181",
+              "label": "Wiimmfi (95.217.77.181)"
+            },
+            {
+              "value": "0.0.0.0",
+              "label": "Force Default DNS"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_language",
+          "label": "Language",
+          "description": "Overrides the language mode of the emulated console.\n\nUse Host: Uses the frontend's language if supported by the console.\nDon't Override: Use whatever language is already set on the firmware. This is the fallback behavior if the emulated DS (or DSi NAND) doesn't support the frontend's language.\n\nNot every game honors this setting. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "auto",
+          "values": [
+            {
+              "value": "auto",
+              "label": "Use Host"
+            },
+            {
+              "value": "en",
+              "label": "English"
+            },
+            {
+              "value": "ja",
+              "label": "Japanese"
+            },
+            {
+              "value": "fr",
+              "label": "French"
+            },
+            {
+              "value": "de",
+              "label": "German"
+            },
+            {
+              "value": "it",
+              "label": "Italian"
+            },
+            {
+              "value": "es",
+              "label": "Spanish"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_username",
+          "label": "Username",
+          "description": "Overrides the username given to the emulated console.\n\nDon't Override: Uses whatever name is defined on the firmware.\nGuess: Try to get your username from the frontend. If that fails, try the USER, USERNAME, and LOGNAME environment variables.\nmelonDS DS: Uses \"melonDS DS\". This is the default if nothing else works.\n\nNames are truncated to 10 characters. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "guess_username",
+          "values": [
+            {
+              "value": "guess_username",
+              "label": "Guess"
+            },
+            {
+              "value": "melonDS DS",
+              "label": "melonDS DS"
+            },
+            {
+              "value": "existing_username",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_favorite_color",
+          "label": "Favorite Color",
+          "description": "The theme (\"favorite color\") of the emulated console. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "Gray"
+            },
+            {
+              "value": "1",
+              "label": "Brown"
+            },
+            {
+              "value": "2",
+              "label": "Red"
+            },
+            {
+              "value": "3",
+              "label": "Light Pink"
+            },
+            {
+              "value": "4",
+              "label": "Orange"
+            },
+            {
+              "value": "5",
+              "label": "Yellow"
+            },
+            {
+              "value": "6",
+              "label": "Lime"
+            },
+            {
+              "value": "7",
+              "label": "Light Green"
+            },
+            {
+              "value": "8",
+              "label": "Dark Green"
+            },
+            {
+              "value": "9",
+              "label": "Turquoise"
+            },
+            {
+              "value": "10",
+              "label": "Light Blue"
+            },
+            {
+              "value": "11",
+              "label": "Blue"
+            },
+            {
+              "value": "12",
+              "label": "Dark Blue"
+            },
+            {
+              "value": "13",
+              "label": "Dark Purple"
+            },
+            {
+              "value": "14",
+              "label": "Light Purple"
+            },
+            {
+              "value": "15",
+              "label": "Dark Pink"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_birth_month",
+          "label": "Birth Month",
+          "description": "The month of your birthday. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "default",
+          "values": [
+            {
+              "value": "1",
+              "label": "January"
+            },
+            {
+              "value": "2",
+              "label": "February"
+            },
+            {
+              "value": "3",
+              "label": "March"
+            },
+            {
+              "value": "4",
+              "label": "April"
+            },
+            {
+              "value": "5",
+              "label": "May"
+            },
+            {
+              "value": "6",
+              "label": "June"
+            },
+            {
+              "value": "7",
+              "label": "July"
+            },
+            {
+              "value": "8",
+              "label": "August"
+            },
+            {
+              "value": "9",
+              "label": "September"
+            },
+            {
+              "value": "10",
+              "label": "October"
+            },
+            {
+              "value": "11",
+              "label": "November"
+            },
+            {
+              "value": "12",
+              "label": "December"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_birth_day",
+          "label": "Birth Day",
+          "description": "The day within the month of your birthday. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "default",
+          "values": [
+            {
+              "value": "1",
+              "label": "1st"
+            },
+            {
+              "value": "2",
+              "label": "2nd"
+            },
+            {
+              "value": "3",
+              "label": "3rd"
+            },
+            {
+              "value": "4",
+              "label": "4th"
+            },
+            {
+              "value": "5",
+              "label": "5th"
+            },
+            {
+              "value": "6",
+              "label": "6th"
+            },
+            {
+              "value": "7",
+              "label": "7th"
+            },
+            {
+              "value": "8",
+              "label": "8th"
+            },
+            {
+              "value": "9",
+              "label": "9th"
+            },
+            {
+              "value": "10",
+              "label": "10th"
+            },
+            {
+              "value": "11",
+              "label": "11th"
+            },
+            {
+              "value": "12",
+              "label": "12th"
+            },
+            {
+              "value": "13",
+              "label": "13th"
+            },
+            {
+              "value": "14",
+              "label": "14th"
+            },
+            {
+              "value": "15",
+              "label": "15th"
+            },
+            {
+              "value": "16",
+              "label": "16th"
+            },
+            {
+              "value": "17",
+              "label": "17th"
+            },
+            {
+              "value": "18",
+              "label": "18th"
+            },
+            {
+              "value": "19",
+              "label": "19th"
+            },
+            {
+              "value": "20",
+              "label": "20th"
+            },
+            {
+              "value": "21",
+              "label": "21st"
+            },
+            {
+              "value": "22",
+              "label": "22nd"
+            },
+            {
+              "value": "23",
+              "label": "23rd"
+            },
+            {
+              "value": "24",
+              "label": "24th"
+            },
+            {
+              "value": "25",
+              "label": "25th"
+            },
+            {
+              "value": "26",
+              "label": "26th"
+            },
+            {
+              "value": "27",
+              "label": "27th"
+            },
+            {
+              "value": "28",
+              "label": "28th"
+            },
+            {
+              "value": "29",
+              "label": "29th"
+            },
+            {
+              "value": "30",
+              "label": "30th"
+            },
+            {
+              "value": "31",
+              "label": "31st"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_enable_alarm",
+          "label": "Enable Alarm",
+          "description": "Whether the emulated console's alarm is enabled. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "default",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_alarm_hour",
+          "label": "Alarm Hour",
+          "description": "The hour of the configured alarm. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "default",
+          "values": [
+            {
+              "value": "0",
+              "label": "12 AM"
+            },
+            {
+              "value": "1",
+              "label": "1 AM"
+            },
+            {
+              "value": "2",
+              "label": "2 AM"
+            },
+            {
+              "value": "3",
+              "label": "3 AM"
+            },
+            {
+              "value": "4",
+              "label": "4 AM"
+            },
+            {
+              "value": "5",
+              "label": "5 AM"
+            },
+            {
+              "value": "6",
+              "label": "6 AM"
+            },
+            {
+              "value": "7",
+              "label": "7 AM"
+            },
+            {
+              "value": "8",
+              "label": "8 AM"
+            },
+            {
+              "value": "9",
+              "label": "9 AM"
+            },
+            {
+              "value": "10",
+              "label": "10 AM"
+            },
+            {
+              "value": "11",
+              "label": "11 AM"
+            },
+            {
+              "value": "12",
+              "label": "12 PM"
+            },
+            {
+              "value": "13",
+              "label": "1 PM"
+            },
+            {
+              "value": "14",
+              "label": "2 PM"
+            },
+            {
+              "value": "15",
+              "label": "3 PM"
+            },
+            {
+              "value": "16",
+              "label": "4 PM"
+            },
+            {
+              "value": "17",
+              "label": "5 PM"
+            },
+            {
+              "value": "18",
+              "label": "6 PM"
+            },
+            {
+              "value": "19",
+              "label": "7 PM"
+            },
+            {
+              "value": "20",
+              "label": "8 PM"
+            },
+            {
+              "value": "21",
+              "label": "9 PM"
+            },
+            {
+              "value": "22",
+              "label": "10 PM"
+            },
+            {
+              "value": "23",
+              "label": "11 PM"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_firmware_alarm_minute",
+          "label": "Alarm Minute",
+          "description": "The minute of the configured alarm. Changes take effect at next restart.",
+          "category": "firmware",
+          "default": "default",
+          "values": [
+            {
+              "value": "0",
+              "label": "00"
+            },
+            {
+              "value": "1",
+              "label": "01"
+            },
+            {
+              "value": "2",
+              "label": "02"
+            },
+            {
+              "value": "3",
+              "label": "03"
+            },
+            {
+              "value": "4",
+              "label": "04"
+            },
+            {
+              "value": "5",
+              "label": "05"
+            },
+            {
+              "value": "6",
+              "label": "06"
+            },
+            {
+              "value": "7",
+              "label": "07"
+            },
+            {
+              "value": "8",
+              "label": "08"
+            },
+            {
+              "value": "9",
+              "label": "09"
+            },
+            {
+              "value": "10",
+              "label": "10"
+            },
+            {
+              "value": "11",
+              "label": "11"
+            },
+            {
+              "value": "12",
+              "label": "12"
+            },
+            {
+              "value": "13",
+              "label": "13"
+            },
+            {
+              "value": "14",
+              "label": "14"
+            },
+            {
+              "value": "15",
+              "label": "15"
+            },
+            {
+              "value": "16",
+              "label": "16"
+            },
+            {
+              "value": "17",
+              "label": "17"
+            },
+            {
+              "value": "18",
+              "label": "18"
+            },
+            {
+              "value": "19",
+              "label": "19"
+            },
+            {
+              "value": "20",
+              "label": "20"
+            },
+            {
+              "value": "21",
+              "label": "21"
+            },
+            {
+              "value": "22",
+              "label": "22"
+            },
+            {
+              "value": "23",
+              "label": "23"
+            },
+            {
+              "value": "24",
+              "label": "24"
+            },
+            {
+              "value": "25",
+              "label": "25"
+            },
+            {
+              "value": "26",
+              "label": "26"
+            },
+            {
+              "value": "27",
+              "label": "27"
+            },
+            {
+              "value": "28",
+              "label": "28"
+            },
+            {
+              "value": "29",
+              "label": "29"
+            },
+            {
+              "value": "30",
+              "label": "30"
+            },
+            {
+              "value": "31",
+              "label": "31"
+            },
+            {
+              "value": "32",
+              "label": "32"
+            },
+            {
+              "value": "33",
+              "label": "33"
+            },
+            {
+              "value": "34",
+              "label": "34"
+            },
+            {
+              "value": "35",
+              "label": "35"
+            },
+            {
+              "value": "36",
+              "label": "36"
+            },
+            {
+              "value": "37",
+              "label": "37"
+            },
+            {
+              "value": "38",
+              "label": "38"
+            },
+            {
+              "value": "39",
+              "label": "39"
+            },
+            {
+              "value": "40",
+              "label": "40"
+            },
+            {
+              "value": "41",
+              "label": "41"
+            },
+            {
+              "value": "42",
+              "label": "42"
+            },
+            {
+              "value": "43",
+              "label": "43"
+            },
+            {
+              "value": "44",
+              "label": "44"
+            },
+            {
+              "value": "45",
+              "label": "45"
+            },
+            {
+              "value": "46",
+              "label": "46"
+            },
+            {
+              "value": "47",
+              "label": "47"
+            },
+            {
+              "value": "48",
+              "label": "48"
+            },
+            {
+              "value": "49",
+              "label": "49"
+            },
+            {
+              "value": "50",
+              "label": "50"
+            },
+            {
+              "value": "51",
+              "label": "51"
+            },
+            {
+              "value": "52",
+              "label": "52"
+            },
+            {
+              "value": "53",
+              "label": "53"
+            },
+            {
+              "value": "54",
+              "label": "54"
+            },
+            {
+              "value": "55",
+              "label": "55"
+            },
+            {
+              "value": "56",
+              "label": "56"
+            },
+            {
+              "value": "57",
+              "label": "57"
+            },
+            {
+              "value": "58",
+              "label": "58"
+            },
+            {
+              "value": "59",
+              "label": "59"
+            },
+            {
+              "value": "default",
+              "label": "Don't Override"
+            }
+          ]
+        },
+        {
+          "key": "melonds_console_mode",
+          "label": "Console Mode",
+          "description": "Whether melonDS should emulate a Nintendo DS or a Nintendo DSi. DSi mode has some limits:\n\n- Native BIOS/firmware/NAND files must be provided, including for the regular DS.\n- Some features (such as savestates) are not available in DSi mode.\n- Direct boot mode cannot be used for DSiWare.\n\nSee the DSi-specific options in this category for more information. If unsure, set to DS mode unless playing a DSi game. Changes take effect at the next restart.",
+          "category": "system",
+          "default": "ds",
+          "values": [
+            {
+              "value": "ds",
+              "label": "DS"
+            },
+            {
+              "value": "dsi",
+              "label": "DSi (experimental)"
+            }
+          ]
+        },
+        {
+          "key": "melonds_slot2_device",
+          "label": "Slot-2 Device",
+          "description": "The peripheral that will be inserted into the emulated console's Slot-2. Ignored in DSi mode, or if a GBA ROM is explicitly loaded. If a GBA ROM for any game in the Boktai trilogy is inserted, the corresponding Solar Sensor setting will be forced. In supported NDS games, each Boktai cart will have different effects. \nChanges take effect at next core start.",
+          "category": "system",
+          "default": "auto",
+          "values": [
+            {
+              "value": "auto",
+              "label": "Auto"
+            },
+            {
+              "value": "rumble-pak",
+              "label": "Rumble Pak"
+            },
+            {
+              "value": "expansion-pak",
+              "label": "Memory Expansion Pak"
+            },
+            {
+              "value": "solar1",
+              "label": "Solar Sensor (Boktai 1)"
+            },
+            {
+              "value": "solar2",
+              "label": "Solar Sensor (Boktai 2)"
+            },
+            {
+              "value": "solar3",
+              "label": "Solar Sensor (Boktai 3)"
+            }
+          ]
+        },
+        {
+          "key": "melonds_solar_sensor_host_sensor",
+          "label": "Use Host Light Sensor",
+          "description": "If enabled, the emulated solar sensor's light input will come from your device's real luminance sensor if available. If disabled or no sensor is available, the emulated sensor can be manually controlled with the following button combos:\n\n- L+A+Up or L+A+Down\n- Select+Up or Select+Down\n- Your mouse wheel\n\nIgnored unless \"Slot-2 Device\" is set to Solar Sensor, or if a ROM for any game in the Boktai trilogy (any region) is inserted in the emulated console's Slot-2. If unsure, leave enabled.",
+          "category": "system",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_sysfile_mode",
+          "label": "BIOS/Firmware Mode (DS Mode)",
+          "description": "Determines whether melonDS uses native BIOS/firmware dumps or its own built-in replacements. Only applies to DS mode, as DSi mode always requires native BIOS and firmware dumps.\n\nNative mode uses BIOS and firmware files from a real DS. Place your dumps of these in the system directory or its \"melonDS DS\" subdirectory and name them as follows:\n\n- DS BIOS: bios7.bin, bios9.bin\n- DSi BIOS: dsi_bios7.bin, dsi_bios9.bin\n- Firmware: See the \"DS Firmware\" and \"DSi Firmware\" options.\n- DSi NAND: See the \"DSi NAND \" option.\n\nFalls back to Built-In if any BIOS/firmware file isn't found.\n\nBuilt-In mode uses melonDS's built-in BIOS and firmware, and is suitable for most games.\n\nChanges take effect at next restart.",
+          "category": "system",
+          "default": "native",
+          "values": [
+            {
+              "value": "native",
+              "label": "Native"
+            },
+            {
+              "value": "builtin",
+              "label": "Built-In"
+            }
+          ]
+        },
+        {
+          "key": "melonds_boot_mode",
+          "label": "Boot Mode",
+          "description": "Determines how melonDS boots games.\n\nNative: Load games through the system menu, similar to the real DS/DSi boot process. Requires native BIOS and firmware files in the system directory.\nDirect: Skip the system menu and go straight to the game. Supported for DSiWare if native DSi system files are available.\n\nIgnored if loaded without a game (Native is forced) or if using Built-In BIOS/Firmware (Direct is forced). Changes take effect at next restart.",
+          "category": "system",
+          "default": "direct",
+          "values": [
+            {
+              "value": "direct",
+              "label": "Direct"
+            },
+            {
+              "value": "native",
+              "label": "Native"
+            }
+          ]
+        },
+        {
+          "key": "melonds_dsi_sdcard_readonly",
+          "label": "Read-Only Mode (DSi)",
+          "description": "If enabled, the emulated DSi sees the virtual SD card as read-only. Changes take effect with next restart.",
+          "category": "system",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_dsi_sdcard_sync_sdcard_to_host",
+          "label": "Sync SD Card to Host (DSi)",
+          "description": "If enabled, the virtual SD card's files will be synced to this core's save directory. Enable this if you want to add files to the virtual SD card from outside the core. Syncing happens when loading and unloading a game, so external changes won't have any effect while the core is running. Takes effect at the next boot. Adjusting this setting may overwrite existing save data.",
+          "category": "system",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_homebrew_readonly",
+          "label": "Read-Only Mode",
+          "description": "If enabled, homebrew applications will see the virtual SD card as read-only. Changes take effect with next restart.",
+          "category": "system",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_homebrew_sync_sdcard_to_host",
+          "label": "Sync SD Card to Host",
+          "description": "If enabled, the virtual SD card's files will be synced to this core's save directory. Enable this if you want to add files to the virtual SD card from outside the core. Syncing happens when loading and unloading a game, so external changes won't have any effect while the core is running. Takes effect at the next boot. Adjusting this setting may overwrite existing save data.",
+          "category": "system",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_battery_update_interval",
+          "label": "Battery Update Interval",
+          "description": "How often the emulated console's battery should be updated. Ignored if the frontend can't get the device's battery level.",
+          "category": "system",
+          "default": "15",
+          "values": [
+            {
+              "value": "1",
+              "label": "1 second"
+            },
+            {
+              "value": "2",
+              "label": "2 seconds"
+            },
+            {
+              "value": "3",
+              "label": "3 seconds"
+            },
+            {
+              "value": "5",
+              "label": "5 seconds"
+            },
+            {
+              "value": "10",
+              "label": "10 seconds"
+            },
+            {
+              "value": "15",
+              "label": "15 seconds"
+            },
+            {
+              "value": "20",
+              "label": "20 seconds"
+            },
+            {
+              "value": "30",
+              "label": "30 seconds"
+            },
+            {
+              "value": "60",
+              "label": "60 seconds"
+            }
+          ]
+        },
+        {
+          "key": "melonds_ds_battery_ok_threshold",
+          "label": "DS Low Battery Threshold",
+          "description": "If the host's battery level falls below this percentage, the emulated DS will report that its battery level is low. Ignored if running in DSi mode, no battery is available, or the frontend can't query the power status.",
+          "category": "system",
+          "default": "20",
+          "values": [
+            {
+              "value": "0",
+              "label": "Always OK"
+            },
+            {
+              "value": "10",
+              "label": "10%"
+            },
+            {
+              "value": "20",
+              "label": "20%"
+            },
+            {
+              "value": "30",
+              "label": "30%"
+            },
+            {
+              "value": "40",
+              "label": "40%"
+            },
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "60",
+              "label": "60%"
+            },
+            {
+              "value": "70",
+              "label": "70%"
+            },
+            {
+              "value": "80",
+              "label": "80%"
+            },
+            {
+              "value": "90",
+              "label": "90%"
+            },
+            {
+              "value": "100",
+              "label": "Always Low"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_mode",
+          "label": "Time Mode",
+          "description": "The initial time of the emulated console's internal clock.\n\n- Real: Start in sync with your device's clock.\n- Synchronized: Synchronize the emulated clock to your device's clock. May cause unexpected behavior in some games when rewinding or fast-forwarding.\n- Relative: Start in sync with your device's clock, plus or minus a specified offset. Will be constrained to dates that the DS can represent.\n- Absolute: Start at a specific date and time, regardless of your device's clock.\n\nAll dates and times are in your local timezone. Changes take effect at next restart.",
+          "category": "time",
+          "default": "real",
+          "values": [
+            {
+              "value": "real",
+              "label": "Real"
+            },
+            {
+              "value": "sync",
+              "label": "Synchronized"
+            },
+            {
+              "value": "relative",
+              "label": "Relative"
+            },
+            {
+              "value": "absolute",
+              "label": "Absolute"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_relative_year_offset",
+          "label": "Starting Time Offset (Years)",
+          "description": "The number of years to offset the starting time by. Only used when Starting Time Mode is Relative. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "-20",
+              "label": "-20 years"
+            },
+            {
+              "value": "-19",
+              "label": "-19 years"
+            },
+            {
+              "value": "-18",
+              "label": "-18 years"
+            },
+            {
+              "value": "-17",
+              "label": "-17 years"
+            },
+            {
+              "value": "-16",
+              "label": "-16 years"
+            },
+            {
+              "value": "-15",
+              "label": "-15 years"
+            },
+            {
+              "value": "-14",
+              "label": "-14 years"
+            },
+            {
+              "value": "-13",
+              "label": "-13 years"
+            },
+            {
+              "value": "-12",
+              "label": "-12 years"
+            },
+            {
+              "value": "-11",
+              "label": "-11 years"
+            },
+            {
+              "value": "-10",
+              "label": "-10 years"
+            },
+            {
+              "value": "-9",
+              "label": "-9 years"
+            },
+            {
+              "value": "-8",
+              "label": "-8 years"
+            },
+            {
+              "value": "-7",
+              "label": "-7 years"
+            },
+            {
+              "value": "-6",
+              "label": "-6 years"
+            },
+            {
+              "value": "-5",
+              "label": "-5 years"
+            },
+            {
+              "value": "-4",
+              "label": "-4 years"
+            },
+            {
+              "value": "-3",
+              "label": "-3 years"
+            },
+            {
+              "value": "-2",
+              "label": "-2 years"
+            },
+            {
+              "value": "-1",
+              "label": "-1 year"
+            },
+            {
+              "value": "0",
+              "label": "None"
+            },
+            {
+              "value": "1",
+              "label": "+1 year"
+            },
+            {
+              "value": "2",
+              "label": "+2 years"
+            },
+            {
+              "value": "3",
+              "label": "+3 years"
+            },
+            {
+              "value": "4",
+              "label": "+4 years"
+            },
+            {
+              "value": "5",
+              "label": "+5 years"
+            },
+            {
+              "value": "6",
+              "label": "+6 years"
+            },
+            {
+              "value": "7",
+              "label": "+7 years"
+            },
+            {
+              "value": "8",
+              "label": "+8 years"
+            },
+            {
+              "value": "9",
+              "label": "+9 years"
+            },
+            {
+              "value": "10",
+              "label": "+10 years"
+            },
+            {
+              "value": "11",
+              "label": "+11 years"
+            },
+            {
+              "value": "12",
+              "label": "+12 years"
+            },
+            {
+              "value": "13",
+              "label": "+13 years"
+            },
+            {
+              "value": "14",
+              "label": "+14 years"
+            },
+            {
+              "value": "15",
+              "label": "+15 years"
+            },
+            {
+              "value": "16",
+              "label": "+16 years"
+            },
+            {
+              "value": "17",
+              "label": "+17 years"
+            },
+            {
+              "value": "18",
+              "label": "+18 years"
+            },
+            {
+              "value": "19",
+              "label": "+19 years"
+            },
+            {
+              "value": "20",
+              "label": "+20 years"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_relative_day_offset",
+          "label": "Starting Time Offset (Days)",
+          "description": "The number of days to offset the starting time by. Only used when Starting Time Mode is Relative. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "-364",
+              "label": "-364 days"
+            },
+            {
+              "value": "-180",
+              "label": "-180 days"
+            },
+            {
+              "value": "-150",
+              "label": "-150 days"
+            },
+            {
+              "value": "-120",
+              "label": "-120 days"
+            },
+            {
+              "value": "-90",
+              "label": "-90 days"
+            },
+            {
+              "value": "-60",
+              "label": "-60 days"
+            },
+            {
+              "value": "-30",
+              "label": "-30 days"
+            },
+            {
+              "value": "-14",
+              "label": "-14 days"
+            },
+            {
+              "value": "-13",
+              "label": "-13 days"
+            },
+            {
+              "value": "-12",
+              "label": "-12 days"
+            },
+            {
+              "value": "-11",
+              "label": "-11 days"
+            },
+            {
+              "value": "-10",
+              "label": "-10 days"
+            },
+            {
+              "value": "-9",
+              "label": "-9 days"
+            },
+            {
+              "value": "-8",
+              "label": "-8 days"
+            },
+            {
+              "value": "-7",
+              "label": "-7 days"
+            },
+            {
+              "value": "-6",
+              "label": "-6 days"
+            },
+            {
+              "value": "-5",
+              "label": "-5 days"
+            },
+            {
+              "value": "-4",
+              "label": "-4 days"
+            },
+            {
+              "value": "-3",
+              "label": "-3 days"
+            },
+            {
+              "value": "-2",
+              "label": "-2 days"
+            },
+            {
+              "value": "-1",
+              "label": "-1 day"
+            },
+            {
+              "value": "0",
+              "label": "None"
+            },
+            {
+              "value": "1",
+              "label": "+1 day"
+            },
+            {
+              "value": "2",
+              "label": "+2 days"
+            },
+            {
+              "value": "3",
+              "label": "+3 days"
+            },
+            {
+              "value": "4",
+              "label": "+4 days"
+            },
+            {
+              "value": "5",
+              "label": "+5 days"
+            },
+            {
+              "value": "6",
+              "label": "+6 days"
+            },
+            {
+              "value": "7",
+              "label": "+7 days"
+            },
+            {
+              "value": "8",
+              "label": "+8 days"
+            },
+            {
+              "value": "9",
+              "label": "+9 days"
+            },
+            {
+              "value": "10",
+              "label": "+10 days"
+            },
+            {
+              "value": "11",
+              "label": "+11 days"
+            },
+            {
+              "value": "12",
+              "label": "+12 days"
+            },
+            {
+              "value": "13",
+              "label": "+13 days"
+            },
+            {
+              "value": "14",
+              "label": "+14 days"
+            },
+            {
+              "value": "30",
+              "label": "+30 days"
+            },
+            {
+              "value": "60",
+              "label": "+60 days"
+            },
+            {
+              "value": "90",
+              "label": "+90 days"
+            },
+            {
+              "value": "120",
+              "label": "+120 days"
+            },
+            {
+              "value": "150",
+              "label": "+150 days"
+            },
+            {
+              "value": "180",
+              "label": "+180 days"
+            },
+            {
+              "value": "364",
+              "label": "+364 days"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_relative_hour_offset",
+          "label": "Starting Time Offset (Hours)",
+          "description": "The number of hours to offset the starting time by. Only used when Starting Time Mode is Relative. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "-23",
+              "label": "-23 hours"
+            },
+            {
+              "value": "-22",
+              "label": "-22 hours"
+            },
+            {
+              "value": "-21",
+              "label": "-21 hours"
+            },
+            {
+              "value": "-20",
+              "label": "-20 hours"
+            },
+            {
+              "value": "-19",
+              "label": "-19 hours"
+            },
+            {
+              "value": "-18",
+              "label": "-18 hours"
+            },
+            {
+              "value": "-17",
+              "label": "-17 hours"
+            },
+            {
+              "value": "-16",
+              "label": "-16 hours"
+            },
+            {
+              "value": "-15",
+              "label": "-15 hours"
+            },
+            {
+              "value": "-14",
+              "label": "-14 hours"
+            },
+            {
+              "value": "-13",
+              "label": "-13 hours"
+            },
+            {
+              "value": "-12",
+              "label": "-12 hours"
+            },
+            {
+              "value": "-11",
+              "label": "-11 hours"
+            },
+            {
+              "value": "-10",
+              "label": "-10 hours"
+            },
+            {
+              "value": "-9",
+              "label": "-9 hours"
+            },
+            {
+              "value": "-8",
+              "label": "-8 hours"
+            },
+            {
+              "value": "-7",
+              "label": "-7 hours"
+            },
+            {
+              "value": "-6",
+              "label": "-6 hours"
+            },
+            {
+              "value": "-5",
+              "label": "-5 hours"
+            },
+            {
+              "value": "-4",
+              "label": "-4 hours"
+            },
+            {
+              "value": "-3",
+              "label": "-3 hours"
+            },
+            {
+              "value": "-2",
+              "label": "-2 hours"
+            },
+            {
+              "value": "-1",
+              "label": "-1 hour"
+            },
+            {
+              "value": "0",
+              "label": "None"
+            },
+            {
+              "value": "1",
+              "label": "+1 hour"
+            },
+            {
+              "value": "2",
+              "label": "+2 hours"
+            },
+            {
+              "value": "3",
+              "label": "+3 hours"
+            },
+            {
+              "value": "4",
+              "label": "+4 hours"
+            },
+            {
+              "value": "5",
+              "label": "+5 hours"
+            },
+            {
+              "value": "6",
+              "label": "+6 hours"
+            },
+            {
+              "value": "7",
+              "label": "+7 hours"
+            },
+            {
+              "value": "8",
+              "label": "+8 hours"
+            },
+            {
+              "value": "9",
+              "label": "+9 hours"
+            },
+            {
+              "value": "10",
+              "label": "+10 hours"
+            },
+            {
+              "value": "11",
+              "label": "+11 hours"
+            },
+            {
+              "value": "12",
+              "label": "+12 hours"
+            },
+            {
+              "value": "13",
+              "label": "+13 hours"
+            },
+            {
+              "value": "14",
+              "label": "+14 hours"
+            },
+            {
+              "value": "15",
+              "label": "+15 hours"
+            },
+            {
+              "value": "16",
+              "label": "+16 hours"
+            },
+            {
+              "value": "17",
+              "label": "+17 hours"
+            },
+            {
+              "value": "18",
+              "label": "+18 hours"
+            },
+            {
+              "value": "19",
+              "label": "+19 hours"
+            },
+            {
+              "value": "20",
+              "label": "+20 hours"
+            },
+            {
+              "value": "21",
+              "label": "+21 hours"
+            },
+            {
+              "value": "22",
+              "label": "+22 hours"
+            },
+            {
+              "value": "23",
+              "label": "+23 hours"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_relative_minute_offset",
+          "label": "Starting Time Offset (Minutes)",
+          "description": "The number of minutes to offset the starting time by. Only used when Starting Time Mode is Relative. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "-59",
+              "label": "-59 minutes"
+            },
+            {
+              "value": "-58",
+              "label": "-58 minutes"
+            },
+            {
+              "value": "-57",
+              "label": "-57 minutes"
+            },
+            {
+              "value": "-56",
+              "label": "-56 minutes"
+            },
+            {
+              "value": "-55",
+              "label": "-55 minutes"
+            },
+            {
+              "value": "-54",
+              "label": "-54 minutes"
+            },
+            {
+              "value": "-53",
+              "label": "-53 minutes"
+            },
+            {
+              "value": "-52",
+              "label": "-52 minutes"
+            },
+            {
+              "value": "-51",
+              "label": "-51 minutes"
+            },
+            {
+              "value": "-50",
+              "label": "-50 minutes"
+            },
+            {
+              "value": "-49",
+              "label": "-49 minutes"
+            },
+            {
+              "value": "-48",
+              "label": "-48 minutes"
+            },
+            {
+              "value": "-47",
+              "label": "-47 minutes"
+            },
+            {
+              "value": "-46",
+              "label": "-46 minutes"
+            },
+            {
+              "value": "-45",
+              "label": "-45 minutes"
+            },
+            {
+              "value": "-44",
+              "label": "-44 minutes"
+            },
+            {
+              "value": "-43",
+              "label": "-43 minutes"
+            },
+            {
+              "value": "-42",
+              "label": "-42 minutes"
+            },
+            {
+              "value": "-41",
+              "label": "-41 minutes"
+            },
+            {
+              "value": "-40",
+              "label": "-40 minutes"
+            },
+            {
+              "value": "-39",
+              "label": "-39 minutes"
+            },
+            {
+              "value": "-38",
+              "label": "-38 minutes"
+            },
+            {
+              "value": "-37",
+              "label": "-37 minutes"
+            },
+            {
+              "value": "-36",
+              "label": "-36 minutes"
+            },
+            {
+              "value": "-35",
+              "label": "-35 minutes"
+            },
+            {
+              "value": "-34",
+              "label": "-34 minutes"
+            },
+            {
+              "value": "-33",
+              "label": "-33 minutes"
+            },
+            {
+              "value": "-32",
+              "label": "-32 minutes"
+            },
+            {
+              "value": "-31",
+              "label": "-31 minutes"
+            },
+            {
+              "value": "-30",
+              "label": "-30 minutes"
+            },
+            {
+              "value": "-29",
+              "label": "-29 minutes"
+            },
+            {
+              "value": "-28",
+              "label": "-28 minutes"
+            },
+            {
+              "value": "-27",
+              "label": "-27 minutes"
+            },
+            {
+              "value": "-26",
+              "label": "-26 minutes"
+            },
+            {
+              "value": "-25",
+              "label": "-25 minutes"
+            },
+            {
+              "value": "-24",
+              "label": "-24 minutes"
+            },
+            {
+              "value": "-23",
+              "label": "-23 minutes"
+            },
+            {
+              "value": "-22",
+              "label": "-22 minutes"
+            },
+            {
+              "value": "-21",
+              "label": "-21 minutes"
+            },
+            {
+              "value": "-20",
+              "label": "-20 minutes"
+            },
+            {
+              "value": "-19",
+              "label": "-19 minutes"
+            },
+            {
+              "value": "-18",
+              "label": "-18 minutes"
+            },
+            {
+              "value": "-17",
+              "label": "-17 minutes"
+            },
+            {
+              "value": "-16",
+              "label": "-16 minutes"
+            },
+            {
+              "value": "-15",
+              "label": "-15 minutes"
+            },
+            {
+              "value": "-14",
+              "label": "-14 minutes"
+            },
+            {
+              "value": "-13",
+              "label": "-13 minutes"
+            },
+            {
+              "value": "-12",
+              "label": "-12 minutes"
+            },
+            {
+              "value": "-11",
+              "label": "-11 minutes"
+            },
+            {
+              "value": "-10",
+              "label": "-10 minutes"
+            },
+            {
+              "value": "-9",
+              "label": "-9 minutes"
+            },
+            {
+              "value": "-8",
+              "label": "-8 minutes"
+            },
+            {
+              "value": "-7",
+              "label": "-7 minutes"
+            },
+            {
+              "value": "-6",
+              "label": "-6 minutes"
+            },
+            {
+              "value": "-5",
+              "label": "-5 minutes"
+            },
+            {
+              "value": "-4",
+              "label": "-4 minutes"
+            },
+            {
+              "value": "-3",
+              "label": "-3 minutes"
+            },
+            {
+              "value": "-2",
+              "label": "-2 minutes"
+            },
+            {
+              "value": "-1",
+              "label": "-1 minute"
+            },
+            {
+              "value": "0",
+              "label": "None"
+            },
+            {
+              "value": "1",
+              "label": "+1 minute"
+            },
+            {
+              "value": "2",
+              "label": "+2 minutes"
+            },
+            {
+              "value": "3",
+              "label": "+3 minutes"
+            },
+            {
+              "value": "4",
+              "label": "+4 minutes"
+            },
+            {
+              "value": "5",
+              "label": "+5 minutes"
+            },
+            {
+              "value": "6",
+              "label": "+6 minutes"
+            },
+            {
+              "value": "7",
+              "label": "+7 minutes"
+            },
+            {
+              "value": "8",
+              "label": "+8 minutes"
+            },
+            {
+              "value": "9",
+              "label": "+9 minutes"
+            },
+            {
+              "value": "10",
+              "label": "+10 minutes"
+            },
+            {
+              "value": "11",
+              "label": "+11 minutes"
+            },
+            {
+              "value": "12",
+              "label": "+12 minutes"
+            },
+            {
+              "value": "13",
+              "label": "+13 minutes"
+            },
+            {
+              "value": "14",
+              "label": "+14 minutes"
+            },
+            {
+              "value": "15",
+              "label": "+15 minutes"
+            },
+            {
+              "value": "16",
+              "label": "+16 minutes"
+            },
+            {
+              "value": "17",
+              "label": "+17 minutes"
+            },
+            {
+              "value": "18",
+              "label": "+18 minutes"
+            },
+            {
+              "value": "19",
+              "label": "+19 minutes"
+            },
+            {
+              "value": "20",
+              "label": "+20 minutes"
+            },
+            {
+              "value": "21",
+              "label": "+21 minutes"
+            },
+            {
+              "value": "22",
+              "label": "+22 minutes"
+            },
+            {
+              "value": "23",
+              "label": "+23 minutes"
+            },
+            {
+              "value": "24",
+              "label": "+24 minutes"
+            },
+            {
+              "value": "25",
+              "label": "+25 minutes"
+            },
+            {
+              "value": "26",
+              "label": "+26 minutes"
+            },
+            {
+              "value": "27",
+              "label": "+27 minutes"
+            },
+            {
+              "value": "28",
+              "label": "+28 minutes"
+            },
+            {
+              "value": "29",
+              "label": "+29 minutes"
+            },
+            {
+              "value": "30",
+              "label": "+30 minutes"
+            },
+            {
+              "value": "31",
+              "label": "+31 minutes"
+            },
+            {
+              "value": "32",
+              "label": "+32 minutes"
+            },
+            {
+              "value": "33",
+              "label": "+33 minutes"
+            },
+            {
+              "value": "34",
+              "label": "+34 minutes"
+            },
+            {
+              "value": "35",
+              "label": "+35 minutes"
+            },
+            {
+              "value": "36",
+              "label": "+36 minutes"
+            },
+            {
+              "value": "37",
+              "label": "+37 minutes"
+            },
+            {
+              "value": "38",
+              "label": "+38 minutes"
+            },
+            {
+              "value": "39",
+              "label": "+39 minutes"
+            },
+            {
+              "value": "40",
+              "label": "+40 minutes"
+            },
+            {
+              "value": "41",
+              "label": "+41 minutes"
+            },
+            {
+              "value": "42",
+              "label": "+42 minutes"
+            },
+            {
+              "value": "43",
+              "label": "+43 minutes"
+            },
+            {
+              "value": "44",
+              "label": "+44 minutes"
+            },
+            {
+              "value": "45",
+              "label": "+45 minutes"
+            },
+            {
+              "value": "46",
+              "label": "+46 minutes"
+            },
+            {
+              "value": "47",
+              "label": "+47 minutes"
+            },
+            {
+              "value": "48",
+              "label": "+48 minutes"
+            },
+            {
+              "value": "49",
+              "label": "+49 minutes"
+            },
+            {
+              "value": "50",
+              "label": "+50 minutes"
+            },
+            {
+              "value": "51",
+              "label": "+51 minutes"
+            },
+            {
+              "value": "52",
+              "label": "+52 minutes"
+            },
+            {
+              "value": "53",
+              "label": "+53 minutes"
+            },
+            {
+              "value": "54",
+              "label": "+54 minutes"
+            },
+            {
+              "value": "55",
+              "label": "+55 minutes"
+            },
+            {
+              "value": "56",
+              "label": "+56 minutes"
+            },
+            {
+              "value": "57",
+              "label": "+57 minutes"
+            },
+            {
+              "value": "58",
+              "label": "+58 minutes"
+            },
+            {
+              "value": "59",
+              "label": "+59 minutes"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_absolute_year",
+          "label": "Starting Year",
+          "description": "The initial year to use when Starting Time Mode is Absolute. Changes take effect at next restart.",
+          "category": "time",
+          "default": "2004",
+          "values": [
+            {
+              "value": "2000",
+              "label": "2000"
+            },
+            {
+              "value": "2001",
+              "label": "2001"
+            },
+            {
+              "value": "2002",
+              "label": "2002"
+            },
+            {
+              "value": "2003",
+              "label": "2003"
+            },
+            {
+              "value": "2004",
+              "label": "2004"
+            },
+            {
+              "value": "2005",
+              "label": "2005"
+            },
+            {
+              "value": "2006",
+              "label": "2006"
+            },
+            {
+              "value": "2007",
+              "label": "2007"
+            },
+            {
+              "value": "2008",
+              "label": "2008"
+            },
+            {
+              "value": "2009",
+              "label": "2009"
+            },
+            {
+              "value": "2010",
+              "label": "2010"
+            },
+            {
+              "value": "2011",
+              "label": "2011"
+            },
+            {
+              "value": "2012",
+              "label": "2012"
+            },
+            {
+              "value": "2013",
+              "label": "2013"
+            },
+            {
+              "value": "2014",
+              "label": "2014"
+            },
+            {
+              "value": "2015",
+              "label": "2015"
+            },
+            {
+              "value": "2016",
+              "label": "2016"
+            },
+            {
+              "value": "2017",
+              "label": "2017"
+            },
+            {
+              "value": "2018",
+              "label": "2018"
+            },
+            {
+              "value": "2019",
+              "label": "2019"
+            },
+            {
+              "value": "2020",
+              "label": "2020"
+            },
+            {
+              "value": "2021",
+              "label": "2021"
+            },
+            {
+              "value": "2022",
+              "label": "2022"
+            },
+            {
+              "value": "2023",
+              "label": "2023"
+            },
+            {
+              "value": "2024",
+              "label": "2024"
+            },
+            {
+              "value": "2025",
+              "label": "2025"
+            },
+            {
+              "value": "2026",
+              "label": "2026"
+            },
+            {
+              "value": "2027",
+              "label": "2027"
+            },
+            {
+              "value": "2028",
+              "label": "2028"
+            },
+            {
+              "value": "2029",
+              "label": "2029"
+            },
+            {
+              "value": "2030",
+              "label": "2030"
+            },
+            {
+              "value": "2031",
+              "label": "2031"
+            },
+            {
+              "value": "2032",
+              "label": "2032"
+            },
+            {
+              "value": "2033",
+              "label": "2033"
+            },
+            {
+              "value": "2034",
+              "label": "2034"
+            },
+            {
+              "value": "2035",
+              "label": "2035"
+            },
+            {
+              "value": "2036",
+              "label": "2036"
+            },
+            {
+              "value": "2037",
+              "label": "2037"
+            },
+            {
+              "value": "2038",
+              "label": "2038"
+            },
+            {
+              "value": "2039",
+              "label": "2039"
+            },
+            {
+              "value": "2040",
+              "label": "2040"
+            },
+            {
+              "value": "2041",
+              "label": "2041"
+            },
+            {
+              "value": "2042",
+              "label": "2042"
+            },
+            {
+              "value": "2043",
+              "label": "2043"
+            },
+            {
+              "value": "2044",
+              "label": "2044"
+            },
+            {
+              "value": "2045",
+              "label": "2045"
+            },
+            {
+              "value": "2046",
+              "label": "2046"
+            },
+            {
+              "value": "2047",
+              "label": "2047"
+            },
+            {
+              "value": "2048",
+              "label": "2048"
+            },
+            {
+              "value": "2049",
+              "label": "2049"
+            },
+            {
+              "value": "2050",
+              "label": "2050"
+            },
+            {
+              "value": "2051",
+              "label": "2051"
+            },
+            {
+              "value": "2052",
+              "label": "2052"
+            },
+            {
+              "value": "2053",
+              "label": "2053"
+            },
+            {
+              "value": "2054",
+              "label": "2054"
+            },
+            {
+              "value": "2055",
+              "label": "2055"
+            },
+            {
+              "value": "2056",
+              "label": "2056"
+            },
+            {
+              "value": "2057",
+              "label": "2057"
+            },
+            {
+              "value": "2058",
+              "label": "2058"
+            },
+            {
+              "value": "2059",
+              "label": "2059"
+            },
+            {
+              "value": "2060",
+              "label": "2060"
+            },
+            {
+              "value": "2061",
+              "label": "2061"
+            },
+            {
+              "value": "2062",
+              "label": "2062"
+            },
+            {
+              "value": "2063",
+              "label": "2063"
+            },
+            {
+              "value": "2064",
+              "label": "2064"
+            },
+            {
+              "value": "2065",
+              "label": "2065"
+            },
+            {
+              "value": "2066",
+              "label": "2066"
+            },
+            {
+              "value": "2067",
+              "label": "2067"
+            },
+            {
+              "value": "2068",
+              "label": "2068"
+            },
+            {
+              "value": "2069",
+              "label": "2069"
+            },
+            {
+              "value": "2070",
+              "label": "2070"
+            },
+            {
+              "value": "2071",
+              "label": "2071"
+            },
+            {
+              "value": "2072",
+              "label": "2072"
+            },
+            {
+              "value": "2073",
+              "label": "2073"
+            },
+            {
+              "value": "2074",
+              "label": "2074"
+            },
+            {
+              "value": "2075",
+              "label": "2075"
+            },
+            {
+              "value": "2076",
+              "label": "2076"
+            },
+            {
+              "value": "2077",
+              "label": "2077"
+            },
+            {
+              "value": "2078",
+              "label": "2078"
+            },
+            {
+              "value": "2079",
+              "label": "2079"
+            },
+            {
+              "value": "2080",
+              "label": "2080"
+            },
+            {
+              "value": "2081",
+              "label": "2081"
+            },
+            {
+              "value": "2082",
+              "label": "2082"
+            },
+            {
+              "value": "2083",
+              "label": "2083"
+            },
+            {
+              "value": "2084",
+              "label": "2084"
+            },
+            {
+              "value": "2085",
+              "label": "2085"
+            },
+            {
+              "value": "2086",
+              "label": "2086"
+            },
+            {
+              "value": "2087",
+              "label": "2087"
+            },
+            {
+              "value": "2088",
+              "label": "2088"
+            },
+            {
+              "value": "2089",
+              "label": "2089"
+            },
+            {
+              "value": "2090",
+              "label": "2090"
+            },
+            {
+              "value": "2091",
+              "label": "2091"
+            },
+            {
+              "value": "2092",
+              "label": "2092"
+            },
+            {
+              "value": "2093",
+              "label": "2093"
+            },
+            {
+              "value": "2094",
+              "label": "2094"
+            },
+            {
+              "value": "2095",
+              "label": "2095"
+            },
+            {
+              "value": "2096",
+              "label": "2096"
+            },
+            {
+              "value": "2097",
+              "label": "2097"
+            },
+            {
+              "value": "2098",
+              "label": "2098"
+            },
+            {
+              "value": "2099",
+              "label": "2099"
+            },
+            {
+              "value": "2100",
+              "label": "2100"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_absolute_month",
+          "label": "Starting Month",
+          "description": "The initial month to use when Starting Time Mode is Absolute. Changes take effect at next restart.",
+          "category": "time",
+          "default": "1",
+          "values": [
+            {
+              "value": "1",
+              "label": "January"
+            },
+            {
+              "value": "2",
+              "label": "February"
+            },
+            {
+              "value": "3",
+              "label": "March"
+            },
+            {
+              "value": "4",
+              "label": "April"
+            },
+            {
+              "value": "5",
+              "label": "May"
+            },
+            {
+              "value": "6",
+              "label": "June"
+            },
+            {
+              "value": "7",
+              "label": "July"
+            },
+            {
+              "value": "8",
+              "label": "August"
+            },
+            {
+              "value": "9",
+              "label": "September"
+            },
+            {
+              "value": "10",
+              "label": "October"
+            },
+            {
+              "value": "11",
+              "label": "November"
+            },
+            {
+              "value": "12",
+              "label": "December"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_absolute_day",
+          "label": "Starting Day",
+          "description": "The initial day of the month to use when Starting Time Mode is Absolute. Days that extend past the end of a month will roll over to the next (e.g. April 31st will become May 1st). Changes take effect at next restart.",
+          "category": "time",
+          "default": "1",
+          "values": [
+            {
+              "value": "1",
+              "label": "1st"
+            },
+            {
+              "value": "2",
+              "label": "2nd"
+            },
+            {
+              "value": "3",
+              "label": "3rd"
+            },
+            {
+              "value": "4",
+              "label": "4th"
+            },
+            {
+              "value": "5",
+              "label": "5th"
+            },
+            {
+              "value": "6",
+              "label": "6th"
+            },
+            {
+              "value": "7",
+              "label": "7th"
+            },
+            {
+              "value": "8",
+              "label": "8th"
+            },
+            {
+              "value": "9",
+              "label": "9th"
+            },
+            {
+              "value": "10",
+              "label": "10th"
+            },
+            {
+              "value": "11",
+              "label": "11th"
+            },
+            {
+              "value": "12",
+              "label": "12th"
+            },
+            {
+              "value": "13",
+              "label": "13th"
+            },
+            {
+              "value": "14",
+              "label": "14th"
+            },
+            {
+              "value": "15",
+              "label": "15th"
+            },
+            {
+              "value": "16",
+              "label": "16th"
+            },
+            {
+              "value": "17",
+              "label": "17th"
+            },
+            {
+              "value": "18",
+              "label": "18th"
+            },
+            {
+              "value": "19",
+              "label": "19th"
+            },
+            {
+              "value": "20",
+              "label": "20th"
+            },
+            {
+              "value": "21",
+              "label": "21st"
+            },
+            {
+              "value": "22",
+              "label": "22nd"
+            },
+            {
+              "value": "23",
+              "label": "23rd"
+            },
+            {
+              "value": "24",
+              "label": "24th"
+            },
+            {
+              "value": "25",
+              "label": "25th"
+            },
+            {
+              "value": "26",
+              "label": "26th"
+            },
+            {
+              "value": "27",
+              "label": "27th"
+            },
+            {
+              "value": "28",
+              "label": "28th"
+            },
+            {
+              "value": "29",
+              "label": "29th"
+            },
+            {
+              "value": "30",
+              "label": "30th"
+            },
+            {
+              "value": "31",
+              "label": "31st"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_absolute_hour",
+          "label": "Starting Hour",
+          "description": "The initial hour to use when Starting Time Mode is Absolute. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "12 AM"
+            },
+            {
+              "value": "1",
+              "label": "1 AM"
+            },
+            {
+              "value": "2",
+              "label": "2 AM"
+            },
+            {
+              "value": "3",
+              "label": "3 AM"
+            },
+            {
+              "value": "4",
+              "label": "4 AM"
+            },
+            {
+              "value": "5",
+              "label": "5 AM"
+            },
+            {
+              "value": "6",
+              "label": "6 AM"
+            },
+            {
+              "value": "7",
+              "label": "7 AM"
+            },
+            {
+              "value": "8",
+              "label": "8 AM"
+            },
+            {
+              "value": "9",
+              "label": "9 AM"
+            },
+            {
+              "value": "10",
+              "label": "10 AM"
+            },
+            {
+              "value": "11",
+              "label": "11 AM"
+            },
+            {
+              "value": "12",
+              "label": "12 PM"
+            },
+            {
+              "value": "13",
+              "label": "1 PM"
+            },
+            {
+              "value": "14",
+              "label": "2 PM"
+            },
+            {
+              "value": "15",
+              "label": "3 PM"
+            },
+            {
+              "value": "16",
+              "label": "4 PM"
+            },
+            {
+              "value": "17",
+              "label": "5 PM"
+            },
+            {
+              "value": "18",
+              "label": "6 PM"
+            },
+            {
+              "value": "19",
+              "label": "7 PM"
+            },
+            {
+              "value": "20",
+              "label": "8 PM"
+            },
+            {
+              "value": "21",
+              "label": "9 PM"
+            },
+            {
+              "value": "22",
+              "label": "10 PM"
+            },
+            {
+              "value": "23",
+              "label": "11 PM"
+            }
+          ]
+        },
+        {
+          "key": "melonds_start_time_absolute_minute",
+          "label": "Starting Minute",
+          "description": "The initial minute to use when Starting Time Mode is Absolute. Changes take effect at next restart.",
+          "category": "time",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": ":00"
+            },
+            {
+              "value": "1",
+              "label": ":01"
+            },
+            {
+              "value": "2",
+              "label": ":02"
+            },
+            {
+              "value": "3",
+              "label": ":03"
+            },
+            {
+              "value": "4",
+              "label": ":04"
+            },
+            {
+              "value": "5",
+              "label": ":05"
+            },
+            {
+              "value": "6",
+              "label": ":06"
+            },
+            {
+              "value": "7",
+              "label": ":07"
+            },
+            {
+              "value": "8",
+              "label": ":08"
+            },
+            {
+              "value": "9",
+              "label": ":09"
+            },
+            {
+              "value": "10",
+              "label": ":10"
+            },
+            {
+              "value": "11",
+              "label": ":11"
+            },
+            {
+              "value": "12",
+              "label": ":12"
+            },
+            {
+              "value": "13",
+              "label": ":13"
+            },
+            {
+              "value": "14",
+              "label": ":14"
+            },
+            {
+              "value": "15",
+              "label": ":15"
+            },
+            {
+              "value": "16",
+              "label": ":16"
+            },
+            {
+              "value": "17",
+              "label": ":17"
+            },
+            {
+              "value": "18",
+              "label": ":18"
+            },
+            {
+              "value": "19",
+              "label": ":19"
+            },
+            {
+              "value": "20",
+              "label": ":20"
+            },
+            {
+              "value": "21",
+              "label": ":21"
+            },
+            {
+              "value": "22",
+              "label": ":22"
+            },
+            {
+              "value": "23",
+              "label": ":23"
+            },
+            {
+              "value": "24",
+              "label": ":24"
+            },
+            {
+              "value": "25",
+              "label": ":25"
+            },
+            {
+              "value": "26",
+              "label": ":26"
+            },
+            {
+              "value": "27",
+              "label": ":27"
+            },
+            {
+              "value": "28",
+              "label": ":28"
+            },
+            {
+              "value": "29",
+              "label": ":29"
+            },
+            {
+              "value": "30",
+              "label": ":30"
+            },
+            {
+              "value": "31",
+              "label": ":31"
+            },
+            {
+              "value": "32",
+              "label": ":32"
+            },
+            {
+              "value": "33",
+              "label": ":33"
+            },
+            {
+              "value": "34",
+              "label": ":34"
+            },
+            {
+              "value": "35",
+              "label": ":35"
+            },
+            {
+              "value": "36",
+              "label": ":36"
+            },
+            {
+              "value": "37",
+              "label": ":37"
+            },
+            {
+              "value": "38",
+              "label": ":38"
+            },
+            {
+              "value": "39",
+              "label": ":39"
+            },
+            {
+              "value": "40",
+              "label": ":40"
+            },
+            {
+              "value": "41",
+              "label": ":41"
+            },
+            {
+              "value": "42",
+              "label": ":42"
+            },
+            {
+              "value": "43",
+              "label": ":43"
+            },
+            {
+              "value": "44",
+              "label": ":44"
+            },
+            {
+              "value": "45",
+              "label": ":45"
+            },
+            {
+              "value": "46",
+              "label": ":46"
+            },
+            {
+              "value": "47",
+              "label": ":47"
+            },
+            {
+              "value": "48",
+              "label": ":48"
+            },
+            {
+              "value": "49",
+              "label": ":49"
+            },
+            {
+              "value": "50",
+              "label": ":50"
+            },
+            {
+              "value": "51",
+              "label": ":51"
+            },
+            {
+              "value": "52",
+              "label": ":52"
+            },
+            {
+              "value": "53",
+              "label": ":53"
+            },
+            {
+              "value": "54",
+              "label": ":54"
+            },
+            {
+              "value": "55",
+              "label": ":55"
+            },
+            {
+              "value": "56",
+              "label": ":56"
+            },
+            {
+              "value": "57",
+              "label": ":57"
+            },
+            {
+              "value": "58",
+              "label": ":58"
+            },
+            {
+              "value": "59",
+              "label": ":59"
+            }
+          ]
+        },
+        {
+          "key": "melonds_render_mode",
+          "label": "Render Mode",
+          "description": "Software mode is faster and more accurate, while OpenGL mode supports scaling up the resolution of 3D graphics in most cases.\n\nOpenGL mode may be buggy on some graphics hardware. If it doesn't work, software rendering is used as a fallback. Changes take effect immediately but may require the frontend's video driver to be restarted.",
+          "category": "video",
+          "default": "software",
+          "values": [
+            {
+              "value": "software",
+              "label": "Software"
+            },
+            {
+              "value": "opengl",
+              "label": "OpenGL"
+            }
+          ]
+        },
+        {
+          "key": "melonds_opengl_resolution",
+          "label": "Internal Resolution",
+          "description": "The degree to which the emulated 3D engine's graphics are scaled up. Dimensions are given per screen. OpenGL renderer only.",
+          "category": "video",
+          "default": "1",
+          "values": [
+            {
+              "value": "1",
+              "label": "1x native (256 x 192)"
+            },
+            {
+              "value": "2",
+              "label": "2x native (512 x 384)"
+            },
+            {
+              "value": "3",
+              "label": "3x native (768 x 576)"
+            },
+            {
+              "value": "4",
+              "label": "4x native (1024 x 768)"
+            },
+            {
+              "value": "5",
+              "label": "5x native (1280 x 960)"
+            },
+            {
+              "value": "6",
+              "label": "6x native (1536 x 1152)"
+            },
+            {
+              "value": "7",
+              "label": "7x native (1792 x 1344)"
+            },
+            {
+              "value": "8",
+              "label": "8x native (2048 x 1536)"
+            }
+          ]
+        },
+        {
+          "key": "melonds_opengl_better_polygons",
+          "label": "Improved Polygon Splitting",
+          "description": "Enable this if your game's 3D models are not rendering correctly. OpenGL renderer only.",
+          "category": "video",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_threaded_renderer",
+          "label": "Threaded Software Renderer",
+          "description": "If enabled, the software renderer will run on a separate thread. Changes take effect immediately. If unsure, leave this enabled.",
+          "category": "video",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "disabled",
+              "label": "disabled"
+            },
+            {
+              "value": "enabled",
+              "label": "enabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_unsupported_features",
+          "label": "Warn About Unsupported Features",
+          "description": "Enable to display an on-screen message if melonDS tries to use certain unsupported features. These warnings will be logged regardless of this setting.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_bios_warnings",
+          "label": "Warn About Certain BIOS Problems",
+          "description": "Enable to display warnings if your BIOS files have certain known problems. A warning will always be shown if your BIOS files are missing or invalid, regardless of this setting.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_current_layout",
+          "label": "Show Screen Layout",
+          "description": "Enable to show which screen layout within the configured sequence is active.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_mic_state",
+          "label": "Show Host Microphone State",
+          "description": "Enable to show whether your device's microphone is active.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_camera_state",
+          "label": "Show Host Camera State",
+          "description": "Enable to show whether your device's camera is active.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_lid_state",
+          "label": "Show Lid State",
+          "description": "Enable to show whether the emulated screens are closed.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        },
+        {
+          "key": "melonds_show_sensor_reading",
+          "label": "Show Sensor Reading",
+          "description": "Enable to show the emulated input of any peripheral sensors that aren't already managed by one of the other OSD options, e.g. the solar sensor embedded in the Boktai trilogy's carts. If no peripherals (including GBA carts) are available, this option will have no effect.",
+          "category": "osd",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "disabled"
+            }
+          ]
+        }
+      ]
+    },
+    "3ds": {
+      "engine": "Azahar",
+      "version": "2126.1.1",
+      "noGame": false,
+      "options": [
+        {
+          "key": "citra_use_cpu_jit",
+          "label": "Enable CPU JIT",
+          "description": "Enable Just-In-Time compilation for ARM CPU emulation. Significantly improves performance but may reduce accuracy. Restart required.",
+          "category": "cpu",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_cpu_clock_percentage",
+          "label": "CPU Clock Speed",
+          "description": "Adjust the emulated 3DS CPU clock speed as a percentage of normal speed. Higher values may improve performance in some games but can cause issues. Lower values can help with games that run too fast.",
+          "category": "cpu",
+          "default": "100",
+          "values": [
+            {
+              "value": "25",
+              "label": "25%"
+            },
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "75",
+              "label": "75%"
+            },
+            {
+              "value": "100",
+              "label": "100% (Default)"
+            },
+            {
+              "value": "125",
+              "label": "125%"
+            },
+            {
+              "value": "150",
+              "label": "150%"
+            },
+            {
+              "value": "175",
+              "label": "175%"
+            },
+            {
+              "value": "200",
+              "label": "200%"
+            },
+            {
+              "value": "225",
+              "label": "225%"
+            },
+            {
+              "value": "250",
+              "label": "250%"
+            },
+            {
+              "value": "275",
+              "label": "275%"
+            },
+            {
+              "value": "300",
+              "label": "300%"
+            },
+            {
+              "value": "325",
+              "label": "325%"
+            },
+            {
+              "value": "350",
+              "label": "350%"
+            },
+            {
+              "value": "375",
+              "label": "375%"
+            },
+            {
+              "value": "400",
+              "label": "400%"
+            }
+          ]
+        },
+        {
+          "key": "citra_is_new_3ds",
+          "label": "3DS System Model",
+          "description": "Select whether to emulate the original 3DS or New 3DS. New 3DS has additional CPU power and memory, required for some games. Restart required.",
+          "category": "system",
+          "default": "New 3DS",
+          "values": [
+            {
+              "value": "New 3DS",
+              "label": "New 3DS"
+            },
+            {
+              "value": "Old 3DS",
+              "label": "Original 3DS"
+            }
+          ]
+        },
+        {
+          "key": "citra_region_value",
+          "label": "3DS System Region",
+          "description": "Set the 3DS system region. Auto-select will choose based on the game. Some games are region-locked and require matching regions.",
+          "category": "system",
+          "default": "Auto",
+          "values": [
+            {
+              "value": "Auto",
+              "label": "Auto"
+            },
+            {
+              "value": "Japan",
+              "label": "Japan"
+            },
+            {
+              "value": "USA",
+              "label": "USA"
+            },
+            {
+              "value": "Europe",
+              "label": "Europe"
+            },
+            {
+              "value": "Australia",
+              "label": "Australia"
+            },
+            {
+              "value": "China",
+              "label": "China"
+            },
+            {
+              "value": "Korea",
+              "label": "Korea"
+            },
+            {
+              "value": "Taiwan",
+              "label": "Taiwan"
+            }
+          ]
+        },
+        {
+          "key": "citra_language_value",
+          "label": "3DS System Language",
+          "description": "Set the system language for the emulated 3DS. This affects in-game text language when supported.",
+          "category": "system",
+          "default": "english",
+          "values": [
+            {
+              "value": "English",
+              "label": "English"
+            },
+            {
+              "value": "Japanese",
+              "label": "Japanese"
+            },
+            {
+              "value": "French",
+              "label": "French"
+            },
+            {
+              "value": "Spanish",
+              "label": "Spanish"
+            },
+            {
+              "value": "German",
+              "label": "German"
+            },
+            {
+              "value": "Italian",
+              "label": "Italian"
+            },
+            {
+              "value": "Dutch",
+              "label": "Dutch"
+            },
+            {
+              "value": "Portuguese",
+              "label": "Portuguese"
+            },
+            {
+              "value": "Russian",
+              "label": "Russian"
+            },
+            {
+              "value": "Korean",
+              "label": "Korean"
+            },
+            {
+              "value": "Traditional Chinese",
+              "label": "Traditional Chinese"
+            },
+            {
+              "value": "Simplified Chinese",
+              "label": "Simplified Chinese"
+            }
+          ]
+        },
+        {
+          "key": "citra_audio_emulation",
+          "label": "Audio Emulation",
+          "description": "Select audio emulation method. HLE is faster, LLE is more accurate.",
+          "category": "audio",
+          "default": "hle",
+          "values": [
+            {
+              "value": "hle",
+              "label": "HLE (Fast)"
+            },
+            {
+              "value": "lle",
+              "label": "LLE (Accurate)"
+            },
+            {
+              "value": "lle_multithread",
+              "label": "LLE Multithreaded"
+            }
+          ]
+        },
+        {
+          "key": "citra_input_type",
+          "label": "Microphone Input Type",
+          "description": "Select how microphone input is handled for games that support it.",
+          "category": "audio",
+          "default": "auto",
+          "values": [
+            {
+              "value": "auto",
+              "label": "Auto"
+            },
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "static_noise",
+              "label": "Static Noise"
+            },
+            {
+              "value": "frontend",
+              "label": "Frontend"
+            }
+          ]
+        },
+        {
+          "key": "citra_graphics_api",
+          "label": "Graphics API",
+          "description": "Select the graphics rendering API. Auto will choose the best available option. Restart required.",
+          "category": "graphics",
+          "default": "auto",
+          "values": [
+            {
+              "value": "Auto",
+              "label": "Auto"
+            },
+            {
+              "value": "Vulkan",
+              "label": "Vulkan"
+            },
+            {
+              "value": "Software",
+              "label": "Software"
+            }
+          ]
+        },
+        {
+          "key": "citra_use_hw_shader",
+          "label": "Enable Hardware Shaders",
+          "description": "Use GPU hardware to accelerate shader processing. Significantly improves performance but may reduce accuracy.",
+          "category": "graphics",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_use_shader_jit",
+          "label": "Enable Shader JIT",
+          "description": "Use Just-In-Time compilation for shaders. Improves performance but may cause graphical issues in some games.",
+          "category": "graphics",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_shaders_accurate_mul",
+          "label": "Accurate Shader Multiplication",
+          "description": "Use accurate multiplication in shaders. More accurate but can reduce performance. Only works with hardware shaders.",
+          "category": "graphics",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_use_disk_shader_cache",
+          "label": "Hardware Shader Cache",
+          "description": "Save compiled shaders to disk to reduce loading times on subsequent runs.",
+          "category": "graphics",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_resolution_factor",
+          "label": "Internal Resolution",
+          "description": "Render the 3DS screens at a higher resolution. Higher values improve visual quality but significantly impact performance.",
+          "category": "graphics",
+          "default": "1",
+          "values": [
+            {
+              "value": "1",
+              "label": "1x (Native 400x240)"
+            },
+            {
+              "value": "2",
+              "label": "2x (800x480)"
+            },
+            {
+              "value": "3",
+              "label": "3x (1200x720)"
+            },
+            {
+              "value": "4",
+              "label": "4x (1600x960)"
+            },
+            {
+              "value": "5",
+              "label": "5x (2000x1200)"
+            },
+            {
+              "value": "6",
+              "label": "6x (2400x1440)"
+            },
+            {
+              "value": "7",
+              "label": "7x (2800x1680)"
+            },
+            {
+              "value": "8",
+              "label": "8x (3200x1920)"
+            },
+            {
+              "value": "9",
+              "label": "9x (3600x2160)"
+            },
+            {
+              "value": "10",
+              "label": "10x (4000x2400)"
+            },
+            {
+              "value": "11",
+              "label": "11x (4400x2640)"
+            },
+            {
+              "value": "12",
+              "label": "12x (4800x2880)"
+            },
+            {
+              "value": "13",
+              "label": "13x (5200x3120)"
+            },
+            {
+              "value": "14",
+              "label": "14x (5600x3360)"
+            },
+            {
+              "value": "15",
+              "label": "15x (6000x3600)"
+            },
+            {
+              "value": "16",
+              "label": "16x (6400x3840)"
+            },
+            {
+              "value": "17",
+              "label": "17x (6800x4080)"
+            },
+            {
+              "value": "18",
+              "label": "18x (7200x4320)"
+            }
+          ]
+        },
+        {
+          "key": "citra_texture_filter",
+          "label": "Texture Filter",
+          "description": "Apply texture filtering to enhance visual quality. Some filters may significantly impact performance.",
+          "category": "graphics",
+          "default": "none",
+          "values": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "Anime4K Ultrafast",
+              "label": "Anime4K Ultrafast"
+            },
+            {
+              "value": "Bicubic",
+              "label": "Bicubic"
+            },
+            {
+              "value": "ScaleForce",
+              "label": "ScaleForce"
+            },
+            {
+              "value": "xBRZ",
+              "label": "xBRZ"
+            },
+            {
+              "value": "MMPX",
+              "label": "MMPX"
+            }
+          ]
+        },
+        {
+          "key": "citra_texture_sampling",
+          "label": "Texture Sampling",
+          "description": "Control how textures are sampled and filtered.",
+          "category": "graphics",
+          "default": "GameControlled",
+          "values": [
+            {
+              "value": "GameControlled",
+              "label": "Game Controlled"
+            },
+            {
+              "value": "NearestNeighbor",
+              "label": "Nearest Neighbor"
+            },
+            {
+              "value": "Linear",
+              "label": "Linear"
+            }
+          ]
+        },
+        {
+          "key": "citra_custom_textures",
+          "label": "Custom Textures",
+          "description": "Enable loading of custom texture packs to replace original game textures.",
+          "category": "graphics",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_dump_textures",
+          "label": "Dump Game Textures",
+          "description": "Save original game textures to disk for creating custom texture packs. May impact performance.",
+          "category": "graphics",
+          "default": "disabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_layout_option",
+          "label": "Screen Layout",
+          "description": "Choose how the 3DS screens are arranged in the display.",
+          "category": "layout",
+          "default": "default",
+          "values": [
+            {
+              "value": "default",
+              "label": "Default Top-Bottom"
+            },
+            {
+              "value": "single_screen",
+              "label": "Single Screen Only"
+            },
+            {
+              "value": "large_screen",
+              "label": "Large Screen, Small Screen"
+            },
+            {
+              "value": "side_by_side",
+              "label": "Side by Side"
+            }
+          ]
+        },
+        {
+          "key": "citra_swap_screen",
+          "label": "Prominent 3DS Screen",
+          "description": "Choose which screen is displayed prominently in single screen or large screen layouts.",
+          "category": "layout",
+          "default": "Top",
+          "values": [
+            {
+              "value": "Top",
+              "label": "Top Screen"
+            },
+            {
+              "value": "Bottom",
+              "label": "Bottom Screen"
+            }
+          ]
+        },
+        {
+          "key": "citra_swap_screen_mode",
+          "label": "Screen Swap Mode",
+          "description": "How screen swapping behaves when using the screen swap hotkey.",
+          "category": "layout",
+          "default": "Toggle",
+          "values": [
+            {
+              "value": "Toggle",
+              "label": "Toggle"
+            },
+            {
+              "value": "Hold",
+              "label": "Hold"
+            }
+          ]
+        },
+        {
+          "key": "citra_large_screen_proportion",
+          "label": "Large Screen Proportion",
+          "description": "How many times larger the main screen is compared to the small screen in the Large Screen layout.",
+          "category": "layout",
+          "default": "4.00",
+          "values": [
+            {
+              "value": "1.00",
+              "label": "1.00x (Equal Size)"
+            },
+            {
+              "value": "1.25",
+              "label": "1.25x"
+            },
+            {
+              "value": "1.50",
+              "label": "1.50x"
+            },
+            {
+              "value": "1.75",
+              "label": "1.75x"
+            },
+            {
+              "value": "2.00",
+              "label": "2.00x"
+            },
+            {
+              "value": "2.25",
+              "label": "2.25x"
+            },
+            {
+              "value": "2.50",
+              "label": "2.50x"
+            },
+            {
+              "value": "2.75",
+              "label": "2.75x"
+            },
+            {
+              "value": "3.00",
+              "label": "3.00x"
+            },
+            {
+              "value": "3.25",
+              "label": "3.25x"
+            },
+            {
+              "value": "3.50",
+              "label": "3.50x"
+            },
+            {
+              "value": "3.75",
+              "label": "3.75x"
+            },
+            {
+              "value": "4.00",
+              "label": "4.00x (Default)"
+            },
+            {
+              "value": "4.25",
+              "label": "4.25x"
+            },
+            {
+              "value": "4.50",
+              "label": "4.50x"
+            },
+            {
+              "value": "4.75",
+              "label": "4.75x"
+            },
+            {
+              "value": "5.00",
+              "label": "5.00x"
+            },
+            {
+              "value": "5.25",
+              "label": "5.25x"
+            },
+            {
+              "value": "5.50",
+              "label": "5.50x"
+            },
+            {
+              "value": "5.75",
+              "label": "5.75x"
+            },
+            {
+              "value": "6.00",
+              "label": "6.00x"
+            }
+          ]
+        },
+        {
+          "key": "citra_render_3d",
+          "label": "Stereoscopic 3D Mode",
+          "description": "Stereoscopic 3D output, used when a game is rendering in 3D. 'Off' shows a single 2D image. 'Side by Side' places the left and right eye images beside each other in one frame, each at half width. 'Side by Side (Full)' does the same but keeps each eye at full width. 'Anaglyph' merges both eyes into a single red/cyan image for use with red/cyan glasses. 'Interlaced' alternates the eyes on odd and even scanlines for interlaced 3D displays, and 'Reverse Interlaced' swaps which eye is on which line. 'Cardboard VR' outputs side by side with lens-distortion correction for Cardboard-style viewers.",
+          "category": "layout",
+          "default": "off",
+          "values": [
+            {
+              "value": "off",
+              "label": "Off (2D)"
+            },
+            {
+              "value": "side-by-side",
+              "label": "Side by Side"
+            },
+            {
+              "value": "side-by-side-full",
+              "label": "Side by Side (Full)"
+            },
+            {
+              "value": "anaglyph",
+              "label": "Anaglyph (Red/Cyan)"
+            },
+            {
+              "value": "interlaced",
+              "label": "Interlaced"
+            },
+            {
+              "value": "reverse-interlaced",
+              "label": "Reverse Interlaced"
+            },
+            {
+              "value": "cardboard",
+              "label": "Cardboard VR"
+            }
+          ]
+        },
+        {
+          "key": "citra_factor_3d",
+          "label": "Stereoscopic 3D Depth",
+          "description": "Depth intensity of the stereoscopic 3D effect, as a percentage. Only used when a 3D mode is active.",
+          "category": "layout",
+          "default": "0",
+          "values": [
+            {
+              "value": "0",
+              "label": "0%"
+            },
+            {
+              "value": "10",
+              "label": "10%"
+            },
+            {
+              "value": "20",
+              "label": "20%"
+            },
+            {
+              "value": "30",
+              "label": "30%"
+            },
+            {
+              "value": "40",
+              "label": "40%"
+            },
+            {
+              "value": "50",
+              "label": "50%"
+            },
+            {
+              "value": "60",
+              "label": "60%"
+            },
+            {
+              "value": "70",
+              "label": "70%"
+            },
+            {
+              "value": "80",
+              "label": "80%"
+            },
+            {
+              "value": "90",
+              "label": "90%"
+            },
+            {
+              "value": "100",
+              "label": "100%"
+            }
+          ]
+        },
+        {
+          "key": "citra_use_virtual_sd",
+          "label": "Enable Virtual SD Card",
+          "description": "Enable virtual SD card support for homebrew and some commercial games.",
+          "category": "storage",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_use_libretro_save_path",
+          "label": "Save Data Location",
+          "description": "Choose where save data and system files are stored.",
+          "category": "storage",
+          "default": "LibRetro Default",
+          "values": [
+            {
+              "value": "LibRetro Default",
+              "label": "LibRetro Default"
+            },
+            {
+              "value": "Azahar Default",
+              "label": "Azahar Default"
+            }
+          ]
+        },
+        {
+          "key": "citra_analog_function",
+          "label": "Right Analog Function",
+          "description": "Configure what the right analog stick controls.",
+          "category": "input",
+          "default": "c_stick_and_touchscreen",
+          "values": [
+            {
+              "value": "c_stick_and_touchscreen",
+              "label": "C-Stick and Touchscreen Pointer"
+            },
+            {
+              "value": "touchscreen_pointer",
+              "label": "Touchscreen Pointer"
+            },
+            {
+              "value": "c_stick",
+              "label": "C-Stick"
+            }
+          ]
+        },
+        {
+          "key": "citra_analog_deadzone",
+          "label": "Analog Deadzone",
+          "description": "Set the deadzone percentage for analog input to reduce drift.",
+          "category": "input",
+          "default": "15",
+          "values": [
+            {
+              "value": "0",
+              "label": "0%"
+            },
+            {
+              "value": "5",
+              "label": "5%"
+            },
+            {
+              "value": "10",
+              "label": "10%"
+            },
+            {
+              "value": "15",
+              "label": "15%"
+            },
+            {
+              "value": "20",
+              "label": "20%"
+            },
+            {
+              "value": "25",
+              "label": "25%"
+            },
+            {
+              "value": "30",
+              "label": "30%"
+            },
+            {
+              "value": "35",
+              "label": "35%"
+            }
+          ]
+        },
+        {
+          "key": "citra_enable_mouse_touchscreen",
+          "label": "Mouse Touchscreen Support",
+          "description": "Enable mouse input for touchscreen interactions.",
+          "category": "input",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_enable_touch_touchscreen",
+          "label": "Touch Device Support",
+          "description": "Enable touch device input for touchscreen interactions.",
+          "category": "input",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_enable_touch_pointer_timeout",
+          "label": "Touch Pointer Timeout",
+          "description": "Whether or not the touchscreen pointer should disappear during inactivity.",
+          "category": "input",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_enable_motion",
+          "label": "Gyroscope/Accelerometer Support",
+          "description": "Enable gyroscope and accelerometer input for games that support motion controls.",
+          "category": "input",
+          "default": "enabled",
+          "values": [
+            {
+              "value": "enabled",
+              "label": "Enabled"
+            },
+            {
+              "value": "disabled",
+              "label": "Disabled"
+            }
+          ]
+        },
+        {
+          "key": "citra_motion_sensitivity",
+          "label": "Motion Sensitivity",
+          "description": "Adjust sensitivity of motion controls (gyroscope/accelerometer).",
+          "category": "input",
+          "default": "1.0",
+          "values": [
+            {
+              "value": "0.1",
+              "label": "10%"
+            },
+            {
+              "value": "0.25",
+              "label": "25%"
+            },
+            {
+              "value": "0.5",
+              "label": "50%"
+            },
+            {
+              "value": "0.75",
+              "label": "75%"
+            },
+            {
+              "value": "1.0",
+              "label": "100%"
+            },
+            {
+              "value": "1.25",
+              "label": "125%"
+            },
+            {
+              "value": "1.5",
+              "label": "150%"
+            },
+            {
+              "value": "2.0",
+              "label": "200%"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

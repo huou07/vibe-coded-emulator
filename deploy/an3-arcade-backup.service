@@ -1,0 +1,16 @@
+[Unit]
+Description=AN3 Arcade consistent SQLite and ROM manifest backup
+After=an3-arcade.service
+
+[Service]
+Type=oneshot
+User=tvshare
+Group=tvshare
+EnvironmentFile=/etc/an3-arcade.env
+ExecStart=/usr/local/libexec/an3-arcade-backup
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/an3-arcade

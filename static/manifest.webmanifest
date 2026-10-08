@@ -1,0 +1,13 @@
+{
+  "name": "Vibe Coded Emulator",
+  "short_name": "Vibe Coded",
+  "start_url": "/offline",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07060c",
+  "theme_color": "#07060c",
+  "icons": [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
