@@ -54,9 +54,7 @@ fn main() {
             "Build the bundled portable Windows runtime with scripts/build-windows-runtime.ps1 first");
     }
 
-    // The UI-control bridge command is registered only for the automation
-    // build, matching the `#[cfg(feature = "ui-control")]` module in lib.rs.
-    let mut commands = vec![
+    let commands = vec![
             "pick_and_import_native_rom",
             "remove_native_rom",
             "native_capabilities",
@@ -80,9 +78,6 @@ fn main() {
             "switch_companion_hosted_frame_stats",
             "switch_companion_hosted_frame_verify",
     ];
-    if std::env::var("CARGO_FEATURE_UI_CONTROL").is_ok() {
-        commands.push("ui_control_result");
-    }
     let commands: &'static [&'static str] = Box::leak(commands.into_boxed_slice());
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(commands),
