@@ -121,6 +121,10 @@ mkdir -p "$OUT/tools"
 cp -R "$ROOT/deploy" "$OUT/deploy"
 rm -rf "$OUT/deploy/shadow" "$OUT/tools/ssh" 2>/dev/null || true
 cp "$ROOT/tools/verify-release-catalog.py" "$OUT/tools/"
+for file in disk-preflight.sh disk-preflight.ps1; do
+  [[ -f "$ROOT/tools/$file" ]] || die "missing build helper: tools/$file"
+  cp "$ROOT/tools/$file" "$OUT/tools/"
+done
 [[ -d "$ROOT/tools/android" ]] && cp -R "$ROOT/tools/android" "$OUT/tools/android"
 
 # --- 4. Curated documentation -------------------------------------------------
@@ -129,6 +133,7 @@ for file in licensing/license-audit.md licensing/distribution-compliance.md \
             licensing/eden-integration-feasibility.md; do
   [[ -f "$ROOT/docs/$file" ]] && cp "$ROOT/docs/$file" "$OUT/docs/$file"
 done
+[[ -f "$ROOT/docs/BUILD_STORAGE.md" ]] && cp "$ROOT/docs/BUILD_STORAGE.md" "$OUT/docs/BUILD_STORAGE.md"
 for file in player-layering.md design-system.md; do
   [[ -f "$ROOT/docs/$file" ]] && cp "$ROOT/docs/$file" "$OUT/docs/architecture/$file"
 done
