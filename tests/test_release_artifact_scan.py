@@ -62,7 +62,11 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(
             allowlist["regexes"],
-            ["an3-presentation-renderer-v1", "192\\.168\\.0\\.0"],
+            [
+                "an3-presentation-renderer-v1",
+                "192\\.168\\.0\\.0",
+                "192\\.0\\.2\\.0",
+            ],
         )
         # Every built-in rule is present; the config only adds to them.
         rule_ids = [rule[0] for rule in config["rules"]]
@@ -237,13 +241,15 @@ class AllowlistTests(unittest.TestCase):
         self.assertFalse(
             mod._allowlist_matches(allowlist, "static/player.js", localstorage_assignment)
         )
-        self.assertTrue(
-            mod._allowlist_matches(
-                allowlist,
-                "usr/share/glib-2.0/schemas/org.gnome.system.proxy.gschema.xml",
-                b"192.0.2.0",
-            )
-        )
+        for address in (b"192.0.2.0", b"192.0.2.0"):
+            with self.subTest(address=address):
+                self.assertTrue(
+                    mod._allowlist_matches(
+                        allowlist,
+                        "usr/share/glib-2.0/schemas/org.gnome.system.proxy.gschema.xml",
+                        address,
+                    )
+                )
 
 
 class MainTests(unittest.TestCase):

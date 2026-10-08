@@ -15,4 +15,5 @@ regexTarget = "match"
 regexes = [
   'an3-presentation-renderer-v1',
   '192\.168\.0\.0',
+  '192\.0\.2\.0',
 ]
