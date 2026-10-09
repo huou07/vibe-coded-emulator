@@ -129,6 +129,13 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn(selected_platforms, android_job)
         self.assertIn(selected_platforms, linux_job)
 
+    def test_workflow_only_pushes_use_portable_ci_without_native_matrix(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        push = workflow[workflow.index("  push:"):workflow.index("permissions:")]
+        self.assertNotIn(".github/workflows/**", push)
+        self.assertNotIn("tests/test_windows_runtime_smoke.py", push)
+        self.assertIn(".github/workflows/**", workflow[workflow.index("  pull_request:"):workflow.index("  push:")])
+
     def _stop(self, app: Path) -> None:
         subprocess.run(["pkill", "-f", str(app)], capture_output=True)
         for _ in range(20):

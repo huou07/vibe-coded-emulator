@@ -42,12 +42,10 @@ on:
       - '.gitattributes'
       - 'native-offline/**'
       - 'native/**'
-      - 'tests/test_windows_runtime_smoke.py'
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
       - 'tools/windows-runtime-smoke.ps1'
-      - '.github/workflows/**'
 
 permissions:
   actions: read
