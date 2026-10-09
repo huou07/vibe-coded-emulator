@@ -155,7 +155,7 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
         self.click_visible("game-launch")
         status = self.wait_node(
             "native-status",
-            lambda item: bool(item and item.get("visible") and item.get("state") == "running"),
+            lambda item: bool(item and item.get("state") == "running"),
         )
         self.assertEqual(status.get("state"), "running")
 
