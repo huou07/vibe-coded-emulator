@@ -27,7 +27,7 @@ function Invoke-An3ctl([string[]]$Arguments) {
   return (($output -join "`n") | ConvertFrom-Json)
 }
 
-function Get-WindowsGameCardRomId {
+function Get-WindowsPageDiagnostics {
   $script = @'
 const tabs = await fetch("http://127.0.0.1:9222/json/list").then(response => response.json());
 const page = tabs.find(tab => tab.type === "page" && tab.webSocketDebuggerUrl && new URL(tab.url).origin === "http://127.0.0.1:38471");
@@ -44,7 +44,7 @@ const value = await new Promise((resolve, reject) => {
     id: 1,
     method: "Runtime.evaluate",
     params: {
-      expression: "document.querySelector('[data-testid=\\\"game-card\\\"]')?.dataset.romId || null",
+      expression: "JSON.stringify({romId: document.querySelector('[data-testid=\\\"game-card\\\"]')?.dataset.romId || null, toastText: (() => { const toast = document.getElementById('toast'); return toast?.classList.contains('show') ? toast.textContent : null; })()})",
       returnByValue: true
     }
   })));
@@ -57,14 +57,16 @@ const value = await new Promise((resolve, reject) => {
     else resolve(message.result?.result?.value ?? null);
   });
 });
-if (typeof value !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) {
+if (typeof value !== "string") throw new Error("Could not read the native page diagnostics.");
+const diagnostic = JSON.parse(value);
+if (typeof diagnostic.romId !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(diagnostic.romId)) {
   throw new Error("The imported game card has no valid native ROM id.");
 }
-process.stdout.write(JSON.stringify({ romId: value }));
+process.stdout.write(JSON.stringify(diagnostic));
 '@
   $output = & node --input-type=module -e $script
-  if ($LASTEXITCODE -ne 0) { throw "Could not read the game card ROM id through CDP: $($output -join "`n")" }
-  return (($output -join "`n") | ConvertFrom-Json).romId
+  if ($LASTEXITCODE -ne 0) { throw "Could not read native page diagnostics through CDP: $($output -join "`n")" }
+  return (($output -join "`n") | ConvertFrom-Json)
 }
 
 try {
@@ -265,7 +267,8 @@ try {
     fixtureSha256 = (Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
     files = $nativeRomFiles
   })
-  $gameCardRomId = Get-WindowsGameCardRomId
+  $pageDiagnostics = Get-WindowsPageDiagnostics
+  $gameCardRomId = $pageDiagnostics.romId
   Write-Evidence 'game-card-rom-id.json' ([ordered]@{
     romId = $gameCardRomId
     storedRomIds = @($nativeRomFiles | Where-Object { $_.name -match '^[0-9a-fA-F-]{36}\.' } | ForEach-Object { $_.name.Substring(0, 36) })
@@ -287,11 +290,13 @@ try {
   }
   $nativeLaunchState = if ($nativeStatus) { $nativeStatus.data.node.state } else { 'unavailable' }
   $nativeLaunchDetail = if ($nativeStatus) { $nativeStatus.data.node.name } else { '' }
+  $launchToastDetail = (Get-WindowsPageDiagnostics).toastText
   Write-Evidence 'launch.json' ([ordered]@{
     sourceSha = $ExpectedSourceSha
     appVersion = $automationVersionMatch.Groups[1].Value.Trim()
     launchStatus = $nativeLaunchState
     launchDetail = $nativeLaunchDetail
+    launchToastDetail = $launchToastDetail
     lastStatusQueryError = $nativeStatusQueryError
   })
   if (!$nativeStatus -or $nativeStatus.data.node.state -ne 'running') {
