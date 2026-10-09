@@ -259,7 +259,7 @@ try {
 
   $playerProcessId = [int]$runtimeProcess.ProcessId
   $null = $mainProcess.CloseMainWindow()
-  if (!$mainProcess.WaitForExit(10_000)) {
+  if (!$mainProcess.WaitForExit(10000)) {
     & taskkill.exe /PID $mainProcess.Id /T /F | Out-Null
     $mainProcess.WaitForExit(5000) | Out-Null
     throw 'The installed Windows shell did not close cleanly after the game launch check.'
