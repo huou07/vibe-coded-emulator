@@ -213,16 +213,30 @@ try {
   }
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
   $nativeStatus = $null
+  $nativeStatusQueryError = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(50)
   while ([DateTime]::UtcNow -lt $deadline) {
     try {
       $nativeStatus = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-status', '--json')
-      if ($nativeStatus.data.node.state -eq 'running') { break }
-    } catch { Start-Sleep -Milliseconds 500 }
+      $nativeStatusQueryError = $null
+      if ($nativeStatus.data.node.state -in @('running', 'error')) { break }
+    } catch {
+      $nativeStatusQueryError = $_.Exception.Message
+      Start-Sleep -Milliseconds 500
+    }
     Start-Sleep -Milliseconds 500
   }
+  $nativeLaunchState = if ($nativeStatus) { $nativeStatus.data.node.state } else { 'unavailable' }
+  $nativeLaunchDetail = if ($nativeStatus) { $nativeStatus.data.node.name } else { '' }
+  Write-Evidence 'launch.json' ([ordered]@{
+    sourceSha = $ExpectedSourceSha
+    appVersion = $automationVersionMatch.Groups[1].Value.Trim()
+    launchStatus = $nativeLaunchState
+    launchDetail = $nativeLaunchDetail
+    lastStatusQueryError = $nativeStatusQueryError
+  })
   if (!$nativeStatus -or $nativeStatus.data.node.state -ne 'running') {
-    throw 'The shell game card did not start the bundled Windows runtime.'
+    throw "The shell game card did not start the bundled Windows runtime (state=$nativeLaunchState; detail=$nativeLaunchDetail; queryError=$nativeStatusQueryError)."
   }
   $runtimeProcess = $null
   $runtimeWindow = $null
