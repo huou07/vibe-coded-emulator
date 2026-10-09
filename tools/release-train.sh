@@ -142,6 +142,7 @@ build_windows() {
 create_frozen_source() {
   [[ "$host_kernel" == "Darwin" ]] || die "Create the cross-host frozen snapshot on the authorized Mac builder."
   for tool in tar shasum node python3; do require_command "$tool"; done
+  bash "$root/tools/disk-preflight.sh" 'Release source freeze' "$root"
   node "$native_root/scripts/generate-player-ui.mjs" --check
   verify_dependency_cache
   git -C "$root" diff --check
@@ -238,6 +239,7 @@ coordinated_build_all() {
   [[ "$host_kernel" == "Darwin" ]] || die "The coordinated matrix starts on the authorized Mac builder."
   [[ "${#platforms[@]}" -eq 1 && "${platforms[0]}" == "all" ]] || die "--coordinated requires exactly 'build all' so every artifact uses one frozen source snapshot."
   for tool in ssh scp tar shasum node npm python3; do require_command "$tool"; done
+  bash "$root/tools/disk-preflight.sh" 'Coordinated release build' "$root"
   local frozen_fields source_archive source_hash cache_archive cache_hash
   frozen_fields="$(read_frozen_source)"
   IFS=$'\t' read -r source_archive source_hash cache_archive cache_hash <<< "$frozen_fields"
@@ -353,6 +355,12 @@ PS
   note "COORDINATED_SOURCE_SHA256=$source_hash"
   note "COORDINATED_RUN_ID=$run_id"
   note "COORDINATED_ARTIFACTS=$artifacts"
+
+  # Keep the exact packages and source manifest; the extracted Mac tree only
+  # duplicates the frozen source and build outputs. Failures retain it above.
+  [[ "$mac_source" == "$run_root/macos-source" && -d "$mac_source" && ! -L "$mac_source" ]] || \
+    die "Refusing to remove an unexpected local build root: $mac_source"
+  rm -rf -- "$mac_source"
 
   # Preserve roots when diagnosing a failed build. A successful matrix has
   # already copied its candidates and manifests locally, so remove only these

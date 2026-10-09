@@ -63,3 +63,38 @@ The active branch is older than the public 3.3.3 checkpoint and the newer siblin
 2. Merge PR #9 only after the user reviews it; its required CI check is green.
 3. Continue the requested cross-platform product audit from the matrix above, distinguishing package-build evidence from live gameplay evidence.
 4. Keep the disposable Android AVD lifecycle item explicitly **UNVERIFIED** until safely exercised or implemented with evidence.
+
+## Storage incident follow-up — 2026-10-09
+
+The current machine snapshot is 460 GiB total, 295 GiB used, and 135 GiB
+available (69% used). No local VCE build/test loop or emulator was active; an
+idle `adb` server remained. Sixteen worktrees total about 36 GiB by `du`, with
+twelve retaining modified or untracked files. They were not removed.
+
+The measured repeat-growth path was the coordinated release workflow: each
+attempt created timestamped frozen-source and build roots, and successful local
+runs retained an extracted macOS source/build tree beside exact packages. The
+older `an3-330-integration` and `an3-final-wt` checkouts currently contain 3.3
+GiB and 3.6 GiB of repeated release-train scratch respectively. The 2026-09-22
+cleanup log records the prior 173 GiB recovery and the APFS clone correction:
+the apparent 220 GiB Chrome directory reclaimed about 1 GiB physical.
+
+The local release train now checks disk space before source freezing and matrix
+builds. A successful matrix keeps its exact artifacts and source manifest but
+removes only its verified `run_root/macos-source` extraction; failed build
+roots remain for diagnostics. `tests.test_disk_preflight`,
+`tests.test_native_staging_contract`, and `tests.test_release_train_versions`
+passed (16 tests); `bash -n tools/release-train.sh` and `git diff --check`
+passed. This is workflow/source validation; no coordinated package build was
+run. The current follow-up is local and has not been published.
+
+GitHub remains at public `main` `72a7a573`; PR #9 is open at
+`82d2d596`, with the `test` check passing and its duplicate native build
+canceled. `mergeStateStatus` is `UNSTABLE`; the existing handoff's user-review
+condition remains in force. The development branch was not pushed and no
+release or deployment was created.
+
+Next, reconcile the source lineage between this active `3.2.3` checkout, public
+`3.3.3`, and the newer local runtime branch without copying across dirty state.
+Then continue the desktop runtime/user-journey audit and fix the highest-impact
+verified product gap.

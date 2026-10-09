@@ -3,13 +3,23 @@
 ## Local package builds preserve a 25 GiB disk reserve
 
 The macOS, Windows, Linux DEB/Flatpak, and Android package entrypoints check free space
-before downloading dependencies or generating build output. Below 40 GiB they
-warn; below the 25 GiB reserve they stop with exit 75 and direct the operator
-to CI or known disposable build outputs. The guard never deletes data.
+before downloading dependencies or generating build output. Coordinated release
+freeze/build operations use the same check before creating archives or run roots.
+Below 40 GiB they warn; below the 25 GiB reserve they stop with exit 75 and
+direct the operator to CI or known disposable build outputs. The guard never
+deletes data. After a successful coordinated matrix, the exact packages and
+source manifest remain, while its extracted macOS build copy is removed; failed
+run roots remain available for diagnosis.
 
-- Automated: `tests.test_disk_preflight` covers pass, warning, stop, and invalid-threshold behavior with a stubbed `df` result.
+- Automated: `tests.test_disk_preflight` covers pass, warning, stop, and
+  invalid-threshold behavior with a stubbed `df` result;
+  `tests.test_native_staging_contract` covers release-train preflight order
+  and successful scratch cleanup.
 - Entry points: `native-offline/package.json` (`build`, `build:deb`, `android:build`), `native-offline/scripts/build-android-staging.sh`, `native-offline/scripts/build-linux-staging.sh`, and `native-offline/scripts/build-windows-staging.ps1`.
-- Runtime disk snapshot on 2026-10-09: 143 GiB available; no build or emulator process was active. Windows preflight runtime and disposable Android AVD lifecycle remain **UNVERIFIED**.
+- Initial runtime disk snapshot on 2026-10-09: 143 GiB available. Later
+  follow-up measured 135 GiB; no VCE build loop or emulator was active in that
+  check. Windows preflight runtime and disposable Android AVD lifecycle remain
+  **UNVERIFIED**.
 
 ## Parallelism history and current guard
 
