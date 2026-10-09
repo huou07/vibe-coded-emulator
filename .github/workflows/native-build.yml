@@ -25,6 +25,16 @@ on:
         required: false
         default: false
         type: boolean
+      build_linux_candidate:
+        description: Build and install-check the Linux package from this revision only
+        required: false
+        default: false
+        type: boolean
+      build_android_candidate:
+        description: Build and instrument the Android package from this revision only
+        required: false
+        default: false
+        type: boolean
       macos_artifact_run_id:
         description: Rebuild only the macOS UI-control test app against a prior run's DMG
         required: false
@@ -68,7 +78,9 @@ jobs:
   # Transport only: this accepted release carries the locked web runtime and
   # Android GBA/NDS core payloads used as deterministic source inputs.
   web-runtime-cache:
-    if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate || inputs.build_macos_candidate
+    if: >-
+      github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate ||
+      inputs.build_macos_candidate || inputs.build_linux_candidate || inputs.build_android_candidate
     name: Prepare checksum-locked web runtime cache
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -256,7 +268,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.macos_artifact_run_id != '' &&
-      !inputs.build_macos_candidate && !inputs.build_windows_candidate
+      !inputs.build_macos_candidate && !inputs.build_windows_candidate &&
+      !inputs.build_linux_candidate && !inputs.build_android_candidate
     name: Rebuild macOS UI-control app against an exact prior DMG
     runs-on: macos-15
     timeout-minutes: 90
@@ -351,7 +364,7 @@ jobs:
           retention-days: 7
 
   android-apk:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.build_windows_candidate && !inputs.build_macos_candidate)
+    if: github.event_name != 'workflow_dispatch' || inputs.build_android_candidate
     name: Android arm64 APK and instrumentation APK
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -452,7 +465,7 @@ jobs:
           retention-days: 7
 
   linux-deb:
-    if: github.event_name != 'workflow_dispatch' || (!inputs.build_windows_candidate && !inputs.build_macos_candidate)
+    if: github.event_name != 'workflow_dispatch' || inputs.build_linux_candidate
     name: Linux x86_64 DEB
     runs-on: ubuntu-24.04
     timeout-minutes: 180

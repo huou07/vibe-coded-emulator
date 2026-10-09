@@ -25,7 +25,17 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate", WORKFLOW)
         self.assertIn("build_macos_candidate:", WORKFLOW)
         self.assertIn("inputs.build_macos_candidate", WORKFLOW)
-        self.assertIn("!inputs.build_windows_candidate && !inputs.build_macos_candidate", WORKFLOW)
+        self.assertIn("build_linux_candidate:", WORKFLOW)
+        self.assertIn("build_android_candidate:", WORKFLOW)
+        web_cache_job = WORKFLOW[WORKFLOW.index("  web-runtime-cache:"):WORKFLOW.index("  macos-dmg:")]
+        self.assertIn("inputs.build_linux_candidate", web_cache_job)
+        self.assertIn("inputs.build_android_candidate", web_cache_job)
+        android_job = WORKFLOW[WORKFLOW.index("  android-apk:"):WORKFLOW.index("  linux-deb:")]
+        linux_job = WORKFLOW[WORKFLOW.index("  linux-deb:"):WORKFLOW.index("  linux-deb-install:")]
+        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.build_android_candidate", android_job)
+        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.build_linux_candidate", linux_job)
+        mac_refresh_job = WORKFLOW[WORKFLOW.index("  macos-ui-control-refresh:"):WORKFLOW.index("  android-apk:")]
+        self.assertIn("!inputs.build_linux_candidate && !inputs.build_android_candidate", mac_refresh_job)
         self.assertIn("inputs.windows_artifact_run_id != ''", WORKFLOW)
 
     def test_test_shell_is_separate_source_matched_and_test_feature_only(self):
