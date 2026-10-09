@@ -110,6 +110,8 @@ class MacosAutomationAppTests(unittest.TestCase):
     def test_hosted_macos_job_builds_and_retains_source_matched_test_app(self):
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
+        self.assertIn("build_macos_candidate:", workflow)
+        self.assertIn("inputs.build_macos_candidate", macos_job)
         self.assertIn("Build canonical macOS package", macos_job)
         self.assertIn("Build source-matched macOS UI-control test app", macos_job)
         self.assertIn("Verify macOS distribution and UI-control bundle separation", macos_job)
@@ -118,6 +120,14 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn("name: macos-ui-control-test-app", macos_job)
         self.assertIn("VibeCodedEmulatorAutomation.app.tar.gz", macos_job)
         self.assertIn("retention-days: 7", macos_job)
+
+    def test_macos_candidate_dispatch_skips_android_and_linux_jobs(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        android_job = workflow[workflow.index("  android-apk:"):workflow.index("  linux-deb:")]
+        linux_job = workflow[workflow.index("  linux-deb:"):workflow.index("  linux-deb-install:")]
+        selected_platforms = "!inputs.build_windows_candidate && !inputs.build_macos_candidate"
+        self.assertIn(selected_platforms, android_job)
+        self.assertIn(selected_platforms, linux_job)
 
     def _stop(self, app: Path) -> None:
         subprocess.run(["pkill", "-f", str(app)], capture_output=True)

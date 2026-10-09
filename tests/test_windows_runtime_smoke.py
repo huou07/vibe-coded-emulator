@@ -23,7 +23,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("build_windows_candidate:", WORKFLOW)
         self.assertIn("default: false", WORKFLOW)
         self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate", WORKFLOW)
-        self.assertGreaterEqual(WORKFLOW.count("!inputs.build_windows_candidate"), 3)
+        self.assertIn("build_macos_candidate:", WORKFLOW)
+        self.assertIn("inputs.build_macos_candidate", WORKFLOW)
+        self.assertIn("!inputs.build_windows_candidate && !inputs.build_macos_candidate", WORKFLOW)
         self.assertIn("inputs.windows_artifact_run_id != ''", WORKFLOW)
 
     def test_test_shell_is_separate_source_matched_and_test_feature_only(self):
