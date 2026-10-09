@@ -224,12 +224,12 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
         idle_frame = self.capture_game_window(game_window, "game-window-idle.png")
         self.assertGreater(idle_frame["bluePixels"], idle_frame["samplePixels"] * 0.75,
                            f"idle game window did not show the fixture's blue frame: {idle_frame}")
-        subprocess.run(["xdotool", "keydown", "z"], check=True, timeout=10)
+        subprocess.run(["xdotool", "keydown", "x"], check=True, timeout=10)
         try:
             time.sleep(0.4)
             input_frame = self.capture_game_window(game_window, "game-window-a-pressed.png")
         finally:
-            subprocess.run(["xdotool", "keyup", "z"], check=False, timeout=10)
+            subprocess.run(["xdotool", "keyup", "x"], check=False, timeout=10)
         self.assertGreater(input_frame["redPixels"], input_frame["samplePixels"] * 0.75,
                            f"visible game window did not show the A-pressed fixture frame: {input_frame}")
 
