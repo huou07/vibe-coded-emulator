@@ -142,6 +142,53 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
                 continue
         return False
 
+    @staticmethod
+    def game_window(executable):
+        player_pid = None
+        for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+            try:
+                if str(executable) in cmdline.read_bytes().replace(b"\0", b" ").decode(errors="ignore"):
+                    player_pid = int(cmdline.parent.name)
+                    break
+            except (OSError, ValueError):
+                continue
+        if player_pid is None:
+            return None
+        result = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--pid", str(player_pid)],
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return None
+        for window in result.stdout.split():
+            title = subprocess.run(
+                ["xdotool", "getwindowname", window],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if title.returncode == 0 and title.stdout.strip() == "VibeCodedEmulator":
+                return window
+        return None
+
+    def capture_game_window(self, window, name):
+        from PIL import Image
+
+        path = self.evidence / name
+        subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+        time.sleep(0.4)
+        subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
+        with Image.open(path) as image:
+            width, height = image.size
+            rgb = image.convert("RGB")
+            crop = rgb.crop((width // 4, height // 4, width * 3 // 4, height * 3 // 4))
+            pixels = list(crop.getdata())
+        red = sum(r > 150 and r > b * 1.5 for r, g, b in pixels)
+        blue = sum(b > 150 and b > r * 1.5 for r, g, b in pixels)
+        return {"path": str(path), "width": width, "height": height,
+                "redPixels": red, "bluePixels": blue, "samplePixels": len(pixels)}
+
     def test_import_launch_and_return_use_the_packaged_linux_shell(self):
         play = self.wait_node("open-rom", lambda item: bool(item and item.get("visible") and not item.get("disabled")))
         self.assertIsNotNone(play)
@@ -159,13 +206,32 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
         )
         self.assertEqual(status.get("state"), "running")
 
-        # Confirm that the installed package's bundled Linux player process was
-        # started; the UI bridge itself does not expose presented-frame data.
+        # Capture the actual SDL game window. The fixture fills the frame blue
+        # without input and red/green while A is held, so X11 pixels prove both
+        # presentation and the native keyboard path.
         player = self.package_root / "usr/lib/VibeCodedEmulator/runtime/linux-x86_64/an3-offline-native"
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline and not self.process_running(player):
             time.sleep(0.25)
         self.assertTrue(self.process_running(player), f"packaged Linux player did not start: {player}")
+
+        deadline = time.monotonic() + 20
+        game_window = None
+        while time.monotonic() < deadline and game_window is None:
+            game_window = self.game_window(player)
+            time.sleep(0.25)
+        self.assertIsNotNone(game_window, "packaged Linux game window was not visible under Xvfb")
+        idle_frame = self.capture_game_window(game_window, "game-window-idle.png")
+        self.assertGreater(idle_frame["bluePixels"], idle_frame["samplePixels"] * 0.75,
+                           f"idle game window did not show the fixture's blue frame: {idle_frame}")
+        subprocess.run(["xdotool", "keydown", "z"], check=True, timeout=10)
+        try:
+            time.sleep(0.4)
+            input_frame = self.capture_game_window(game_window, "game-window-a-pressed.png")
+        finally:
+            subprocess.run(["xdotool", "keyup", "z"], check=False, timeout=10)
+        self.assertGreater(input_frame["redPixels"], input_frame["samplePixels"] * 0.75,
+                           f"visible game window did not show the A-pressed fixture frame: {input_frame}")
 
         self.click_visible("native-session-return")
         self.wait_node("open-rom", lambda item: bool(item and item.get("visible")), timeout=30)
@@ -178,7 +244,9 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
             "player": str(player),
             "fixture": str(self.fixture),
             "journey": ["Play visible", "fixture imported", "player launched", "returned to Library"],
-            "presented_frame_verified": False,
+            "visible_frame_verified": True,
+            "idle_frame": idle_frame,
+            "a_pressed_frame": input_frame,
         }, indent=2) + "\n", encoding="utf-8")
 
 
