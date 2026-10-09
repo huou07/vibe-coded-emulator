@@ -1,0 +1,811 @@
+# Native build and focused Android acceptance. All package jobs use the
+# canonical tools/release-train.sh entrypoint; Android acceptance installs the
+# exact optimized APK produced by android-apk.
+name: native-build
+
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      windows_artifact_run_id:
+        description: Native-build run containing the Windows installer to test
+        required: false
+        type: string
+      windows_expected_source_sha:
+        description: Exact source SHA recorded by that Windows package job
+        required: false
+        type: string
+      build_windows_candidate:
+        description: Build and smoke-test a Windows candidate from this revision only
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - '.gitattributes'
+      - '.github/workflows/**'
+      - 'native-offline/**'
+      - 'native/**'
+      - 'tests/test_windows_runtime_smoke.py'
+      - 'tools/android/**'
+      - 'tools/release-train.sh'
+      - 'tools/testrom/**'
+      - 'tools/windows-runtime-smoke.ps1'
+  push:
+    branches: [main, 'core-only/**']
+    paths:
+      - '.gitattributes'
+      - 'native-offline/**'
+      - 'native/**'
+      - 'tests/test_windows_runtime_smoke.py'
+      - 'tools/android/**'
+      - 'tools/release-train.sh'
+      - 'tools/testrom/**'
+      - 'tools/windows-runtime-smoke.ps1'
+      - '.github/workflows/**'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: native-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Transport only: this accepted release carries the locked web runtime and
+  # Android GBA/NDS core payloads used as deterministic source inputs.
+  web-runtime-cache:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate
+    name: Prepare checksum-locked web runtime cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - name: Download and verify the published runtime and Android core inputs
+        run: |
+          set -euo pipefail
+          apk="$RUNNER_TEMP/an3-3.3.0-android-arm64.apk"
+          release_info="$(python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          lock = json.loads(Path('native-offline/vendor/libretro/android-arm64/manifest.json').read_text())['bootstrapArtifact']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', lock['releaseTag']):
+              raise SystemExit('Invalid Android bootstrap release tag')
+          if not re.fullmatch(r'[A-Za-z0-9._-]+\.apk', lock['assetName']):
+              raise SystemExit('Invalid Android bootstrap APK filename')
+          if not re.fullmatch(r'[0-9a-f]{64}', lock['sha256']):
+              raise SystemExit('Invalid Android bootstrap APK SHA-256')
+          print('\t'.join((lock['releaseTag'], lock['assetName'], lock['sha256'])))
+          PY
+          )"
+          IFS=$'\t' read -r release_tag asset_name expected_sha <<< "$release_info"
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 300 --silent --show-error \
+            --output "$apk" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$release_tag/$asset_name"
+          printf '%s  %s\n' "$expected_sha" "$apk" \
+            | sha256sum --check --strict -
+          python3 - "$apk" <<'PY'
+          import hashlib
+          import json
+          import re
+          import sys
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path("native-offline")
+          lock = json.loads((root / "shared/web-runtime-lock.json").read_text())
+          cache = root / "work/dependency-cache"
+          cache.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              names = set(apk.namelist())
+              for relative, expected in lock.items():
+                  path = PurePosixPath(relative)
+                  if path.is_absolute() or ".." in path.parts or "\\" in relative:
+                      raise SystemExit(f"Unsafe runtime lock path: {relative}")
+                  if not re.fullmatch(r"[0-9a-f]{64}", expected):
+                      raise SystemExit(f"Invalid runtime lock digest: {relative}")
+                  member = f"assets/emulatorjs/{relative}"
+                  if member not in names:
+                      raise SystemExit(f"Published runtime bundle is missing: {relative}")
+                  payload = apk.read(member)
+                  actual = hashlib.sha256(payload).hexdigest()
+                  if actual != expected:
+                      raise SystemExit(f"Published runtime differs from lock: {relative}")
+                  (cache / expected).write_bytes(payload)
+          print(f"WEB_RUNTIME_CACHE=VERIFIED locked_files={len(lock)}")
+          PY
+          node native-offline/scripts/fetch-android-libretro.mjs \
+            --apk "$apk" \
+            --cache-dir native-offline/work/dependency-cache
+          tar -czf native-offline/work/web-runtime-cache.tar.gz \
+            -C native-offline/work dependency-cache
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work/web-runtime-cache.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  macos-dmg:
+    if: github.event_name != 'workflow_dispatch' || !inputs.build_windows_candidate
+    name: macOS ARM64 DMG
+    runs-on: macos-15
+    timeout-minutes: 150
+    needs: web-runtime-cache
+    env:
+      AN3_REQUIRE_DEPENDENCY_CACHE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work
+      - name: Restore verified web runtime cache
+        run: tar -xzf native-offline/work/web-runtime-cache.tar.gz -C native-offline/work
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+      - name: Print hosted builder versions
+        run: |
+          set -euo pipefail
+          uname -m
+          sw_vers
+          xcodebuild -version
+          rustc --version
+          cargo --version
+          node --version
+          java -version
+      - name: Install pinned-build prerequisites
+        run: brew install cmake ninja autoconf automake libtool glslang ffmpeg
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Prepare generated inputs required by macOS regression tests
+        run: |
+          set -euo pipefail
+          npm --prefix native-offline run prepare-web
+          npm --prefix native-offline run prepare-moltenvk
+      - name: Install pinned Playwright CLI for web UI tests
+        run: |
+          npm install --global @playwright/cli@0.1.21
+          command -v playwright-cli
+      - name: Run macOS JavaScript regression suites
+        run: node --test tests/*.test.js tests/*.test.mjs native-offline/tests/*.test.mjs
+      - name: Build canonical macOS package
+        env:
+          AN3_EDEN_JOBS: '2'
+        run: bash tools/release-train.sh --staging build macos
+      - name: Run macOS Rust native regression suite
+        run: cargo test --locked --manifest-path native-offline/src-tauri/Cargo.toml --lib
+      - name: Label and hash artifact
+        run: |
+          set -euo pipefail
+          dmg="$(find native-offline/releases -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg" || { echo 'macOS DMG was not produced.' >&2; exit 1; }
+          (cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
+          printf 'macOS DMG: unsigned for distribution; ad-hoc signed only; not notarized.\nSource revision: %s\n' "$GITHUB_SHA" \
+            > native-offline/releases/BUILD_LABELS.txt
+          cat "$dmg.sha256" native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-dmg
+          path: |
+            native-offline/releases/*.dmg
+            native-offline/releases/*.dmg.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Build source-matched macOS UI-control test app
+        run: |
+          set -euo pipefail
+          bash native-offline/scripts/build-macos-automation.sh
+      - name: Verify macOS distribution and UI-control bundle separation
+        run: >-
+          python3 -m unittest
+          tests.test_macos_automation_app.MacosAutomationAppTests.test_10_automation_bundle_exposes_bridge_and_is_signed
+          -q
+      - name: Label and archive macOS UI-control test app
+        run: |
+          set -euo pipefail
+          app=native-offline/src-tauri/target/release/bundle/macos/VibeCodedEmulatorAutomation.app
+          binary="$app/Contents/MacOS/an3-offline-native"
+          test -d "$app"
+          test -f "$binary"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected="$(node -p "require('./native-offline/src-tauri/tauri.conf.json').version")"
+          test "$version" = "$expected"
+          artifact_dir=native-offline/work/macos-automation-artifact
+          mkdir -p "$artifact_dir"
+          binary_sha="$(cd "$(dirname "$binary")" && shasum -a 256 "$(basename "$binary")" | awk '{print $1}')"
+          printf 'version=%s\nsource_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
+            "$version" "$GITHUB_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
+          tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" \
+            -C "$(dirname "$app")" "$(basename "$app")"
+          (cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz \
+            > VibeCodedEmulatorAutomation.app.tar.gz.sha256)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-control-test-app
+          path: native-offline/work/macos-automation-artifact/*
+          if-no-files-found: error
+          retention-days: 7
+
+  android-apk:
+    if: github.event_name != 'workflow_dispatch' || !inputs.build_windows_candidate
+    name: Android arm64 APK and instrumentation APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    needs: web-runtime-cache
+    env:
+      CI: 'true'
+      NDK_VERSION: '26.3.11579264'
+      AN3_BUILD_ANDROID_TESTS: '1'
+      AN3_REQUIRE_DEPENDENCY_CACHE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work
+      - name: Restore verified web runtime cache
+        run: tar -xzf native-offline/work/web-runtime-cache.tar.gz -C native-offline/work
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: 15859902
+          packages: 'platforms;android-36 build-tools;36.0.0 platform-tools cmake;3.22.1 ndk;26.3.11579264 ndk;28.2.13676358'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+          targets: aarch64-linux-android
+      - name: Install host GLSL compiler for pinned Eden Android build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends glslang-tools
+      - name: Print Android builder versions
+        run: |
+          set -euo pipefail
+          java -version
+          adb version
+          sdkmanager --version
+          rustc --version
+          cargo --version
+          node --version
+          glslangValidator --version
+          git rev-parse HEAD
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Initialize the generated Tauri Android project when absent
+        working-directory: native-offline
+        run: |
+          set -euo pipefail
+          if [ ! -x src-tauri/gen/android/gradlew ]; then npm run android:init; fi
+      - name: Build canonical Android package and release-targeted test APK
+        run: bash tools/release-train.sh --staging build android
+      - name: Run Android local-input JVM regression tests
+        run: |
+          set -euo pipefail
+          native-offline/src-tauri/gen/android/gradlew \
+            -p native-offline/src-tauri/gen/android \
+            :app:testArm64DebugUnitTest \
+            --tests space.an3tocom.offline.NativeInputActionsTest
+      - name: Label and checksum Android artifacts
+        run: |
+          set -euo pipefail
+          apk="$(find native-offline/releases -maxdepth 1 -name '*-android-arm64-staging.apk' -print -quit)"
+          aab="$(find native-offline/releases -maxdepth 1 -name '*-android-arm64-staging.aab' -print -quit)"
+          test_apk="$(find native-offline/releases -maxdepth 1 -name '*-androidTest.apk' -print -quit)"
+          test -n "$apk" && test -n "$aab" && test -n "$test_apk" || { echo 'Expected APK, AAB, and instrumentation APK were not all produced.' >&2; exit 1; }
+          (cd native-offline/releases && sha256sum "$(basename "$apk")" > "$(basename "$apk").sha256")
+          (cd native-offline/releases && sha256sum "$(basename "$aab")" > "$(basename "$aab").sha256")
+          (cd native-offline/releases && sha256sum "$(basename "$test_apk")" > "$(basename "$test_apk").sha256")
+          printf 'Android product APK/AAB: arm64 release variant signed with the shared debug identity; not a production signing identity.\nSource revision: %s\nAndroid platform: API 36; NDKs 26.3.11579264 and 28.2.13676358\n' "$GITHUB_SHA" \
+            > native-offline/releases/BUILD_LABELS.txt
+          cat "$apk.sha256" "$aab.sha256" "$test_apk.sha256" native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-apk
+          path: |
+            native-offline/releases/*-android-arm64-staging.apk
+            native-offline/releases/*-android-arm64-staging.apk.sha256
+            native-offline/releases/*-android-arm64-staging.aab
+            native-offline/releases/*-android-arm64-staging.aab.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-instrumentation-apk
+          path: |
+            native-offline/releases/*-androidTest.apk
+            native-offline/releases/*-androidTest.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-deb:
+    if: github.event_name != 'workflow_dispatch' || !inputs.build_windows_candidate
+    name: Linux x86_64 DEB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    needs: web-runtime-cache
+    env:
+      AN3_REQUIRE_DEPENDENCY_CACHE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work
+      - name: Restore verified web runtime cache
+        run: tar -xzf native-offline/work/web-runtime-cache.tar.gz -C native-offline/work
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build autoconf automake libtool glslang-tools \
+            pkg-config dpkg-dev file patchelf unzip git libusb-1.0-0-dev \
+            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswscale-dev \
+            libsdl2-dev libvulkan-dev mesa-common-dev libgl1-mesa-dev \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Print hosted builder versions
+        run: |
+          set -euo pipefail
+          uname -m
+          rustc --version
+          cargo --version
+          node --version
+          cmake --version
+          ninja --version
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Build canonical Linux DEB
+        run: bash tools/release-train.sh --staging build linux-deb
+      - name: Label and hash artifact
+        run: |
+          set -euo pipefail
+          deb="$(find native-offline/releases -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$deb" || { echo 'Linux DEB was not produced.' >&2; exit 1; }
+          (cd "$(dirname "$deb")" && sha256sum "$(basename "$deb")" > "$(basename "$deb").sha256")
+          printf 'Linux DEB: unsigned package; not distribution-signed.\nSource revision: %s\n' "$GITHUB_SHA" \
+            > native-offline/releases/BUILD_LABELS.txt
+          cat "$deb.sha256" native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-deb
+          path: |
+            native-offline/releases/*.deb
+            native-offline/releases/*.deb.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-deb-install:
+    name: Linux x86_64 DEB clean install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: linux-deb
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-deb
+          path: /tmp/an3-linux-deb
+      - name: Verify and install package on a fresh Ubuntu runner
+        run: |
+          set -euo pipefail
+          cd /tmp/an3-linux-deb
+          sha256sum --check ./*.deb.sha256
+          deb="$(find . -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$deb"
+          expected_version="$(dpkg-deb -f "$deb" Version)"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "$deb"
+          installed="$(dpkg-query -W -f='${Version} ${Status}' vibe-coded-emulator)"
+          test "$installed" = "$expected_version install ok installed"
+          ldd /usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion | tee /tmp/an3-switch-linkage.txt
+          if grep -q 'not found' /tmp/an3-switch-linkage.txt; then
+            echo 'Packaged Switch companion has unresolved runtime libraries.' >&2
+            exit 1
+          fi
+
+  linux-flatpak:
+    name: Linux x86_64 Flatpak
+    needs: linux-deb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+      - name: Install Flatpak builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder elfutils
+          command -v eu-strip
+          eu-strip --version
+      - name: Install Flatpak runtime and SDK
+        run: |
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y --noninteractive flathub org.gnome.Platform//49 org.gnome.Sdk//49
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-deb
+          path: native-offline/releases
+      - name: Verify and consume the exact DEB build artifact
+        run: |
+          set -euo pipefail
+          deb="$(find native-offline/releases -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$deb" || { echo 'Downloaded DEB artifact is missing.' >&2; exit 1; }
+          (cd "$(dirname "$deb")" && sha256sum -c "$(basename "$deb").sha256")
+      - name: Build Flatpak from the same DEB artifact
+        run: bash tools/release-train.sh --staging build linux-flatpak
+      - name: Label and hash artifact
+        run: |
+          set -euo pipefail
+          bundle="$(find native-offline/releases -maxdepth 1 -name '*.flatpak' -print -quit)"
+          test -n "$bundle" || { echo 'Linux Flatpak was not produced.' >&2; exit 1; }
+          printf 'Linux Flatpak: unsigned bundle; not signed with a distribution key.\nSource revision: %s\nDEB input: verified artifact from the linux-deb job\n' "$GITHUB_SHA" \
+            > native-offline/releases/BUILD_LABELS.txt
+          cat "$bundle.sha256" native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-flatpak
+          path: |
+            native-offline/releases/*.flatpak
+            native-offline/releases/*.flatpak.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-exe:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate
+    name: Windows x64 EXE
+    runs-on: windows-2022
+    timeout-minutes: 180
+    needs: web-runtime-cache
+    env:
+      AN3_REQUIRE_DEPENDENCY_CACHE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work
+      - name: Restore verified web runtime cache
+        shell: bash
+        run: tar -xzf native-offline/work/web-runtime-cache.tar.gz -C native-offline/work
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+          targets: x86_64-pc-windows-msvc
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        id: msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-libiconv
+            mingw-w64-ucrt-x86_64-zstd
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - name: Install pinned LunarG Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.4.357.0'
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+          $expected = '81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d'
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan-sdk-$version.exe"
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "LunarG SDK checksum mismatch: $actual" }
+          $process = Start-Process -FilePath $installer -ArgumentList @('--root', $sdkRoot, '--accept-licenses', '--default-answer', '--confirm-command', 'install') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "LunarG SDK installer exited $($process.ExitCode)." }
+          "VULKAN_SDK=$sdkRoot" | Add-Content $env:GITHUB_ENV
+      - name: Verify Vulkan SDK files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:VULKAN_SDK)) { throw 'Pinned Vulkan SDK directory is missing.' }
+          if (-not (Test-Path "$env:VULKAN_SDK/Include/vulkan/vulkan.h")) { throw 'Vulkan SDK header is missing.' }
+          if (-not (Test-Path "$env:VULKAN_SDK/Lib/vulkan-1.lib")) { throw 'Vulkan x64 import library is missing.' }
+          $glslang = Join-Path $env:VULKAN_SDK 'Bin\glslangValidator.exe'
+          if (-not (Test-Path $glslang)) { throw 'Pinned Vulkan SDK glslangValidator is missing.' }
+          "$env:VULKAN_SDK\Bin" | Add-Content $env:GITHUB_PATH
+          & $glslang --version
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Vulkan SDK glslangValidator failed to run.' }
+          Write-Output "VULKAN_SDK=$env:VULKAN_SDK"
+      - name: Print hosted builder versions
+        shell: pwsh
+        run: |
+          uname -m
+          rustc --version
+          cargo --version
+          node --version
+          cmake --version
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Prepare verified Windows core inputs
+        shell: pwsh
+        run: |
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/prepare-windows-cores.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned GBA/NDS core preparation failed.' }
+          node native-offline/scripts/fetch-azahar-desktop.mjs windows-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Azahar 3DS core preparation failed.' }
+      - name: Build and stage pinned Eden companion
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          Write-Output "MSYS2_LOCATION=$env:MSYS2_LOCATION"
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-eden-companion.ps1 -MsysRoot $env:MSYS2_LOCATION
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Windows Eden companion build failed.' }
+          $commit = '7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c'
+          $env:AN3_EDEN_ROOT = Join-Path $env:RUNNER_TEMP "an3-eden-$commit"
+          $env:AN3_SWITCH_COMPANION_BUILD = Join-Path $env:RUNNER_TEMP "an3-eden-build-$commit\bin\an3_switch_companion.exe"
+          node native-offline/scripts/prepare-switch-companion-windows.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Eden companion staging failed.' }
+      - name: Build and verify Windows native runtime
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          Write-Output "MSYS2_LOCATION=$env:MSYS2_LOCATION"
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-runtime.ps1 -MsysRoot $env:MSYS2_LOCATION
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native runtime build failed.' }
+      - name: Build canonical Windows installer
+        shell: bash
+        run: bash tools/release-train.sh --staging build windows
+      - name: Label installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem native-offline/releases -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Windows EXE was not produced.' }
+          "Windows EXE: unsigned NSIS installer; not Authenticode-signed.`nSource revision: $env:GITHUB_SHA`nVulkan SDK: 1.4.357.0" |
+            Set-Content -Encoding ascii native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-exe
+          path: |
+            native-offline/releases/*.exe
+            native-offline/releases/*.exe.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build source-matched Windows UI-control test shell
+        shell: pwsh
+        run: ./native-offline/scripts/build-windows-automation.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: native-offline/work/windows-ui-control-test-shell/*
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-runtime-smoke:
+    if: >-
+      always() &&
+      ((github.event_name == 'workflow_dispatch' &&
+        ((inputs.build_windows_candidate && needs.windows-exe.result == 'success') ||
+        inputs.windows_artifact_run_id != '')) ||
+      (github.event_name == 'pull_request' && needs.windows-exe.result == 'success'))
+    needs: windows-exe
+    name: Install Windows package and verify shell import and GBA launch
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-exe
+          path: artifacts/windows
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: artifacts/windows-ui-control
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install and verify packaged Windows runtime
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_expected_source_sha || github.sha }}
+          ARTIFACT_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+        run: >-
+          ./tools/windows-runtime-smoke.ps1
+          -ArtifactDirectory artifacts/windows
+          -AutomationDirectory artifacts/windows-ui-control
+          -ExpectedSourceSha $env:EXPECTED_SOURCE_SHA
+          -ArtifactRunId $env:ARTIFACT_RUN_ID
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: windows-runtime-smoke-diagnostics
+          path: ${{ runner.temp }}/vce-windows-runtime-smoke
+          if-no-files-found: ignore
+          retention-days: 3
+
+  android-smoke:
+    name: Android library UI smoke (API 35)
+    needs: android-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: 15859902
+          packages: 'platform-tools emulator system-images;android-35;google_apis;x86_64'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-apk
+          path: artifacts/app
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-instrumentation-apk
+          path: artifacts/test
+      - name: Enable KVM for the hosted emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeAppSmokeTest'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: android-smoke-diagnostics
+          path: ${{ runner.temp }}/an3-android-acceptance/*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  android-gba-restore:
+    name: Android GBA SRAM save and restore (API 35)
+    needs: android-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: 15859902
+          packages: 'platform-tools emulator system-images;android-35;google_apis;x86_64'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-apk
+          path: artifacts/app
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-instrumentation-apk
+          path: artifacts/test
+      - name: Enable KVM for the hosted emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeGbaSaveTest' gba
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: android-gba-diagnostics
+          path: ${{ runner.temp }}/an3-android-acceptance/*
+          if-no-files-found: ignore
+          retention-days: 3
+
+  android-settings:
+    name: Android settings UI acceptance (API 35)
+    needs: android-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          cmdline-tools-version: 15859902
+          packages: 'platform-tools emulator system-images;android-35;google_apis;x86_64'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-apk
+          path: artifacts/app
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-instrumentation-apk
+          path: artifacts/test
+      - name: Enable KVM for the hosted emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -x "$ANDROID_SDK_ROOT/emulator/emulator"
+          "$ANDROID_SDK_ROOT/emulator/emulator" -accel-check
+      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            bash tools/android/run-instrumentation.sh "$(find artifacts/app -maxdepth 2 -name '*-android-arm64-staging.apk' -print -quit)" "$(find artifacts/test -maxdepth 2 -name '*-androidTest.apk' -print -quit)" 'space.an3tocom.offline.NativeSettingsTabsTest'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: android-settings-diagnostics
+          path: ${{ runner.temp }}/an3-android-acceptance/*
+          if-no-files-found: ignore
+          retention-days: 3

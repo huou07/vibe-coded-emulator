@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Source contracts for the hosted Windows package-to-game smoke."""
+
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+SMOKE = (ROOT / "tools/windows-runtime-smoke.ps1").read_text(encoding="utf-8")
+BUILDER = (ROOT / "native-offline/scripts/build-windows-automation.ps1").read_text(encoding="utf-8")
+TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+
+
+class WindowsRuntimeSmokeTests(unittest.TestCase):
+    def test_smoke_harness_changes_trigger_the_hosted_package_build(self):
+        self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 2)
+        self.assertGreaterEqual(WORKFLOW.count("tools/windows-runtime-smoke.ps1"), 2)
+        self.assertIn("      - '.github/workflows/**'", WORKFLOW)
+
+    def test_hosted_windows_candidate_can_build_and_smoke_without_other_platform_jobs(self):
+        self.assertIn("build_windows_candidate:", WORKFLOW)
+        self.assertIn("default: false", WORKFLOW)
+        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate", WORKFLOW)
+        self.assertGreaterEqual(WORKFLOW.count("!inputs.build_windows_candidate"), 3)
+        self.assertIn("inputs.windows_artifact_run_id != ''", WORKFLOW)
+
+    def test_test_shell_is_separate_source_matched_and_test_feature_only(self):
+        windows_job = WORKFLOW[WORKFLOW.index("  windows-exe:"):WORKFLOW.index("  windows-runtime-smoke:")]
+        self.assertIn("Build canonical Windows installer", windows_job)
+        self.assertIn("upload-artifact", windows_job)
+        self.assertIn("build-windows-automation.ps1", windows_job)
+        self.assertIn("windows-ui-control-test-shell", windows_job)
+        self.assertIn("retention-days: 7", windows_job)
+        self.assertIn("cargo build --release --features ui-control", BUILDER)
+        self.assertIn("space.an3tocom.offline.automation", BUILDER)
+        self.assertIn("windows-ui-control-test-shell", BUILDER)
+        self.assertIn("AN3_UI_CONTROL_FILE", BUILDER)
+
+    def test_pr_runs_the_exact_package_and_shell_import_launch_smoke(self):
+        smoke_job = WORKFLOW[WORKFLOW.index("  windows-runtime-smoke:"):WORKFLOW.index("  android-smoke:")]
+        self.assertIn("github.event_name == 'pull_request'", smoke_job)
+        self.assertIn("needs: windows-exe", smoke_job)
+        self.assertIn("needs.windows-exe.result == 'success'", smoke_job)
+        self.assertIn("inputs.build_windows_candidate && needs.windows-exe.result == 'success'", smoke_job)
+        self.assertIn("inputs.windows_artifact_run_id != ''", smoke_job)
+        self.assertIn("name: windows-exe", smoke_job)
+        self.assertIn("name: windows-ui-control-test-shell", smoke_job)
+        self.assertIn("-AutomationDirectory artifacts/windows-ui-control", smoke_job)
+        self.assertIn("windows_expected_source_sha", smoke_job)
+        self.assertIn("windows_artifact_run_id", smoke_job)
+
+        self.assertIn("AN3_UI_TEST_ROM", SMOKE)
+        self.assertIn("$env:SDL_AUDIODRIVER = 'dummy'", SMOKE)
+        self.assertLess(SMOKE.index("$env:SDL_AUDIODRIVER = 'dummy'"), SMOKE.index("$mainProcess = Start-Process"))
+        self.assertIn("'open-rom'", SMOKE)
+        self.assertNotIn("DOM.setFileInputFiles", SMOKE)
+        self.assertIn("'game-card'", SMOKE)
+        self.assertIn("'game-launch'", SMOKE)
+        self.assertIn("'native-status'", SMOKE)
+        self.assertIn("$currentStatusName -ne $initialNativeStatusName -and !$isStarting", SMOKE)
+        self.assertNotIn("$nativeStatus.data.node.state", SMOKE)
+        self.assertIn("Write-Evidence 'launch.json'", SMOKE)
+        self.assertIn("lastStatusQueryError = $nativeStatusQueryError", SMOKE)
+        self.assertIn("Write-Evidence 'native-rom-storage.json'", SMOKE)
+        self.assertIn("Get-WindowsPageDiagnostics", SMOKE)
+        self.assertIn("Write-Evidence 'game-card-rom-id.json'", SMOKE)
+        self.assertIn("Runtime.evaluate", SMOKE)
+        self.assertIn("launchToastDetail = $launchToastDetail", SMOKE)
+        self.assertIn("space.an3tocom.offline.automation", SMOKE)
+        self.assertIn("an3-native-runtime.exe", SMOKE)
+        self.assertIn("ParentProcessId", SMOKE)
+        self.assertIn("MainWindowHandle", SMOKE)
+        self.assertIn("Capture-NativePlayerWindow", SMOKE)
+        self.assertIn("GetWindowsForProcess", SMOKE)
+        self.assertIn("IsWindowVisible", SMOKE)
+        self.assertIn("CopyFromScreen", SMOKE)
+        self.assertIn("GetPixel", SMOKE)
+        self.assertIn("Capture-RendererDiagnostics", SMOKE)
+        self.assertIn("renderer-diagnostics.png", SMOKE)
+        self.assertIn("renderer-graphics.png", SMOKE)
+        self.assertIn("videoFrameStatus = $frameCapture.status", SMOKE)
+        self.assertIn("videoFrameScreenshot = $frameCapture.screenshot", SMOKE)
+        self.assertIn("No visible native player window displayed the fixture's $ExpectedColor frame", SMOKE)
+        self.assertIn("shell-shutdown.json", SMOKE)
+        self.assertIn("nativePlayerExited = $true", SMOKE)
+        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_VIRTUAL_INPUT_AND_SAVE_LOAD=GOOD", SMOKE)
+
+    def test_windows_session_controls_run_inside_the_shared_play_page(self):
+        self.assertIn("--testid', 'native-session'", SMOKE)
+        for testid in ("native-session-pause", "native-session-save", "native-session-load"):
+            self.assertIn(f"--testid', '{testid}'", SMOKE)
+        for result in ("Game paused.", "Game resumed.", "Quick save 1 completed.", "Quick load 1 completed."):
+            self.assertIn(result, SMOKE)
+        self.assertIn("windows-shell-session-controls.json", SMOKE)
+
+    def test_native_player_shows_only_the_game_window(self):
+        self.assertIn("$controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' }", SMOKE)
+        self.assertIn("if ($visibleNativeWindows.Count -ne 1)", SMOKE)
+        self.assertIn("visibleNativeWindowCount = $visibleNativeWindows.Count", SMOKE)
+
+    def test_windows_shell_navigation_uses_the_visible_desktop_sidebar(self):
+        for section in ("library", "settings", "about", "play"):
+            self.assertIn(f"--css', '.native-sidebar [data-nav=\"{section}\"]'", SMOKE)
+            self.assertNotIn(f"--testid', 'nav-{section}'", SMOKE)
+
+    def test_windows_shell_virtual_input_changes_and_restores_the_visible_frame(self):
+        self.assertIn("'--css', '[data-native-button=\"8\"]'", SMOKE)
+        self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'red'", SMOKE)
+        self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'blue'", SMOKE)
+        self.assertIn("virtualAInputFrameStatus = $inputFrameCapture.status", SMOKE)
+        self.assertIn("restoredFrameStatus = $restoredFrameCapture.status", SMOKE)
+        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_VIRTUAL_INPUT_AND_SAVE_LOAD=GOOD", SMOKE)
+
+    def test_smoke_preserves_distribution_binary_and_verifies_test_import_guard(self):
+        # The hosted runner's PowerShell parser rejects digit separators in this script.
+        self.assertNotRegex(SMOKE, r"\b\d+(?:_\d+)+\b")
+        self.assertIn("$automationBackup = \"$mainExe.distribution-backup\"", SMOKE)
+        self.assertIn("AN3_UI_CONTROL_FILE", SMOKE)
+        self.assertIn("Move-Item -LiteralPath $automationBackup -Destination $mainExe", SMOKE)
+        self.assertIn("Remove-Item Env:AN3_UI_TEST_ROM", SMOKE)
+        self.assertIn("--seq', 'A@0-1'", SMOKE)
+        self.assertIn("--save-state", SMOKE)
+        self.assertIn("--load-state", SMOKE)
+
+        import_start = TAURI_LIB.index("async fn pick_and_import_native_rom(")
+        import_end = TAURI_LIB.index("\nfn native_app_data_directory", import_start)
+        import_command = TAURI_LIB[import_start:import_end]
+        self.assertIn('#[cfg(feature = "ui-control")]', import_command)
+        self.assertIn("AN3_UI_TEST_ROM", import_command)
+        self.assertIn("import_native_rom(&import_app, &rom_id, PathBuf::from(path))", import_command)
+        self.assertIn("blocking_pick_file()", import_command)
+
+
+if __name__ == "__main__":
+    unittest.main()

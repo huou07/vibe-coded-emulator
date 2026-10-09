@@ -1,0 +1,513 @@
+/*
+ * VibeCodedEmulator — "quiet violet" interface theme.
+ *
+ * Loaded after site.css on every non-player surface. It only re-colours and
+ * re-shapes the consumer/admin chrome; the in-game player (body.player-page)
+ * keeps the legacy token set, so gameplay, controls and canvases are untouched.
+ *
+ * Palette
+ *   near-black / deep charcoal base, dark purple-tinted surfaces
+ *   violet (primary), lavender (secondary)
+ *   cyan reserved for downloads/secondary data, green only for success
+ */
+
+:root{
+  --v-bg:#07060c;
+  --v-bg-soft:#0b0912;
+  --v-surface:#131020;
+  --v-surface-2:#0e0c18;
+  --v-surface-3:#191532;
+  --v-line:#282238;
+  --v-line-2:#38304f;
+  --v-text:#f3f1fa;
+  --v-muted:#a5a0b6;
+  --v-violet:#8b5cf6;
+  --v-violet-2:#a855f7;
+  --v-lavender:#c4b5fd;
+  --v-cyan:#22d3ee;
+  --v-green:#34d399;
+  --v-amber:#fbbf24;
+  --v-red:#f87171;
+  --v-glow:0 0 0 1px rgba(139,92,246,.28), 0 18px 44px -28px rgba(139,92,246,.55);
+  --v-shadow:0 12px 32px -24px rgba(0,0,0,.9);
+  --v-radius:14px;
+  --v-radius-sm:10px;
+}
+
+/* Bridge the legacy token sets onto the violet palette. */
+body:not(.player-page){
+  --ui-bg:var(--v-bg);
+  --ui-surface:var(--v-surface);
+  --ui-surface-strong:var(--v-surface-3);
+  --ui-border:var(--v-line);
+  --ui-text:var(--v-text);
+  --ui-muted:var(--v-muted);
+  --ui-lime:var(--v-violet-2);
+  --ui-cyan:var(--v-violet);
+  --ui-amber:var(--v-lavender);
+  --ui-danger:var(--v-red);
+  --ui-radius-sm:10px;
+  --ui-radius-md:12px;
+  --ui-radius-lg:16px;
+  --bg:var(--v-bg);
+  --panel:var(--v-surface);
+  --panel2:var(--v-surface-2);
+  --line:var(--v-line);
+  --text:var(--v-text);
+  --muted:var(--v-muted);
+  --green:var(--v-violet-2);
+  --cyan:var(--v-violet);
+  --yellow:var(--v-lavender);
+  --red:var(--v-red);
+  --shadow:#04030a;
+  background:var(--v-bg);
+  color:var(--v-text);
+}
+body.reference-shell{
+  --ref-bg:var(--v-bg);
+  --ref-panel:var(--v-surface-2);
+  --ref-panel-2:var(--v-surface);
+  --ref-line:#342e4a;
+  --ref-line-muted:#241f33;
+  --ref-text:var(--v-text);
+  --ref-muted:var(--v-muted);
+  --ref-lime:var(--v-violet-2);
+  --ref-cyan:var(--v-cyan);
+  --ref-amber:var(--v-lavender);
+  --ref-violet:var(--v-lavender);
+}
+
+/* Base canvas: near-black with one very faint dot grid. */
+body:not(.player-page){
+  background-color:var(--v-bg);
+  background-image:
+    radial-gradient(circle at 50% -10%, rgba(139,92,246,.10), transparent 42%),
+    radial-gradient(rgba(196,181,253,.05) 1px, transparent 1px);
+  background-size:auto, 26px 26px;
+  background-attachment:fixed, fixed;
+  font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px;
+  -webkit-font-smoothing:antialiased;
+}
+body:not(.player-page) ::selection{background:rgba(139,92,246,.35);color:#fff}
+
+/* Headings: large and bold, modern sans. Pixel font only for tiny labels. */
+body:not(.player-page) h1,
+body:not(.player-page) h2,
+body:not(.player-page) h3,
+body:not(.player-page) .brand,
+body:not(.player-page) .admin-head h1,
+body:not(.player-page) .library-head h1,
+body:not(.player-page) .auth-panel h1,
+body:not(.player-page) .reference-metric-card strong,
+body.reference-shell .brand{
+  font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;
+  letter-spacing:-.03em;
+}
+body:not(.player-page) .eyebrow,
+body:not(.player-page) .stage-badge,
+body:not(.player-page) .badge{
+  color:var(--v-lavender) !important;
+  font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+
+/* Header / navigation */
+body:not(.player-page) .site-header{
+  border-bottom:1px solid var(--v-line);
+  background:rgba(8,7,13,.9);
+  backdrop-filter:blur(14px);
+}
+body:not(.player-page) .brand{color:var(--v-text) !important;text-shadow:none !important}
+body:not(.player-page) .brand-main{color:var(--v-text)}
+body:not(.player-page) .brand-sub{color:var(--v-violet-2);letter-spacing:.22em}
+body:not(.player-page) .site-nav a,
+body:not(.player-page) .link-button{color:var(--v-muted) !important}
+body:not(.player-page) .site-nav a:hover,
+body:not(.player-page) .link-button:hover{color:var(--v-lavender) !important}
+body:not(.player-page) .nav-dashboard,
+body:not(.player-page) .site-nav .nav-dashboard{
+  color:var(--v-violet-2) !important;
+  border-bottom-color:var(--v-violet-2) !important;
+}
+body:not(.player-page) .lang,
+body:not(.player-page) .mode-switch{
+  border-color:var(--v-line-2) !important;
+  color:var(--v-lavender) !important;
+  border-radius:999px !important;
+}
+body:not(.player-page) .mode-switch .ui-mask{color:var(--v-violet-2)}
+
+/* Buttons */
+body:not(.player-page) .button,
+body:not(.player-page) button,
+body:not(.player-page) a.button{
+  border:1px solid var(--v-line-2);
+  border-radius:var(--v-radius-sm);
+  background:var(--v-surface-2);
+  color:var(--v-text);
+  transition:border-color .16s ease, background .16s ease, color .16s ease, box-shadow .16s ease;
+}
+body:not(.player-page) .button:hover,
+body:not(.player-page) button:hover,
+body:not(.player-page) a.button:hover{
+  border-color:var(--v-violet);
+  background:var(--v-surface-3);
+  color:var(--v-lavender);
+}
+body:not(.player-page) .button.primary{
+  border-color:transparent;
+  background:var(--v-violet);
+  color:#fff;
+  font-weight:700;
+  box-shadow:0 10px 26px -14px rgba(139,92,246,.8);
+}
+body:not(.player-page) .button.primary:hover{
+  background:var(--v-violet-2);
+  color:#fff;
+  box-shadow:0 12px 30px -12px rgba(168,85,247,.85);
+}
+body:not(.player-page) .button.danger,
+body:not(.player-page) button.danger{color:var(--v-red);border-color:rgba(248,113,113,.4)}
+body:not(.player-page) .button[disabled],
+body:not(.player-page) button[disabled]{opacity:.45;cursor:not-allowed;box-shadow:none}
+body:not(.player-page) .button.primary[disabled],
+body:not(.player-page) button.primary[disabled]{background:var(--v-surface-3);color:var(--v-muted);border-color:var(--v-line)}
+
+/* Cards */
+body:not(.player-page) .game-card,
+body:not(.player-page) .status-card,
+body:not(.player-page) .welcome-panel,
+body:not(.player-page) .admin-list,
+body:not(.player-page) .admin-form,
+body:not(.player-page) .analytics,
+body:not(.player-page) .core-preload,
+body:not(.player-page) .offline-upload,
+body:not(.player-page) .offline-library,
+body:not(.player-page) .auth-panel,
+body:not(.player-page) .auth-benefits,
+body:not(.player-page) .auth-switch{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius) !important;
+  background:var(--v-surface-2) !important;
+  box-shadow:var(--v-shadow);
+}
+body:not(.player-page) .game-card:hover{
+  border-color:var(--v-line-2) !important;
+  box-shadow:var(--v-glow);
+}
+body:not(.player-page) input,
+body:not(.player-page) textarea,
+body:not(.player-page) select{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius-sm) !important;
+  background:var(--v-bg-soft) !important;
+  color:var(--v-text) !important;
+}
+body:not(.player-page) input:focus,
+body:not(.player-page) textarea:focus,
+body:not(.player-page) select:focus{
+  outline:0;
+  border-color:var(--v-violet) !important;
+  box-shadow:0 0 0 3px rgba(139,92,246,.16);
+}
+
+/* Homepage / download page: platform cards are the primary content. */
+body:not(.player-page) .download-app-page{gap:22px}
+body:not(.player-page) .download-app-hero,
+body:not(.player-page) .download-app-platforms,
+body:not(.player-page) .download-app-scope,
+body:not(.player-page) .download-features{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius) !important;
+  background:var(--v-surface-2) !important;
+}
+body:not(.player-page) .download-app-hero{
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(139,92,246,.14), transparent 52%),
+    var(--v-surface-2) !important;
+  padding:30px 30px 26px !important;
+}
+body:not(.player-page) .download-app-hero h1{
+  font-size:clamp(30px,3.6vw,46px) !important;
+  line-height:1.04;
+}
+body:not(.player-page) .download-app-hero>p:not(.eyebrow){
+  color:var(--v-muted) !important;
+  font-size:16px;
+  max-width:620px;
+}
+body:not(.player-page) .download-app-hero>small{color:var(--v-muted) !important;max-width:620px}
+body:not(.player-page) .download-app-actions{margin-top:20px}
+
+body:not(.player-page) .platform-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin-top:4px;
+}
+body:not(.player-page) .platform-card{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  min-height:212px;
+  border:1px solid var(--v-line);
+  border-radius:var(--v-radius);
+  background:var(--v-surface-2);
+  padding:20px;
+  transition:border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+body:not(.player-page) .platform-card:hover{
+  border-color:var(--v-violet);
+  transform:translateY(-2px);
+  box-shadow:var(--v-glow);
+}
+body:not(.player-page) .platform-card .platform-icon{
+  display:grid;
+  place-items:center;
+  width:52px;
+  height:52px;
+  border:1px solid var(--v-line-2);
+  border-radius:12px;
+  background:var(--v-bg-soft);
+  color:var(--v-lavender);
+}
+body:not(.player-page) .platform-card .platform-icon svg{width:28px;height:28px;display:block}
+body:not(.player-page) .platform-card h3{
+  margin:0;font-size:19px;font-weight:750;color:var(--v-text);
+}
+body:not(.player-page) .platform-card .platform-meta{
+  margin:5px 0 0;color:var(--v-muted);font-size:13px;line-height:1.4;
+}
+body:not(.player-page) .platform-card .platform-action{margin-top:auto}
+body:not(.player-page) .platform-card .button{width:100%;justify-content:center}
+body:not(.player-page) .platform-card.pending{
+  opacity:.72;
+}
+body:not(.player-page) .platform-card.pending .platform-icon{color:var(--v-muted)}
+body:not(.player-page) .platform-status{
+  display:inline-flex;align-items:center;gap:6px;
+  margin-top:6px;color:var(--v-muted);font-size:12px;
+}
+body:not(.player-page) .platform-status.ok{color:var(--v-green)}
+
+body:not(.player-page) .download-features{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  overflow:hidden;
+}
+body:not(.player-page) .download-features article{
+  display:flex;gap:14px;align-items:flex-start;
+  padding:20px 22px;
+}
+body:not(.player-page) .download-features article+article{border-left:1px solid var(--v-line)}
+body:not(.player-page) .download-features .ui-mask{color:var(--v-violet);width:26px;height:26px;flex:0 0 auto}
+body:not(.player-page) .download-features strong{display:block;color:var(--v-text);font-size:15px}
+body:not(.player-page) .download-features span{display:block;margin-top:4px;color:var(--v-muted);font-size:13px;line-height:1.45}
+
+/* Dashboard */
+body.reference-shell.admin-shell .admin-head h1{color:var(--v-text) !important}
+body:not(.player-page) .admin-head .eyebrow{color:var(--v-lavender) !important}
+body:not(.player-page) .analytics,
+body:not(.player-page) .admin-list,
+body:not(.player-page) .admin-monitoring{
+  border:1px solid var(--v-line) !important;
+  background:var(--v-surface-2) !important;
+}
+body:not(.player-page) .stats-overview{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:16px !important;
+}
+body:not(.player-page) .stats-overview>div{
+  border:1px solid var(--v-line) !important;
+  border-left:3px solid var(--v-violet) !important;
+  border-radius:var(--v-radius) !important;
+  background:var(--v-surface) !important;
+  padding:16px 18px !important;
+}
+body:not(.player-page) .stats-overview span{color:var(--v-muted) !important}
+body:not(.player-page) .stats-overview strong{color:var(--v-text) !important}
+body:not(.player-page) .reference-metric-card{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius) !important;
+  background:var(--v-surface) !important;
+  min-height:118px;
+}
+body:not(.player-page) .reference-metric-card>.ui-mask{
+  border:1px solid var(--v-line-2) !important;
+  border-radius:12px !important;
+  background:var(--v-bg-soft);
+  color:var(--v-violet-2) !important;
+}
+body:not(.player-page) .reference-metric-card span{color:var(--v-lavender) !important}
+body:not(.player-page) .reference-metric-card strong{color:var(--v-text) !important}
+body:not(.player-page) .reference-metric-card small{color:var(--v-muted) !important}
+body:not(.player-page) .reference-chart-section,
+body:not(.player-page) .top-games{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius) !important;
+  background:var(--v-surface) !important;
+}
+body:not(.player-page) .reference-chart-section h2,
+body:not(.player-page) .top-games h2{color:var(--v-text) !important}
+body:not(.player-page) .reference-chart-section h2 .ui-mask{color:var(--v-violet-2) !important}
+body:not(.player-page) .reference-chart-grid article{
+  border:1px solid var(--v-line) !important;
+  border-radius:var(--v-radius-sm) !important;
+  background:var(--v-surface-2) !important;
+}
+body:not(.player-page) .reference-chart-grid article>header span{color:var(--v-muted)}
+body:not(.player-page) .chart-dot{background:var(--v-violet-2) !important}
+body:not(.player-page) .chart-dot.visits{background:var(--v-violet-2) !important}
+body:not(.player-page) .chart-dot.downloads{background:var(--v-cyan) !important}
+body:not(.player-page) .chart-dot.plays{background:var(--v-cyan) !important}
+body:not(.player-page) .chart-visits{background:var(--v-violet-2) !important}
+body:not(.player-page) .chart-downloads{background:var(--v-cyan) !important}
+body:not(.player-page) .chart-plays{background:var(--v-cyan) !important}
+body:not(.player-page) .admin-game-total b{color:var(--v-violet-2) !important}
+body:not(.player-page) .admin-game-total .ui-mask{color:var(--v-violet-2) !important}
+body:not(.player-page) .admin-task-nav a{color:var(--v-muted) !important}
+body:not(.player-page) .admin-task-nav a:hover,
+body:not(.player-page) .admin-task-nav a:first-child{color:var(--v-lavender) !important}
+body:not(.player-page) .admin-task-nav a:first-child .ui-mask{color:var(--v-violet-2) !important}
+
+/* Dashboard chart: one clean two-line chart, single column overview. */
+body.reference-shell.admin-shell #adminOverview .analytics-grid{grid-template-columns:1fr !important}
+body:not(.player-page) .reference-chart-grid{grid-template-columns:1fr !important}
+body:not(.player-page) .reference-chart-wide{grid-column:1/-1}
+body:not(.player-page) .reference-chart-grid article>header b{display:flex;align-items:center;gap:6px}
+body:not(.player-page) .chart-total-sep{color:var(--v-muted);font-weight:400}
+body:not(.player-page) .reference-chart-grid article>header b{color:var(--v-text)}
+body:not(.player-page) .chart-legends{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+body:not(.player-page) .chart-legends .chart-dot:not(:first-child){margin-left:2px}
+body:not(.player-page) .chart-dot.visits{background:var(--v-violet-2) !important}
+body:not(.player-page) .chart-dot.downloads{background:var(--v-cyan) !important}
+body:not(.player-page) .reference-line-chart{height:230px}
+body:not(.player-page) .reference-chart-wide>footer{display:flex;justify-content:space-between;gap:10px;color:var(--v-muted);font-size:11px}
+body:not(.player-page) .reference-chart-wide>footer span{white-space:nowrap}
+body:not(.player-page) .reference-chart-wide>header .chart-legends{font-size:12px}
+
+/* Footer */
+body:not(.player-page) .site-footer{
+  border-top:1px solid var(--v-line) !important;
+  background:var(--v-bg) !important;
+  color:var(--v-muted) !important;
+}
+body:not(.player-page) .site-footer .credits a{color:var(--v-violet-2) !important}
+body:not(.player-page) .credits{color:var(--v-muted)}
+
+/* Success stays green; warnings stay amber. */
+body:not(.player-page) .success-note,
+body:not(.player-page) .proposal-ready,
+body:not(.player-page) .platform-status.ok{color:var(--v-green) !important}
+body:not(.player-page) .stage-badge{border-color:var(--v-lavender) !important;color:var(--v-lavender) !important}
+
+/* Responsive: stacked platform cards on mobile. */
+@media(max-width:1080px){
+  body:not(.player-page) .platform-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:820px){
+  body:not(.player-page) .platform-grid{grid-template-columns:1fr}
+  body:not(.player-page) .download-features{grid-template-columns:1fr}
+  body:not(.player-page) .download-features article+article{border-left:0;border-top:1px solid var(--v-line)}
+  body:not(.player-page) .stats-overview{grid-template-columns:1fr !important}
+  body:not(.player-page) .platform-card{min-height:0}
+}
+@media(prefers-reduced-motion:reduce){
+  body:not(.player-page) .platform-card{transition:none}
+}
+
+/* Offline library: simplified single-column shell, same violet language. */
+body.reference-shell.offline-shell .offline-page{width:min(1180px,calc(100vw - 64px));display:block;padding:32px 0 56px}
+body:not(.player-page) .offline-head{margin-bottom:16px}
+body:not(.player-page) .offline-status{display:flex;flex-wrap:wrap;gap:10px;align-items:center;border:1px solid var(--v-line);border-radius:var(--v-radius);background:var(--v-surface-2);padding:12px 16px;margin-bottom:18px}
+body:not(.player-page) .offline-status>strong{color:var(--v-lavender);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-right:4px}
+body:not(.player-page) .offline-status-item{display:inline-flex;gap:6px;align-items:baseline;border:1px solid var(--v-line);border-radius:999px;padding:4px 10px;color:var(--v-muted);font-size:12px}
+body:not(.player-page) .offline-status-item b{color:var(--v-text);font-weight:600}
+body:not(.player-page) .offline-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.9fr);gap:16px;align-items:start}
+body:not(.player-page) .offline-library,body:not(.player-page) .offline-upload{border:1px solid var(--v-line);border-radius:var(--v-radius);background:var(--v-surface-2);padding:18px;margin:0}
+body:not(.player-page) .offline-upload .section-title{margin-bottom:14px}
+body:not(.player-page) .offline-upload .offline-import-field{display:grid;gap:6px;margin-top:12px}
+body:not(.player-page) .offline-note{display:flex;gap:8px;align-items:center;color:var(--v-muted);font-size:12px;line-height:1.45;margin:14px 0 0}
+body:not(.player-page) .offline-note .ui-mask{width:18px;height:18px;flex:0 0 auto;color:var(--v-violet)}
+body:not(.player-page) #coreManager{margin-top:16px}
+@media(max-width:900px){body:not(.player-page) .offline-grid{grid-template-columns:1fr}}
+
+/* ---------------------------------------------------------------------------
+   Dashboard: compact range selector, metric cards, collapsed server status.
+   The two headline metrics stay dominant; monitoring is a secondary panel.
+--------------------------------------------------------------------------- */
+body:not(.player-page) .admin-head{align-items:flex-end;gap:14px;flex-wrap:wrap}
+body:not(.player-page) .range-selector{display:inline-flex;gap:2px;border:1px solid var(--v-line);border-radius:999px;background:var(--v-surface-2);padding:3px}
+body:not(.player-page) .range-option{padding:7px 14px;border-radius:999px;color:var(--v-muted);font-size:13px;font-weight:600;text-decoration:none;transition:background .15s ease,color .15s ease}
+body:not(.player-page) .range-option:hover{color:var(--v-lavender)}
+body:not(.player-page) .range-option.active{background:var(--v-violet);color:#fff;box-shadow:0 8px 20px -12px rgba(139,92,246,.9)}
+body:not(.player-page) .reference-metric-card .metric-delta{color:var(--v-lavender);font-weight:600}
+body:not(.player-page) #adminMonitoring{border:1px solid var(--v-line);border-radius:var(--v-radius);background:var(--v-surface-2);overflow:hidden}
+body:not(.player-page) #adminMonitoring>summary{display:flex;align-items:center;gap:10px;padding:14px 18px;cursor:pointer;list-style:none;color:var(--v-muted);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+body:not(.player-page) #adminMonitoring>summary::-webkit-details-marker{display:none}
+body:not(.player-page) #adminMonitoring>summary .ui-mask{width:18px;height:18px;color:var(--v-violet-2)}
+body:not(.player-page) #adminMonitoring>summary #monitoringUpdated{margin-left:auto;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--v-muted)}
+body:not(.player-page) #adminMonitoring .details-chevron{width:8px;height:8px;border-right:2px solid var(--v-muted);border-bottom:2px solid var(--v-muted);transform:rotate(45deg);transition:transform .16s ease}
+body:not(.player-page) #adminMonitoring[open] .details-chevron{transform:rotate(-135deg)}
+body:not(.player-page) #adminMonitoring .monitoring-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:0 18px 18px}
+body:not(.player-page) #adminMonitoring .reference-monitor-card{min-height:0;padding:10px 12px;background:var(--v-bg-soft) !important}
+body:not(.player-page) #adminMonitoring .reference-monitor-card strong{font-size:16px}
+@media(max-width:640px){
+  body:not(.player-page) .range-selector{flex-wrap:wrap;border-radius:var(--v-radius)}
+  body:not(.player-page) .range-option{border-radius:999px}
+}
+
+/* Neutralize the legacy lime admin shell; keep the violet system authoritative. */
+body.reference-shell.admin-shell .admin-head h1{color:var(--v-text) !important;font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important}
+body.reference-shell.admin-shell .admin-head .eyebrow{color:var(--v-lavender) !important}
+body.reference-shell.admin-shell .admin-task-nav{border-bottom-color:var(--v-line) !important}
+body.reference-shell.admin-shell .admin-task-nav a{background:var(--v-surface-2) !important;border-color:var(--v-line) !important;color:var(--v-muted) !important}
+body.reference-shell.admin-shell .admin-task-nav a:hover{color:var(--v-lavender) !important}
+body.reference-shell.admin-shell .admin-task-nav a:first-child{border-color:var(--v-violet) !important;color:var(--v-lavender) !important}
+body.reference-shell.admin-shell .admin-task-nav a:first-child .ui-mask{color:var(--v-violet-2) !important}
+body.reference-shell.admin-shell .analytics,
+body.reference-shell.admin-shell .admin-list,
+body.reference-shell.admin-shell .contact-settings{border-color:var(--v-line) !important;background:var(--v-surface-2) !important}
+body.reference-shell.admin-shell .reference-metric-card{border-color:var(--v-line) !important;background:var(--v-surface) !important}
+body.reference-shell.admin-shell .reference-metric-card>.ui-mask{border-color:var(--v-line-2) !important;color:var(--v-violet-2) !important}
+body.reference-shell.admin-shell .reference-metric-card span{color:var(--v-lavender) !important}
+body.reference-shell.admin-shell .reference-metric-card strong{color:var(--v-text) !important}
+body.reference-shell.admin-shell .reference-chart-section{border-color:var(--v-line) !important;background:var(--v-surface) !important}
+body.reference-shell.admin-shell .reference-chart-section h2{color:var(--v-text) !important}
+body.reference-shell.admin-shell .reference-chart-section>header>span{color:var(--v-muted) !important}
+body.reference-shell.admin-shell .reference-chart-wide{border-color:var(--v-line) !important;background:var(--v-surface-2) !important}
+body.reference-shell.admin-shell .reference-chart-wide>header b{color:var(--v-text) !important}
+body.reference-shell.admin-shell .reference-chart-wide>footer span{color:var(--v-muted) !important}
+body.reference-shell.admin-shell .monitoring-reference-updated{color:var(--v-muted) !important}
+body.reference-shell.admin-shell .reference-monitor-card{border-color:var(--v-line) !important;background:var(--v-bg-soft) !important}
+body.reference-shell.admin-shell .reference-monitor-card>.ui-mask{border-color:var(--v-line-2) !important;color:var(--v-violet-2) !important}
+body.reference-shell.admin-shell .reference-monitor-card span{color:var(--v-lavender) !important}
+body.reference-shell.admin-shell .reference-monitor-card strong{color:var(--v-text) !important}
+body.reference-shell.admin-shell .reference-monitor-card .reference-monitor-status{color:var(--v-muted) !important}
+body.reference-shell.admin-shell .reference-monitor-meter{background:var(--v-line) !important}
+body.reference-shell.admin-shell .reference-monitor-meter:before{background:var(--v-violet) !important}
+body.reference-shell.admin-shell .admin-page table{border-color:var(--v-line) !important;color:var(--v-text) !important}
+body.reference-shell.admin-shell .admin-page th{color:var(--v-lavender) !important;border-color:var(--v-line) !important}
+body.reference-shell.admin-shell .admin-page td{border-color:var(--v-line) !important}
+body.reference-shell.admin-shell .admin-page tbody tr:hover{background:var(--v-surface) !important}
+body.reference-shell.admin-shell .admin-report{border-color:var(--v-line) !important;background:var(--v-surface-2) !important}
+body.reference-shell.admin-shell .batch-status-form{border-color:var(--v-line) !important;background:var(--v-surface-2) !important}
+
+/* ---------------------------------------------------------------------------
+   Web offline page: one centered connection notice. No library, import, core
+   manager or browser gameplay controls live here anymore.
+--------------------------------------------------------------------------- */
+body:not(.player-page) .offline-state-page{display:grid;place-items:center;min-height:calc(100dvh - 280px);padding:56px 20px}
+body:not(.player-page) .offline-notice{width:min(560px,100%);display:grid;justify-items:center;gap:14px;text-align:center;border:1px solid var(--v-line);border-radius:var(--v-radius);background:var(--v-surface-2);box-shadow:var(--v-shadow);padding:44px 32px 36px}
+body:not(.player-page) .offline-notice-icon{display:grid;place-items:center;width:76px;height:76px;border:1px solid var(--v-line-2);border-radius:20px;background:var(--v-bg-soft);box-shadow:var(--v-glow)}
+body:not(.player-page) .offline-notice-icon .ui-mask{width:40px;height:40px;color:var(--v-violet-2)}
+body:not(.player-page) .offline-notice h1{margin:6px 0 0;color:var(--v-text);font-size:clamp(26px,4vw,34px)}
+body:not(.player-page) .offline-notice p{margin:0;max-width:42ch;color:var(--v-muted);font-size:15px;line-height:1.55}
+body:not(.player-page) .offline-notice-actions{margin-top:8px}
+body:not(.player-page) .offline-notice-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 20px;margin:14px 0 0;padding:0;list-style:none}
+body:not(.player-page) .offline-notice-facts li{display:inline-flex;align-items:center;gap:7px;color:var(--v-muted);font-size:13px}
+body:not(.player-page) .offline-notice-facts .ui-mask{width:16px;height:16px;color:var(--v-violet)}

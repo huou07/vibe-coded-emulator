@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-3ds-capabilities"
+description = "Enables the native_3ds_capabilities command without any pre-configured scope."
+commands.allow = ["native_3ds_capabilities"]
+
+[[permission]]
+identifier = "deny-native-3ds-capabilities"
+description = "Denies the native_3ds_capabilities command without any pre-configured scope."
+commands.deny = ["native_3ds_capabilities"]

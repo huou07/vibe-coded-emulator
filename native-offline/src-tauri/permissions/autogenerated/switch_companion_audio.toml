@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-switch-companion-audio"
+description = "Enables the switch_companion_audio command without any pre-configured scope."
+commands.allow = ["switch_companion_audio"]
+
+[[permission]]
+identifier = "deny-switch-companion-audio"
+description = "Denies the switch_companion_audio command without any pre-configured scope."
+commands.deny = ["switch_companion_audio"]
