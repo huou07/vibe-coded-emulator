@@ -68,8 +68,8 @@ class LinuxPackagedPlayerSmoke(unittest.TestCase):
 
                 # A new process using the same storage must see the fixture's SRAM marker.
                 save_storage = temp / "sram-storage"
-                cold = snapshot(save_storage)
-                restored = snapshot(save_storage)
+                cold = snapshot(save_storage, seq="A@0-120")
+                restored = snapshot(save_storage, seq="A@0-120")
                 self.assertNotEqual(cold["rawHash"], restored["rawHash"],
                                     "GBA SRAM state did not change output on the next launch")
 
