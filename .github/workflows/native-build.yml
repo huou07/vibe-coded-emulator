@@ -497,7 +497,8 @@ jobs:
             libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswscale-dev \
             libsdl2-dev libvulkan-dev mesa-common-dev libgl1-mesa-dev \
             libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libsoup-3.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            xvfb openbox dbus-x11
       - name: Print hosted builder versions
         run: |
           set -euo pipefail
@@ -521,6 +522,45 @@ jobs:
           printf 'Linux DEB: unsigned package; not distribution-signed.\nSource revision: %s\n' "$GITHUB_SHA" \
             > native-offline/releases/BUILD_LABELS.txt
           cat "$deb.sha256" native-offline/releases/BUILD_LABELS.txt
+      - name: Build test-only Linux UI control shell and exercise the exact DEB resources
+        run: |
+          set -euo pipefail
+          node native-offline/scripts/prepare-web.mjs
+          export TAURI_CONFIG='{"identifier":"space.an3tocom.offline.automation"}'
+          cargo build --release --features ui-control --manifest-path native-offline/src-tauri/Cargo.toml
+          unset TAURI_CONFIG
+          automation="native-offline/src-tauri/target/release/an3-offline-native"
+          python3 - "$automation" <<'PY'
+          import sys
+          from pathlib import Path
+          binary = Path(sys.argv[1]).read_bytes()
+          if b"AN3_UI_CONTROL_FILE" not in binary:
+              raise SystemExit("Linux automation shell is missing the test-only UI bridge")
+          PY
+          deb="$(find native-offline/releases -maxdepth 1 -name '*.deb' -print -quit)"
+          package_root="$RUNNER_TEMP/an3-linux-package-root"
+          mkdir -p "$package_root"
+          dpkg-deb -x "$deb" "$package_root"
+          shell="$(find "$package_root/usr" -type f -name an3-offline-native ! -path '*/runtime/linux-*/*' -print -quit)"
+          test -n "$shell" || { echo 'Packaged Linux shell executable was not found.' >&2; exit 1; }
+          install -m 0755 "$automation" "$shell"
+          fixture="$RUNNER_TEMP/AN3TAPTEST.gba"
+          python3 tools/testrom/gba_homebrew_test.py "$fixture" AN3TAPTEST
+          evidence="$RUNNER_TEMP/an3-linux-ui-smoke"
+          mkdir -p "$evidence"
+          export AN3_LINUX_PACKAGE_ROOT="$package_root"
+          export AN3_LINUX_AUTOMATION_BINARY="$automation"
+          export AN3_LINUX_GBA_FIXTURE="$fixture"
+          export AN3_LINUX_UI_EVIDENCE_DIR="$evidence"
+          xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- bash -c \
+            'openbox --sm-disable >"$AN3_LINUX_UI_EVIDENCE_DIR/openbox.log" 2>&1 & python3 tests/linux_packaged_ui_smoke.py'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-ui-smoke-diagnostics
+          path: ${{ runner.temp }}/an3-linux-ui-smoke
+          if-no-files-found: ignore
+          retention-days: 3
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-deb
