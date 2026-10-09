@@ -3,9 +3,9 @@
 """Packaged-app Switch UI E2E (macOS).
 
 Drives the **real packaged application** through `an3ctl ui --target macos`,
-which dispatches real DOM events on the app's own controls. The import button,
-the Switch game card and its launch/focus/stop controls are the actual frontend
-handlers a user clicks — this test never calls a Tauri command directly.
+which dispatches DOM events on the app's own controls. It checks that the
+library starts empty and requires visible, enabled Open ROM and Switch
+launch/focus/stop controls — this test never calls a Tauri command directly.
 
 The distribution ``VibeCodedEmulator.app`` deliberately does not compile the
 test-only ``ui-control`` bridge, so this E2E drives the separate automation
@@ -60,26 +60,39 @@ class SwitchPackagedUiE2ETests(MacosPackagedUiHarness):
         started = self.app_start(self.homebrew)
         self.assertTrue(started["data"]["port"] > 0)
 
-        # The library UI is present and the switch capability was detected.
-        self.assertTrue(self.wait_ui("game-grid")["ok"])
+        # Check the isolated library before using any import action.
+        empty_library = self.ui_query("switch-game-card")["data"]["node"]
+        self.assertIsNone(empty_library, "the isolated test HOME must not expose a Switch entry")
 
-        # Import through the real picker control.
-        self.ui_click("choose-rom")
-        self.assertTrue(self.wait_ui("switch-game-card")["ok"], "the Switch card did not appear")
+        # Open ROM is the visible Play-page action and routes into Library.
+        self.ui_click_visible("open-rom")
+        grid = self.ui_query("game-grid")["data"]["node"]
+        self.assertIsNotNone(grid, "the Library game grid is missing")
+        self.assertTrue(grid["visible"], f"the Library game grid is hidden: {grid}")
+
+        # The test-only picker answer still exercises the normal import path.
+        card_wait = self.wait_ui("switch-game-card")
+        self.assertTrue(card_wait["ok"], "the Switch card did not appear")
 
         card = self.ui_query("switch-game-card")
-        self.assertIn("Nintendo Switch", card["data"]["node"]["text"])
+        self.assertTrue(card["data"]["node"]["visible"], "the Switch card is hidden")
+        self.assertIn("Nintendo Switch".casefold(), card["data"]["node"]["text"].casefold())
 
         # Launch through the card's own control (not a direct command).
-        self.ui_click("switch-launch")
+        self.ui_click_visible("switch-launch")
         running = self.wait_ui("switch-status", state="running", timeout=120)
         self.assertTrue(running["ok"], "the UI never reported the companion as running")
+        status = self.ui_query("switch-status")["data"]["node"]
+        self.assertTrue(status["visible"], "the Switch status is hidden")
         self.assertTrue(self.companions(), "no companion process was started")
 
         # Focus and stop through the UI.
-        self.ui_click("switch-focus")
-        self.ui_click("switch-stop")
-        self.assertTrue(self.wait_ui("switch-status", state="stopped", timeout=30)["ok"])
+        self.ui_click_visible("switch-focus")
+        self.ui_click_visible("switch-stop")
+        stopped = self.wait_ui("switch-status", state="stopped", timeout=30)
+        self.assertTrue(stopped["ok"])
+        status = self.ui_query("switch-status")["data"]["node"]
+        self.assertTrue(status["visible"], "the stopped Switch status is hidden")
         for _ in range(20):
             if not self.companions():
                 break
@@ -87,9 +100,9 @@ class SwitchPackagedUiE2ETests(MacosPackagedUiHarness):
         self.assertFalse(self.companions(), "the companion did not stop through the UI")
 
         # Relaunch creates a valid new companion and is stoppable again.
-        self.ui_click("switch-launch")
+        self.ui_click_visible("switch-launch")
         self.assertTrue(self.wait_ui("switch-status", state="running", timeout=120)["ok"])
-        self.ui_click("switch-stop")
+        self.ui_click_visible("switch-stop")
 
         # Closing the app must not leave an orphan companion.
         self.app_stop()

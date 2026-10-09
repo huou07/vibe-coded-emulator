@@ -147,6 +147,10 @@ const model = {
   pinnedCoreOptions: pinned,
 };
 
+// Rust's desktop adapter consumes the exact expanded definitions used by the
+// web controls, so backend validation cannot drift from the shared model.
+await writeFile(resolve(root, "shared/native-settings-model.json"), `${JSON.stringify(model, null, 2)}\n`);
+
 const kotlinString = value => JSON.stringify(value);
 const kotlinStrings = values => values.length === 0 ? `emptyList()` : `listOf(${values.map(kotlinString).join(", ")})`;
 const kotlinLabels = (map, indent) => {

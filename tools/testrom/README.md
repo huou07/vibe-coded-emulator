@@ -39,6 +39,15 @@ The generator is the source of truth; regenerate the binary rather than editing
 it. The default fixture's expected size and SHA-256 are recorded in
 `fixtures.json`; a titled variant has the same code and size but its own hash.
 
+For UI automation that can send taps but cannot hold a key, generate an
+input-latched diagnostic ROM with `--latch-input`. The first sampled A press
+keeps the display red until the ROM restarts; the default fixture continues to
+show red only while A is held.
+
+```sh
+python3 tools/testrom/gba_homebrew_test.py an3-input-latched.gba AN3TAPTEST --latch-input
+```
+
 ## NDS / 3DS / Switch
 
 These require the devkitPro toolchains (libnds, libctru, libnx) to build from

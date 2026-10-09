@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #if !defined(_WIN32)
@@ -98,6 +99,7 @@ public:
     using ObservationRead = int (*)(unsigned, std::uint32_t*, std::int16_t*,
                                     std::int16_t*, std::int16_t*);
     using LayoutRead = const char* (*)();
+    using OptionRead = const char* (*)();
 #endif
 
     ~CoreInputObserver() {
@@ -120,7 +122,8 @@ public:
         count_ = reinterpret_cast<ObservationCount>(dlsym(handle_, "an3_test_input_observation_count"));
         read_ = reinterpret_cast<ObservationRead>(dlsym(handle_, "an3_test_read_input_observation"));
         layout_ = reinterpret_cast<LayoutRead>(dlsym(handle_, "an3_test_layout_seen_at_load"));
-        if (!count_ || !read_ || !layout_) {
+        option_ = reinterpret_cast<OptionRead>(dlsym(handle_, "an3_test_option_seen_at_load"));
+        if (!count_ || !read_ || !layout_ || !option_) {
             error = "test core input observation symbols are missing";
             return false;
         }
@@ -133,6 +136,15 @@ public:
         return {};
 #else
         const char* value = layout_();
+        return value ? value : "";
+#endif
+    }
+
+    std::string option_seen_at_load() const {
+#if defined(_WIN32)
+        return {};
+#else
+        const char* value = option_();
         return value ? value : "";
 #endif
     }
@@ -162,6 +174,7 @@ private:
     ObservationCount count_ = nullptr;
     ObservationRead read_ = nullptr;
     LayoutRead layout_ = nullptr;
+    OptionRead option_ = nullptr;
 #endif
 };
 
@@ -245,12 +258,18 @@ int main(int argc, char** argv) {
     host.shutdown();
 
     error.clear();
+    const std::vector<std::pair<std::string, std::string>> initial_options = {
+        {"an3_test_mode", "on"},
+    };
     if (!host.initialize(core_path.string(), rom.string(), saves.string(), video,
-                         audio, error, "left-right")) {
+                         audio, error, "left-right", "Vulkan", initial_options)) {
         return fail("fixture core failed to initialize with left-right layout: " + error);
     }
     if (input_observer.layout_seen_at_load() != "left-right") {
         return fail("left-right NDS layout was not visible during retro_load_game");
+    }
+    if (input_observer.option_seen_at_load() != "on") {
+        return fail("saved core option was not visible during retro_load_game");
     }
 
     for (unsigned index = 0; index < 5; ++index) {

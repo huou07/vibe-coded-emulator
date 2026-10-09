@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace an3 {
@@ -80,7 +81,8 @@ public:
                     NativeAudioBackend& audio,
                     std::string& error,
                     const std::string& nds_layout = "top-bottom",
-                    const std::string& graphics_api = "Vulkan");
+                    const std::string& graphics_api = "Vulkan",
+                    const std::vector<std::pair<std::string, std::string>>& initial_options = {});
 
     // Call from one adapter-owned emulation thread. Commands and callbacks are
     // serialized at this boundary; presentation/vsync never controls core speed.

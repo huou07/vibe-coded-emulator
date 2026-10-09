@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 (() => {
+  const offlineScriptPath = new URL(document.currentScript?.src || "/static/offline.js", location.href).pathname;
   const systems = {
     gb:{label:"Game Boy / Color",channel:"stable"}, gba:{label:"Game Boy Advance",channel:"stable"}, nds:{label:"Nintendo DS",channel:"stable"}, "3ds":{label:"Nintendo 3DS",channel:"latest"}, switch:{label:"Nintendo Switch",channel:"native"}, nes:{label:"NES / Famicom",channel:"stable"}, snes:{label:"SNES / Super Famicom",channel:"stable"}, n64:{label:"Nintendo 64",channel:"stable"}, psx:{label:"PlayStation",channel:"stable"}, psp:{label:"PSP",channel:"stable"}, segaMD:{label:"Mega Drive / Genesis",channel:"stable"}, segaMS:{label:"Master System",channel:"stable"}, segaGG:{label:"Game Gear",channel:"stable"}, sega32x:{label:"Sega 32X",channel:"stable"}, segaCD:{label:"Sega CD",channel:"stable"}, segaSaturn:{label:"Sega Saturn",channel:"stable"}, arcade:{label:"Arcade / FBNeo",channel:"stable"}, "3do":{label:"3DO",channel:"stable"}, atari2600:{label:"Atari 2600",channel:"stable"}, atari7800:{label:"Atari 7800",channel:"stable"}, jaguar:{label:"Atari Jaguar",channel:"stable"}, lynx:{label:"Atari Lynx",channel:"stable"}, pce:{label:"PC Engine",channel:"stable"}, amiga:{label:"Amiga",channel:"stable"}, c64:{label:"Commodore 64",channel:"stable"}, doom:{label:"DOOM / PrBoom",channel:"stable"}, html5:{label:"HTML5",channel:"native"}
   };
@@ -50,12 +51,14 @@
     return typeof invoke === "function"?(romId,_title,layout)=>invoke("start_native_game",{romId,system:"3ds",layout:layout||"preserve"}):null;
   };
   const nativeIntegratedTitle = system => {
+    if(globalThis.AN3NativeSessionControls)return text("Màn hình game native mở trong cửa sổ riêng. Dùng trang Play của VibeCodedEmulator cho menu, phím ảo, tốc độ và save.","The native game opens in its own window. Use VibeCodedEmulator's Play page for its menu, virtual controls, speed and saves.");
     if(system==="switch")return text("Switch homebrew chạy trong tiến trình đồng hành riêng của VibeCodedEmulator (Eden). Cửa sổ companion nhận bàn phím.","Switch homebrew runs in VibeCodedEmulator's separate companion process (Eden). The companion window takes keyboard input.");
     if(system==="nds")return text("NDS native chạy trong VibeCodedEmulator với Menu → phím ảo → cảm ứng → bàn phím. Bấm vào màn hình game để khóa con trỏ; Esc để nhả.","Native NDS runs inside VibeCodedEmulator with Menu → virtual controls → touch → keyboard. Click the game screen to lock the cursor; press Esc to release it.");
     if(system==="gba")return text("GBA native chạy trong VibeCodedEmulator với Menu → phím ảo → bàn phím vật lý.","Native GBA runs inside VibeCodedEmulator with Menu → virtual controls → physical keyboard.");
     return text("Azahar native chạy trong VibeCodedEmulator với Menu → phím ảo → cảm ứng → bàn phím.","Native Azahar runs inside VibeCodedEmulator with Menu → virtual controls → touch → keyboard.");
   };
   const nativeIntegratedNote = system => {
+    if(globalThis.AN3NativeSessionControls)return text("Game đang chạy trong cửa sổ SDL. Mở Play trong VibeCodedEmulator để dùng điều khiển, save và quay lại Library; nhấn Esc để thoát game.","The game is running in its SDL window. Open Play in VibeCodedEmulator for controls, saves and Return to Library; press Esc to exit the game.");
     if(system==="switch")return text("Switch chạy ở cửa sổ companion riêng. Dùng Focus để đưa cửa sổ lên trước và Stop để dừng.","Switch runs in a separate companion window. Use Focus to bring it forward and Stop to end it.");
     if(system==="nds")return text("NDS native chạy trong VibeCodedEmulator. Bấm màn hình game để khóa con trỏ cho cảm ứng; Esc nhả con trỏ, Esc lần nữa về thư viện.","Native NDS runs inside VibeCodedEmulator. Click the game screen to lock the touchscreen cursor; Esc releases it, and Esc again returns to the library.");
     if(system==="gba")return text("GBA native chạy trong VibeCodedEmulator. Nhấn Esc hoặc Menu → Return to library để thoát.","Native GBA runs inside VibeCodedEmulator. Press Esc or Menu → Return to library to exit.");
@@ -452,7 +455,7 @@
     if(nativeOfflineApp){shell.textContent=text("Đóng gói cùng ứng dụng","Bundled with the app");return;}
     if(!("caches" in globalThis)){shell.textContent=text("Không được hỗ trợ","Not supported");return;}
     try {
-      const required=["/offline","/static/site.css","/static/offline.js"],matches=await Promise.all(required.map(path=>caches.match(path)));
+      const required=["/offline","/static/site.css",offlineScriptPath],matches=await Promise.all(required.map(path=>caches.match(path)));
       shell.textContent=matches.every(Boolean)?text("Đã lưu cho origin này","Cached for this origin"):text("Chưa xác minh đủ","Not fully confirmed");
     } catch (_) { shell.textContent=text("Không kiểm tra được","Could not check"); }
   };

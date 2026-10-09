@@ -152,6 +152,14 @@ class MacosPackagedUiHarness(unittest.TestCase):
         return self.an3ctl("ui", "click", "--target", "macos", "--testid", testid,
                            "--control-file", str(self.control))
 
+    def ui_click_visible(self, testid):
+        """Click only a control exposed and enabled in the current UI."""
+        node = self.ui_query(testid)["data"]["node"]
+        self.assertIsNotNone(node, f"the {testid} control is missing")
+        self.assertTrue(node["visible"], f"the {testid} control is hidden: {node}")
+        self.assertFalse(node["disabled"], f"the {testid} control is disabled: {node}")
+        return self.ui_click(testid)
+
     def ui_native(self):
         """Native-runtime diagnostics from the running packaged app."""
         return self.an3ctl("ui", "native", "--target", "macos",
@@ -199,26 +207,39 @@ def run_native_gameplay(case, label):
     started = case.app_start(fixture)
     case.assertTrue(started["data"]["port"] > 0)
 
-    # The library UI is present and the capability was detected.
-    case.assertTrue(case.wait_ui("game-grid")["ok"])
+    # Check the isolated library before using any import action.
+    empty_library = case.ui_query("game-card")
+    case.assertIsNone(
+        empty_library["data"]["node"],
+        "the isolated test HOME must not expose an existing library entry",
+    )
 
-    # Import through the real picker control (pre-answered only in ui-control
-    # builds via AN3_UI_TEST_ROM, so the real import handler still runs).
-    case.ui_click("choose-rom")
+    # Open ROM is the visible Play-page action and routes the shell into the
+    # Library before presenting the native picker. In ui-control builds the
+    # picker is pre-answered via AN3_UI_TEST_ROM, but the real import handler
+    # still runs.
+    case.ui_click_visible("open-rom")
+    grid = case.ui_query("game-grid")["data"]["node"]
+    case.assertIsNotNone(grid, "the Library game grid is missing")
+    case.assertTrue(grid["visible"], f"the Library game grid is hidden: {grid}")
     card_ok = case.wait_ui("game-card", timeout=180)
     case.assertTrue(card_ok["ok"], f"the {label} card did not appear after importing {fixture.name}")
 
     card = case.ui_query("game-card")
-    case.assertIn(label, card["data"]["node"]["text"])
+    case.assertTrue(card["data"]["node"]["visible"], f"the {label} card is hidden")
+    case.assertIn(label.casefold(), card["data"]["node"]["text"].casefold())
 
     # Native integration must have enabled the card's own launch control.
     launch = case.ui_query("game-launch")
+    case.assertTrue(launch["data"]["node"]["visible"], f"the {label} launch control is hidden")
     case.assertFalse(launch["data"]["node"]["disabled"], f"the {label} launch control is disabled")
 
     # Launch through the card's own control (not a direct command).
-    case.ui_click("game-launch")
+    case.ui_click_visible("game-launch")
     running = case.wait_ui("native-status", state="running", timeout=180)
     case.assertTrue(running["ok"], f"the UI never reported native {label} as running")
+    status = case.ui_query("native-status")["data"]["node"]
+    case.assertTrue(status["visible"], f"native {label} status is hidden")
     # A rejected/unsupported image also flips through `running` before failing,
     # and a stalled renderer keeps the DOM string at `running` forever. Require
     # the state to hold AND the Rust host's presented-frame counter to advance;

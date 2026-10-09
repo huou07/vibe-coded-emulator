@@ -89,6 +89,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+          GITLEAKS_CONFIG: ${{ github.workspace }}/tools/publication/.gitleaks.toml
 
   test:
     name: test
