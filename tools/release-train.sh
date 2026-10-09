@@ -40,7 +40,9 @@ SHA256SUMS and a SECRET_SCAN.json secret/private-data report next to
 SOURCE_FROZEN.json. Set AN3_REQUIRE_KNOWN_LICENSES=1 to fail the train when any
 component still lacks a license, and AN3_REQUIRE_CLEAN_ARTIFACTS=1 to fail it
 when the artifact scan reports a secret or private-data finding (publication
-gates; both report-only by default).
+gates; both report-only by default). Coordinated builds remove extracted local
+and remote build trees on exit; set AN3_KEEP_LOCAL_BUILD_ROOTS=1 or
+AN3_KEEP_REMOTE_BUILD_ROOTS=1 to retain them for diagnosis.
 USAGE
 }
 
@@ -312,6 +314,57 @@ windows_ps() {
   "${ssh_cmd[@]}" "$host" "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
 }
 
+cleanup_local_source=""
+cleanup_linux_root=""
+cleanup_windows_root=""
+coordinated_cleanup() {
+  local exit_code=$? cleanup_failed=0 cleanup_windows
+  trap - EXIT
+
+  if [[ -n "$cleanup_local_source" && -d "$cleanup_local_source" && "${AN3_KEEP_LOCAL_BUILD_ROOTS:-0}" != "1" ]]; then
+    if rm -rf -- "$cleanup_local_source"; then
+      note "LOCAL_BUILD_SCRATCH=REMOVED path=$cleanup_local_source"
+    else
+      note "LOCAL_BUILD_SCRATCH=FAILED path=$cleanup_local_source" >&2
+      cleanup_failed=1
+    fi
+  fi
+
+  if [[ "${AN3_KEEP_REMOTE_BUILD_ROOTS:-0}" != "1" ]]; then
+    if [[ -n "$cleanup_linux_root" ]]; then
+      case "$cleanup_linux_root" in
+        /tmp/an3-release-train-*)
+          if ! "${ssh_cmd[@]}" "$linux_builder" "rm -rf -- '$cleanup_linux_root'"; then
+            note "LINUX_BUILD_SCRATCH=FAILED path=$cleanup_linux_root" >&2
+            cleanup_failed=1
+          fi
+          ;;
+        *) note "Refusing unexpected Linux cleanup path: $cleanup_linux_root" >&2; cleanup_failed=1 ;;
+      esac
+    fi
+    if [[ -n "$cleanup_windows_root" ]]; then
+      cleanup_windows=$(cat <<'PS'
+$ErrorActionPreference = 'Stop'
+$root = '__ROOT__'
+if ($root -notlike 'C:/AN3/release-train-*') { throw 'Unexpected Windows disposable root.' }
+if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+PS
+)
+      cleanup_windows="${cleanup_windows//__ROOT__/$cleanup_windows_root}"
+      if ! windows_ps "$windows_builder" "$cleanup_windows"; then
+        note "WINDOWS_BUILD_SCRATCH=FAILED path=$cleanup_windows_root" >&2
+        cleanup_failed=1
+      fi
+    fi
+  fi
+
+  if [[ "$exit_code" -eq 0 && "$cleanup_failed" -ne 0 ]]; then
+    exit_code=1
+  fi
+  exit "$exit_code"
+}
+trap coordinated_cleanup EXIT
+
 coordinated_build_all() {
   [[ "$host_kernel" == "Darwin" ]] || die "The coordinated matrix starts on the authorized Mac builder."
   [[ "${#platforms[@]}" -eq 1 && "${platforms[0]}" == "all" ]] || die "--coordinated requires exactly 'build all' so every artifact uses one frozen source snapshot."
@@ -337,6 +390,7 @@ coordinated_build_all() {
   linux_root="/tmp/an3-release-train-$run_id"
   windows_root="C:/AN3/release-train-$run_id"
   mkdir -p "$artifacts"
+  cleanup_local_source="$mac_source"
 
   # Derive every expected artifact name from the version metadata the app actually
   # uses, so a version bump cannot silently leave a stale hard-coded filename in
@@ -370,6 +424,7 @@ coordinated_build_all() {
   # The remote roots are unique, never reuse a previous candidate, and receive
   # only the frozen source and verified dependency cache—not local build output.
   "${ssh_cmd[@]}" "$linux_builder" "test ! -e '$linux_root' && mkdir -p '$linux_root'"
+  cleanup_linux_root="$linux_root"
   "${scp_cmd[@]}" "$source_archive" "$cache_archive" "$linux_builder:$linux_root/"
   "${ssh_cmd[@]}" "$linux_builder" "export PATH=\"\$HOME/.cargo/bin:\$PATH\" && cd '$linux_root' && tar -xzf source.tar.gz && tar -xzf dependency-cache.tar.gz && mkdir releases && AN3_DEPENDENCY_CACHE='$linux_root/native-offline/work/dependency-cache' AN3_REQUIRE_DEPENDENCY_CACHE=1 AN3_RELEASE_DIR='$linux_root/releases' bash native-offline/scripts/build-linux-staging.sh deb && AN3_DEPENDENCY_CACHE='$linux_root/native-offline/work/dependency-cache' AN3_REQUIRE_DEPENDENCY_CACHE=1 AN3_RELEASE_DIR='$linux_root/releases' bash native-offline/scripts/build-linux-staging.sh flatpak"
   "${scp_cmd[@]}" "$linux_builder:$linux_root/releases/$deb_name" "$artifacts/"
@@ -385,6 +440,7 @@ PS
 )
   init_windows="${init_windows//__ROOT__/$windows_root}"
   windows_ps "$windows_builder" "$init_windows"
+  cleanup_windows_root="$windows_root"
   "${scp_cmd[@]}" "$source_archive" "$cache_archive" "$windows_builder:$windows_root/"
   extract_windows=$(cat <<'PS'
 $ErrorActionPreference = 'Stop'
@@ -437,25 +493,7 @@ PS
   note "COORDINATED_RUN_ID=$run_id"
   note "COORDINATED_ARTIFACTS=$artifacts"
 
-  # Preserve roots when diagnosing a failed build. A successful matrix has
-  # already copied its candidates and manifests locally, so remove only these
-  # exact disposable roots unless a release engineer explicitly retains them.
-  if [[ "${AN3_KEEP_REMOTE_BUILD_ROOTS:-0}" != "1" ]]; then
-    "${ssh_cmd[@]}" "$linux_builder" "rm -rf -- '$linux_root'"
-    local cleanup_windows
-    cleanup_windows=$(cat <<'PS'
-$ErrorActionPreference = 'Stop'
-$root = '__ROOT__'
-if ($root -notlike 'C:/AN3/release-train-*') { throw 'Unexpected Windows disposable root.' }
-Remove-Item -LiteralPath $root -Recurse -Force
-PS
-)
-    cleanup_windows="${cleanup_windows//__ROOT__/$windows_root}"
-    windows_ps "$windows_builder" "$cleanup_windows"
-  fi
-
-  # Emit the evidence bundle next to SOURCE_FROZEN.json after the disposable
-  # remote roots are gone, so a failed publication gate cannot leak them.
+  # Emit release evidence before the EXIT cleanup removes extracted build trees.
   emit_release_evidence "$mac_source" "$run_root" "$artifacts" "$evidence_timestamp"
   note "RELEASE_EVIDENCE_DIR=$run_root"
 }
