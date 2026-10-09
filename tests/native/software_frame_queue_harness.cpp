@@ -2,8 +2,10 @@
 #include "../../native-offline/native-runtime/core/vendor/libretro.h"
 
 #include <cstdint>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -21,6 +23,7 @@ class RecordingPresenter final : public an3::NativeVideoBackend {
     }
     void present_software(const void* data, unsigned width, unsigned height,
                           std::size_t pitch, int) override {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if (!data || width != 2 || height != 1 || pitch != 8) return;
         const auto* bytes = static_cast<const std::uint8_t*>(data);
         frames.push_back(bytes[0]);
@@ -67,6 +70,9 @@ int main() {
     if (queue.metrics().frames.queue_depth_max != 3) return fail("queue depth maximum was not recorded");
     while (queue.present_pending()) {}
     if (presenter.frames != std::vector<std::uint8_t>({1, 2, 3})) return fail("FIFO presentation order changed");
+    const auto present_metrics = queue.metrics().frames;
+    if (present_metrics.present_p50_us == 0 || present_metrics.present_p95_us == 0 ||
+        present_metrics.present_p99_us == 0) return fail("presentation latency percentiles were not recorded");
 
     presenter.frames.clear();
     for (std::uint8_t value = 4; value <= 7; ++value) {

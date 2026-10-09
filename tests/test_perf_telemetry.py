@@ -77,14 +77,17 @@ class PerformanceTelemetryTests(unittest.TestCase):
             records = [
                 {"type": "meta", "schema": 1, "core_id": "gba", "budget_ns": 16_666_667},
                 {"type": "frame", "frame_id": 1, "frame_interval_ns": 16_000_000,
-                 "presentation_interval_ns": 16_000_000, "emu_begin_ns": 1, "emu_end_ns": 2},
+                 "presentation_interval_ns": 16_000_000, "present_duration_ns": 2_000_000,
+                 "emu_begin_ns": 1, "emu_end_ns": 2},
                 {"type": "frame", "frame_id": 1, "frame_interval_ns": 0,
-                 "presentation_interval_ns": 16_700_000, "emu_begin_ns": 0, "emu_end_ns": 0,
+                 "presentation_interval_ns": 16_700_000, "present_duration_ns": 0,
+                 "emu_begin_ns": 0, "emu_end_ns": 0,
                  "duplicated": True},
             ]
             trace.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
             summary = summarizer.summarize(trace)
         self.assertEqual(summary["core_interval_us"]["p50"], 16000.0)
+        self.assertEqual(summary["presentation_us"]["p50"], 2000.0)
         self.assertEqual(summary["duplicated_frames"], 1)
 
 

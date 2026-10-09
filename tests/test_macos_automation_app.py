@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AN3CTL = ROOT / "tools/an3ctl/bin/an3ctl"
 TAURI_CONF = ROOT / "native-offline/src-tauri/tauri.conf.json"
+NATIVE_BUILD_WORKFLOW = ROOT / ".github/workflows/native-build.yml"
 BUNDLE_DIR = ROOT / "native-offline/src-tauri/target/release/bundle/macos"
 AUTOMATION_APP = Path(
     os.environ.get("AN3_MACOS_AUTOMATION_APP", str(BUNDLE_DIR / "VibeCodedEmulatorAutomation.app"))
@@ -106,6 +107,18 @@ def _runtime_port_free() -> bool:
 
 
 class MacosAutomationAppTests(unittest.TestCase):
+    def test_hosted_macos_job_builds_and_retains_source_matched_test_app(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
+        self.assertIn("Build canonical macOS package", macos_job)
+        self.assertIn("Build source-matched macOS UI-control test app", macos_job)
+        self.assertIn("Verify macOS distribution and UI-control bundle separation", macos_job)
+        self.assertIn("test_10_automation_bundle_exposes_bridge_and_is_signed", macos_job)
+        self.assertIn("native-offline/scripts/build-macos-automation.sh", macos_job)
+        self.assertIn("name: macos-ui-control-test-app", macos_job)
+        self.assertIn("VibeCodedEmulatorAutomation.app.tar.gz", macos_job)
+        self.assertIn("retention-days: 7", macos_job)
+
     def _stop(self, app: Path) -> None:
         subprocess.run(["pkill", "-f", str(app)], capture_output=True)
         for _ in range(20):

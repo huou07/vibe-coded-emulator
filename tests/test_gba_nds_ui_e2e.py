@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Packaged-app GBA/NDS gameplay E2E (macOS), gated on legal homebrew fixtures.
 
-Drives the **real packaged application** through `an3ctl ui --target macos`,
-which dispatches real DOM events on the app's own controls: the import button,
-the generic `game-card` for "Game Boy Advance"/"Nintendo DS", its `game-launch`
-control and the `native-status` `data-state`. It never calls a Tauri command
-directly and uses no screenshots or coordinates.
+Drives the **real packaged application** through `an3ctl ui --target macos`.
+The shared harness requires visible, enabled Open ROM and game-launch controls,
+checks the isolated library before import, and requires the game card and
+running status to be visible. It never calls a Tauri command directly and uses
+no screenshots or coordinates.
 
 The run path requires the test-only ``ui-control`` automation bundle plus a legal
 homebrew fixture for the system under test, supplied through

@@ -79,6 +79,15 @@ class NativeRendererContractTests(unittest.TestCase):
         self.assertIn('write_bytes_atomically', PERSISTENCE)
         self.assertIn('UTType typeWithFilenameExtension', HOST)
 
+    def test_macos_top_controls_respect_the_unobscured_window_content(self):
+        layout_start = HOST.index("- (void)layout {")
+        layout_end = HOST.index("- (void)closeMenuDiscardingDraft", layout_start)
+        layout = HOST[layout_start:layout_end]
+        self.assertIn("self.window.contentLayoutRect", layout)
+        self.assertIn("convertRect:", layout)
+        self.assertIn("height - 44.0 - top_safe_inset", layout)
+        self.assertIn("height - 42.0 - top_safe_inset", layout)
+
     def test_wait_idle_is_outside_per_frame_upload_and_present_hot_paths(self):
         upload = VULKAN[VULKAN.index("bool upload_software_frame"):VULKAN.index("void recover_unconsumed_software_upload")]
         present = VULKAN[VULKAN.index("bool present_image"):VULKAN.index("NativeRendererMetrics renderer_metrics")]

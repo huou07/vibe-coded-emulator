@@ -35,6 +35,24 @@ import sys
 cmake = Path(sys.argv[1])
 bridge = Path(sys.argv[2]).resolve().as_posix()
 text = cmake.read_text()
+static_apple = (
+    '    elseif(APPLE)\n'
+    '        set(YUZU_USE_BUNDLED_FFMPEG ON)\n'
+    '        set(YUZU_USE_BUNDLED_SDL3 ON)\n'
+    '        set(YUZU_USE_BUNDLED_OPENSSL ON)\n'
+)
+static_apple_override = (
+    '    elseif(APPLE)\n'
+    '        set(YUZU_USE_BUNDLED_FFMPEG ON)\n'
+    '        set(YUZU_USE_BUNDLED_SDL3 ON)\n'
+    '        if(NOT DEFINED YUZU_USE_BUNDLED_OPENSSL)\n'
+    '            set(YUZU_USE_BUNDLED_OPENSSL ON)\n'
+    '        endif()\n'
+)
+if static_apple in text:
+    text = text.replace(static_apple, static_apple_override, 1)
+elif static_apple_override not in text:
+    raise SystemExit('Pinned Eden Apple static-build OpenSSL default has changed')
 assignment = f'set(AN3_EDEN_BRIDGE_DIR "{bridge}")\n'
 insertion = (
     '\nif(DEFINED AN3_EDEN_BRIDGE_DIR)\n'

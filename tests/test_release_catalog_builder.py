@@ -21,7 +21,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "tools" / "build-release-catalog.py"
 CATALOG = ROOT / "native-offline" / "releases" / "catalog.json"
-TAURI_CONF = ROOT / "native-offline" / "src-tauri" / "tauri.conf.json"
 
 FILENAMES = (
     "vibecodedemulator-{v}-macos-aarch64.dmg",
@@ -31,10 +30,6 @@ FILENAMES = (
     "an3-offline-{v}-linux-amd64-staging.flatpak",
     "vibecodedemulator-{v}-windows-x64-staging.exe",
 )
-
-
-def desktop_version() -> str:
-    return json.loads(TAURI_CONF.read_text(encoding="utf-8"))["version"]
 
 
 class ReleaseCatalogGeneratorTests(unittest.TestCase):
@@ -54,7 +49,12 @@ class ReleaseCatalogGeneratorTests(unittest.TestCase):
         # The archive ships the tracked catalog; the generator is the only
         # writer of it, so start from an empty release directory.
         (self.releases / "catalog.json").unlink(missing_ok=True)
-        self.version = desktop_version()
+        # Use the source archive's version, not an uncommitted worktree edit.
+        # The test exercises the exact source snapshot built above.
+        self.version = json.loads(
+            (self.tree / "native-offline" / "src-tauri" / "tauri.conf.json")
+            .read_text(encoding="utf-8")
+        )["version"]
         self.commit = "0" * 39 + "1"
 
     def tearDown(self):
