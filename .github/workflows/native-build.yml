@@ -314,6 +314,17 @@ jobs:
           expected_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           test "$actual_version" = "$expected_version"
           cp -R "$app" src-tauri/target/release/bundle/macos/VibeCodedEmulator.app
+          resources="$app/Contents/Resources"
+          vendor="$GITHUB_WORKSPACE/native-offline/vendor"
+          mkdir -p "$vendor/libretro/macos-arm64" "$vendor/azahar/macos-arm64" "$vendor/moltenvk/macos-arm64" "$vendor/switch/macos-arm64"
+          cp -R "$resources/libretro/macos-arm64/." "$vendor/libretro/macos-arm64/"
+          cp "$resources/azahar/macos-arm64/azahar_libretro.dylib" "$vendor/azahar/macos-arm64/azahar_libretro.dylib"
+          cp "$resources/azahar/macos-arm64/manifest.json" "$vendor/azahar/macos-arm64/manifest.json"
+          cp "$resources/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt" "$vendor/azahar/macos-arm64/LICENSE"
+          cp "$resources/azahar/macos-arm64/libMoltenVK.dylib" "$vendor/moltenvk/macos-arm64/libMoltenVK.dylib"
+          cp "$resources/azahar/macos-arm64/moltenvk-manifest.json" "$vendor/moltenvk/macos-arm64/manifest.json"
+          cp "$resources/azahar/macos-arm64/MoltenVK-LICENSE" "$vendor/moltenvk/macos-arm64/LICENSE"
+          cp -R "$resources/switch/macos-arm64/." "$vendor/switch/macos-arm64/"
           cd "$GITHUB_WORKSPACE"
           bash native-offline/scripts/build-macos-automation.sh
       - name: Verify separation and label refreshed automation app
