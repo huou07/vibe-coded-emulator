@@ -5,8 +5,7 @@ export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/s
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 an3_ndk="${NDK_HOME:-$ANDROID_HOME/ndk/26.3.11579264}"
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) an3_ndk_host="darwin-arm64" ;;
-  Darwin-x86_64) an3_ndk_host="darwin-x86_64" ;;
+  Darwin-arm64|Darwin-x86_64) an3_ndk_host="darwin-x86_64" ;;
   Linux-x86_64) an3_ndk_host="linux-x86_64" ;;
   *) echo "Unsupported Android NDK host: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
 esac

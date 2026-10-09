@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -41,6 +42,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace an3 {
 namespace {
@@ -51,6 +54,7 @@ struct Options {
     std::string renderer = "auto";
     std::string layout = "preserve";
     std::filesystem::path storage;
+    std::vector<std::pair<std::string, std::string>> core_options;
     bool control_stdin = false;
     bool pick = false;
     bool no_controls = false;
@@ -88,6 +92,40 @@ struct InputWindow {
     long start = 0;
     long end = 0;
 };
+
+struct ParentControlCommand {
+    uint64_t id = 0;
+    std::string action;
+    std::string value;
+};
+
+bool parse_parent_control_command(const std::string& line, ParentControlCommand& command) {
+    if (line.size() > 256) return false;
+    const auto first = line.find('\t');
+    const auto second = first == std::string::npos ? std::string::npos : line.find('\t', first + 1);
+    if (first == std::string::npos || second == std::string::npos) return false;
+    try {
+        size_t parsed = 0;
+        command.id = std::stoull(line.substr(0, first), &parsed);
+        if (!command.id || parsed != first) return false;
+    } catch (...) {
+        return false;
+    }
+    command.action = line.substr(first + 1, second - first - 1);
+    command.value = line.substr(second + 1);
+    return !command.action.empty() && command.action.size() <= 32 && command.value.size() <= 128;
+}
+
+void write_parent_control_result(uint64_t id, bool ok, const std::string& message) {
+    std::string safe;
+    safe.reserve(std::min<size_t>(message.size(), 512));
+    for (char value : message) {
+        if (safe.size() >= 512) break;
+        safe += (value == '\n' || value == '\r' || value == '\t') ? ' ' : value;
+    }
+    std::cout << "AN3_NATIVE_CONTROL_RESULT " << id << (ok ? " OK " : " ERROR ")
+              << safe << std::endl;
+}
 
 // Parses "A@0-30;Start@40-45". Invalid clauses are ignored so a malformed
 // sequence degrades to no input rather than an unbounded hold.
@@ -198,6 +236,14 @@ std::optional<Options> parse_options(int argc, char** argv) {
         if (argument == "--system") { if (auto item = value()) options.system = *item; else return std::nullopt; continue; }
         if (argument == "--renderer") { if (auto item = value()) options.renderer = *item; else return std::nullopt; continue; }
         if (argument == "--layout") { if (auto item = value()) options.layout = *item; else return std::nullopt; continue; }
+        if (argument == "--core-option") {
+            const auto item = value();
+            if (!item) return std::nullopt;
+            const auto equals = item->find('=');
+            if (equals == std::string::npos || equals == 0 || equals + 1 >= item->size()) return std::nullopt;
+            options.core_options.emplace_back(item->substr(0, equals), item->substr(equals + 1));
+            continue;
+        }
         std::cerr << "Unknown option: " << argument << "\n";
         return std::nullopt;
     }
@@ -259,9 +305,10 @@ std::filesystem::path bundled_core(const std::string& system) {
 #else
     const char* filename = system == "gba" ? "mgba_libretro.so" : system == "nds" ? "melondsds_libretro.so" : "azahar_libretro.so";
     if (const char* configured = std::getenv("AN3_OFFLINE_LIBDIR"); configured && *configured) return std::filesystem::path(configured) / "libretro" / filename;
-    const std::filesystem::path flatpak = "/app/lib/an3-offline-native/libretro";
-    if (std::filesystem::is_regular_file(flatpak / filename)) return flatpak / filename;
-    return std::filesystem::path("/usr/lib/an3-offline-native/libretro") / filename;
+    char* base = SDL_GetBasePath();
+    const std::filesystem::path directory(base ? base : ".");
+    SDL_free(base);
+    return directory / "libretro" / filename;
 #endif
 }
 
@@ -379,7 +426,7 @@ int main(int argc, char** argv) {
         std::string error;
         if (!capture_video.initialize(capture_surface, error)) { std::cerr << error << "\n"; return 1; }
         NativeCoreHost host;
-        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout)) {
+        if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), capture_video, capture_audio, error, options.layout, "Vulkan", options.core_options)) {
             std::cerr << "Native core initialization failed: " << error << "\n";
             return 1;
         }
@@ -464,7 +511,7 @@ int main(int argc, char** argv) {
     }
     LinuxSdlAudioBackend audio;
     NativeCoreHost host;
-    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout)) {
+    if (!host.initialize(core.string(), options.rom.string(), (root / "saves").string(), *runtime_video, audio, error, options.layout, "Vulkan", options.core_options)) {
         std::cerr << "Native core initialization failed: " << error << "\n";
         if (frame_queue) frame_queue->shutdown();
         video->shutdown(); SDL_Quit(); return 1;
@@ -545,21 +592,129 @@ int main(int argc, char** argv) {
     control_callbacks.return_to_library = [&] { running = false; };
     control_callbacks.set_layout = set_layout;
 
-    // A private parent-owned pipe carries only QUIT so the app can close the
-    // local player gracefully. Gameplay input remains owned by SDL/GTK.
+    // Parent requests cross one bounded pipe and are applied on this SDL
+    // owner thread, keeping core, audio, layout, and input mutations out of the
+    // pipe-reader thread.
     struct ParentControl {
         std::atomic<bool> quit{false};
+        std::mutex mutex;
+        std::deque<ParentControlCommand> commands;
+        bool enqueue(ParentControlCommand command) {
+            std::lock_guard lock(mutex);
+            if (commands.size() >= 32) return false;
+            commands.push_back(std::move(command));
+            return true;
+        }
+        std::optional<ParentControlCommand> pop() {
+            std::lock_guard lock(mutex);
+            if (commands.empty()) return std::nullopt;
+            auto command = std::move(commands.front());
+            commands.pop_front();
+            return command;
+        }
     };
     auto parent = std::make_shared<ParentControl>();
     if (options.control_stdin) {
         std::thread([parent] {
             std::string line;
+            bool quit_command_queued = false;
             while (std::getline(std::cin, line)) {
-                if (line == "QUIT") break;
+                if (line == "QUIT") {
+                    ParentControlCommand quit;
+                    quit.action = "quit";
+                    quit_command_queued = parent->enqueue(std::move(quit));
+                    break;
+                }
+                ParentControlCommand command;
+                if (!parse_parent_control_command(line, command)) continue;
+                const auto id = command.id;
+                if (!parent->enqueue(std::move(command))) {
+                    write_parent_control_result(id, false, "Native control queue is full.");
+                }
             }
-            parent->quit = true; // Parent exit also closes the native session.
+            if (!quit_command_queued) parent->quit = true; // EOF or a full queue closes the session.
         }).detach();
     }
+    auto apply_parent_controls = [&] {
+        while (auto command = parent->pop()) {
+            bool ok = true;
+            std::string message;
+            const auto& action = command->action;
+            const auto& value = command->value;
+            std::string error;
+            if (action == "pause") {
+                const bool paused = value == "true";
+                session.set_paused(paused);
+                session.input().clear();
+                message = paused ? "Game paused." : "Game resumed.";
+            } else if (action == "speed") {
+                char* end = nullptr;
+                const double speed = std::strtod(value.c_str(), &end);
+                if (!end || *end || !(speed == .5 || speed == 1.0 || speed == 2.0 || speed == 4.0 || speed == 8.0)) {
+                    ok = false; message = "Unsupported emulation speed.";
+                } else {
+                    session.set_speed(speed); message = "Emulation speed changed.";
+                }
+            } else if (action == "save" || action == "load") {
+                unsigned slot = 0;
+                try { slot = static_cast<unsigned>(std::stoul(value)); } catch (...) { slot = 0; }
+                if (slot < 1 || slot > 10) { ok = false; message = "Quick-save slots range from 1 to 10."; }
+                else if (action == "save") {
+                    ok = session.save_state(slot, error);
+                    message = ok ? "Quick save " + std::to_string(slot) + " completed." : error;
+                } else {
+                    ok = session.load_state(slot, error);
+                    message = ok ? "Quick load " + std::to_string(slot) + " completed." : error;
+                }
+            } else if (action == "layout") {
+                ok = set_layout(value, error);
+                message = ok ? "Screen layout changed to " + value + "." : error;
+            } else if (action == "fullscreen") {
+                toggle_fullscreen(); message = runtime_message;
+                ok = runtime_message.find("failed:") == std::string::npos;
+            } else if (action == "auto-save") {
+                const auto parsed = parse_auto_save_mode(value);
+                if (!parsed) { ok = false; message = "Unsupported Auto Save mode."; }
+                else {
+                    auto_save_mode = value;
+                    auto_save = *parsed;
+                    last_auto = std::chrono::steady_clock::now();
+                    message = "Auto Save mode changed.";
+                }
+            } else if (action == "load-auto") {
+                ok = session.load_auto(error);
+                message = ok ? "Auto Save loaded." : error;
+            } else if (action == "volume") {
+                char* end = nullptr;
+                const float volume = std::strtof(value.c_str(), &end);
+                ok = end && !*end && audio.set_volume(volume);
+                message = ok ? "Audio volume changed." : "Audio volume is outside the supported range.";
+            } else if (action == "mute") {
+                audio.set_muted(value == "true"); message = value == "true" ? "Audio muted." : "Audio unmuted.";
+            } else if (action == "button") {
+                const auto separator = value.find(':');
+                unsigned button = 32;
+                if (separator != std::string::npos) {
+                    try { button = static_cast<unsigned>(std::stoul(value.substr(0, separator))); } catch (...) { button = 32; }
+                }
+                if (button >= 16 || separator == std::string::npos ||
+                    (value.substr(separator + 1) != "0" && value.substr(separator + 1) != "1")) {
+                    ok = false; message = "Invalid virtual controller input.";
+                } else {
+                    session.input().set_button(button, value.substr(separator + 1) == "1");
+                    message = "Controller input updated.";
+                }
+            } else if (action == "clear-input") {
+                session.input().clear(); message = "Held input released.";
+            } else if (action == "quit") {
+                running = false;
+                continue;
+            } else {
+                ok = false; message = "Unsupported native control action.";
+            }
+            write_parent_control_result(command->id, ok, message);
+        }
+    };
 
     {
         std::unique_ptr<LinuxControlPanel> controls;
@@ -579,6 +734,8 @@ int main(int argc, char** argv) {
             std::cout << "AN3_NATIVE_DEVICE " << video_status.device_details << std::endl;
         }
         while (running && session.running() && !parent->quit) {
+            apply_parent_controls();
+            if (!running) break;
             if (frame_queue) frame_queue->present_pending();
             if (controls) controls->pump();
             SDL_Event event{};
