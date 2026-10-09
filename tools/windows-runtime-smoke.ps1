@@ -273,6 +273,8 @@ try {
     romId = $gameCardRomId
     storedRomIds = @($nativeRomFiles | Where-Object { $_.name -match '^[0-9a-fA-F-]{36}\.' } | ForEach-Object { $_.name.Substring(0, 36) })
   })
+  $initialNativeStatus = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-status', '--json')
+  $initialNativeStatusName = [string]$initialNativeStatus.data.node.name
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
   $nativeStatus = $null
   $nativeStatusQueryError = $null
@@ -281,15 +283,20 @@ try {
     try {
       $nativeStatus = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-status', '--json')
       $nativeStatusQueryError = $null
-      if ($nativeStatus.data.node.state -in @('running', 'error')) { break }
+      $currentStatusName = [string]$nativeStatus.data.node.name
+      $isStarting = $currentStatusName -match '^(Starting native|Đang khởi động)\b'
+      if ($currentStatusName -and $currentStatusName -ne $initialNativeStatusName -and !$isStarting) { break }
     } catch {
       $nativeStatusQueryError = $_.Exception.Message
       Start-Sleep -Milliseconds 500
     }
     Start-Sleep -Milliseconds 500
   }
-  $nativeLaunchState = if ($nativeStatus) { $nativeStatus.data.node.state } else { 'unavailable' }
-  $nativeLaunchDetail = if ($nativeStatus) { $nativeStatus.data.node.name } else { '' }
+  $nativeLaunchDetail = if ($nativeStatus) { [string]$nativeStatus.data.node.name } else { '' }
+  $nativeLaunchState = if (!$nativeStatus) { 'unavailable' }
+    elseif ($nativeLaunchDetail -match '(?i)unavailable|not in the app.s private storage|could not|failed|missing') { 'error' }
+    elseif ($nativeLaunchDetail -match '(?i)window opened|is running inside') { 'running' }
+    else { 'unknown' }
   $launchToastDetail = (Get-WindowsPageDiagnostics).toastText
   Write-Evidence 'launch.json' ([ordered]@{
     sourceSha = $ExpectedSourceSha
@@ -299,7 +306,7 @@ try {
     launchToastDetail = $launchToastDetail
     lastStatusQueryError = $nativeStatusQueryError
   })
-  if (!$nativeStatus -or $nativeStatus.data.node.state -ne 'running') {
+  if ($nativeLaunchState -ne 'running') {
     throw "The shell game card did not start the bundled Windows runtime (state=$nativeLaunchState; detail=$nativeLaunchDetail; queryError=$nativeStatusQueryError)."
   }
   $runtimeProcess = $null
@@ -327,7 +334,7 @@ try {
     fixtureBytes = (Get-Item $fixture).Length
     importedGameCard = $gameCard.data.node.name
     importHandler = 'real pick_and_import_native_rom handler with test-only AN3_UI_TEST_ROM pre-answer'
-    launchStatus = $nativeStatus.data.node.state
+    launchStatus = $nativeLaunchState
     playerImage = $runtimeProcess.Name
     playerParentProcessId = $runtimeProcess.ParentProcessId
     playerWindowHandle = [string]$runtimeWindow.MainWindowHandle
