@@ -67,11 +67,12 @@ try {
 
   $mainExe = Join-Path $installDir 'an3-offline-native.exe'
   $playerDir = Join-Path $installDir 'runtime/windows-x64'
+  $coreDir = Join-Path $playerDir 'libretro'
   $playerExe = Join-Path $playerDir 'an3-native-runtime.exe'
   if (!(Test-Path $mainExe)) { throw "Installed VCE shell is missing: $mainExe" }
   if (!(Test-Path $playerExe)) { throw "Installed Windows GBA/NDS runtime is missing: $playerExe" }
-  if (!(Test-Path (Join-Path $playerDir 'mgba_libretro.dll'))) {
-    throw 'Installed mGBA core is missing beside the Windows runtime.'
+  if (!(Test-Path (Join-Path $coreDir 'mgba_libretro.dll'))) {
+    throw 'Installed mGBA core is missing from the bundled libretro directory.'
   }
 
   $env:AN3_NATIVE_RUNTIME_PORT = '38471'
@@ -107,7 +108,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Could not generate the lawful GBA input fixture.' }
 
   $statePath = Join-Path $evidence 'gba-slot.state'
-  $base = @('emulator', 'snapshot', '--rom', $fixture, '--system', 'gba', '--frames', '120', '--player', $playerExe, '--libdir', $playerDir, '--json')
+  $base = @('emulator', 'snapshot', '--rom', $fixture, '--system', 'gba', '--frames', '120', '--player', $playerExe, '--libdir', $coreDir, '--json')
   $baseline = Invoke-An3ctl ($base + @('--save-state', $statePath))
   if (!$baseline.ok -or !$baseline.data.status.stateSaved) { throw 'Installed Windows player failed the baseline Quick Save state export.' }
   $changed = Invoke-An3ctl ($base + @('--seq', 'A@0-1'))
