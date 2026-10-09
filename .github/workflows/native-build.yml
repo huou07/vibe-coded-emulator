@@ -6,6 +6,15 @@ name: native-build
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      windows_artifact_run_id:
+        description: Native-build run containing the Windows installer to test
+        required: true
+        type: string
+      windows_expected_source_sha:
+        description: Exact source SHA recorded by that Windows package job
+        required: true
+        type: string
   pull_request:
     paths:
       - '.gitattributes'
@@ -14,7 +23,6 @@ on:
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
-      - '.github/workflows/**'
   push:
     branches: [main, 'core-only/**']
     paths:
@@ -27,6 +35,7 @@ on:
       - '.github/workflows/**'
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -37,6 +46,7 @@ jobs:
   # Transport only: this accepted release carries the locked web runtime and
   # Android GBA/NDS core payloads used as deterministic source inputs.
   web-runtime-cache:
+    if: github.event_name != 'workflow_dispatch'
     name: Prepare checksum-locked web runtime cache
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -182,6 +192,40 @@ jobs:
             native-offline/releases/*.dmg
             native-offline/releases/*.dmg.sha256
             native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Build source-matched macOS UI-control test app
+        run: |
+          set -euo pipefail
+          bash native-offline/scripts/build-macos-automation.sh
+      - name: Verify macOS distribution and UI-control bundle separation
+        run: >-
+          python3 -m unittest
+          tests.test_macos_automation_app.MacosAutomationAppTests.test_10_automation_bundle_exposes_bridge_and_is_signed
+          -q
+      - name: Label and archive macOS UI-control test app
+        run: |
+          set -euo pipefail
+          app=native-offline/src-tauri/target/release/bundle/macos/VibeCodedEmulatorAutomation.app
+          binary="$app/Contents/MacOS/an3-offline-native"
+          test -d "$app"
+          test -f "$binary"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected="$(node -p "require('./native-offline/src-tauri/tauri.conf.json').version")"
+          test "$version" = "$expected"
+          artifact_dir=native-offline/work/macos-automation-artifact
+          mkdir -p "$artifact_dir"
+          binary_sha="$(cd "$(dirname "$binary")" && shasum -a 256 "$(basename "$binary")" | awk '{print $1}')"
+          printf 'version=%s\nsource_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
+            "$version" "$GITHUB_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
+          tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" \
+            -C "$(dirname "$app")" "$(basename "$app")"
+          (cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz \
+            > VibeCodedEmulatorAutomation.app.tar.gz.sha256)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-control-test-app
+          path: native-offline/work/macos-automation-artifact/*
           if-no-files-found: error
           retention-days: 7
 
@@ -350,6 +394,34 @@ jobs:
             native-offline/releases/BUILD_LABELS.txt
           if-no-files-found: error
           retention-days: 7
+
+  linux-deb-install:
+    name: Linux x86_64 DEB clean install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: linux-deb
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-deb
+          path: /tmp/an3-linux-deb
+      - name: Verify and install package on a fresh Ubuntu runner
+        run: |
+          set -euo pipefail
+          cd /tmp/an3-linux-deb
+          sha256sum --check ./*.deb.sha256
+          deb="$(find . -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$deb"
+          expected_version="$(dpkg-deb -f "$deb" Version)"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "$deb"
+          installed="$(dpkg-query -W -f='${Version} ${Status}' vibe-coded-emulator)"
+          test "$installed" = "$expected_version install ok installed"
+          ldd /usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion | tee /tmp/an3-switch-linkage.txt
+          if grep -q 'not found' /tmp/an3-switch-linkage.txt; then
+            echo 'Packaged Switch companion has unresolved runtime libraries.' >&2
+            exit 1
+          fi
 
   linux-flatpak:
     name: Linux x86_64 Flatpak
@@ -528,6 +600,64 @@ jobs:
             native-offline/releases/BUILD_LABELS.txt
           if-no-files-found: error
           retention-days: 7
+
+      - name: Build source-matched Windows UI-control test shell
+        shell: pwsh
+        run: ./native-offline/scripts/build-windows-automation.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: native-offline/work/windows-ui-control-test-shell/*
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-runtime-smoke:
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && needs.windows-exe.result == 'success'))
+    needs: windows-exe
+    name: Install Windows package and verify shell import and GBA launch
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-exe
+          path: artifacts/windows
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: artifacts/windows-ui-control
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install and verify packaged Windows runtime
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_expected_source_sha || github.sha }}
+          ARTIFACT_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+        run: >-
+          ./tools/windows-runtime-smoke.ps1
+          -ArtifactDirectory artifacts/windows
+          -AutomationDirectory artifacts/windows-ui-control
+          -ExpectedSourceSha $env:EXPECTED_SOURCE_SHA
+          -ArtifactRunId $env:ARTIFACT_RUN_ID
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: windows-runtime-smoke-diagnostics
+          path: ${{ runner.temp }}/vce-windows-runtime-smoke
+          if-no-files-found: ignore
+          retention-days: 3
 
   android-smoke:
     name: Android library UI smoke (API 35)

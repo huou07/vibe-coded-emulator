@@ -288,6 +288,7 @@
     debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
     setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
     coreBooted = true;
+    syncBatterySaveTimer();
     updatePlaybackReadiness();
     debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
     playerSession?.framePacing.start();
@@ -300,13 +301,15 @@
       }).catch(error => showNotice(error.message || String(error), true));
       restoreLocalGameSave();
     }
-    if (config.mode !== "preload") queueTvDiscovery();
     reportPreload(true);
     setTimeout(() => loading.classList.add("done"), 350);
   };
   const failLoading = error => { runtimeFailed=true;clearBootstrapTimers();const message=error.message || String(error);loadingText.textContent=message;loadingText.style.color="#ef6a67";loadingProgress?.setAttribute("aria-invalid","true");loadingProgress?.setAttribute("aria-valuetext",message);setRuntimeStatus("error",config.lang === "en" ? "Could not start" : "Không thể khởi động");reportPreload(false,message); };
   addEventListener("pagehide", () => { clearBootstrapTimers();playerSession?.framePacing.stop(); }, {once:true});
-  addEventListener("pagehide", () => { playerSession?.stop?.(); }, {once:true});
+  addEventListener("pagehide", () => {
+    if (batterySaveTimer) clearInterval(batterySaveTimer);
+    flushLocalGameSave().catch(() => {}).finally(() => playerSession?.stop?.());
+  }, {once:true});
 
   const openCoreDatabase = () => new Promise((resolve,reject) => {
     const request=indexedDB.open("EmulatorJS-core",1);
@@ -786,7 +789,7 @@
       releaseRootNdsTouch=release;
       const start=event=>{if(!owner||!event.changedTouches?.length||isProtectedUiEvent(event))return;const touch=event.changedTouches[0],result=owner.start(touch);if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
       const move=event=>{if(isProtectedUiEvent(event))return;const touch=findTouch(event);if(!touch)return;const result=owner.move(touch);if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
-      const end=event=>{if(isProtectedUiEvent(event))return;const touch=findTouch(event);if(!touch)return;const result=owner.end(touch,event.type==="touchcancel");if(result.accepted)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented:result.accepted});};
+      const end=event=>{if(isProtectedUiEvent(event))return;const touch=findTouch(event);if(!touch)return;const result=owner.end(touch,event.type==="touchcancel"),bridgePrevented=result.accepted&&event.cancelable;if(bridgePrevented)event.preventDefault();recordNdsDebugAction(result.reason,{source:touch,canvas:result.state?.canvas,accepted:result.accepted,reason:result.reason,state:result.state,family:"touch",bridgePrevented});};
       gameRoot.addEventListener("touchstart",start,{capture:true,passive:false});
       document.addEventListener("touchmove",move,{capture:true,passive:false});
       document.addEventListener("touchend",end,{capture:true,passive:false});
@@ -933,23 +936,51 @@
   }
 
   let gameStarted = false;
+  let batterySaveTimer = 0;
+  let batterySaveReplayed = false;
+  let batterySaveDatabaseListening = false;
+  const localSaveIdentity = () => ({
+    core: config.roomSignature?.core || emulatorSystem,
+    gameId: config.slug,
+    romHash: config.roomSignature?.romHash || "",
+  });
   const restoreLocalGameSave = async () => {
     const manager = window.EJS_emulator?.gameManager;
     if (!manager || !globalThis.AN3LocalSaveRecovery?.restore) return;
     try {
+      const functions = typeof manager.getSaveFilePath === "function" ? manager : manager.functions || manager;
       const restored = await globalThis.AN3LocalSaveRecovery.restore({
         manager,
-        identity: {
-          core: config.roomSignature?.core || emulatorSystem,
-          gameId: config.slug,
-          romHash: config.roomSignature?.romHash || "",
-        },
+        identity: localSaveIdentity(),
       });
       if (restored) showNotice(config.lang === "en" ? "Restored game save on this device." : "Đã khôi phục tệp save trên thiết bị.");
+      const path = typeof functions.getSaveFilePath === "function" ? functions.getSaveFilePath() : "";
+      const savedFile = typeof functions.getSaveFile === "function"
+        ? functions.getSaveFile(false)
+        : path && manager.FS?.analyzePath?.(path)?.exists ? manager.FS.readFile(path) : null;
+      const hasSave = restored || Boolean(savedFile?.byteLength);
+      if (hasSave && !batterySaveReplayed && typeof functions.restart === "function") {
+        if (!restored) functions.loadSaveFiles?.();
+        batterySaveReplayed = true;
+        functions.restart();
+      }
     } catch (error) {
       showNotice(error.message || String(error), true);
     }
   };
+  const flushLocalGameSave = async () => {
+    const manager = window.EJS_emulator?.gameManager;
+    if (!manager || !globalThis.AN3LocalSaveRecovery?.flush) return false;
+    return globalThis.AN3LocalSaveRecovery.flush({manager, identity: localSaveIdentity()});
+  };
+  function syncBatterySaveTimer() {
+    if (batterySaveTimer) clearInterval(batterySaveTimer);
+    if (!gameStarted) return;
+    const interval = Number(window.EJS_fixedSaveInterval) || 60000;
+    batterySaveTimer = setInterval(() => {
+      flushLocalGameSave().catch(error => console.error("Local battery save failed", error));
+    }, interval);
+  }
   let threeDsGateStarted = false;
   const threeDsAudioContext = () => {
     const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
@@ -993,6 +1024,38 @@
       requestAnimationFrame(check);
     };
     check();
+  };
+  let audioStartButton = null;
+  let continueAfterAudioStart = null;
+  const waitForAudioGesture = continuation => {
+    const context = window.EJS_emulator?.Module?.AL?.currentCtx?.audioCtx;
+    if (!context || context.state === "running" || context.state === "closed") return false;
+    continueAfterAudioStart = continuation;
+    setProgress(92, config.lang === "en"
+      ? "Tap or click to enable audio and continue"
+      : "Chạm hoặc nhấn để bật âm thanh và tiếp tục");
+    if (!audioStartButton) {
+      audioStartButton = document.createElement("button");
+      audioStartButton.type = "button";
+      audioStartButton.className = "start-game";
+      audioStartButton.textContent = config.lang === "en" ? "Start with audio" : "Bắt đầu có âm thanh";
+      audioStartButton.addEventListener("click", async () => {
+        audioStartButton.disabled = true;
+        try { await context.resume(); } catch (_) {}
+        if (context.state === "running" || context.state === "closed") {
+          const resume = continueAfterAudioStart;
+          audioStartButton.remove();
+          audioStartButton = null;
+          continueAfterAudioStart = null;
+          resume?.();
+        } else {
+          audioStartButton.disabled = false;
+          showNotice(config.lang === "en" ? "Audio is still waiting for browser permission." : "Âm thanh vẫn đang chờ quyền của trình duyệt.", true);
+        }
+      });
+      loading.appendChild(audioStartButton);
+    }
+    return true;
   };
   async function boot() {
     try {
@@ -1056,6 +1119,17 @@
       window.EJS_threads = threadedCore;
       window.EJS_forceLegacyCores = performancePlan.forceLegacyNds;
       window.EJS_hideSettings = ["fastForward","ff-ratio","slowMotion","sm-ratio"];
+      window.EJS_ready = () => {
+        const emulator = window.EJS_emulator;
+        if (batterySaveDatabaseListening || typeof emulator?.on !== "function") return;
+        batterySaveDatabaseListening = true;
+        emulator.on("saveDatabaseLoaded", () => {
+          const manager = emulator.gameManager;
+          globalThis.AN3LocalSaveRecovery?.populate({manager}).catch(error => {
+            console.error("Could not load local save database", error);
+          });
+        });
+      };
       window.EJS_onGameStart = () => {
         gameStarted = true;
         protectNdsCanvas();
@@ -1064,8 +1138,11 @@
         syncSpeedControls();
         syncAutoSaveTimer();
         debugMilestone("CORE_LOAD_GAME_SUCCESS", {system:config.system});
-        if (threeDsPad) waitForThreeDsPlayable();
-        else finishLoading();
+        const continueStartup = () => {
+          if (threeDsPad) waitForThreeDsPlayable();
+          else finishLoading();
+        };
+        if (!waitForAudioGesture(continueStartup)) continueStartup();
       };
       const script = document.createElement("script");
       script.src = `${window.EJS_pathtodata}loader.js`;
@@ -1087,7 +1164,6 @@
           const fallback=threeDsPad ? (config.lang === "en" ? "The 3DS core failed to start." : "Core 3DS khởi động thất bại.") : (ndsPad ? (config.lang === "en" ? "The NDS core failed to start." : "Core NDS khởi động thất bại.") : (config.lang === "en" ? "The emulator failed to start." : "Core giả lập khởi động thất bại."));
           failLoading(new Error(window.EJS_emulator?.textElem?.innerText || fallback));
         }
-        else if (!ndsPad && window.EJS_emulator?.gameManager) { gameStarted=true;applySpeed(1);syncSpeedControls();syncAutoSaveTimer();finishLoading(); }
         else if (++checks > 720) { failLoading(new Error(ndsPad ? (config.lang === "en" ? "The NDS game did not start after 3 minutes." : "Game NDS chưa khởi động sau 3 phút.") : (config.lang === "en" ? "The emulator did not start." : "Giả lập chưa khởi động."))); }
       }, 250);
       if (customPad) {
@@ -1226,10 +1302,10 @@
     try{mpTeardown?.();}catch(_){}
     const back=document.querySelector(".player-back")?.getAttribute("href")||"/";
     const finish=()=>{window.location.href=back;};
-    if(autosaveMode!=="off"){
-      // Bounded best-effort final autosave; Exit never hangs on storage.
-      Promise.race([runAutosave().catch(()=>false),new Promise(resolve=>setTimeout(resolve,1500))]).then(finish,finish);
-    }else finish();
+    const saves = [flushLocalGameSave().catch(() => false)];
+    if(autosaveMode!=="off")saves.push(runAutosave().catch(()=>false));
+    // Bounded best-effort final save; Exit never hangs on storage.
+    Promise.race([Promise.all(saves),new Promise(resolve=>setTimeout(resolve,1500))]).then(finish,finish);
   }
   const refreshAutoSlot=async()=>{
     const row=document.querySelector("[data-auto-slot]");

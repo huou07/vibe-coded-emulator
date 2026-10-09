@@ -237,7 +237,11 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         self.assertNotIn(b"authForm", library)
         status, _, offline = public.request("GET", "/offline")
         self.assertEqual(status, 200)
-        self.assertIn(b"offline-notice", offline)
+        self.assertIn(b'id="offlineGameForm"', offline)
+        self.assertIn(b'id="offlineGameGrid"', offline)
+        self.assertIn(b"Vibe Coded Emulator", offline)
+        self.assertNotIn(b"example.com", offline)
+        self.assertIn(b"/static/v/", offline)
 
         status, _, site_js = public.request("GET", "/static/site.js")
         self.assertEqual(status, 200)
@@ -253,7 +257,9 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
                 self.assertEqual(public.request("GET", path)[0], expected)
         status, _, body = public.request("GET", "/offline")
         self.assertEqual(status, 200)
-        self.assertIn(b'offline-notice', body)
+        self.assertIn(b'id="offlineGameForm"', body)
+        self.assertIn(b'id="offlineGameGrid"', body)
+        self.assertIn(b'id="offlineShortcut"', body)
         self.assertNotIn(b'auth-shell', body)
 
 
@@ -267,6 +273,38 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
 
     ENVIRONMENT = "production"
     PORT = PRODUCTION_PORT
+
+    def test_browser_local_offline_player_and_versioned_assets_are_served(self):
+        public = Client(PRODUCTION_PORT)
+        status, headers, body = public.request("GET", "/offline")
+        self.assertEqual(status, 200)
+        self.assertIn("worker-src 'self';", headers["Content-Security-Policy"])
+        self.assertNotIn("Cross-Origin-Embedder-Policy", headers)
+        for marker in (
+            b'id="offlineGameForm"',
+            b'id="offlineGameGrid"',
+            b'id="offlineShortcut"',
+            b"/static/v/",
+        ):
+            self.assertIn(marker, body)
+
+        version = json.loads(public.request("GET", "/health")[2])['asset_version']
+        for name in ("offline.js", "player-ui.js", "player-runtime.js", "player.js"):
+            with self.subTest(asset=name):
+                status, _, asset = public.request("GET", f"/static/v/{version}/{name}")
+                self.assertEqual(status, 200)
+                self.assertTrue(asset)
+
+        status, headers, player = public.request("GET", "/offline?play=fixture&system=gba&title=Fixture")
+        self.assertEqual(status, 200)
+        self.assertIn("worker-src 'self' blob:", headers["Content-Security-Policy"])
+        self.assertIn("style-src 'self' 'unsafe-inline'", headers["Content-Security-Policy"])
+        self.assertEqual(headers.get("Cross-Origin-Embedder-Policy"), "require-corp")
+        self.assertIn(b'id="offlineGameForm"', player)
+
+        status, _, worker = public.request("GET", f"/service-worker.js?v={version}")
+        self.assertEqual(status, 200)
+        self.assertIn(b"an3-arcade-pwa-v32-", worker)
 
     def test_http11_reuses_the_connection_for_versioned_assets(self):
         connection = http.client.HTTPConnection("127.0.0.1", PRODUCTION_PORT, timeout=12)

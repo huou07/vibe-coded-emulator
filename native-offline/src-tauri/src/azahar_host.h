@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 int an3_native_probe(const char* core_path, char* details, size_t details_length);
+int an3_native_apply_core_options(const char* system, const char* options_json);
 
 int an3_native_start(void* content_view,
                      const char* core_path,
