@@ -342,7 +342,7 @@ jobs:
           printf 'version=%s\nautomation_source_sha=%s\ndistribution_source_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
             "$version" "$GITHUB_SHA" "$DISTRIBUTION_SOURCE_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
           tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
-          shasum -a 256 "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" > "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz.sha256"
+          (cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz) > "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz.sha256"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-ui-control-test-app

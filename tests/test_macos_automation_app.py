@@ -145,6 +145,7 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn('cp -R "$resources/libretro/macos-arm64/."', refresh)
         self.assertIn('cp "$resources/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt"', refresh)
         self.assertIn('cp -R "$resources/switch/macos-arm64/."', refresh)
+        self.assertIn('cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz', refresh)
         self.assertIn("Source revision: $EXPECTED_SOURCE_SHA", refresh)
         self.assertIn("build-macos-automation.sh", refresh)
         self.assertNotIn("needs: web-runtime-cache", refresh)
