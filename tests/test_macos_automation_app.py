@@ -140,6 +140,8 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn("inputs.macos_artifact_run_id != ''", refresh)
         self.assertIn("!inputs.build_macos_candidate && !inputs.build_windows_candidate", refresh)
         self.assertIn("run-id: ${{ inputs.macos_artifact_run_id }}", refresh)
+        self.assertIn("name: web-runtime-cache", refresh)
+        self.assertIn("tar -xzf native-offline/work/web-runtime-cache.tar.gz", refresh)
         self.assertIn("Source revision: $EXPECTED_SOURCE_SHA", refresh)
         self.assertIn("build-macos-automation.sh", refresh)
         self.assertNotIn("needs: web-runtime-cache", refresh)
