@@ -122,13 +122,26 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn("VibeCodedEmulatorAutomation.app.tar.gz", macos_job)
         self.assertIn("retention-days: 7", macos_job)
 
-    def test_macos_candidate_dispatch_skips_android_and_linux_jobs(self):
+    def test_candidate_dispatch_gates_android_and_linux_to_their_own_inputs(self):
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
         android_job = workflow[workflow.index("  android-apk:"):workflow.index("  linux-deb:")]
         linux_job = workflow[workflow.index("  linux-deb:"):workflow.index("  linux-deb-install:")]
-        selected_platforms = "!inputs.build_windows_candidate && !inputs.build_macos_candidate"
-        self.assertIn(selected_platforms, android_job)
-        self.assertIn(selected_platforms, linux_job)
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_macos_candidate",
+            macos_job,
+        )
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_android_candidate",
+            android_job,
+        )
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_linux_candidate",
+            linux_job,
+        )
+        for job in (android_job, linux_job):
+            self.assertNotIn("inputs.build_macos_candidate", job)
+            self.assertNotIn("inputs.build_windows_candidate", job)
 
     def test_macos_automation_refresh_reuses_a_verified_prior_dmg(self):
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
