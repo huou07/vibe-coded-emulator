@@ -1,5 +1,6 @@
 param(
   [Parameter(Mandatory = $true)][string]$ArtifactDirectory,
+  [Parameter(Mandatory = $true)][string]$AutomationDirectory,
   [Parameter(Mandatory = $true)][string]$ExpectedSourceSha,
   [Parameter(Mandatory = $true)][string]$ArtifactRunId
 )
@@ -10,6 +11,8 @@ $evidence = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke'
 $installRoot = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke-install'
 $installDir = Join-Path $installRoot 'app'
 $mainProcess = $null
+$mainExe = $null
+$automationBackup = $null
 New-Item -ItemType Directory -Force -Path $evidence, $installRoot | Out-Null
 
 function Write-Evidence([string]$Name, $Value) {
@@ -49,11 +52,35 @@ try {
   $actualHash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $expectedHash) { throw 'Windows installer checksum mismatch.' }
 
+  $automationLabelsPath = Join-Path $AutomationDirectory 'BUILD_LABELS.txt'
+  $automationExe = Join-Path $AutomationDirectory 'an3-offline-native.exe'
+  $automationSidecar = "$automationExe.sha256"
+  if (!(Test-Path $automationLabelsPath) -or !(Test-Path $automationExe) -or !(Test-Path $automationSidecar)) {
+    throw 'Source-matched Windows UI-control test shell or its labels/checksum are missing.'
+  }
+  $automationLabels = Get-Content $automationLabelsPath -Raw
+  if ($automationLabels -notmatch "Source revision:\s*$([regex]::Escape($ExpectedSourceSha))\b") {
+    throw 'Windows UI-control test shell source revision does not match the requested SHA.'
+  }
+  $automationVersionMatch = [regex]::Match($automationLabels, 'App version:\s*([^\r\n]+)')
+  if (-not $automationVersionMatch.Success) { throw 'Windows UI-control test shell version label is missing.' }
+  if ($automationLabels -notmatch 'Kind:\s*test-only-ui-control-shell') {
+    throw 'Windows UI-control executable is not labeled as a test-only shell.'
+  }
+  $automationHash = (Get-FileHash $automationExe -Algorithm SHA256).Hash.ToLowerInvariant()
+  $automationSidecarLine = (Get-Content $automationSidecar -Raw).Trim()
+  $automationSidecarMatch = [regex]::Match($automationSidecarLine, '^([0-9a-fA-F]{64})\s+(.+)$')
+  if (-not $automationSidecarMatch.Success -or $automationSidecarMatch.Groups[1].Value.ToLowerInvariant() -ne $automationHash -or [IO.Path]::GetFileName($automationSidecarMatch.Groups[2].Value.TrimStart('*', ' ')) -ne [IO.Path]::GetFileName($automationExe)) {
+    throw 'Windows UI-control shell checksum sidecar does not match its executable.'
+  }
+
   $buildRecord = [ordered]@{
     sourceSha = $ExpectedSourceSha
     artifactRunId = $ArtifactRunId
     installerName = $installer.Name
     installerSha256 = $actualHash
+    automationShellSha256 = $automationHash
+    appVersion = $automationVersionMatch.Groups[1].Value.Trim()
     runnerOS = $env:RUNNER_OS
     osVersion = (Get-CimInstance Win32_OperatingSystem).Caption
   }
@@ -76,6 +103,24 @@ try {
   if (!(Test-Path (Join-Path $coreDir 'mgba_libretro.dll'))) {
     throw 'Installed mGBA core is missing from the bundled libretro directory.'
   }
+
+  $distributionShellSha = (Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant()
+  $distributionShellBytes = [IO.File]::ReadAllBytes($mainExe)
+  if ([Text.Encoding]::ASCII.GetString($distributionShellBytes).Contains('AN3_UI_CONTROL_FILE')) {
+    throw 'The shipped Windows app unexpectedly includes the test-only ui-control feature.'
+  }
+  $automationBackup = "$mainExe.distribution-backup"
+  Copy-Item -LiteralPath $mainExe -Destination $automationBackup
+  Copy-Item -LiteralPath $automationExe -Destination $mainExe -Force
+  if ((Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $automationHash) {
+    throw 'The source-matched Windows UI-control shell was not installed into the isolated package copy.'
+  }
+
+  $fixture = Join-Path $evidence 'AN3TAPTEST.gba'
+  & python tools/testrom/gba_homebrew_test.py $fixture AN3TAPTEST --latch-input
+  if ($LASTEXITCODE -ne 0) { throw 'Could not generate the lawful GBA UI-import fixture.' }
+  $fixtureHash = (Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
+  $env:AN3_UI_TEST_ROM = $fixture
 
   $env:AN3_NATIVE_RUNTIME_PORT = '38471'
   $env:AN3_WINDOWS_CDP_LOCAL = '1'
@@ -139,6 +184,9 @@ try {
   if (!$aboutVersion.data.node.visible -or !$aboutVersion.data.node.name -or $aboutVersion.data.node.name -match '__AN3_VERSION__') {
     throw 'The installed shell About page did not show a substituted app version.'
   }
+  if ($aboutVersion.data.node.name.Trim() -ne $automationVersionMatch.Groups[1].Value.Trim()) {
+    throw 'The installed package About version does not match the source-matched test shell.'
+  }
   $aboutSection = (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
   if ($aboutSection -ne 'about') { throw "About navigation ended on '$aboutSection'." }
   Write-Evidence 'ui.json' ([ordered]@{
@@ -149,14 +197,98 @@ try {
     appVersion = $aboutVersion.data.node.name
   })
 
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'nav-play', '--json')
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'open-rom', '--json')
+  $gameCard = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(30)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    try {
+      $gameCard = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-card', '--json')
+      if ($gameCard.data.node.visible) { break }
+    } catch { Start-Sleep -Milliseconds 400 }
+    Start-Sleep -Milliseconds 400
+  }
+  if (!$gameCard -or !$gameCard.data.node.visible -or $gameCard.data.node.name -notmatch 'AN3TAPTEST') {
+    throw 'The real Windows shell import flow did not add the generated GBA fixture to Library.'
+  }
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
+  $nativeStatus = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(50)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    try {
+      $nativeStatus = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-status', '--json')
+      if ($nativeStatus.data.node.state -eq 'running') { break }
+    } catch { Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 500
+  }
+  if (!$nativeStatus -or $nativeStatus.data.node.state -ne 'running') {
+    throw 'The shell game card did not start the bundled Windows runtime.'
+  }
+  $runtimeProcess = $null
+  $runtimeWindow = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(20)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $runtimeProcess = Get-CimInstance Win32_Process -Filter "Name = 'an3-native-runtime.exe'" |
+      Where-Object { $_.ParentProcessId -eq $mainProcess.Id } | Select-Object -First 1
+    if ($runtimeProcess) {
+      $runtimeWindow = Get-Process -Id $runtimeProcess.ProcessId -ErrorAction SilentlyContinue
+      if ($runtimeWindow -and $runtimeWindow.MainWindowHandle -ne 0) { break }
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  if (!$runtimeProcess -or !$runtimeWindow -or $runtimeWindow.MainWindowHandle -eq 0) {
+    throw 'The shell did not retain a live bundled player process with its native game window.'
+  }
+  Write-Evidence 'shell-game.json' ([ordered]@{
+    sourceSha = $ExpectedSourceSha
+    appVersion = $automationVersionMatch.Groups[1].Value.Trim()
+    installerSha256 = $actualHash
+    distributionShellSha256 = $distributionShellSha
+    automationShellSha256 = $automationHash
+    fixtureSha256 = $fixtureHash
+    fixtureBytes = (Get-Item $fixture).Length
+    importedGameCard = $gameCard.data.node.name
+    importHandler = 'real pick_and_import_native_rom handler with test-only AN3_UI_TEST_ROM pre-answer'
+    launchStatus = $nativeStatus.data.node.state
+    playerImage = $runtimeProcess.Name
+    playerParentProcessId = $runtimeProcess.ParentProcessId
+    playerWindowHandle = [string]$runtimeWindow.MainWindowHandle
+    playerWindowTitle = $runtimeWindow.MainWindowTitle
+    videoFrameContent = 'Not captured in this shell-launch check; direct-player frame/input/save-state probe follows separately.'
+  })
+
+  $playerProcessId = [int]$runtimeProcess.ProcessId
+  $null = $mainProcess.CloseMainWindow()
+  if (!$mainProcess.WaitForExit(10_000)) {
+    & taskkill.exe /PID $mainProcess.Id /T /F | Out-Null
+    $mainProcess.WaitForExit(5000) | Out-Null
+    throw 'The installed Windows shell did not close cleanly after the game launch check.'
+  }
+  $mainProcess.Refresh()
+  if (!$mainProcess.HasExited) { throw 'The installed Windows shell remained open after its close request.' }
+  $deadline = [DateTime]::UtcNow.AddSeconds(10)
+  do {
+    $childStillRunning = Get-Process -Id $playerProcessId -ErrorAction SilentlyContinue
+    if (-not $childStillRunning) { break }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  if ($childStillRunning) {
+    & taskkill.exe /PID $playerProcessId /T /F | Out-Null
+    throw 'Closing the installed Windows shell left its native game process running.'
+  }
+  Write-Evidence 'shell-shutdown.json' ([ordered]@{
+    shellClosedCleanly = $true
+    nativePlayerExited = $true
+    sourceSha = $ExpectedSourceSha
+  })
+  $mainProcess = $null
+  Remove-Item Env:AN3_UI_TEST_ROM -ErrorAction SilentlyContinue
+  Move-Item -LiteralPath $automationBackup -Destination $mainExe -Force
+
   $env:PATH = "$playerDir;$env:PATH"
   $env:AN3_PLAYER = $playerExe
   $env:SDL_VIDEODRIVER = 'dummy'
   $env:SDL_AUDIODRIVER = 'dummy'
-  $fixture = Join-Path $evidence 'AN3TAPTEST.gba'
-  & python tools/testrom/gba_homebrew_test.py $fixture AN3TAPTEST --latch-input
-  if ($LASTEXITCODE -ne 0) { throw 'Could not generate the lawful GBA input fixture.' }
-
   $statePath = Join-Path $evidence 'gba-slot.state'
   $base = @('emulator', 'snapshot', '--rom', $fixture, '--system', 'gba', '--frames', '120', '--player', $playerExe, '--libdir', $coreDir, '--json')
   $baseline = Invoke-An3ctl ($base + @('--save-state', $statePath))
@@ -186,7 +318,7 @@ try {
     audio = 'SDL dummy driver; physical audio UNVERIFIED'
     display = 'SDL dummy driver; physical display/GPU UNVERIFIED'
   })
-  Write-Host 'WINDOWS_INSTALL_SHELL_NAVIGATION_GBA_INPUT_SAVE_LOAD=GOOD'
+  Write-Host 'WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_AND_DIRECT_PLAYER_INPUT_SAVE_LOAD=GOOD'
 } catch {
   Write-Evidence 'failure.json' ([ordered]@{ message = $_.Exception.Message; sourceSha = $ExpectedSourceSha; artifactRunId = $ArtifactRunId })
   throw
@@ -194,8 +326,15 @@ try {
   if ($mainProcess) {
     $mainProcess.Refresh()
     if (!$mainProcess.HasExited) {
-      Stop-Process -Id $mainProcess.Id -Force -ErrorAction SilentlyContinue
-      $mainProcess.WaitForExit(5000)
+      $null = $mainProcess.CloseMainWindow()
+      if (!$mainProcess.WaitForExit(10000)) {
+        & taskkill.exe /PID $mainProcess.Id /T /F | Out-Null
+        $mainProcess.WaitForExit(5000)
+      }
     }
+  }
+  Remove-Item Env:AN3_UI_TEST_ROM -ErrorAction SilentlyContinue
+  if ($automationBackup -and $mainExe -and (Test-Path $automationBackup)) {
+    Move-Item -LiteralPath $automationBackup -Destination $mainExe -Force
   }
 }
