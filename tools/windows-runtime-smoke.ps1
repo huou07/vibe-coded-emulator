@@ -27,6 +27,46 @@ function Invoke-An3ctl([string[]]$Arguments) {
   return (($output -join "`n") | ConvertFrom-Json)
 }
 
+function Get-WindowsGameCardRomId {
+  $script = @'
+const tabs = await fetch("http://127.0.0.1:9222/json/list").then(response => response.json());
+const page = tabs.find(tab => tab.type === "page" && tab.webSocketDebuggerUrl && new URL(tab.url).origin === "http://127.0.0.1:38471");
+if (!page) throw new Error("No WebView2 page is available through local CDP.");
+const endpoint = new URL(page.webSocketDebuggerUrl);
+if (endpoint.hostname !== "127.0.0.1" && endpoint.hostname !== "localhost" && endpoint.hostname !== "::1") {
+  throw new Error("The WebView2 CDP endpoint is not loopback.");
+}
+const socket = new WebSocket(endpoint);
+const value = await new Promise((resolve, reject) => {
+  const timer = setTimeout(() => { socket.close(); reject(new Error("Timed out reading the game card ROM id.")); }, 5000);
+  socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Could not connect to WebView2 CDP.")); }, { once: true });
+  socket.addEventListener("open", () => socket.send(JSON.stringify({
+    id: 1,
+    method: "Runtime.evaluate",
+    params: {
+      expression: "document.querySelector('[data-testid=\\\"game-card\\\"]')?.dataset.romId || null",
+      returnByValue: true
+    }
+  })));
+  socket.addEventListener("message", event => {
+    const message = JSON.parse(String(event.data));
+    if (message.id !== 1) return;
+    clearTimeout(timer);
+    socket.close();
+    if (message.error) reject(new Error(message.error.message || "CDP evaluation failed."));
+    else resolve(message.result?.result?.value ?? null);
+  });
+});
+if (typeof value !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)) {
+  throw new Error("The imported game card has no valid native ROM id.");
+}
+process.stdout.write(JSON.stringify({ romId: value }));
+'@
+  $output = & node --input-type=module -e $script
+  if ($LASTEXITCODE -ne 0) { throw "Could not read the game card ROM id through CDP: $($output -join "`n")" }
+  return (($output -join "`n") | ConvertFrom-Json).romId
+}
+
 try {
   if ($ExpectedSourceSha -notmatch '^[0-9a-fA-F]{40}$') {
     throw 'Expected source SHA must be a full 40-character Git commit.'
@@ -224,6 +264,11 @@ try {
     directory = '%APPDATA%\space.an3tocom.offline.automation\an3-roms'
     fixtureSha256 = (Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
     files = $nativeRomFiles
+  })
+  $gameCardRomId = Get-WindowsGameCardRomId
+  Write-Evidence 'game-card-rom-id.json' ([ordered]@{
+    romId = $gameCardRomId
+    storedRomIds = @($nativeRomFiles | Where-Object { $_.name -match '^[0-9a-fA-F-]{36}\.' } | ForEach-Object { $_.name.Substring(0, 36) })
   })
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
   $nativeStatus = $null
