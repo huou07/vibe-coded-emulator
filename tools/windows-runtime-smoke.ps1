@@ -211,6 +211,20 @@ try {
   if (!$gameCard -or !$gameCard.data.node.visible -or $gameCard.data.node.name -notmatch 'AN3TAPTEST') {
     throw 'The real Windows shell import flow did not add the generated GBA fixture to Library.'
   }
+  $nativeRomDirectory = Join-Path (Join-Path $env:APPDATA 'space.an3tocom.offline.automation') 'an3-roms'
+  $nativeRomFiles = @(
+    Get-ChildItem -LiteralPath $nativeRomDirectory -File -ErrorAction SilentlyContinue |
+      ForEach-Object { [ordered]@{
+        name = $_.Name
+        bytes = $_.Length
+        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+      }}
+  )
+  Write-Evidence 'native-rom-storage.json' ([ordered]@{
+    directory = '%APPDATA%\space.an3tocom.offline.automation\an3-roms'
+    fixtureSha256 = (Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
+    files = $nativeRomFiles
+  })
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
   $nativeStatus = $null
   $nativeStatusQueryError = $null

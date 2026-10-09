@@ -51,6 +51,8 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("$nativeStatus.data.node.state -in @('running', 'error')", SMOKE)
         self.assertIn("Write-Evidence 'launch.json'", SMOKE)
         self.assertIn("lastStatusQueryError = $nativeStatusQueryError", SMOKE)
+        self.assertIn("Write-Evidence 'native-rom-storage.json'", SMOKE)
+        self.assertIn("space.an3tocom.offline.automation", SMOKE)
         self.assertIn("an3-native-runtime.exe", SMOKE)
         self.assertIn("ParentProcessId", SMOKE)
         self.assertIn("MainWindowHandle", SMOKE)
@@ -59,7 +61,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_AND_DIRECT_PLAYER_INPUT_SAVE_LOAD=GOOD", SMOKE)
 
     def test_smoke_preserves_distribution_binary_and_verifies_test_import_guard(self):
-        # The hosted runner invokes Windows PowerShell 5.1, which rejects digit separators.
+        # The hosted runner's PowerShell parser rejects digit separators in this script.
         self.assertNotRegex(SMOKE, r"\b\d+(?:_\d+)+\b")
         self.assertIn("$automationBackup = \"$mainExe.distribution-backup\"", SMOKE)
         self.assertIn("AN3_UI_CONTROL_FILE", SMOKE)
