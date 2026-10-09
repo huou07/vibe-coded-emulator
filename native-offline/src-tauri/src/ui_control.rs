@@ -111,6 +111,55 @@ mod runtime {
         })
     }
 
+    fn click(app: &AppHandle, testid: &str) -> Result<serde_json::Value, String> {
+        let target = evaluate(
+            app,
+            &format!(
+                "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
+                 if(!el)return {{clicked:false,reason:'missing'}};el.scrollIntoView({{block:'center'}});\
+                 var r=el.getBoundingClientRect(),s=getComputedStyle(el),x=r.left+r.width/2,y=r.top+r.height/2,\
+                 hit=document.elementFromPoint(x,y);\
+                 if(!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||el.disabled||\
+                    (hit!==el&&!el.contains(hit)))return {{clicked:false,reason:'not-actionable'}};\
+                 return {{clicked:true,x:x,y:y}};}})()"
+            ),
+        )?;
+        let target: serde_json::Value =
+            serde_json::from_str(&target).map_err(|error| error.to_string())?;
+        if target.get("clicked").and_then(serde_json::Value::as_bool) != Some(true) {
+            return Ok(target);
+        }
+        let x = target.get("x").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let y = target.get("y").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
+        let pointer_init = |buttons| {
+            format!(
+                "{{bubbles:true,cancelable:true,composed:true,view:window,button:0,buttons:{buttons},\
+                 clientX:{x},clientY:{y},pointerId:1,pointerType:'mouse',isPrimary:true}}"
+            )
+        };
+        evaluate(
+            app,
+            &format!(
+                "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
+                 el.dispatchEvent(new PointerEvent('pointerdown',{}));return true;}})()",
+                pointer_init(1)
+            ),
+        )?;
+        // Let the core's input poll observe a brief tap before releasing it.
+        std::thread::sleep(Duration::from_millis(100));
+        evaluate(
+            app,
+            &format!(
+                "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
+                 el.dispatchEvent(new PointerEvent('pointerup',{}));\
+                 el.dispatchEvent(new MouseEvent('click',{{bubbles:true,cancelable:true,composed:true,\
+                 view:window,button:0,buttons:0,detail:1,clientX:{x},clientY:{y}}}));return true;}})()",
+                pointer_init(0)
+            ),
+        )?;
+        Ok(serde_json::json!({ "clicked": true }))
+    }
+
     fn handle(app: &AppHandle, action: &str, testid: Option<&str>) -> Result<serde_json::Value, String> {
         match action {
             "diag" => {
@@ -156,13 +205,7 @@ mod runtime {
             }
             "click" => {
                 let testid = testid.ok_or("click requires a testid")?;
-                let expression = format!(
-                    "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
-                     if(!el)return {{clicked:false,reason:'missing'}};el.scrollIntoView({{block:'center'}});\
-                     el.click();return {{clicked:true}};}})()"
-                );
-                let payload = evaluate(app, &expression)?;
-                Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null))
+                click(app, testid)
             }
             other => Err(format!("unknown ui action: {other}")),
         }

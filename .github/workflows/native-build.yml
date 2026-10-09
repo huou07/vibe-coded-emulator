@@ -25,6 +25,14 @@ on:
         required: false
         default: false
         type: boolean
+      macos_artifact_run_id:
+        description: Rebuild only the macOS UI-control test app against a prior run's DMG
+        required: false
+        type: string
+      macos_expected_source_sha:
+        description: Exact source SHA recorded by that macOS package job
+        required: false
+        type: string
   pull_request:
     paths:
       - '.gitattributes'
@@ -46,6 +54,7 @@ on:
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
       - 'tools/windows-runtime-smoke.ps1'
+      - '!native-offline/src-tauri/src/ui_control.rs'
 
 permissions:
   actions: read
@@ -240,6 +249,85 @@ jobs:
         with:
           name: macos-ui-control-test-app
           path: native-offline/work/macos-automation-artifact/*
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-ui-control-refresh:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.macos_artifact_run_id != '' &&
+      !inputs.build_macos_candidate && !inputs.build_windows_candidate
+    name: Rebuild macOS UI-control app against an exact prior DMG
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-dmg
+          path: artifacts/macos
+          run-id: ${{ inputs.macos_artifact_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+      - name: Verify prior DMG identity and source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.macos_expected_source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A full expected source SHA is required.' >&2; exit 1; }
+          dmg="$(find artifacts/macos -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg" || { echo 'The prior macOS DMG artifact is missing.' >&2; exit 1; }
+          (cd "$(dirname "$dmg")" && shasum -a 256 --check "$(basename "$dmg").sha256")
+          grep -Fqx "Source revision: $EXPECTED_SOURCE_SHA" artifacts/macos/BUILD_LABELS.txt
+      - name: Install macOS automation build prerequisites
+        run: brew install cmake ninja autoconf automake libtool glslang ffmpeg
+      - name: Install JS dependencies and build source-matched UI-control app
+        working-directory: native-offline
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run prepare-moltenvk
+          mkdir -p src-tauri/target/release/bundle/macos
+          mount="$RUNNER_TEMP/an3-prior-macos-dmg"
+          mkdir -p "$mount"
+          dmg="$(find "$GITHUB_WORKSPACE/artifacts/macos" -maxdepth 1 -name '*.dmg' -print -quit)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          app="$mount/VibeCodedEmulator.app"
+          test -d "$app" || { echo 'The exact DMG does not contain VibeCodedEmulator.app.' >&2; exit 1; }
+          actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          test "$actual_version" = "$expected_version"
+          cp -R "$app" src-tauri/target/release/bundle/macos/VibeCodedEmulator.app
+          cd "$GITHUB_WORKSPACE"
+          bash native-offline/scripts/build-macos-automation.sh
+      - name: Verify separation and label refreshed automation app
+        env:
+          DISTRIBUTION_SOURCE_SHA: ${{ inputs.macos_expected_source_sha }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_macos_automation_app.MacosAutomationAppTests.test_10_automation_bundle_exposes_bridge_and_is_signed -q
+          app=native-offline/src-tauri/target/release/bundle/macos/VibeCodedEmulatorAutomation.app
+          binary="$app/Contents/MacOS/an3-offline-native"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          binary_sha="$(shasum -a 256 "$binary" | awk '{print $1}')"
+          artifact_dir=native-offline/work/macos-automation-refresh-artifact
+          mkdir -p "$artifact_dir"
+          printf 'version=%s\nautomation_source_sha=%s\ndistribution_source_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
+            "$version" "$GITHUB_SHA" "$DISTRIBUTION_SOURCE_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
+          tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          shasum -a 256 "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" > "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-control-test-app
+          path: native-offline/work/macos-automation-refresh-artifact/*
           if-no-files-found: error
           retention-days: 7
 

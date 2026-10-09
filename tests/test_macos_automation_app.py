@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AN3CTL = ROOT / "tools/an3ctl/bin/an3ctl"
 TAURI_CONF = ROOT / "native-offline/src-tauri/tauri.conf.json"
+UI_CONTROL = ROOT / "native-offline/src-tauri/src/ui_control.rs"
 NATIVE_BUILD_WORKFLOW = ROOT / ".github/workflows/native-build.yml"
 BUNDLE_DIR = ROOT / "native-offline/src-tauri/target/release/bundle/macos"
 AUTOMATION_APP = Path(
@@ -129,11 +130,34 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn(selected_platforms, android_job)
         self.assertIn(selected_platforms, linux_job)
 
+    def test_macos_automation_refresh_reuses_a_verified_prior_dmg(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        refresh = workflow[
+            workflow.index("  macos-ui-control-refresh:"):workflow.index("  android-apk:")
+        ]
+        self.assertIn("macos_artifact_run_id:", workflow)
+        self.assertIn("macos_expected_source_sha:", workflow)
+        self.assertIn("inputs.macos_artifact_run_id != ''", refresh)
+        self.assertIn("!inputs.build_macos_candidate && !inputs.build_windows_candidate", refresh)
+        self.assertIn("run-id: ${{ inputs.macos_artifact_run_id }}", refresh)
+        self.assertIn("Source revision: $EXPECTED_SOURCE_SHA", refresh)
+        self.assertIn("build-macos-automation.sh", refresh)
+        self.assertNotIn("needs: web-runtime-cache", refresh)
+
+    def test_ui_control_click_sends_a_sampled_pointer_tap(self):
+        bridge = UI_CONTROL.read_text(encoding="utf-8")
+        self.assertIn("new PointerEvent('pointerdown'", bridge)
+        self.assertIn("new PointerEvent('pointerup'", bridge)
+        self.assertIn("new MouseEvent('click'", bridge)
+        self.assertIn("Duration::from_millis(100)", bridge)
+        self.assertNotIn("el.click()", bridge)
+
     def test_workflow_only_pushes_use_portable_ci_without_native_matrix(self):
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         push = workflow[workflow.index("  push:"):workflow.index("permissions:")]
         self.assertNotIn(".github/workflows/**", push)
         self.assertNotIn("tests/test_windows_runtime_smoke.py", push)
+        self.assertIn("!native-offline/src-tauri/src/ui_control.rs", push)
         self.assertIn(".github/workflows/**", workflow[workflow.index("  pull_request:"):workflow.index("  push:")])
 
     def _stop(self, app: Path) -> None:
