@@ -89,7 +89,7 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
 
     def an3ctl(self, *args):
         result = subprocess.run(
-            [str(AN3CTL), *args, "--target", "linux", "--control-file", str(self.control)],
+            [str(AN3CTL), *args, "--target", "linux", "--control-file", str(self.control), "--json"],
             env={**self.env, "AN3_LINUX_UI_CONTROL_FILE": str(self.control)},
             text=True,
             capture_output=True,
@@ -120,10 +120,7 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
             details["tree"] = self.an3ctl("ui", "tree").get("nodes")
         except (AssertionError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
             details["tree_error"] = str(error)
-        try:
-            details["control_file"] = self.control.read_text(encoding="utf-8")
-        except OSError as error:
-            details["control_file_error"] = str(error)
+        details["control_file_present"] = self.control.is_file()
         (self.evidence / "ui-timeout.json").write_text(
             json.dumps(details, indent=2) + "\n", encoding="utf-8"
         )
