@@ -8,10 +8,12 @@
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { An3Error, httpJson, run } from "../lib/core.mjs";
+import { An3Error, CdpSession, httpJson, run } from "../lib/core.mjs";
+import { domTreeExpression, locateExpression, INTERACTIVE_SELECTOR } from "../lib/domtree.mjs";
 
 // The native ui-control bridge may wait ten seconds for WebView JavaScript.
 const MACOS_UI_CONTROL_TIMEOUT_MS = 12_000;
+const WINDOWS_RUNTIME_PORT = Number(process.env.AN3_NATIVE_RUNTIME_PORT ?? 38471);
 
 export class DesktopAdapter {
   constructor(root) {
@@ -24,6 +26,20 @@ export class DesktopAdapter {
   }
 
   async windowsDebugProbe({ host = "windows-build-host", port = 9222 } = {}) {
+    if (process.env.AN3_WINDOWS_CDP_LOCAL === "1") {
+      try {
+        const targets = await httpJson(port, "/json/list", { timeout: 1500 });
+        return { host: "127.0.0.1", port, reachable: Array.isArray(targets), via: "local-cdp" };
+      } catch {
+        return {
+          host: "127.0.0.1",
+          port,
+          reachable: false,
+          via: "local-cdp",
+          instruction: "Launch the Windows test app with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS set to a loopback remote-debugging port.",
+        };
+      }
+    }
     // The Windows shell is a WebView2 host. WebView2 only opens a DevTools
     // socket when the app opts in for a test/debug build; a release build keeps
     // it closed. We check reachability without changing anything.
@@ -167,14 +183,12 @@ export class DesktopAdapter {
       return { target, via: "ui-control", nodes: result.nodes };
     }
     if (target === "windows") {
-      const probe = await this.windowsDebugProbe(opts.windows ?? {});
-      if (!probe.reachable) await this.requireStructured(target);
-      try {
-        const targets = await httpJson(probe.port, "/json/list");
-        return { target, via: "cdp", targets: targets.map((entry) => ({ title: entry.title, url: entry.url })) };
-      } catch (error) {
-        throw new An3Error("E_TARGET_UNAVAILABLE", `WebView2 DevTools is not reachable on 127.0.0.1:${probe.port}. ${probe.instruction}`, { cause: error.message });
-      }
+      return this.withWindowsCdp(opts, async (cdp, page) => {
+        const limit = Number(opts.limit ?? 120);
+        const tree = await cdp.evaluateJson(domTreeExpression(limit));
+        const section = await cdp.evaluate("document.body?.dataset?.section ?? null");
+        return { target, via: "cdp", ...tree, section, page: { title: page.title, url: page.url }, limit };
+      });
     }
     await this.requireStructured(target);
   }
@@ -187,6 +201,15 @@ export class DesktopAdapter {
       const result = await this.controlCall(opts, target, "/query", { testid });
       return { target, via: "ui-control", node: result.node };
     }
+    if (target === "windows") {
+      const selector = opts.selector;
+      if (!selector) throw new An3Error("E_USAGE", "ui query --target windows requires a semantic selector");
+      return this.withWindowsCdp(opts, async (cdp) => {
+        const result = await cdp.evaluateJson(locateExpression(selector, { nth: opts.nth ?? 0 }));
+        if (!result?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
+        return { target, via: "cdp", ...result };
+      });
+    }
     return this.uiTree({ target, windows: opts.windows });
   }
 
@@ -198,6 +221,26 @@ export class DesktopAdapter {
       const result = await this.controlCall(opts, target, "/click", { testid });
       if (!result.clicked) throw new An3Error("E_SELECTOR_NOT_FOUND", `no element with data-testid=${testid}`);
       return { target, via: "ui-control", clicked: true, testid };
+    }
+    if (target === "windows") {
+      const selector = opts.selector;
+      if (!selector) throw new An3Error("E_USAGE", "ui click --target windows requires a semantic selector");
+      return this.withWindowsCdp(opts, async (cdp) => {
+        const located = await cdp.evaluateJson(locateExpression(selector, { nth: opts.nth ?? 0 }));
+        if (!located?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
+        const list = JSON.stringify(INTERACTIVE_SELECTOR);
+        const index = Number(located.index);
+        const result = await cdp.evaluateJson(`(() => {
+          const all = Array.from(document.querySelectorAll(${list}));
+          const el = all[${index}];
+          if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return JSON.stringify({ performed: false });
+          el.scrollIntoView({ block: 'center' });
+          el.click();
+          return JSON.stringify({ performed: true, action: 'click' });
+        })()`);
+        if (!result?.performed) throw new An3Error("E_ACTION_FAILED", `Windows click did not run on ${describeSelector(selector)}`, { selector });
+        return { target, via: "cdp", ...result };
+      });
     }
     await this.requireStructured(target);
   }
@@ -234,6 +277,21 @@ export class DesktopAdapter {
 
   async uiWait(opts = {}) {
     const target = opts.target ?? "windows";
+    if (target === "windows") {
+      if (!opts.selector) throw new An3Error("E_USAGE", "ui wait --target windows requires a semantic selector");
+      const timeout = Number(opts.timeout ?? 30_000);
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        try {
+          const result = await this.uiQuery(opts);
+          if (!opts.state || result.node?.state === opts.state) return { target, via: "cdp", found: true, node: result.node };
+        } catch (error) {
+          if (!(error instanceof An3Error) || error.code !== "E_NOT_FOUND") throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      throw new An3Error("E_TIMEOUT", `ui wait timed out for ${describeSelector(opts.selector)}${opts.state ? ` state=${opts.state}` : ""}`);
+    }
     if (target !== "macos" && target !== "linux") await this.requireStructured(target);
     const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : null);
     if (!testid) throw new An3Error("E_USAGE", `ui wait --target ${target} requires --testid <id>`);
@@ -248,4 +306,28 @@ export class DesktopAdapter {
     }
     throw new An3Error("E_TIMEOUT", `ui wait timed out for data-testid=${testid}${opts.state ? ` state=${opts.state}` : ""}`);
   }
+
+  async withWindowsCdp(opts, fn) {
+    const probe = await this.windowsDebugProbe(opts.windows ?? {});
+    if (!probe.reachable) {
+      throw new An3Error("E_TARGET_UNAVAILABLE", `Windows WebView2 DevTools is unavailable on 127.0.0.1:${probe.port}. ${probe.instruction ?? ""}`.trim());
+    }
+    const targets = await httpJson(probe.port, "/json/list").catch((error) => {
+      throw new An3Error("E_TARGET_UNAVAILABLE", `Windows WebView2 DevTools is not reachable on 127.0.0.1:${probe.port}. ${probe.instruction ?? ""}`.trim(), { cause: error.message });
+    });
+    const page = targets.find((entry) => entry.type === "page" && entry.webSocketDebuggerUrl && entry.url?.startsWith(`http://127.0.0.1:${WINDOWS_RUNTIME_PORT}/`));
+    if (!page) throw new An3Error("E_TARGET_UNAVAILABLE", `WebView2 DevTools did not expose the VCE loopback page on port ${WINDOWS_RUNTIME_PORT}.`);
+    const cdp = await CdpSession.connect(page.webSocketDebuggerUrl);
+    try {
+      return await fn(cdp, page);
+    } finally {
+      cdp.close();
+    }
+  }
+}
+
+function describeSelector(selector) {
+  if (!selector) return "(no selector)";
+  if (selector.kind === "role") return `role=${selector.value.role}${selector.value.name ? ` name~${selector.value.name}` : ""}`;
+  return `${selector.kind}=${selector.value}`;
 }

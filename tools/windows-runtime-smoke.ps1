@@ -61,6 +61,8 @@ try {
 
   $portOwner = Get-NetTCPConnection -State Listen -LocalPort 38471 -ErrorAction SilentlyContinue
   if ($portOwner) { throw 'Default VCE runtime port 38471 is unexpectedly occupied on the clean runner.' }
+  $debugPortOwner = Get-NetTCPConnection -State Listen -LocalPort 9222 -ErrorAction SilentlyContinue
+  if ($debugPortOwner) { throw 'WebView2 test debug port 9222 is unexpectedly occupied on the clean runner.' }
   $install = Start-Process -FilePath $installer.FullName `
     -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
   if ($install.ExitCode -ne 0) { throw "Silent NSIS install exited $($install.ExitCode)." }
@@ -76,6 +78,8 @@ try {
   }
 
   $env:AN3_NATIVE_RUNTIME_PORT = '38471'
+  $env:AN3_WINDOWS_CDP_LOCAL = '1'
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222'
   $mainProcess = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
   $startup = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
@@ -98,6 +102,52 @@ try {
   }
   if (!$startup) { throw 'Installed VCE shell did not serve the expected UI within 60 seconds.' }
   Write-Evidence 'startup.json' $startup
+
+  $uiTree = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(60)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $mainProcess.Refresh()
+    if ($mainProcess.HasExited) { throw "Installed VCE shell exited before UI control became ready (code $($mainProcess.ExitCode))." }
+    try {
+      $uiTree = Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')
+      if ($uiTree.data.section -eq 'play') { break }
+    } catch { Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 500
+  }
+  if (!$uiTree -or $uiTree.data.section -ne 'play') { throw 'an3ctl could not attach to the installed Windows shell through local WebView2 CDP.' }
+  $debugListener = Get-NetTCPConnection -State Listen -LocalPort 9222 -ErrorAction SilentlyContinue
+  if (!$debugListener -or @($debugListener | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count -gt 0) {
+    throw 'WebView2 CDP did not remain bound exclusively to a loopback address.'
+  }
+
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'nav-library', '--json')
+  $library = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-grid', '--json')
+  if (!$library.data.node.visible -or $library.data.node.name -notmatch 'No games on this device') {
+    throw 'The installed shell Library did not show its fresh empty state.'
+  }
+  $librarySection = (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  if ($librarySection -ne 'library') { throw "Library navigation ended on '$librarySection'." }
+
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'nav-settings', '--json')
+  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
+  if (!$settings.data.node.visible) { throw 'The installed shell Settings page did not show Game Settings.' }
+  $settingsSection = (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  if ($settingsSection -ne 'settings') { throw "Settings navigation ended on '$settingsSection'." }
+
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'nav-about', '--json')
+  $aboutVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '[data-app-version]', '--json')
+  if (!$aboutVersion.data.node.visible -or !$aboutVersion.data.node.name -or $aboutVersion.data.node.name -match '__AN3_VERSION__') {
+    throw 'The installed shell About page did not show a substituted app version.'
+  }
+  $aboutSection = (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  if ($aboutSection -ne 'about') { throw "About navigation ended on '$aboutSection'." }
+  Write-Evidence 'ui.json' ([ordered]@{
+    cdpAddress = '127.0.0.1:9222'
+    sections = @('play', $librarySection, $settingsSection, $aboutSection)
+    emptyLibraryVisible = $true
+    gameSettingsVisible = $true
+    appVersion = $aboutVersion.data.node.name
+  })
 
   $env:PATH = "$playerDir;$env:PATH"
   $env:AN3_PLAYER = $playerExe
@@ -136,7 +186,7 @@ try {
     audio = 'SDL dummy driver; physical audio UNVERIFIED'
     display = 'SDL dummy driver; physical display/GPU UNVERIFIED'
   })
-  Write-Host 'WINDOWS_INSTALL_STARTUP_GBA_INPUT_SAVE_LOAD=GOOD'
+  Write-Host 'WINDOWS_INSTALL_SHELL_NAVIGATION_GBA_INPUT_SAVE_LOAD=GOOD'
 } catch {
   Write-Evidence 'failure.json' ([ordered]@{ message = $_.Exception.Message; sourceSha = $ExpectedSourceSha; artifactRunId = $ArtifactRunId })
   throw

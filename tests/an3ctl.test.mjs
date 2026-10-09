@@ -154,6 +154,33 @@ test("Linux desktop UI uses the token-protected ui-control bridge", async (t) =>
   assert.equal((await adapter.uiWait({ target: "linux", testid: "pause-toggle", controlFile, timeout: 100 })).found, true);
 });
 
+test("Windows local WebView2 probe uses only the loopback CDP endpoint", async (t) => {
+  const server = createServer((request, response) => {
+    assert.equal(request.url, "/json/list");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify([{ type: "page", title: "Vibe Coded Emulator", url: "http://127.0.0.1:38471/" }]));
+  });
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.once("error", rejectPromise);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  t.after(() => new Promise((resolvePromise) => server.close(resolvePromise)));
+  const previous = process.env.AN3_WINDOWS_CDP_LOCAL;
+  process.env.AN3_WINDOWS_CDP_LOCAL = "1";
+  t.after(() => {
+    if (previous === undefined) delete process.env.AN3_WINDOWS_CDP_LOCAL;
+    else process.env.AN3_WINDOWS_CDP_LOCAL = previous;
+  });
+
+  const result = await new DesktopAdapter(ROOT).windowsDebugProbe({ port: server.address().port });
+  assert.deepEqual(result, {
+    host: "127.0.0.1",
+    port: server.address().port,
+    reachable: true,
+    via: "local-cdp",
+  });
+});
+
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
   const port = process.env.AN3_TEST_PORT ?? "8097";
   const started = parse(await cli(["app", "start", "--target", "web", "--port", port, "--json"]));
