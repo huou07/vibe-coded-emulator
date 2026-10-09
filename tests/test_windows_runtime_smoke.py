@@ -14,6 +14,11 @@ TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="u
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
+    def test_smoke_harness_changes_trigger_the_hosted_package_build(self):
+        self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 2)
+        self.assertGreaterEqual(WORKFLOW.count("tools/windows-runtime-smoke.ps1"), 2)
+        self.assertIn("      - '.github/workflows/**'", WORKFLOW)
+
     def test_test_shell_is_separate_source_matched_and_test_feature_only(self):
         windows_job = WORKFLOW[WORKFLOW.index("  windows-exe:"):WORKFLOW.index("  windows-runtime-smoke:")]
         self.assertIn("Build canonical Windows installer", windows_job)
