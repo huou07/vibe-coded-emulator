@@ -103,6 +103,7 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
     def wait_node(self, testid, predicate, timeout=60):
         deadline = time.monotonic() + timeout
         last = None
+        last_error = None
         while time.monotonic() < deadline:
             if self.app.poll() is not None:
                 self.fail(f"VCE shell exited with {self.app.returncode}; see {self.evidence / 'app.log'}")
@@ -111,10 +112,22 @@ class LinuxPackagedUiSmoke(unittest.TestCase):
                     last = self.an3ctl("ui", "query", "--testid", testid).get("node")
                     if predicate(last):
                         return last
-                except (AssertionError, json.JSONDecodeError, subprocess.TimeoutExpired):
-                    pass
+                except (AssertionError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
+                    last_error = str(error)
             time.sleep(0.4)
-        self.fail(f"timed out waiting for {testid}; last DOM node: {last}")
+        details = {"testid": testid, "last_node": last, "last_error": last_error}
+        try:
+            details["tree"] = self.an3ctl("ui", "tree").get("nodes")
+        except (AssertionError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
+            details["tree_error"] = str(error)
+        try:
+            details["control_file"] = self.control.read_text(encoding="utf-8")
+        except OSError as error:
+            details["control_file_error"] = str(error)
+        (self.evidence / "ui-timeout.json").write_text(
+            json.dumps(details, indent=2) + "\n", encoding="utf-8"
+        )
+        self.fail(f"timed out waiting for {testid}; diagnostic details: {details}")
 
     def click_visible(self, testid):
         node = self.wait_node(testid, lambda item: bool(item and item.get("visible") and not item.get("disabled")))
