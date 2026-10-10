@@ -148,9 +148,16 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
     def test_smoke_preserves_distribution_binary_and_verifies_test_import_guard(self):
         # The hosted runner's PowerShell parser rejects digit separators in this script.
         self.assertNotRegex(SMOKE, r"\b\d+(?:_\d+)+\b")
-        self.assertIn("$automationBackup = \"$mainExe.distribution-backup\"", SMOKE)
+        self.assertIn("$automationTestExe = Join-Path $installDir 'an3-offline-native-ui-test.exe'", SMOKE)
+        self.assertIn("Start-Process -FilePath $automationTestExe -WorkingDirectory $installDir", SMOKE)
+        self.assertIn("$installerStartedApp = $false", SMOKE)
+        self.assertIn("$_.ExecutablePath.Equals($mainExe", SMOKE)
+        self.assertIn("fresh install left port 38471 occupied", SMOKE)
+        self.assertIn("Write-Evidence 'distribution-shell.json'", SMOKE)
+        self.assertIn("distributionShellUnchanged = ((Get-FileHash $mainExe", SMOKE)
+        self.assertIn("Remove-Item -LiteralPath $automationTestExe -Force", SMOKE)
+        self.assertNotIn("Copy-Item -LiteralPath $automationExe -Destination $mainExe", SMOKE)
         self.assertIn("AN3_UI_CONTROL_FILE", SMOKE)
-        self.assertIn("Move-Item -LiteralPath $automationBackup -Destination $mainExe", SMOKE)
         self.assertIn("Remove-Item Env:AN3_UI_TEST_ROM", SMOKE)
         self.assertIn("--seq', 'A@0-1'", SMOKE)
         self.assertIn("--save-state", SMOKE)

@@ -12,7 +12,7 @@ $installRoot = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke-install'
 $installDir = Join-Path $installRoot 'app'
 $mainProcess = $null
 $mainExe = $null
-$automationBackup = $null
+$automationTestExe = $null
 $sramStorage = $null
 New-Item -ItemType Directory -Force -Path $evidence, $installRoot | Out-Null
 
@@ -281,6 +281,27 @@ try {
   if ($install.ExitCode -ne 0) { throw "Silent NSIS install exited $($install.ExitCode)." }
 
   $mainExe = Join-Path $installDir 'an3-offline-native.exe'
+  $installerStartedApp = $false
+  foreach ($installedProcess in @(Get-CimInstance Win32_Process -Filter "Name = 'an3-offline-native.exe'" |
+      Where-Object { $_.ExecutablePath -and $_.ExecutablePath.Equals($mainExe, [StringComparison]::OrdinalIgnoreCase) })) {
+    $installerStartedApp = $true
+    $runningApp = Get-Process -Id $installedProcess.ProcessId -ErrorAction SilentlyContinue
+    if ($runningApp -and $runningApp.MainWindowHandle -ne 0) {
+      $null = $runningApp.CloseMainWindow()
+      if (!$runningApp.WaitForExit(10000)) {
+        & taskkill.exe /PID $runningApp.Id /T /F | Out-Null
+        $runningApp.WaitForExit(5000) | Out-Null
+      }
+    } elseif ($runningApp) {
+      & taskkill.exe /PID $runningApp.Id /T /F | Out-Null
+      $runningApp.WaitForExit(5000) | Out-Null
+    }
+    if (Get-Process -Id $installedProcess.ProcessId -ErrorAction SilentlyContinue) {
+      throw 'The freshly installed VCE shell did not exit before the package smoke.'
+    }
+  }
+  $portOwner = Get-NetTCPConnection -State Listen -LocalPort 38471 -ErrorAction SilentlyContinue
+  if ($portOwner) { throw 'The fresh install left port 38471 occupied before the package smoke.' }
   $playerDir = Join-Path $installDir 'runtime/windows-x64'
   $coreDir = Join-Path $playerDir 'libretro'
   $playerExe = Join-Path $playerDir 'an3-native-runtime.exe'
@@ -295,11 +316,14 @@ try {
   if ([Text.Encoding]::ASCII.GetString($distributionShellBytes).Contains('AN3_UI_CONTROL_FILE')) {
     throw 'The shipped Windows app unexpectedly includes the test-only ui-control feature.'
   }
-  $automationBackup = "$mainExe.distribution-backup"
-  Copy-Item -LiteralPath $mainExe -Destination $automationBackup
-  Copy-Item -LiteralPath $automationExe -Destination $mainExe -Force
-  if ((Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $automationHash) {
-    throw 'The source-matched Windows UI-control shell was not installed into the isolated package copy.'
+  # Keep the packaged distribution executable immutable. Replacing it in-place
+  # can fail when Windows or the installer still holds the file open, and it
+  # needlessly complicates proving that the shipped executable was preserved.
+  # The test shell uses the same resource directory when placed beside it.
+  $automationTestExe = Join-Path $installDir 'an3-offline-native-ui-test.exe'
+  Copy-Item -LiteralPath $automationExe -Destination $automationTestExe
+  if ((Get-FileHash $automationTestExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $automationHash) {
+    throw 'The source-matched Windows UI-control shell was not copied beside the isolated package resources.'
   }
 
   $fixture = Join-Path $evidence 'AN3TAPTEST.gba'
@@ -313,7 +337,7 @@ try {
   # Windows Server hosted runners have no WASAPI endpoint; keep native launch testable.
   $env:SDL_AUDIODRIVER = 'dummy'
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222'
-  $mainProcess = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
+  $mainProcess = Start-Process -FilePath $automationTestExe -WorkingDirectory $installDir -PassThru
   $startup = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   while ([DateTime]::UtcNow -lt $deadline) {
@@ -571,11 +595,21 @@ try {
   Write-Evidence 'shell-shutdown.json' ([ordered]@{
     shellClosedCleanly = $true
     nativePlayerExited = $true
+    distributionShellUnchanged = ((Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant() -eq $distributionShellSha)
     sourceSha = $ExpectedSourceSha
+  })
+  if ((Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $distributionShellSha) {
+    throw 'The installed distribution shell changed during the test-shell runtime check.'
+  }
+  Write-Evidence 'distribution-shell.json' ([ordered]@{
+    sha256 = $distributionShellSha
+    unchangedAfterSmoke = $true
+    installerStartedAndClosedApp = $installerStartedApp
   })
   $mainProcess = $null
   Remove-Item Env:AN3_UI_TEST_ROM -ErrorAction SilentlyContinue
-  Move-Item -LiteralPath $automationBackup -Destination $mainExe -Force
+  Remove-Item -LiteralPath $automationTestExe -Force
+  $automationTestExe = $null
 
   $env:PATH = "$playerDir;$env:PATH"
   $env:AN3_PLAYER = $playerExe
@@ -680,7 +714,7 @@ try {
     }
   }
   Remove-Item Env:AN3_UI_TEST_ROM -ErrorAction SilentlyContinue
-  if ($automationBackup -and $mainExe -and (Test-Path $automationBackup)) {
-    Move-Item -LiteralPath $automationBackup -Destination $mainExe -Force
+  if ($automationTestExe -and (Test-Path $automationTestExe)) {
+    Remove-Item -LiteralPath $automationTestExe -Force -ErrorAction SilentlyContinue
   }
 }
