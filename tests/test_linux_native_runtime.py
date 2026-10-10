@@ -126,7 +126,8 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('AN3_FLATPAK_SMOKE_ROM', FLATPAK_INSTALL_VERIFY)
         self.assertIn('export HOME="$verification_root/home"', FLATPAK_INSTALL_VERIFY)
         self.assertIn('smoke_host_path="$HOME/.var/app/$app_id/data/$smoke_name"', FLATPAK_INSTALL_VERIFY)
-        self.assertIn('[[ "$smoke_data_home" == /var/data ]]', FLATPAK_INSTALL_VERIFY)
+        self.assertIn('expected_smoke_data_home="$HOME/.var/app/$app_id/data"', FLATPAK_INSTALL_VERIFY)
+        self.assertIn('[[ "$smoke_data_home" == "$expected_smoke_data_home" ]]', FLATPAK_INSTALL_VERIFY)
         self.assertIn('--rom "$smoke_rom"', FLATPAK_INSTALL_VERIFY)
         self.assertIn('FLATPAK_RUNTIME_SMOKE=PASS', FLATPAK_INSTALL_VERIFY)
 

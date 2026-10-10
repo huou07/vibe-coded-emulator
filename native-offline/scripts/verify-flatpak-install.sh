@@ -41,7 +41,8 @@ if [[ -n "${AN3_FLATPAK_SMOKE_ROM:-}" ]]; then
   mkdir -p "$(dirname "$smoke_host_path")"
   cp -- "$AN3_FLATPAK_SMOKE_ROM" "$smoke_host_path"
   smoke_data_home="$(flatpak run --command=sh "$app_id" -c 'printf "%s" "$XDG_DATA_HOME"')"
-  [[ "$smoke_data_home" == /var/data ]] || { echo "Unexpected Flatpak private data path: $smoke_data_home" >&2; exit 2; }
+  expected_smoke_data_home="$HOME/.var/app/$app_id/data"
+  [[ "$smoke_data_home" == "$expected_smoke_data_home" ]] || { echo "Unexpected Flatpak private data path: $smoke_data_home" >&2; exit 2; }
   smoke_rom="$smoke_data_home/$smoke_name"
   set +e
   timeout 15s xvfb-run -a flatpak run --command=an3-native-player --env=SDL_AUDIODRIVER=dummy "$app_id" \
