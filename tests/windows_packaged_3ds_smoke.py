@@ -49,6 +49,12 @@ def capture_client(hwnd, path):
     return image
 
 
+def game_area(image):
+    # A maximized Windows runner can leave the taskbar over the window. Exclude
+    # its bottom strip so desktop chrome cannot make a blank render look valid.
+    return image.crop((0, 0, image.width, max(1, image.height - 48)))
+
+
 class WindowsPackaged3DSSmoke(unittest.TestCase):
     def test_exact_windows_package_azahar_visible_frame_and_a_input(self):
         runner_temp = Path(os.environ["RUNNER_TEMP"])
@@ -106,7 +112,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         log_path = evidence / "player.log"
         command = [str(player), "--rom", str(fixture), "--system", "3ds",
                    "--renderer", "vulkan", "--control-stdin", "--storage", str(storage)]
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log_path.open("w", encoding="utf-8"),
+        log_stream = log_path.open("w", encoding="utf-8")
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log_stream,
                                    stderr=subprocess.STDOUT, text=True, env=env)
         try:
             deadline = time.monotonic() + 60
@@ -129,12 +136,16 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 if process.poll() is not None:
                     raise RuntimeError(f"Packaged player exited {process.returncode} before rendering.")
                 baseline = capture_client(hwnd, baseline_path)
-                colors = len(baseline.getcolors(maxcolors=baseline.width * baseline.height) or [])
-                if colors > 16:
+                game = game_area(baseline)
+                colors = len(game.getcolors(maxcolors=game.width * game.height) or [])
+                visible_pixels = sum(pixel != (0, 0, 0) for pixel in game.getdata())
+                visible_percent = visible_pixels * 100 / (game.width * game.height)
+                if colors > 16 and visible_percent > 2.0:
                     break
                 time.sleep(1)
             self.assertIsNotNone(baseline)
             self.assertGreater(colors, 16, "3DS client area remained blank or nearly uniform")
+            self.assertGreater(visible_percent, 2.0, "3DS game area stayed black; see player log")
 
             ctypes.windll.user32.SetForegroundWindow(hwnd)
             ctypes.windll.user32.keybd_event(VK_X, 0, 0, 0)
@@ -144,10 +155,11 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 after_a = capture_client(hwnd, input_path)
             finally:
                 ctypes.windll.user32.keybd_event(VK_X, 0, KEYEVENTF_KEYUP, 0)
-            self.assertEqual(baseline.size, after_a.size)
-            difference = ImageChops.difference(baseline, after_a)
+            baseline_game, after_a_game = game_area(baseline), game_area(after_a)
+            self.assertEqual(baseline_game.size, after_a_game.size)
+            difference = ImageChops.difference(baseline_game, after_a_game)
             changed = sum(pixel != (0, 0, 0) for pixel in difference.getdata())
-            changed_percent = changed * 100 / (baseline.width * baseline.height)
+            changed_percent = changed * 100 / (baseline_game.width * baseline_game.height)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
         finally:
             if process.poll() is None and process.stdin:
@@ -161,6 +173,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 return_code = process.wait(timeout=5)
             if process.stdin:
                 process.stdin.close()
+            log_stream.close()
             self.assertEqual(return_code, 0, f"packaged player exited {return_code}; see {log_path}")
 
         record = {
@@ -176,7 +189,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "fixtureSha256": FIXTURE_SHA256,
             "renderer": "Vulkan",
             "titleFrame": {"path": baseline_path.name, "width": baseline.width,
-                           "height": baseline.height, "distinctColors": colors},
+                           "height": baseline.height, "distinctColors": colors,
+                           "visiblePixelsPercent": round(visible_percent, 4)},
             "afterAFrame": {"path": input_path.name},
             "aInputChangedPixels": changed,
             "aInputChangedPercent": round(changed_percent, 4),

@@ -153,6 +153,8 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("\"--renderer\", \"vulkan\"", smoke)
         self.assertIn("keybd_event(VK_X", smoke)
         self.assertIn("ImageChops.difference", smoke)
+        self.assertIn("game_area(baseline)", smoke)
+        self.assertIn("visible_percent > 2.0", smoke)
         self.assertIn("windows-packaged-3ds-diagnostics", fixture_job)
         self.assertIn("pip install --disable-pip-version-check pillow", fixture_job)
         self.assertIn("cp -R \"$ROOT/tests/.\" \"$OUT/tests/\"", snapshot_builder)
