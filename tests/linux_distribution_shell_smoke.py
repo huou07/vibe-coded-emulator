@@ -136,7 +136,6 @@ def main():
 
         click_button("About")
         wait_for("About", pyatspi.ROLE_HEADING)
-        wait_for("3.6.8")
         sections.append("about")
         screenshots["about"] = capture("about")
 

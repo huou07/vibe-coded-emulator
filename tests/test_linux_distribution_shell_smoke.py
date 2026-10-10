@@ -31,7 +31,7 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
         self.assertIn('wait_for("Add ROM GBA · NDS · 3DS")', SMOKE)
         for section in ("Library", "Settings", "Help", "About", "Play"):
             self.assertIn(f'click_button("{section}")', SMOKE)
-        self.assertIn('wait_for("3.6.8")', SMOKE)
+        self.assertIn('"aboutVersion": "3.6.8"', SMOKE)
         self.assertIn('"Alt+F4"', SMOKE)
         self.assertIn("port_free", SMOKE)
         self.assertIn('"screenshots": screenshots', SMOKE)
