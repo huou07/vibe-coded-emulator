@@ -3,7 +3,9 @@
 ## Exact private source state
 
 - Branch: `feature/phone-controller-cross-platform`
-- Source commit: `9059b9836c68076bc0213a8773786d00f272e893`
+- Exact source SHA: `9994fff57e9318e3c80d6c87606a7ea055e6a3be`
+- Implementation commit: `9059b9836c68076bc0213a8773786d00f272e893`
+- Range-validation follow-up: `9994fff57e9318e3c80d6c87606a7ea055e6a3be`; malformed or mistyped range values are rejected rather than falling back to whole-file reads.
 - Package version fields remain at `3.2.5`; no artifact was built and no versioned bytes were republished.
 - Frozen public 3.6.8 candidate remains at `ffd1ebc79750a026e7bbbcc6a7762c0ead93ab4c`. It remains core-only and excludes LAN Sync. No public snapshot, push, release, CI dispatch, or deployment was made.
 
@@ -19,7 +21,7 @@ Regression guard RG-144 records the boundary and verification requirements. The 
 
 - Before the chunk implementation, `node --test tests/native_sync.test.mjs tests/sync_transfer.test.mjs` passed 22/22.
 - Current same suite passes 24/24, including large upload/download chunking and Android asset parity.
-- `cargo test --lib` passes: 36 passed, 3 ignored.
+- `cargo test --lib` passes: 37 passed, 3 ignored, including ordered upload chunks, publish-slot release, and malformed range rejection.
 - `cargo check --lib` succeeds, with existing dead-code warnings in controller, LAN, and UI-control modules.
 - `git diff --check` passed for the committed change.
 - `cargo fmt --check` was attempted and reports extensive pre-existing formatting differences across unrelated crate files; those files were not reformatted.
