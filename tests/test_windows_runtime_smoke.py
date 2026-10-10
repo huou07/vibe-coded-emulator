@@ -11,6 +11,7 @@ WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf
 SMOKE = (ROOT / "tools/windows-runtime-smoke.ps1").read_text(encoding="utf-8")
 BUILDER = (ROOT / "native-offline/scripts/build-windows-automation.ps1").read_text(encoding="utf-8")
 TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+NDS_SMOKE = (ROOT / "tools/windows-nds-runtime-smoke.ps1").read_text(encoding="utf-8")
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
@@ -110,6 +111,25 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         for result in ("Game paused.", "Game resumed.", "Quick save 1 completed.", "Quick load 1 completed."):
             self.assertIn(result, SMOKE)
         self.assertIn("windows-shell-session-controls.json", SMOKE)
+
+    def test_targeted_windows_run_builds_lawful_nds_fixture_and_tests_exact_package(self):
+        pull_request = WORKFLOW[WORKFLOW.index("  pull_request:"):WORKFLOW.index("  push:")]
+        fixture_job = WORKFLOW[WORKFLOW.index("  windows-nds-fixture:"):WORKFLOW.index("  windows-packaged-nds-smoke:")]
+        nds_job = WORKFLOW[WORKFLOW.index("  windows-packaged-nds-smoke:"):WORKFLOW.index("  android-smoke:")]
+        self.assertIn("tools/windows-nds-runtime-smoke.ps1", pull_request)
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''", fixture_job)
+        self.assertIn("devkitPro/nds-examples.git", fixture_job)
+        self.assertIn("f1ba715a451c6407f8b0f805999d0153062ff552", fixture_job)
+        self.assertIn("devkitpro/devkitarm@sha256:340c466b53961c0d90e7536f6db3364d4bfede0f65a26492c25b118d0a00d82e", fixture_job)
+        self.assertIn("3cbd04760c71e49ca2617604515abc7d26aeadd583418f28557d1a9ee7a95544", fixture_job)
+        self.assertIn("run-id: ${{ inputs.windows_artifact_run_id }}", nds_job)
+        self.assertIn("windows-nds-fixture", nds_job)
+        self.assertIn("retention-days: 3", nds_job)
+        self.assertIn("EXPECTED_SOURCE_SHA", NDS_SMOKE)
+        self.assertIn("melondsds_libretro.dll", NDS_SMOKE)
+        self.assertIn("'--system', 'nds'", NDS_SMOKE)
+        self.assertIn("$status.coreFrames -ne 120", NDS_SMOKE)
+        self.assertIn("$colors.Count -le 16", NDS_SMOKE)
 
     def test_native_player_shows_only_the_game_window(self):
         self.assertIn("$controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' }", SMOKE)

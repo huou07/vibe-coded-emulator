@@ -60,6 +60,7 @@ on:
       - 'tests/test_windows_runtime_smoke.py'
       - 'tools/android/**'
       - 'tools/release-train.sh'
+      - 'tools/windows-nds-runtime-smoke.ps1'
       - 'tools/testrom/**'
       - 'tools/windows-runtime-smoke.ps1'
   push:
@@ -967,6 +968,83 @@ jobs:
         with:
           name: windows-runtime-smoke-diagnostics
           path: ${{ runner.temp }}/vce-windows-runtime-smoke
+          if-no-files-found: ignore
+          retention-days: 3
+
+  windows-nds-fixture:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''
+    name: Build pinned lawful NDS runtime fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - name: Build devkitPro Picking sample with pinned toolchain
+        env:
+          FIXTURE_ROOT: ${{ runner.temp }}/an3-nds-fixture
+        run: |
+          set -euo pipefail
+          git init -q "$FIXTURE_ROOT"
+          git -C "$FIXTURE_ROOT" remote add origin https://github.com/devkitPro/nds-examples.git
+          git -C "$FIXTURE_ROOT" fetch -q --depth=1 origin f1ba715a451c6407f8b0f805999d0153062ff552
+          git -C "$FIXTURE_ROOT" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$FIXTURE_ROOT" rev-parse HEAD)" = f1ba715a451c6407f8b0f805999d0153062ff552
+          python3 - "$FIXTURE_ROOT/Graphics/3D/Picking/source/main.cpp" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1])
+          text = source.read_text(encoding="utf-8")
+          old = "while(pmMainLoop()) {"
+          if text.count(old) != 1:
+              raise SystemExit("Pinned Picking source no longer has its documented pre-Calico loop.")
+          source.write_text(text.replace(old, "while(1) {", 1), encoding="utf-8")
+          PY
+          docker run --rm -v "$FIXTURE_ROOT:/source" -w /source/Graphics/3D/Picking \
+            devkitpro/devkitarm@sha256:340c466b53961c0d90e7536f6db3364d4bfede0f65a26492c25b118d0a00d82e make
+          fixture="$FIXTURE_ROOT/Graphics/3D/Picking/Picking.nds"
+          printf '%s  %s\n' \
+            3cbd04760c71e49ca2617604515abc7d26aeadd583418f28557d1a9ee7a95544 \
+            "$fixture" | sha256sum --check --strict -
+          mkdir -p artifacts/nds-fixture
+          cp "$fixture" artifacts/nds-fixture/Picking.nds
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-nds-fixture
+          path: artifacts/nds-fixture/Picking.nds
+          if-no-files-found: error
+          retention-days: 3
+
+  windows-packaged-nds-smoke:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''
+    needs: windows-nds-fixture
+    name: Windows packaged melonDS NDS core smoke
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-exe
+          path: artifacts/windows
+          run-id: ${{ inputs.windows_artifact_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-nds-fixture
+          path: artifacts/nds-fixture
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+      - name: Install exact Windows package and verify NDS output
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.windows_expected_source_sha }}
+          ARTIFACT_RUN_ID: ${{ inputs.windows_artifact_run_id }}
+        run: ./tools/windows-nds-runtime-smoke.ps1 -ArtifactDirectory artifacts/windows -FixtureDirectory artifacts/nds-fixture
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: windows-packaged-nds-diagnostics
+          path: ${{ runner.temp }}/vce-windows-nds-smoke
           if-no-files-found: ignore
           retention-days: 3
 
