@@ -1039,7 +1039,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.windows_expected_source_sha }}
           ARTIFACT_RUN_ID: ${{ inputs.windows_artifact_run_id }}
-        run: ./tools/windows-nds-runtime-smoke.ps1 -ArtifactDirectory artifacts/windows -FixtureDirectory artifacts/nds-fixture
+        run: '& "$env:GITHUB_WORKSPACE\tools\windows-nds-runtime-smoke.ps1" -ArtifactDirectory artifacts/windows -FixtureDirectory artifacts/nds-fixture'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
