@@ -7,10 +7,12 @@ import ctypes
 import hashlib
 import json
 import os
+import queue
 import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 
@@ -20,8 +22,6 @@ from PIL import Image, ImageChops, ImageGrab
 FIXTURE_SHA256 = "a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050"
 FIXTURE_COMMIT = "e5b13872f0c1207cb9c86e18e710c8f1fa269fb8"
 WINDOW_TITLE = "VibeCodedEmulator"
-VK_X = 0x58
-KEYEVENTF_KEYUP = 0x0002
 
 
 class Rect(ctypes.Structure):
@@ -53,6 +53,18 @@ def game_area(image):
     # A maximized Windows runner can leave the taskbar over the window. Exclude
     # its bottom strip so desktop chrome cannot make a blank render look valid.
     return image.crop((0, 0, image.width, max(1, image.height - 48)))
+
+
+def wait_for_output(lines, prefix, timeout=10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            line = lines.get(timeout=min(0.25, deadline - time.monotonic()))
+        except queue.Empty:
+            continue
+        if prefix in line:
+            return line
+    raise TimeoutError(f"Native player did not acknowledge {prefix}.")
 
 
 class WindowsPackaged3DSSmoke(unittest.TestCase):
@@ -113,11 +125,22 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         command = [str(player), "--rom", str(fixture), "--system", "3ds",
                    "--renderer", "vulkan", "--control-stdin", "--storage", str(storage)]
         log_stream = log_path.open("w", encoding="utf-8")
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log_stream,
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True, env=env)
+        output_lines = queue.Queue()
+
+        def drain_output():
+            for line in process.stdout:
+                log_stream.write(line)
+                log_stream.flush()
+                output_lines.put(line)
+
+        reader = threading.Thread(target=drain_output, daemon=True)
+        reader.start()
+        hwnd = 0
         try:
+            wait_for_output(output_lines, "AN3_NATIVE_READY")
             deadline = time.monotonic() + 60
-            hwnd = 0
             while time.monotonic() < deadline:
                 if process.poll() is not None:
                     raise RuntimeError(f"Packaged player exited {process.returncode} before showing a window.")
@@ -147,14 +170,12 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             self.assertGreater(colors, 16, "3DS client area remained blank or nearly uniform")
             self.assertGreater(visible_percent, 2.0, "3DS game area stayed black; see player log")
 
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-            ctypes.windll.user32.keybd_event(VK_X, 0, 0, 0)
-            try:
-                time.sleep(0.5)
-                input_path = evidence / "3ds-after-a.png"
-                after_a = capture_client(hwnd, input_path)
-            finally:
-                ctypes.windll.user32.keybd_event(VK_X, 0, KEYEVENTF_KEYUP, 0)
+            process.stdin.write("1\tbutton\t8:1\n")
+            process.stdin.flush()
+            wait_for_output(output_lines, "AN3_NATIVE_CONTROL_RESULT 1 OK")
+            time.sleep(0.5)
+            input_path = evidence / "3ds-after-a.png"
+            after_a = capture_client(hwnd, input_path)
             baseline_game, after_a_game = game_area(baseline), game_area(after_a)
             self.assertEqual(baseline_game.size, after_a_game.size)
             difference = ImageChops.difference(baseline_game, after_a_game)
@@ -162,7 +183,9 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             changed_percent = changed * 100 / (baseline_game.width * baseline_game.height)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
         finally:
-            if process.poll() is None and process.stdin:
+            if process.poll() is None and hwnd:
+                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+            elif process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
             try:
@@ -173,6 +196,9 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 return_code = process.wait(timeout=5)
             if process.stdin:
                 process.stdin.close()
+            reader.join(timeout=2)
+            if process.stdout:
+                process.stdout.close()
             log_stream.close()
             self.assertEqual(return_code, 0, f"packaged player exited {return_code}; see {log_path}")
 
