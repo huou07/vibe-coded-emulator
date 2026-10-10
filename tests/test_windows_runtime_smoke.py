@@ -161,6 +161,8 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("info sharedlibrary", smoke)
         self.assertIn('"-batch", "-x", str(commands)', smoke)
         self.assertIn('"shutdownDebugger": shutdown_debugger', smoke)
+        self.assertIn('"shutdownModules": shutdown_modules', smoke)
+        self.assertIn("Get-Process -Id", smoke)
         self.assertIn("ImageChops.difference", smoke)
         self.assertIn("game_area(baseline)", smoke)
         self.assertIn("visible_percent > 2.0", smoke)

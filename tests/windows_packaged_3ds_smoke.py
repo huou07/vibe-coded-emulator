@@ -187,6 +187,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         finally:
             shutdown_mode = "already-exited"
             shutdown_debugger = "not-needed"
+            shutdown_modules = "not-needed"
             if process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
@@ -211,6 +212,21 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                         (evidence / "shutdown-stacks.txt").write_text(
                             f"command: {debugger} -batch -x {commands}\n"
                             f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}",
+                            encoding="utf-8",
+                        )
+                        module_script = (
+                            f"$p = Get-Process -Id {process.pid}; "
+                            "$p.Modules | ForEach-Object { "
+                            "'{0:X16}`t{1:X8}`t{2}' -f [uint64]$_.BaseAddress, "
+                            "$_.ModuleMemorySize, $_.ModuleName }"
+                        )
+                        modules = subprocess.run(
+                            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", module_script],
+                            capture_output=True, text=True, timeout=15,
+                        )
+                        shutdown_modules = f"powershell-exit-{modules.returncode}"
+                        (evidence / "shutdown-modules.txt").write_text(
+                            f"exitCode: {modules.returncode}\nstdout:\n{modules.stdout}\nstderr:\n{modules.stderr}",
                             encoding="utf-8",
                         )
                     except (OSError, subprocess.TimeoutExpired) as error:
@@ -263,6 +279,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "shutdown": shutdown_mode,
             "shutdownExitCode": return_code,
             "shutdownDebugger": shutdown_debugger,
+            "shutdownModules": shutdown_modules,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
             "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, orderly process shutdown, and long-session behavior UNVERIFIED",
         }
