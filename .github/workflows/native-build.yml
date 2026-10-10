@@ -1088,6 +1088,32 @@ jobs:
           if ((Get-FileHash "$env:FIXTURE_ROOT\3DS-TEST.3dsx" -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050') { throw '3DS fixture checksum mismatch.' }
           if (!(Get-Content "$env:FIXTURE_ROOT\LICENSE" -Raw).Contains('MIT License')) { throw 'Pinned fixture MIT license text is missing.' }
           if (!(Test-Path "$env:FIXTURE_ROOT\game\main.lua")) { throw 'Pinned fixture game sidecar is missing.' }
+      - name: Configure hosted CPU Vulkan ICD for 3DS
+        shell: pwsh
+        run: |
+          $roots = @(
+            "$env:ProgramFiles\Google\Chrome\Application",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application",
+            "$env:ProgramFiles\Microsoft\Edge\Application",
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application"
+          ) | Where-Object { Test-Path $_ }
+          $icd = $roots | ForEach-Object { Get-ChildItem $_ -Filter vk_swiftshader_icd.json -File -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (!$icd) { throw 'Hosted Windows runner has no SwiftShader Vulkan ICD; 3DS rendering cannot be verified on this runner.' }
+          $manifest = Get-Content $icd.FullName -Raw | ConvertFrom-Json
+          $dll = Join-Path $icd.DirectoryName $manifest.ICD.library_path
+          if (!(Test-Path $dll)) { throw 'SwiftShader ICD library path does not resolve.' }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vce-windows-3ds-smoke" | Out-Null
+          $details = [ordered]@{
+            icd = $icd.FullName
+            icdSha256 = (Get-FileHash $icd.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            library = $dll
+            librarySha256 = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+            source = 'Installed Chromium SwiftShader; ephemeral test dependency only'
+          }
+          $details | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\vce-windows-3ds-smoke\vulkan-environment.json"
+          "VK_ICD_FILENAMES=$($icd.FullName)" | Add-Content $env:GITHUB_ENV
+          "VK_DRIVER_FILES=$($icd.FullName)" | Add-Content $env:GITHUB_ENV
+          $icd.DirectoryName | Add-Content $env:GITHUB_PATH
       - name: Install exact Windows package and verify 3DS output and A input
         shell: pwsh
         env:
