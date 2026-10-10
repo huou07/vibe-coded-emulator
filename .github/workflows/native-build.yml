@@ -63,7 +63,6 @@ on:
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
-      - 'tools/windows-runtime-smoke.ps1'
       - '!native-offline/src-tauri/src/ui_control.rs'
 
 permissions:

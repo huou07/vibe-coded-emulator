@@ -14,10 +14,14 @@ TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="u
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
-    def test_smoke_harness_changes_trigger_the_hosted_package_build(self):
+    def test_smoke_harness_changes_do_not_rebuild_the_all_platform_matrix_on_push(self):
         self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 1)
         self.assertGreaterEqual(WORKFLOW.count("tools/windows-runtime-smoke.ps1"), 2)
-        self.assertIn("      - '.github/workflows/**'", WORKFLOW)
+        pull_request = WORKFLOW[WORKFLOW.index("  pull_request:"):WORKFLOW.index("  push:")]
+        push = WORKFLOW[WORKFLOW.index("  push:"):WORKFLOW.index("\npermissions:")]
+        self.assertIn("      - '.github/workflows/**'", pull_request)
+        self.assertIn("      - 'tools/windows-runtime-smoke.ps1'", pull_request)
+        self.assertNotIn("tools/windows-runtime-smoke.ps1", push)
 
     def test_hosted_windows_candidate_can_build_and_smoke_without_other_platform_jobs(self):
         self.assertIn("build_windows_candidate:", WORKFLOW)
