@@ -107,13 +107,12 @@ jobs:
           | GBA (mGBA) | yes | yes | yes | yes |
           | NDS (melonDS DS) | yes | yes | yes | yes |
           | 3DS (Azahar) | yes | requires Vulkan | requires Vulkan | yes |
-          | Switch homebrew (Eden) | yes | yes | yes | companion built for arm64 |
 
           3DS uses the Azahar hardware renderer and needs a working Vulkan
           driver off macOS; the portable runtime rejects the OpenGL fallback for
           3DS by design. NDS runs melonDS in software-render mode, the accepted
-          default for the pinned core. Switch runs only lawful homebrew through
-          the separate Eden companion process.
+          default for the pinned core. VCE 3.6.8 is core-only: Phone Controller,
+          LAN Sync, and Switch/Eden are not included or supported in this release.
 
           ## Runtime acceptance
 
