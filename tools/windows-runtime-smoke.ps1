@@ -11,6 +11,7 @@ $evidence = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke'
 $installRoot = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke-install'
 $installDir = Join-Path $installRoot 'app'
 $mainProcess = $null
+$distributionProcess = $null
 $mainExe = $null
 $automationTestExe = $null
 $sramStorage = $null
@@ -316,6 +317,98 @@ try {
   if ([Text.Encoding]::ASCII.GetString($distributionShellBytes).Contains('AN3_UI_CONTROL_FILE')) {
     throw 'The shipped Windows app unexpectedly includes the test-only ui-control feature.'
   }
+
+  $env:AN3_NATIVE_RUNTIME_PORT = '38471'
+  $env:AN3_WINDOWS_CDP_LOCAL = '1'
+  $env:SDL_AUDIODRIVER = 'dummy'
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=9222'
+  $distributionProcess = Start-Process -FilePath $mainExe -WorkingDirectory $installDir -PassThru
+  $distributionStartup = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(60)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $distributionProcess.Refresh()
+    if ($distributionProcess.HasExited) { throw "Packaged VCE shell exited early with code $($distributionProcess.ExitCode)." }
+    try {
+      $response = Invoke-WebRequest -Uri 'http://127.0.0.1:38471/' -TimeoutSec 3 -UseBasicParsing
+      if ($response.StatusCode -eq 200 -and $response.Content -match 'Vibe Coded Emulator') {
+        $distributionStartup = $true
+        break
+      }
+    } catch { Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 500
+  }
+  if (!$distributionStartup) { throw 'Packaged VCE shell did not serve the expected UI within 60 seconds.' }
+
+  $distributionTree = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(60)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    $distributionProcess.Refresh()
+    if ($distributionProcess.HasExited) { throw "Packaged VCE shell exited before CDP became ready (code $($distributionProcess.ExitCode))." }
+    try {
+      $distributionTree = Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')
+      if ($distributionTree.data.section -eq 'play') { break }
+    } catch { Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 500
+  }
+  if (!$distributionTree -or $distributionTree.data.section -ne 'play') { throw 'an3ctl could not attach to the packaged Windows shell through loopback WebView2 CDP.' }
+  $debugListener = Get-NetTCPConnection -State Listen -LocalPort 9222 -ErrorAction SilentlyContinue
+  if (!$debugListener -or @($debugListener | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }).Count -gt 0) {
+    throw 'Packaged WebView2 CDP did not remain bound exclusively to a loopback address.'
+  }
+
+  $distributionSections = @('play')
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="library"]', '--json')
+  $library = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-grid', '--json')
+  if (!$library.data.node.visible -or $library.data.node.name -notmatch 'No games on this device') {
+    throw 'The packaged shell Library did not show its fresh empty state.'
+  }
+  $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="settings"]', '--json')
+  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
+  if (!$settings.data.node.visible) { throw 'The packaged shell Settings page did not show Game Settings.' }
+  $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="about"]', '--json')
+  $distributionVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '[data-app-version]', '--json')
+  if (!$distributionVersion.data.node.visible -or !$distributionVersion.data.node.name -or $distributionVersion.data.node.name -match '__AN3_VERSION__') {
+    throw 'The packaged shell About page did not show a substituted app version.'
+  }
+  $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="play"]', '--json')
+  $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
+  if (($distributionSections -join ',') -ne 'play,library,settings,about,play') {
+    throw "Packaged shell navigation ended on unexpected sections: $($distributionSections -join ',')."
+  }
+  $distributionProcess.Refresh()
+  $null = $distributionProcess.CloseMainWindow()
+  if (!$distributionProcess.WaitForExit(10000)) {
+    & taskkill.exe /PID $distributionProcess.Id /T /F | Out-Null
+    $distributionProcess.WaitForExit(5000) | Out-Null
+    throw 'The packaged Windows shell did not close cleanly after its navigation check.'
+  }
+  $distributionProcess.Refresh()
+  if (!$distributionProcess.HasExited) { throw 'The packaged Windows shell remained open after its close request.' }
+  $deadline = [DateTime]::UtcNow.AddSeconds(10)
+  do {
+    $portOwner = Get-NetTCPConnection -State Listen -LocalPort 38471 -ErrorAction SilentlyContinue
+    $debugPortOwner = Get-NetTCPConnection -State Listen -LocalPort 9222 -ErrorAction SilentlyContinue
+    if (!$portOwner -and !$debugPortOwner) { break }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  if ($portOwner) { throw 'Closing the packaged shell left port 38471 occupied.' }
+  if ($debugPortOwner) { throw 'Closing the packaged shell left WebView2 CDP port 9222 occupied.' }
+  Write-Evidence 'distribution-shell-ui.json' ([ordered]@{
+    sourceSha = $ExpectedSourceSha
+    sha256 = $distributionShellSha
+    sections = $distributionSections
+    emptyLibraryVisible = $true
+    gameSettingsVisible = $true
+    appVersion = $distributionVersion.data.node.name
+    cdpAddress = '127.0.0.1:9222'
+    runtimeAndCdpPortsReleased = $true
+    closedCleanly = $true
+  })
+  $distributionProcess = $null
+
   # Keep the packaged distribution executable immutable. Replacing it in-place
   # can fail when Windows or the installer still holds the file open, and it
   # needlessly complicates proving that the shipped executable was preserved.
@@ -605,6 +698,7 @@ try {
     sha256 = $distributionShellSha
     unchangedAfterSmoke = $true
     installerStartedAndClosedApp = $installerStartedApp
+    uiJourneyPassed = (Test-Path (Join-Path $evidence 'distribution-shell-ui.json'))
   })
   $mainProcess = $null
   Remove-Item Env:AN3_UI_TEST_ROM -ErrorAction SilentlyContinue
@@ -710,6 +804,16 @@ try {
       if (!$mainProcess.WaitForExit(10000)) {
         & taskkill.exe /PID $mainProcess.Id /T /F | Out-Null
         $mainProcess.WaitForExit(5000)
+      }
+    }
+  }
+  if ($distributionProcess) {
+    $distributionProcess.Refresh()
+    if (!$distributionProcess.HasExited) {
+      $null = $distributionProcess.CloseMainWindow()
+      if (!$distributionProcess.WaitForExit(10000)) {
+        & taskkill.exe /PID $distributionProcess.Id /T /F | Out-Null
+        $distributionProcess.WaitForExit(5000)
       }
     }
   }

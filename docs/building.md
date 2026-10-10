@@ -50,6 +50,13 @@ source freeze or coordinated build removes the output root it created. Set
 `AN3_KEEP_LOCAL_BUILD_ROOTS=1` only while diagnosing a specific failed attempt.
 Successful coordinated runs retain their artifact/checksum/evidence bundle for
 acceptance; hosted workflow artifacts use the workflow's stated retention.
+When a local coordinated run is unavoidable, set `AN3_FREEZE_OUTPUT_DIR` and
+`AN3_COORDINATED_OUTPUT_DIR` to distinct subdirectories of one task-scoped
+directory outside the checkout.
+After copying only the required package and evidence to their durable destination,
+remove that task-scoped directory. Do not keep another package copy in each
+worktree; use hosted workflow artifacts with explicit retention for repeatable
+cross-platform builds.
 
 When a task or worktree is finished, preserve its useful source in Git and its
 needed evidence in a durable report or hosted artifact, then remove reproducible
