@@ -114,9 +114,11 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
 
     def test_targeted_windows_run_builds_lawful_nds_fixture_and_tests_exact_package(self):
         pull_request = WORKFLOW[WORKFLOW.index("  pull_request:"):WORKFLOW.index("  push:")]
+        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-nds-fixture:"):WORKFLOW.index("  windows-packaged-nds-smoke:")]
         nds_job = WORKFLOW[WORKFLOW.index("  windows-packaged-nds-smoke:"):WORKFLOW.index("  android-smoke:")]
         self.assertIn("tools/windows-nds-runtime-smoke.ps1", pull_request)
+        self.assertIn('tools/windows-nds-runtime-smoke.ps1" ]] && cp', snapshot_builder)
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''", fixture_job)
         self.assertIn("devkitPro/nds-examples.git", fixture_job)
         self.assertIn("f1ba715a451c6407f8b0f805999d0153062ff552", fixture_job)
