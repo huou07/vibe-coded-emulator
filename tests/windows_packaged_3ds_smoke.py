@@ -197,15 +197,18 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 debugger = shutil.which("gdb.exe") or shutil.which("gdb")
                 if debugger and process.poll() is None:
                     try:
+                        commands = evidence / "shutdown-gdb.commands"
+                        commands.write_text(
+                            f"attach {process.pid}\nthread apply all backtrace\ndetach\n",
+                            encoding="utf-8",
+                        )
                         trace = subprocess.run(
-                            [debugger, "-batch", "-ex", f"attach {process.pid}",
-                             "-ex", "thread apply all backtrace", "-ex", "detach"],
+                            [debugger, "-batch", "-x", str(commands)],
                             capture_output=True, text=True, timeout=20,
                         )
                         shutdown_debugger = f"gdb-exit-{trace.returncode}"
                         (evidence / "shutdown-stacks.txt").write_text(
-                            f"command: {debugger} -batch -ex 'attach {process.pid}' "
-                            "-ex 'thread apply all backtrace' -ex detach\n"
+                            f"command: {debugger} -batch -x {commands}\n"
                             f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}",
                             encoding="utf-8",
                         )
