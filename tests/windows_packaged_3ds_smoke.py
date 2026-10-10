@@ -183,24 +183,32 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             changed_percent = changed * 100 / (baseline_game.width * baseline_game.height)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
         finally:
-            if process.poll() is None and hwnd:
-                ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
-            elif process.poll() is None and process.stdin:
+            shutdown_mode = "already-exited"
+            if process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
+                shutdown_mode = "control-stdin-quit"
             try:
                 return_code = process.wait(timeout=15)
             except subprocess.TimeoutExpired:
-                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                               capture_output=True, check=False, timeout=10)
-                return_code = process.wait(timeout=5)
+                if hwnd and process.poll() is None:
+                    ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE fallback
+                    shutdown_mode = "window-close-fallback"
+                try:
+                    return_code = process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    shutdown_mode = "forced-termination"
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   capture_output=True, check=False, timeout=10)
+                    return_code = process.wait(timeout=5)
             if process.stdin:
                 process.stdin.close()
             reader.join(timeout=2)
             if process.stdout:
                 process.stdout.close()
             log_stream.close()
-            self.assertEqual(return_code, 0, f"packaged player exited {return_code}; see {log_path}")
+            self.assertEqual(return_code, 0,
+                             f"packaged player exited {return_code} after {shutdown_mode}; see {log_path}")
 
         record = {
             "packageArtifactRunId": os.environ["ARTIFACT_RUN_ID"],
@@ -220,6 +228,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "afterAFrame": {"path": input_path.name},
             "aInputChangedPixels": changed,
             "aInputChangedPercent": round(changed_percent, 4),
+            "shutdown": shutdown_mode,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
             "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, and long-session behavior UNVERIFIED",
         }
