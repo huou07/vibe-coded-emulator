@@ -186,6 +186,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
         finally:
             shutdown_mode = "already-exited"
+            shutdown_debugger = "not-needed"
             if process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
@@ -193,6 +194,32 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             try:
                 return_code = process.wait(timeout=45)
             except subprocess.TimeoutExpired:
+                debugger = shutil.which("gdb.exe") or shutil.which("gdb")
+                if debugger and process.poll() is None:
+                    try:
+                        trace = subprocess.run(
+                            [debugger, "-batch", "-p", str(process.pid),
+                             "-ex", "thread apply all backtrace", "-ex", "detach"],
+                            capture_output=True, text=True, timeout=20,
+                        )
+                        shutdown_debugger = f"gdb-exit-{trace.returncode}"
+                        (evidence / "shutdown-stacks.txt").write_text(
+                            f"command: {debugger} -batch -p {process.pid} -ex 'thread apply all backtrace' -ex detach\n"
+                            f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}",
+                            encoding="utf-8",
+                        )
+                    except (OSError, subprocess.TimeoutExpired) as error:
+                        shutdown_debugger = f"gdb-failed-{type(error).__name__}"
+                        (evidence / "shutdown-stacks.txt").write_text(
+                            f"GDB stack capture failed: {type(error).__name__}: {error}\n",
+                            encoding="utf-8",
+                        )
+                else:
+                    shutdown_debugger = "gdb-unavailable" if not debugger else "process-exited"
+                    (evidence / "shutdown-stacks.txt").write_text(
+                        f"GDB executable: {debugger or 'not found'}\n",
+                        encoding="utf-8",
+                    )
                 if hwnd and process.poll() is None:
                     ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE fallback
                     shutdown_mode = "window-close-fallback"
@@ -230,6 +257,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "aInputChangedPercent": round(changed_percent, 4),
             "shutdown": shutdown_mode,
             "shutdownExitCode": return_code,
+            "shutdownDebugger": shutdown_debugger,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
             "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, orderly process shutdown, and long-session behavior UNVERIFIED",
         }
