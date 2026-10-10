@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Packaged-app 3DS gameplay E2E (macOS), gated on a legal homebrew fixture.
 
-Drives the **real packaged application** through `an3ctl ui --target macos`,
-which dispatches real DOM events on the app's own controls: the import button,
-the generic `game-card` for "Nintendo 3DS", its `game-launch` control and the
-`native-status` `data-state`. It never calls a Tauri command directly and uses no
-screenshots or coordinates; the throwaway-copy/isolated-``HOME`` bootstrap and
-the gameplay runner are shared with the GBA/NDS E2E in
+Drives the **real packaged application** through `an3ctl ui --target macos`.
+The shared harness requires visible, enabled Open ROM and game-launch controls,
+checks the isolated library before import, and requires the game card and
+running status to be visible. It never calls a Tauri command directly and uses
+no screenshots or coordinates; the throwaway-copy/isolated-``HOME`` bootstrap
+and gameplay runner are shared with the GBA/NDS E2E in
 ``tests/macos_ui_e2e_harness.py``.
 
 The run path requires the test-only ``ui-control`` automation bundle plus a legal

@@ -59,7 +59,7 @@ def summarize(path: Path, budget_us: float | None = None) -> dict:
 
     emu = [float(frame["emu_end_ns"]) - float(frame["emu_begin_ns"])
            for frame in frames if frame.get("emu_end_ns") is not None and frame.get("emu_begin_ns") is not None]
-    present = numbers(frames, "present_duration_ns")
+    present = numbers(frames, "present_duration_ns", positive=True)
     queue = numbers(frames, "frame_queue_depth")
     save_snapshot = numbers(frames, "save_snapshot_us")
     save_io = numbers(frames, "save_io_ms")

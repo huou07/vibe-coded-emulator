@@ -257,10 +257,15 @@ def parse_gitleaks_config(text: str):
         stripped = statement.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        if stripped == "[allowlist]":
+            current = {"paths": [], "regexes": [], "condition": "AND"}
+            allowlists.append(current)
+            block = "allowlist"
+            continue
         if stripped.startswith("[[") and stripped.endswith("]]"):
             name = stripped[2:-2].strip()
             if name == "allowlists":
-                current = {"paths": [], "regexes": []}
+                current = {"paths": [], "regexes": [], "condition": "AND"}
                 allowlists.append(current)
                 block = "allowlist"
             elif name == "rules":
@@ -285,6 +290,8 @@ def parse_gitleaks_config(text: str):
         elif block == "allowlist" and current is not None:
             if key in ("paths", "regexes") and isinstance(value, list):
                 current[key] = value
+            elif key == "condition" and isinstance(value, str):
+                current[key] = value.upper()
         elif block == "rule" and current is not None:
             current[key] = value
 
@@ -310,16 +317,17 @@ def parse_gitleaks_config(text: str):
 def _allowlist_matches(allowlist, display_path: str, match_bytes: bytes) -> bool:
     paths = allowlist.get("paths") or []
     regexes = allowlist.get("regexes") or []
-    if not paths:
-        return False
-    if not any(re.search(path, display_path) for path in paths):
-        return False
-    if not regexes:
-        return True
-    return any(
+    path_match = bool(paths) and any(re.search(path, display_path) for path in paths)
+    regex_match = bool(regexes) and any(
         re.search(regex.encode("utf-8") if isinstance(regex, str) else regex, match_bytes)
         for regex in regexes
     )
+    condition = allowlist.get("condition", "AND")
+    if condition == "OR":
+        return path_match or regex_match
+    if condition != "AND":
+        return False
+    return path_match and (regex_match if regexes else True)
 
 
 def _target_files(targets):

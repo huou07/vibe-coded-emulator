@@ -66,7 +66,10 @@ class NativeStagingContractTests(unittest.TestCase):
         self.assertLess(menu, cursor)
         self.assertLess(cursor, library)
         self.assertIn("const bool compact_controls = width < 600.0", HOST)
-        self.assertIn("const CGFloat speed_y = compact_controls ? height - 78.0 : height - 44.0", HOST)
+        self.assertIn(
+            "const CGFloat speed_y = (compact_controls ? height - 78.0 : height - 44.0) - top_safe_inset",
+            HOST,
+        )
         self.assertIn("volume_row.leadingAnchor constraintEqualToAnchor:stack.leadingAnchor", HOST)
         self.assertIn("volume_row.trailingAnchor constraintEqualToAnchor:stack.trailingAnchor", HOST)
         self.assertIn("minimum_slider_width", HOST)
@@ -120,6 +123,22 @@ class NativeStagingContractTests(unittest.TestCase):
         self.assertIn('--coordinated', RELEASE_TRAIN)
         self.assertIn('SOURCE_FROZEN_MANIFEST', RELEASE_TRAIN)
         self.assertIn('AN3_REQUIRE_DEPENDENCY_CACHE=1', RELEASE_TRAIN)
+
+    def test_release_train_preflights_before_source_freeze_and_matrix_setup(self):
+        freeze = RELEASE_TRAIN[
+            RELEASE_TRAIN.index("create_frozen_source()"):
+            RELEASE_TRAIN.index("read_frozen_source()")
+        ]
+        self.assertLess(
+            freeze.index("tools/disk-preflight.sh"),
+            freeze.index("generate-player-ui.mjs"),
+        )
+
+        coordinated = RELEASE_TRAIN[RELEASE_TRAIN.index("coordinated_build_all()") :]
+        self.assertLess(
+            coordinated.index("tools/disk-preflight.sh"),
+            coordinated.index("frozen_fields=\"$(read_frozen_source)\""),
+        )
 
 
 if __name__ == "__main__":

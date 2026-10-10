@@ -189,6 +189,24 @@
           "markdownDescription": "Enables the native_capabilities command without any pre-configured scope."
         },
         {
+          "description": "Enables the native_rom_library_manifest command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-rom-library-manifest",
+          "markdownDescription": "Enables the native_rom_library_manifest command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_session_control command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-session-control",
+          "markdownDescription": "Enables the native_session_control command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-settings",
+          "markdownDescription": "Enables the native_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the pick_and_import_native_rom command without any pre-configured scope.",
           "type": "string",
           "const": "allow-pick-and-import-native-rom",
@@ -337,6 +355,24 @@
           "type": "string",
           "const": "deny-native-capabilities",
           "markdownDescription": "Denies the native_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_rom_library_manifest command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-rom-library-manifest",
+          "markdownDescription": "Denies the native_rom_library_manifest command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_session_control command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-session-control",
+          "markdownDescription": "Denies the native_session_control command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-settings",
+          "markdownDescription": "Denies the native_settings command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_and_import_native_rom command without any pre-configured scope.",

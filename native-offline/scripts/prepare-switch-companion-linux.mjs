@@ -39,7 +39,7 @@ const manifest = {
   eden: {upstream: 'https://git.eden-emu.dev/eden-emu/eden', commit},
   license: 'GPL-3.0-or-later', licenseText: license,
   size: bytes.length, sha256: sha256(bytes),
-  runtime: 'system Vulkan/SDL3/FFmpeg libraries declared by the DEB/Flatpak runtime',
+  runtime: 'system Vulkan/FFmpeg libraries declared by the DEB/Flatpak runtime',
 };
 await writeFile(join(destination, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(`SWITCH_COMPANION_STAGED=${binary}`);

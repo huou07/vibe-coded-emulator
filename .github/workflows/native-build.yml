@@ -6,15 +6,54 @@ name: native-build
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      windows_artifact_run_id:
+        description: Native-build run containing the Windows installer to test
+        required: false
+        type: string
+      windows_expected_source_sha:
+        description: Exact source SHA recorded by that Windows package job
+        required: false
+        type: string
+      build_windows_candidate:
+        description: Build and smoke-test a Windows candidate from this revision only
+        required: false
+        default: false
+        type: boolean
+      build_macos_candidate:
+        description: Build the macOS package and UI-control app without Android/Linux jobs
+        required: false
+        default: false
+        type: boolean
+      build_linux_candidate:
+        description: Build and install-check the Linux package from this revision only
+        required: false
+        default: false
+        type: boolean
+      build_android_candidate:
+        description: Build and instrument the Android package from this revision only
+        required: false
+        default: false
+        type: boolean
+      macos_artifact_run_id:
+        description: Rebuild only the macOS UI-control test app against a prior run's DMG
+        required: false
+        type: string
+      macos_expected_source_sha:
+        description: Exact source SHA recorded by that macOS package job
+        required: false
+        type: string
   pull_request:
     paths:
       - '.gitattributes'
+      - '.github/workflows/**'
       - 'native-offline/**'
       - 'native/**'
+      - 'tests/test_windows_runtime_smoke.py'
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
-      - '.github/workflows/**'
+      - 'tools/windows-runtime-smoke.ps1'
   push:
     branches: [main, 'core-only/**']
     paths:
@@ -24,9 +63,10 @@ on:
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
-      - '.github/workflows/**'
+      - '!native-offline/src-tauri/src/ui_control.rs'
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -37,6 +77,9 @@ jobs:
   # Transport only: this accepted release carries the locked web runtime and
   # Android GBA/NDS core payloads used as deterministic source inputs.
   web-runtime-cache:
+    if: >-
+      github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate ||
+      inputs.build_macos_candidate || inputs.build_linux_candidate || inputs.build_android_candidate
     name: Prepare checksum-locked web runtime cache
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -108,6 +151,7 @@ jobs:
           retention-days: 1
 
   macos-dmg:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_macos_candidate
     name: macOS ARM64 DMG
     runs-on: macos-15
     timeout-minutes: 150
@@ -184,8 +228,142 @@ jobs:
             native-offline/releases/BUILD_LABELS.txt
           if-no-files-found: error
           retention-days: 7
+      - name: Build source-matched macOS UI-control test app
+        run: |
+          set -euo pipefail
+          bash native-offline/scripts/build-macos-automation.sh
+      - name: Verify macOS distribution and UI-control bundle separation
+        run: >-
+          python3 -m unittest
+          tests.test_macos_automation_app.MacosAutomationAppTests.test_10_automation_bundle_exposes_bridge_and_is_signed
+          -q
+      - name: Label and archive macOS UI-control test app
+        run: |
+          set -euo pipefail
+          app=native-offline/src-tauri/target/release/bundle/macos/VibeCodedEmulatorAutomation.app
+          binary="$app/Contents/MacOS/an3-offline-native"
+          test -d "$app"
+          test -f "$binary"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected="$(node -p "require('./native-offline/src-tauri/tauri.conf.json').version")"
+          test "$version" = "$expected"
+          artifact_dir=native-offline/work/macos-automation-artifact
+          mkdir -p "$artifact_dir"
+          binary_sha="$(cd "$(dirname "$binary")" && shasum -a 256 "$(basename "$binary")" | awk '{print $1}')"
+          printf 'version=%s\nsource_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
+            "$version" "$GITHUB_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
+          tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" \
+            -C "$(dirname "$app")" "$(basename "$app")"
+          (cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz \
+            > VibeCodedEmulatorAutomation.app.tar.gz.sha256)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-control-test-app
+          path: native-offline/work/macos-automation-artifact/*
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-ui-control-refresh:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.macos_artifact_run_id != '' &&
+      !inputs.build_macos_candidate && !inputs.build_windows_candidate &&
+      !inputs.build_linux_candidate && !inputs.build_android_candidate
+    name: Rebuild macOS UI-control app against an exact prior DMG
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: macos-dmg
+          path: artifacts/macos
+          run-id: ${{ inputs.macos_artifact_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-runtime-cache
+          path: native-offline/work
+          run-id: ${{ inputs.macos_artifact_run_id }}
+          github-token: ${{ github.token }}
+      - name: Restore verified web runtime cache
+        run: tar -xzf native-offline/work/web-runtime-cache.tar.gz -C native-offline/work
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+      - name: Verify prior DMG identity and source
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.macos_expected_source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A full expected source SHA is required.' >&2; exit 1; }
+          dmg="$(find artifacts/macos -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg" || { echo 'The prior macOS DMG artifact is missing.' >&2; exit 1; }
+          (cd "$(dirname "$dmg")" && shasum -a 256 --check "$(basename "$dmg").sha256")
+          grep -Fqx "Source revision: $EXPECTED_SOURCE_SHA" artifacts/macos/BUILD_LABELS.txt
+      - name: Install macOS automation build prerequisites
+        run: brew install cmake ninja autoconf automake libtool glslang ffmpeg
+      - name: Install JS dependencies and build source-matched UI-control app
+        working-directory: native-offline
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run prepare-moltenvk
+          mkdir -p src-tauri/target/release/bundle/macos
+          mount="$RUNNER_TEMP/an3-prior-macos-dmg"
+          mkdir -p "$mount"
+          dmg="$(find "$GITHUB_WORKSPACE/artifacts/macos" -maxdepth 1 -name '*.dmg' -print -quit)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          app="$mount/VibeCodedEmulator.app"
+          test -d "$app" || { echo 'The exact DMG does not contain VibeCodedEmulator.app.' >&2; exit 1; }
+          actual_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          expected_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          test "$actual_version" = "$expected_version"
+          cp -R "$app" src-tauri/target/release/bundle/macos/VibeCodedEmulator.app
+          resources="$app/Contents/Resources"
+          vendor="$GITHUB_WORKSPACE/native-offline/vendor"
+          mkdir -p "$vendor/libretro/macos-arm64" "$vendor/azahar/macos-arm64" "$vendor/moltenvk/macos-arm64" "$vendor/switch/macos-arm64"
+          cp -R "$resources/libretro/macos-arm64/." "$vendor/libretro/macos-arm64/"
+          cp "$resources/azahar/macos-arm64/azahar_libretro.dylib" "$vendor/azahar/macos-arm64/azahar_libretro.dylib"
+          cp "$resources/azahar/macos-arm64/manifest.json" "$vendor/azahar/macos-arm64/manifest.json"
+          cp "$resources/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt" "$vendor/azahar/macos-arm64/LICENSE"
+          cp "$resources/azahar/macos-arm64/libMoltenVK.dylib" "$vendor/moltenvk/macos-arm64/libMoltenVK.dylib"
+          cp "$resources/azahar/macos-arm64/moltenvk-manifest.json" "$vendor/moltenvk/macos-arm64/manifest.json"
+          cp "$resources/azahar/macos-arm64/MoltenVK-LICENSE" "$vendor/moltenvk/macos-arm64/LICENSE"
+          cp -R "$resources/switch/macos-arm64/." "$vendor/switch/macos-arm64/"
+          cd "$GITHUB_WORKSPACE"
+          bash native-offline/scripts/build-macos-automation.sh
+      - name: Verify separation and label refreshed automation app
+        env:
+          DISTRIBUTION_SOURCE_SHA: ${{ inputs.macos_expected_source_sha }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_macos_automation_app.MacosAutomationAppTests.test_10_automation_bundle_exposes_bridge_and_is_signed -q
+          app=native-offline/src-tauri/target/release/bundle/macos/VibeCodedEmulatorAutomation.app
+          binary="$app/Contents/MacOS/an3-offline-native"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          binary_sha="$(shasum -a 256 "$binary" | awk '{print $1}')"
+          artifact_dir=native-offline/work/macos-automation-refresh-artifact
+          mkdir -p "$artifact_dir"
+          printf 'version=%s\nautomation_source_sha=%s\ndistribution_source_sha=%s\nbinary_sha256=%s\nkind=test-only-ui-control-app\n' \
+            "$version" "$GITHUB_SHA" "$DISTRIBUTION_SOURCE_SHA" "$binary_sha" > "$artifact_dir/BUILD_LABELS.txt"
+          tar -czf "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          (cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz) > "$artifact_dir/VibeCodedEmulatorAutomation.app.tar.gz.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-control-test-app
+          path: native-offline/work/macos-automation-refresh-artifact/*
+          if-no-files-found: error
+          retention-days: 7
 
   android-apk:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_android_candidate
     name: Android arm64 APK and instrumentation APK
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -286,6 +464,7 @@ jobs:
           retention-days: 7
 
   linux-deb:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_linux_candidate
     name: Linux x86_64 DEB
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -317,7 +496,8 @@ jobs:
             libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswscale-dev \
             libsdl2-dev libvulkan-dev mesa-common-dev libgl1-mesa-dev \
             libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
-            libsoup-3.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libsoup-3.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            xvfb openbox dbus-x11 scrot xdotool python3-pil
       - name: Print hosted builder versions
         run: |
           set -euo pipefail
@@ -341,6 +521,45 @@ jobs:
           printf 'Linux DEB: unsigned package; not distribution-signed.\nSource revision: %s\n' "$GITHUB_SHA" \
             > native-offline/releases/BUILD_LABELS.txt
           cat "$deb.sha256" native-offline/releases/BUILD_LABELS.txt
+      - name: Build test-only Linux UI control shell and exercise the exact DEB resources
+        run: |
+          set -euo pipefail
+          node native-offline/scripts/prepare-web.mjs
+          export TAURI_CONFIG='{"identifier":"space.an3tocom.offline.automation"}'
+          cargo build --release --features ui-control --manifest-path native-offline/src-tauri/Cargo.toml
+          unset TAURI_CONFIG
+          automation="native-offline/src-tauri/target/release/an3-offline-native"
+          python3 - "$automation" <<'PY'
+          import sys
+          from pathlib import Path
+          binary = Path(sys.argv[1]).read_bytes()
+          if b"AN3_UI_CONTROL_FILE" not in binary:
+              raise SystemExit("Linux automation shell is missing the test-only UI bridge")
+          PY
+          deb="$(find native-offline/releases -maxdepth 1 -name '*.deb' -print -quit)"
+          package_root="$RUNNER_TEMP/an3-linux-package-root"
+          mkdir -p "$package_root"
+          dpkg-deb -x "$deb" "$package_root"
+          shell="$(find "$package_root/usr" -type f -name an3-offline-native ! -path '*/runtime/linux-*/*' -print -quit)"
+          test -n "$shell" || { echo 'Packaged Linux shell executable was not found.' >&2; exit 1; }
+          install -m 0755 "$automation" "$shell"
+          fixture="$RUNNER_TEMP/AN3TAPTEST.gba"
+          python3 tools/testrom/gba_homebrew_test.py "$fixture" AN3TAPTEST
+          evidence="$RUNNER_TEMP/an3-linux-ui-smoke"
+          mkdir -p "$evidence"
+          export AN3_LINUX_PACKAGE_ROOT="$package_root"
+          export AN3_LINUX_AUTOMATION_BINARY="$automation"
+          export AN3_LINUX_GBA_FIXTURE="$fixture"
+          export AN3_LINUX_UI_EVIDENCE_DIR="$evidence"
+          xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- bash -c \
+            'openbox --sm-disable >"$AN3_LINUX_UI_EVIDENCE_DIR/openbox.log" 2>&1 & python3 tests/linux_packaged_ui_smoke.py && python3 tests/linux_packaged_player_smoke.py'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: linux-ui-smoke-diagnostics
+          path: ${{ runner.temp }}/an3-linux-ui-smoke
+          if-no-files-found: ignore
+          retention-days: 3
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-deb
@@ -350,6 +569,34 @@ jobs:
             native-offline/releases/BUILD_LABELS.txt
           if-no-files-found: error
           retention-days: 7
+
+  linux-deb-install:
+    name: Linux x86_64 DEB clean install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: linux-deb
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: linux-deb
+          path: /tmp/an3-linux-deb
+      - name: Verify and install package on a fresh Ubuntu runner
+        run: |
+          set -euo pipefail
+          cd /tmp/an3-linux-deb
+          sha256sum --check ./*.deb.sha256
+          deb="$(find . -maxdepth 1 -name '*.deb' -print -quit)"
+          test -n "$deb"
+          expected_version="$(dpkg-deb -f "$deb" Version)"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "$deb"
+          installed="$(dpkg-query -W -f='${Version} ${Status}' vibe-coded-emulator)"
+          test "$installed" = "$expected_version install ok installed"
+          ldd /usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion | tee /tmp/an3-switch-linkage.txt
+          if grep -q 'not found' /tmp/an3-switch-linkage.txt; then
+            echo 'Packaged Switch companion has unresolved runtime libraries.' >&2
+            exit 1
+          fi
 
   linux-flatpak:
     name: Linux x86_64 Flatpak
@@ -402,6 +649,7 @@ jobs:
           retention-days: 7
 
   windows-exe:
+    if: github.event_name != 'workflow_dispatch' || inputs.build_windows_candidate
     name: Windows x64 EXE
     runs-on: windows-2022
     timeout-minutes: 180
@@ -528,6 +776,66 @@ jobs:
             native-offline/releases/BUILD_LABELS.txt
           if-no-files-found: error
           retention-days: 7
+
+      - name: Build source-matched Windows UI-control test shell
+        shell: pwsh
+        run: ./native-offline/scripts/build-windows-automation.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: native-offline/work/windows-ui-control-test-shell/*
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-runtime-smoke:
+    if: >-
+      always() &&
+      ((github.event_name == 'workflow_dispatch' &&
+        ((inputs.build_windows_candidate && needs.windows-exe.result == 'success') ||
+        inputs.windows_artifact_run_id != '')) ||
+      (github.event_name == 'pull_request' && needs.windows-exe.result == 'success'))
+    needs: windows-exe
+    name: Install Windows package and verify shell import and GBA launch
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-exe
+          path: artifacts/windows
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-ui-control-test-shell
+          path: artifacts/windows-ui-control
+          run-id: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install and verify packaged Windows runtime
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_expected_source_sha || github.sha }}
+          ARTIFACT_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id || github.run_id }}
+        run: >-
+          ./tools/windows-runtime-smoke.ps1
+          -ArtifactDirectory artifacts/windows
+          -AutomationDirectory artifacts/windows-ui-control
+          -ExpectedSourceSha $env:EXPECTED_SOURCE_SHA
+          -ArtifactRunId $env:ARTIFACT_RUN_ID
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: windows-runtime-smoke-diagnostics
+          path: ${{ runner.temp }}/vce-windows-runtime-smoke
+          if-no-files-found: ignore
+          retention-days: 3
 
   android-smoke:
     name: Android library UI smoke (API 35)

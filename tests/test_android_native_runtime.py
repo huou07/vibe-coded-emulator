@@ -10,6 +10,7 @@ meaningfully exercised without Android's NDK or a real Surface.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
@@ -32,6 +33,7 @@ GAME_ACTIVITY = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/s
 ANDROID_ACTIVITY = ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt"
 ANDROID_MANIFEST = ROOT / "native-offline/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
 ANDROID_BUILD = ROOT / "native-offline/src-tauri/gen/android/app/build.gradle.kts"
+ANDROID_STAGING_BUILD = ROOT / "native-offline/scripts/build-android-staging.sh"
 ANDROID_BOOTSTRAP = ROOT / "native-offline/web/native-bootstrap.js"
 OFFLINE_LIBRARY = ROOT / "static/offline.js"
 HARNESS = ROOT / "tests/native/android_host_harness.cpp"
@@ -72,6 +74,29 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_android_staging_build_initializes_fresh_gradle_project_and_writes_sidecars(self):
+        script = source(ANDROID_STAGING_BUILD)
+        self.assertIn(
+            "if [[ ! -f src-tauri/gen/android/settings.gradle || ! -x src-tauri/gen/android/gradlew ]]; then",
+            script,
+        )
+        init = "npm run tauri -- android init --ci --skip-targets-install"
+        build = "npm run tauri -- android build --target aarch64 --apk --aab"
+        self.assertLess(script.index(init), script.index(build))
+        self.assertIn('for release_artifact in "$RELEASE_APK" "$RELEASE_AAB"; do', script)
+        self.assertIn('shasum -a 256 "$(basename "$release_artifact")"', script)
+
+    def test_macos_ndk_host_tag_uses_the_universal_darwin_directory(self):
+        for name, variable in (
+            ("build-android-runtime.sh", "an3_ndk_host"),
+            ("build-android-eden.sh", "eden_ndk_host"),
+        ):
+            script = source(ROOT / "native-offline/scripts" / name)
+            self.assertIn(
+                f'Darwin-arm64|Darwin-x86_64) {variable}="darwin-x86_64" ;;',
+                script,
+            )
+
     def test_portable_core_session_runs_frames_on_one_owner_thread(self):
         compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("clang++") or shutil.which("g++")
         if not compiler:
@@ -102,12 +127,24 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             for command in (compile_core, compile_harness):
                 result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            trace_path = workdir / "perf-trace.jsonl"
+            env = os.environ.copy()
+            env["AN3_PERF_TRACE"] = "1"
+            env["AN3_PERF_TRACE_PATH"] = str(trace_path)
             result = subprocess.run(
                 [str(harness_binary), str(core_library), str(workdir)],
-                cwd=ROOT, text=True, capture_output=True, timeout=10,
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertRegex(result.stdout, r"NATIVE_CORE_SESSION=PASS frames=\d+")
+            records = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+            frames = [record for record in records if record.get("type") == "frame"]
+            self.assertEqual(records[0]["core_id"], "gba")
+            self.assertGreaterEqual(len(frames), 8)
+            self.assertTrue(all(frame["emu_end_ns"] > frame["emu_begin_ns"] for frame in frames))
+            self.assertTrue(any(frame["frame_interval_ns"] > 0 for frame in frames))
+            self.assertEqual(frames[6]["frame_interval_ns"], 0)
+            self.assertLess(frames[7]["frame_interval_ns"], records[0]["budget_ns"] * 5)
 
     def test_android_audio_tries_exclusive_then_keeps_shared_fallback(self):
         audio = source(ROOT / "native-offline/native-runtime/platform/android/aaudio_backend.cpp")
@@ -157,6 +194,12 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         remember_layout(variable.value);
     } else {
         remember_layout(nullptr);
+    }
+    RetroVariable option{"an3_test_mode", nullptr};
+    if (environment && environment(kEnvironmentGetVariable, &option)) {
+        remember_option(option.value);
+    } else {
+        remember_option(nullptr);
     }
 }""",
                 1,
