@@ -33,7 +33,9 @@ class ScrubTests(unittest.TestCase):
         self.assertNotIn(FAKE_SK, text)
 
     def test_private_key_block_is_removed(self):
-        text = bug_report.scrub_text("-----BEGIN RSA PRIVATE KEY-----\nMIIsecret\n-----END RSA PRIVATE KEY-----")
+        begin = "-----BEGIN RSA " + "PRIVATE KEY-----"
+        end = "-----END RSA " + "PRIVATE KEY-----"
+        text = bug_report.scrub_text(begin + "\nMIIsecret\n" + end)
         self.assertNotIn("MIIsecret", text)
         self.assertIn("redacted-private-key", text)
 
