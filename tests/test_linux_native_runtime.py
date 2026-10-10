@@ -17,6 +17,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
 LINUX = ROOT / "native-offline/native-runtime/platform/linux"
 BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encoding="utf-8")
 FLATPAK_INSTALL_VERIFY = (ROOT / "native-offline/scripts/verify-flatpak-install.sh").read_text(encoding="utf-8")
@@ -124,6 +125,18 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('flatpak run --command=an3-native-player "$app_id" --help', FLATPAK_INSTALL_VERIFY)
         self.assertIn('AN3_FLATPAK_SMOKE_ROM', FLATPAK_INSTALL_VERIFY)
         self.assertIn('FLATPAK_RUNTIME_SMOKE=PASS', FLATPAK_INSTALL_VERIFY)
+
+    def test_hosted_flatpak_job_clean_installs_and_runs_generated_gba_fixture(self):
+        flatpak_job = WORKFLOW[WORKFLOW.index("  linux-flatpak:"):WORKFLOW.index("  windows-exe:")]
+        build_step = flatpak_job.index("Build Flatpak from the same DEB artifact")
+        install_step = flatpak_job.index("Clean-install and launch Flatpak gameplay")
+        artifact_step = flatpak_job.index("Label and hash artifact")
+        self.assertLess(build_step, install_step)
+        self.assertLess(install_step, artifact_step)
+        self.assertIn("python3 tools/testrom/gba_homebrew_test.py", flatpak_job)
+        self.assertIn('AN3_FLATPAK_SMOKE_ROM="$fixture"', flatpak_job)
+        self.assertIn("bash native-offline/scripts/verify-flatpak-install.sh", flatpak_job)
+        self.assertIn("xvfb xauth", flatpak_job)
 
     def test_linux_surface_audio_and_file_picker_are_native(self):
         self.assertIn("SDL_Vulkan_CreateSurface", SURFACE)

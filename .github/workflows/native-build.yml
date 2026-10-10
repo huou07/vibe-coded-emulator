@@ -630,6 +630,18 @@ jobs:
           (cd "$(dirname "$deb")" && sha256sum -c "$(basename "$deb").sha256")
       - name: Build Flatpak from the same DEB artifact
         run: bash tools/release-train.sh --staging build linux-flatpak
+      - name: Clean-install and launch Flatpak gameplay with a generated GBA fixture
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+          fixture="$RUNNER_TEMP/AN3FLATPAKTEST.gba"
+          python3 tools/testrom/gba_homebrew_test.py "$fixture" AN3FLATPAKTEST
+          bundle="$(find native-offline/releases -maxdepth 1 -name '*.flatpak' -print -quit)"
+          test -n "$bundle" || { echo 'Linux Flatpak was not produced.' >&2; exit 1; }
+          AN3_FLATPAK_SMOKE_ROM="$fixture" \
+          AN3_FLATPAK_SMOKE_SYSTEM=gba \
+          AN3_FLATPAK_SMOKE_RENDERER=opengl \
+            bash native-offline/scripts/verify-flatpak-install.sh "$bundle"
       - name: Label and hash artifact
         run: |
           set -euo pipefail
