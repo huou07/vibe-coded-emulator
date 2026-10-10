@@ -53,6 +53,17 @@ def wait_for(name, role=None, timeout=45):
         if node:
             return node
         time.sleep(0.25)
+    tree = []
+    for node in app_nodes():
+        try:
+            label = (node.name or "").strip()
+            if label:
+                tree.append(f"{node.getRoleName()}: {label}")
+        except Exception:
+            continue
+    (EVIDENCE / "accessibility-tree.txt").write_text(
+        "\n".join(tree) + "\n", encoding="utf-8"
+    )
     raise RuntimeError(f"Timed out waiting for accessible item: {name!r}")
 
 
@@ -101,10 +112,10 @@ def main():
         screenshots = {}
         click_button("Library")
         wait_for("Library", pyatspi.ROLE_HEADING)
+        screenshots["library"] = capture("library")
         wait_for("No games on this device. Use Add ROM to store one on this device.")
         wait_for("Add ROM", pyatspi.ROLE_PUSH_BUTTON)
         sections.append("library")
-        screenshots["library"] = capture("library")
 
         click_button("Settings")
         wait_for("Settings", pyatspi.ROLE_HEADING)
