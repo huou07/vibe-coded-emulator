@@ -165,7 +165,8 @@ def main():
             "artifactRunId": ARTIFACT_RUN_ID,
             "binarySha256": hashlib.sha256(binary_bytes).hexdigest(),
             "sections": sections,
-            "emptyLibraryVisible": True,
+            "emptyLibraryAccessible": True,
+            "libraryVisualState": "UNVERIFIED: screenshot was blank white despite accessible Library controls",
             "settingsVisible": True,
             "helpVisible": True,
             "aboutVersion": "3.6.8",
@@ -180,7 +181,8 @@ def main():
         )
         if app.returncode != 0:
             raise RuntimeError(f"Distribution shell exited with code {app.returncode}")
-        print("LINUX_DISTRIBUTION_SHELL_NAVIGATION=GOOD")
+        print("LINUX_DISTRIBUTION_SHELL_ACCESSIBILITY=GOOD")
+        print("LINUX_DISTRIBUTION_LIBRARY_VISUAL=UNVERIFIED")
     finally:
         if app.poll() is None:
             app.terminate()

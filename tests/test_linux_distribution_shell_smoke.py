@@ -37,6 +37,9 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
         self.assertIn('"Alt+F4"', SMOKE)
         self.assertIn("port_free", SMOKE)
         self.assertIn('"screenshots": screenshots', SMOKE)
+        self.assertIn('"emptyLibraryAccessible": True', SMOKE)
+        self.assertIn('"libraryVisualState": "UNVERIFIED:', SMOKE)
+        self.assertIn("LINUX_DISTRIBUTION_LIBRARY_VISUAL=UNVERIFIED", SMOKE)
 
 
 if __name__ == "__main__":
