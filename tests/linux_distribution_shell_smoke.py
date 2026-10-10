@@ -74,9 +74,16 @@ def wait_for(name, role=None, timeout=15):
 
 def click_button(name):
     node = wait_for(name, pyatspi.ROLE_PUSH_BUTTON)
-    action = node.queryAction()
-    if action.nActions < 1 or not action.doAction(0):
-        raise RuntimeError(f"Could not activate accessible button: {name!r}")
+    bounds = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+    if bounds.width <= 0 or bounds.height <= 0:
+        raise RuntimeError(f"Accessible button has no visible screen bounds: {name!r}")
+    x = bounds.x + bounds.width // 2
+    y = bounds.y + bounds.height // 2
+    subprocess.run(
+        ["xdotool", "mousemove", "--sync", str(x), str(y), "click", "1"],
+        check=True,
+        timeout=10,
+    )
 
 
 def capture(name):
@@ -119,6 +126,7 @@ def main():
         click_button("Library")
         wait_for("Library", pyatspi.ROLE_HEADING)
         wait_for("Add ROM GBA · NDS · 3DS")
+        wait_for("Search games", pyatspi.ROLE_ENTRY)
         screenshots["library"] = capture("library")
         sections.append("library")
 
@@ -130,6 +138,7 @@ def main():
 
         click_button("Help")
         wait_for("Help", pyatspi.ROLE_HEADING)
+        wait_for("Play a game", pyatspi.ROLE_HEADING)
         wait_for("Add a ROM")
         sections.append("help")
         screenshots["help"] = capture("help")

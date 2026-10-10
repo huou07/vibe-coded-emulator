@@ -21,6 +21,7 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
         self.assertIn("/usr/bin/an3-offline-native", job)
         self.assertIn("python3-pyatspi", job)
         self.assertIn("tests/linux_distribution_shell_smoke.py", job)
+        self.assertIn("getExtents(pyatspi.DESKTOP_COORDS)", SMOKE)
         self.assertIn("b\"AN3_UI_CONTROL_FILE\"", SMOKE)
         self.assertIn("subprocess.Popen([str(BINARY)]", SMOKE)
         self.assertNotIn("AN3_UI_TEST_ROM", SMOKE)
@@ -29,6 +30,7 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
     def test_smoke_checks_isolated_navigation_and_shutdown(self):
         self.assertIn('"XDG_DATA_HOME": str(home / ".local/share")', SMOKE)
         self.assertIn('wait_for("Add ROM GBA · NDS · 3DS")', SMOKE)
+        self.assertIn('wait_for("Search games", pyatspi.ROLE_ENTRY)', SMOKE)
         for section in ("Library", "Settings", "Help", "About", "Play"):
             self.assertIn(f'click_button("{section}")', SMOKE)
         self.assertIn('"aboutVersion": "3.6.8"', SMOKE)
