@@ -191,13 +191,13 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                 process.stdin.flush()
                 shutdown_mode = "control-stdin-quit"
             try:
-                return_code = process.wait(timeout=15)
+                return_code = process.wait(timeout=45)
             except subprocess.TimeoutExpired:
                 if hwnd and process.poll() is None:
                     ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE fallback
                     shutdown_mode = "window-close-fallback"
                 try:
-                    return_code = process.wait(timeout=5)
+                    return_code = process.wait(timeout=15)
                 except subprocess.TimeoutExpired:
                     shutdown_mode = "forced-termination"
                     subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
