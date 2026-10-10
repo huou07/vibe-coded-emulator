@@ -137,6 +137,26 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertNotIn("Join-Path $evidence 'installed-app'", NDS_SMOKE)
         self.assertNotIn("Join-Path $evidence 'storage'", NDS_SMOKE)
 
+    def test_targeted_windows_3ds_run_uses_pinned_fixture_and_exact_package(self):
+        workflow_dispatch = WORKFLOW[WORKFLOW.index("  workflow_dispatch:"):WORKFLOW.index("  pull_request:")]
+        fixture_job = WORKFLOW[WORKFLOW.index("  windows-packaged-3ds-smoke:"):WORKFLOW.index("  android-smoke:")]
+        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
+        smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
+        self.assertIn("windows_3ds_artifact_run_id", workflow_dispatch)
+        self.assertIn("windows_3ds_expected_source_sha", workflow_dispatch)
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.windows_3ds_artifact_run_id != ''", fixture_job)
+        self.assertIn("run-id: ${{ inputs.windows_3ds_artifact_run_id }}", fixture_job)
+        self.assertIn("16BitWonder/3DS-TEST.git", fixture_job)
+        self.assertIn("e5b13872f0c1207cb9c86e18e710c8f1fa269fb8", fixture_job)
+        self.assertIn("a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050", fixture_job)
+        self.assertIn("\"--system\", \"3ds\"", smoke)
+        self.assertIn("\"--renderer\", \"vulkan\"", smoke)
+        self.assertIn("keybd_event(VK_X", smoke)
+        self.assertIn("ImageChops.difference", smoke)
+        self.assertIn("windows-packaged-3ds-diagnostics", fixture_job)
+        self.assertIn("pip install --disable-pip-version-check pillow", fixture_job)
+        self.assertIn("cp -R \"$ROOT/tests/.\" \"$OUT/tests/\"", snapshot_builder)
+
     def test_native_player_shows_only_the_game_window(self):
         self.assertIn("$controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' }", SMOKE)
         self.assertIn("if ($visibleNativeWindows.Count -ne 1)", SMOKE)
