@@ -205,7 +205,7 @@ def inspect_joined_thread(pid, handle):
 
 
 class WindowsPackaged3DSSmoke(unittest.TestCase):
-    def test_exact_windows_package_azahar_visible_frame_and_a_input(self):
+    def test_exact_windows_package_azahar_visible_frame_a_input_and_orderly_shutdown(self):
         runner_temp = Path(os.environ["RUNNER_TEMP"])
         evidence = runner_temp / "vce-windows-3ds-smoke"
         install_dir = runner_temp / "vce-windows-3ds-installed"
@@ -469,9 +469,11 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "shutdownMemoryRegions": shutdown_memory_regions,
             "shutdownWaitedThread": shutdown_waited_thread,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
-            "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, orderly process shutdown, and long-session behavior UNVERIFIED",
+            "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, and long-session behavior UNVERIFIED; orderly process shutdown PASS",
         }
         (evidence / "3ds-smoke.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        self.assertEqual(shutdown_mode, "control-stdin-quit", "packaged Azahar did not exit on normal QUIT")
+        self.assertEqual(return_code, 0, "packaged Azahar exited abnormally during orderly shutdown")
 
 
 if __name__ == "__main__":

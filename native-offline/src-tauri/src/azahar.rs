@@ -47,7 +47,7 @@ fn native_core(system: &str) -> Result<NativeCore, String> {
         }),
         "3ds" => Ok(NativeCore {
             system: "3ds",
-            engine: "Azahar libretro 2126.1.1",
+            engine: "Azahar libretro 2126.1.2",
             resource_path: "azahar/macos-arm64/azahar_libretro.dylib",
             development_path: "../vendor/azahar/macos-arm64/azahar_libretro.dylib",
             setup_hint: "npm run prepare-azahar",
