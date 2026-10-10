@@ -17,9 +17,10 @@ verification_root="$(mktemp -d -t an3-flatpak-install.XXXXXX)"
 cleanup() { rm -rf -- "$verification_root"; }
 trap cleanup EXIT
 
+export HOME="$verification_root/home"
 export XDG_DATA_HOME="$verification_root/data"
 export XDG_CACHE_HOME="$verification_root/cache"
-mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+mkdir -p "$HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 
 flatpak --user install --noninteractive "$bundle"
 flatpak --user info "$app_id" >/dev/null
@@ -35,9 +36,16 @@ if [[ -n "${AN3_FLATPAK_SMOKE_ROM:-}" ]]; then
   command -v xvfb-run >/dev/null || { echo "xvfb-run is required for Flatpak runtime smoke." >&2; exit 2; }
   smoke_system="${AN3_FLATPAK_SMOKE_SYSTEM:-gba}"
   smoke_renderer="${AN3_FLATPAK_SMOKE_RENDERER:-opengl}"
+  smoke_name="$(basename "$AN3_FLATPAK_SMOKE_ROM")"
+  smoke_host_path="$HOME/.var/app/$app_id/data/$smoke_name"
+  mkdir -p "$(dirname "$smoke_host_path")"
+  cp -- "$AN3_FLATPAK_SMOKE_ROM" "$smoke_host_path"
+  smoke_data_home="$(flatpak run --command=sh "$app_id" -c 'printf "%s" "$XDG_DATA_HOME"')"
+  [[ "$smoke_data_home" == /var/data ]] || { echo "Unexpected Flatpak private data path: $smoke_data_home" >&2; exit 2; }
+  smoke_rom="$smoke_data_home/$smoke_name"
   set +e
   timeout 15s xvfb-run -a flatpak run --command=an3-native-player --env=SDL_AUDIODRIVER=dummy "$app_id" \
-    --rom "$AN3_FLATPAK_SMOKE_ROM" --system "$smoke_system" --renderer "$smoke_renderer"
+    --rom "$smoke_rom" --system "$smoke_system" --renderer "$smoke_renderer"
   smoke_status=$?
   set -e
   [[ "$smoke_status" -eq 124 ]] || { echo "Flatpak runtime ended unexpectedly: $smoke_status" >&2; exit "$smoke_status"; }
