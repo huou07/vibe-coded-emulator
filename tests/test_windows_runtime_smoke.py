@@ -165,6 +165,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("Get-Process -Id", smoke)
         self.assertIn("$_.BaseAddress.ToInt64()", smoke)
         self.assertIn("kernel32.VirtualQueryEx", smoke)
+        self.assertIn("psapi.GetMappedFileNameW", smoke)
         self.assertIn("def unresolved_wait_callers(stack_text):", smoke)
         self.assertIn('"shutdownMemoryRegions": shutdown_memory_regions', smoke)
         self.assertIn("ImageChops.difference", smoke)

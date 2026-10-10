@@ -103,6 +103,7 @@ def inspect_memory_region(pid, address):
         if not result:
             raise ctypes.WinError(ctypes.get_last_error())
         module_path = ""
+        mapped_file_path = ""
         if region.Type == 0x01000000 and region.AllocationBase:  # MEM_IMAGE
             psapi = ctypes.WinDLL("psapi", use_last_error=True)
             get_module_name = psapi.GetModuleFileNameExW
@@ -111,6 +112,12 @@ def inspect_memory_region(pid, address):
             buffer = ctypes.create_unicode_buffer(32768)
             if get_module_name(process, wintypes.HMODULE(region.AllocationBase), buffer, len(buffer)):
                 module_path = buffer.value
+            get_mapped_name = psapi.GetMappedFileNameW
+            get_mapped_name.argtypes = (wintypes.HANDLE, ctypes.c_void_p, wintypes.LPWSTR, wintypes.DWORD)
+            get_mapped_name.restype = wintypes.DWORD
+            buffer = ctypes.create_unicode_buffer(32768)
+            if get_mapped_name(process, ctypes.c_void_p(address), buffer, len(buffer)):
+                mapped_file_path = buffer.value
         type_names = {0x01000000: "MEM_IMAGE", 0x00040000: "MEM_MAPPED", 0x00020000: "MEM_PRIVATE"}
         state_names = {0x1000: "MEM_COMMIT", 0x2000: "MEM_RESERVE", 0x10000: "MEM_FREE"}
         return {
@@ -121,6 +128,7 @@ def inspect_memory_region(pid, address):
             "state": state_names.get(region.State, f"0x{region.State:x}"),
             "type": type_names.get(region.Type, f"0x{region.Type:x}"),
             "modulePath": module_path,
+            "mappedFilePath": mapped_file_path,
         }
     finally:
         kernel32.CloseHandle(process)
