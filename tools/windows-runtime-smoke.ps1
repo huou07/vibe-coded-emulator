@@ -13,6 +13,7 @@ $installDir = Join-Path $installRoot 'app'
 $mainProcess = $null
 $mainExe = $null
 $automationBackup = $null
+$sramStorage = $null
 New-Item -ItemType Directory -Force -Path $evidence, $installRoot | Out-Null
 
 function Write-Evidence([string]$Name, $Value) {
@@ -608,11 +609,66 @@ try {
     audio = 'SDL dummy driver; physical audio UNVERIFIED'
     display = 'SDL dummy driver; physical display/GPU UNVERIFIED'
   })
-  Write-Host 'WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_VIRTUAL_INPUT_AND_SAVE_LOAD=GOOD'
+
+  $sramFixture = Join-Path $evidence 'AN3SRAMTEST.gba'
+  & python tools/testrom/gba_homebrew_test.py $sramFixture AN3SRAMTEST
+  if ($LASTEXITCODE -ne 0) { throw 'Could not generate the lawful GBA SRAM persistence fixture.' }
+  $sramFixtureHash = (Get-FileHash $sramFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+  $sramStorage = Join-Path $installRoot 'gba-sram-storage'
+  New-Item -ItemType Directory -Force -Path $sramStorage | Out-Null
+  $sramBase = @(
+    'emulator', 'snapshot', '--rom', $sramFixture, '--system', 'gba', '--frames', '120',
+    '--player', $playerExe, '--libdir', $coreDir, '--storage', $sramStorage,
+    '--seq', 'A@0-120', '--json'
+  )
+  $sramFresh = Invoke-An3ctl $sramBase
+  $sramRestored = Invoke-An3ctl $sramBase
+  if (!$sramFresh.ok -or !$sramRestored.ok) {
+    throw 'The packaged Windows player failed one of the two SRAM fixture launches.'
+  }
+  if ($sramFresh.data.rawHash -eq $sramRestored.data.rawHash) {
+    throw 'A fresh Windows player launch did not render the fixture SRAM restore color.'
+  }
+  $sramFiles = @(Get-ChildItem -LiteralPath $sramStorage -Filter '*.srm' -File -Recurse)
+  if ($sramFiles.Count -ne 1) { throw "Expected one persisted GBA SRAM file, found $($sramFiles.Count)." }
+  $sramBytes = [IO.File]::ReadAllBytes($sramFiles[0].FullName)
+  $sramSignature = [Text.Encoding]::ASCII.GetString($sramBytes, 0, [Math]::Min(4, $sramBytes.Length))
+  $sramBootCounter = if ($sramBytes.Length -gt 4) { [int]$sramBytes[4] } else { -1 }
+  if ($sramBytes.Length -ne 32768 -or $sramSignature -ne 'AN3B' -or $sramBootCounter -ne 1) {
+    throw "Persisted Windows SRAM was invalid (bytes=$($sramBytes.Length), signature=$sramSignature, bootCounter=$sramBootCounter)."
+  }
+  Write-Evidence 'sram-relaunch.json' ([ordered]@{
+    fixtureSha256 = $sramFixtureHash
+    playerSha256 = (Get-FileHash $playerExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    framesPerLaunch = 120
+    sameStorageAcrossLaunches = $true
+    freshRawHash = $sramFresh.data.rawHash
+    restoredRawHash = $sramRestored.data.rawHash
+    sramChangedFrameAfterRelaunch = $sramFresh.data.rawHash -ne $sramRestored.data.rawHash
+    sramBytes = $sramBytes.Length
+    sramSha256 = (Get-FileHash $sramFiles[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    sramSignature = $sramSignature
+    bootCounterAfterSecondLaunch = $sramBootCounter
+    storageRemovedAfterCheck = $true
+    validation = 'two packaged player processes, same isolated storage, SDL dummy video/audio'
+  })
+  foreach ($snapshot in @($sramFresh.data, $sramRestored.data)) {
+    foreach ($capturePath in @([string]$snapshot.pngPath, [string]$snapshot.rawPath)) {
+      if ($capturePath -and (Test-Path $capturePath)) {
+        Remove-Item -LiteralPath $capturePath -Force
+      }
+    }
+  }
+  Remove-Item -LiteralPath $sramStorage -Recurse -Force
+  $sramStorage = $null
+  Write-Host 'WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_INPUT_SAVE_LOAD_SRAM=GOOD'
 } catch {
   Write-Evidence 'failure.json' ([ordered]@{ message = $_.Exception.Message; sourceSha = $ExpectedSourceSha; artifactRunId = $ArtifactRunId })
   throw
 } finally {
+  if ($sramStorage -and (Test-Path $sramStorage)) {
+    Remove-Item -LiteralPath $sramStorage -Recurse -Force -ErrorAction SilentlyContinue
+  }
   if ($mainProcess) {
     $mainProcess.Refresh()
     if (!$mainProcess.HasExited) {

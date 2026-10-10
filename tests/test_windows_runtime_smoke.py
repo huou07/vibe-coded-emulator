@@ -97,7 +97,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("No visible native player window displayed the fixture's $ExpectedColor frame", SMOKE)
         self.assertIn("shell-shutdown.json", SMOKE)
         self.assertIn("nativePlayerExited = $true", SMOKE)
-        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_VIRTUAL_INPUT_AND_SAVE_LOAD=GOOD", SMOKE)
+        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_INPUT_SAVE_LOAD_SRAM=GOOD", SMOKE)
 
     def test_windows_session_controls_run_inside_the_shared_play_page(self):
         self.assertIn("--testid', 'native-session'", SMOKE)
@@ -123,7 +123,23 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'blue'", SMOKE)
         self.assertIn("virtualAInputFrameStatus = $inputFrameCapture.status", SMOKE)
         self.assertIn("restoredFrameStatus = $restoredFrameCapture.status", SMOKE)
-        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_VIRTUAL_INPUT_AND_SAVE_LOAD=GOOD", SMOKE)
+        self.assertIn("WINDOWS_INSTALL_SHELL_IMPORT_LAUNCH_INPUT_SAVE_LOAD_SRAM=GOOD", SMOKE)
+
+    def test_packaged_windows_player_persists_gba_sram_across_fresh_processes(self):
+        self.assertIn("gba_homebrew_test.py $sramFixture AN3SRAMTEST", SMOKE)
+        self.assertIn("'--storage', $sramStorage", SMOKE)
+        self.assertEqual(
+            SMOKE.count("$sramFresh = Invoke-An3ctl $sramBase")
+            + SMOKE.count("$sramRestored = Invoke-An3ctl $sramBase"),
+            2,
+        )
+        self.assertIn("$sramFresh.data.rawHash -eq $sramRestored.data.rawHash", SMOKE)
+        self.assertIn("$sramSignature -ne 'AN3B'", SMOKE)
+        self.assertIn("$sramBootCounter -ne 1", SMOKE)
+        self.assertIn("Remove-Item -LiteralPath $sramStorage -Recurse -Force", SMOKE)
+        self.assertIn("$snapshot.pngPath", SMOKE)
+        self.assertIn("$snapshot.rawPath", SMOKE)
+        self.assertIn("sramChangedFrameAfterRelaunch = $sramFresh.data.rawHash -ne $sramRestored.data.rawHash", SMOKE)
 
     def test_smoke_preserves_distribution_binary_and_verifies_test_import_guard(self):
         # The hosted runner's PowerShell parser rejects digit separators in this script.
