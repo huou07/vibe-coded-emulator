@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import shutil
 import socket
 import subprocess
@@ -15,6 +16,7 @@ import tempfile
 import threading
 import time
 import unittest
+from ctypes import wintypes
 
 from PIL import Image, ImageChops, ImageGrab
 
@@ -65,6 +67,72 @@ def wait_for_output(lines, prefix, timeout=10):
         if prefix in line:
             return line
     raise TimeoutError(f"Native player did not acknowledge {prefix}.")
+
+
+class MemoryBasicInformation(ctypes.Structure):
+    _fields_ = [
+        ("BaseAddress", ctypes.c_void_p),
+        ("AllocationBase", ctypes.c_void_p),
+        ("AllocationProtect", wintypes.DWORD),
+        ("PartitionId", wintypes.WORD),
+        ("RegionSize", ctypes.c_size_t),
+        ("State", wintypes.DWORD),
+        ("Protect", wintypes.DWORD),
+        ("Type", wintypes.DWORD),
+    ]
+
+
+def inspect_memory_region(pid, address):
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.VirtualQueryEx.argtypes = (
+        wintypes.HANDLE, ctypes.c_void_p, ctypes.POINTER(MemoryBasicInformation), ctypes.c_size_t,
+    )
+    kernel32.VirtualQueryEx.restype = ctypes.c_size_t
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    process = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)  # QUERY_INFORMATION | VM_READ
+    if not process:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        region = MemoryBasicInformation()
+        result = kernel32.VirtualQueryEx(
+            process, ctypes.c_void_p(address), ctypes.byref(region), ctypes.sizeof(region),
+        )
+        if not result:
+            raise ctypes.WinError(ctypes.get_last_error())
+        module_path = ""
+        if region.Type == 0x01000000 and region.AllocationBase:  # MEM_IMAGE
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            get_module_name = psapi.GetModuleFileNameExW
+            get_module_name.argtypes = (wintypes.HANDLE, wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD)
+            get_module_name.restype = wintypes.DWORD
+            buffer = ctypes.create_unicode_buffer(32768)
+            if get_module_name(process, wintypes.HMODULE(region.AllocationBase), buffer, len(buffer)):
+                module_path = buffer.value
+        type_names = {0x01000000: "MEM_IMAGE", 0x00040000: "MEM_MAPPED", 0x00020000: "MEM_PRIVATE"}
+        state_names = {0x1000: "MEM_COMMIT", 0x2000: "MEM_RESERVE", 0x10000: "MEM_FREE"}
+        return {
+            "address": f"0x{address:016x}",
+            "baseAddress": f"0x{region.BaseAddress or 0:016x}",
+            "allocationBase": f"0x{region.AllocationBase or 0:016x}",
+            "regionSize": int(region.RegionSize),
+            "state": state_names.get(region.State, f"0x{region.State:x}"),
+            "type": type_names.get(region.Type, f"0x{region.Type:x}"),
+            "modulePath": module_path,
+        }
+    finally:
+        kernel32.CloseHandle(process)
+
+
+def unresolved_wait_callers(stack_text):
+    return [
+        int(match.group(1), 16)
+        for match in re.finditer(
+            r"WaitForSingleObjectEx[^\n]*\n#2\s+(0x[0-9a-fA-F]+) in \?\?", stack_text,
+        )
+    ]
 
 
 class WindowsPackaged3DSSmoke(unittest.TestCase):
@@ -188,6 +256,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             shutdown_mode = "already-exited"
             shutdown_debugger = "not-needed"
             shutdown_modules = "not-needed"
+            shutdown_memory_regions = []
             if process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
@@ -209,11 +278,19 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                             capture_output=True, text=True, timeout=20,
                         )
                         shutdown_debugger = f"gdb-exit-{trace.returncode}"
-                        (evidence / "shutdown-stacks.txt").write_text(
+                        stack_text = (
                             f"command: {debugger} -batch -x {commands}\n"
-                            f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}",
-                            encoding="utf-8",
+                            f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}"
                         )
+                        (evidence / "shutdown-stacks.txt").write_text(stack_text, encoding="utf-8")
+                        for address in unresolved_wait_callers(stack_text):
+                            try:
+                                shutdown_memory_regions.append(inspect_memory_region(process.pid, address))
+                            except OSError as error:
+                                shutdown_memory_regions.append({
+                                    "address": f"0x{address:016x}",
+                                    "error": f"{type(error).__name__}: {error}",
+                                })
                         module_script = (
                             f"$p = Get-Process -Id {process.pid}; "
                             "$p.Modules | ForEach-Object { "
@@ -280,6 +357,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "shutdownExitCode": return_code,
             "shutdownDebugger": shutdown_debugger,
             "shutdownModules": shutdown_modules,
+            "shutdownMemoryRegions": shutdown_memory_regions,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
             "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, orderly process shutdown, and long-session behavior UNVERIFIED",
         }
