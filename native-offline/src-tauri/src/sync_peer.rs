@@ -25,12 +25,15 @@ use p256::{ecdh::EphemeralSecret, elliptic_curve::sec1::ToEncodedPoint, PublicKe
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::connection_limit::ConnectionLimit;
 use crate::lan_peer::{advertisement_with_capabilities, parse_advertisement, DISCOVERY_ADDRESS, DISCOVERY_PORT, PROTOCOL_VERSION, SYNC_PORT};
 
 const PAIRING_TTL: Duration = Duration::from_secs(120);
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 const MAX_FAILURES_PER_MINUTE: usize = 6;
+const MAX_ACTIVE_HANDLERS: usize = 8;
+static ACTIVE_HANDLERS: ConnectionLimit = ConnectionLimit::new(MAX_ACTIVE_HANDLERS);
 const MAX_NATIVE_MEMBERS: usize = 64;
 const MAX_NATIVE_SET_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_NATIVE_MEMBER_BYTES: u64 = 16 * 1024 * 1024;
@@ -906,8 +909,15 @@ fn listener_loop(runtime: Arc<Runtime>) {
     while !runtime.stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((mut stream, peer)) => {
+                let Some(permit) = ACTIVE_HANDLERS.try_acquire() else {
+                    drop(stream);
+                    continue;
+                };
                 let runtime = runtime.clone();
-                std::thread::spawn(move || handle_client(&runtime, &mut stream, peer));
+                std::thread::spawn(move || {
+                    let _permit = permit;
+                    handle_client(&runtime, &mut stream, peer);
+                });
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(50)),
             Err(_) => std::thread::sleep(Duration::from_millis(100)),

@@ -4,6 +4,7 @@
 use include_dir::{include_dir, Dir};
 mod azahar;
 mod controller_host;
+mod connection_limit;
 mod lan_peer;
 mod lan_host;
 mod sync_peer;

@@ -34,6 +34,7 @@ use p256::{ecdh::EphemeralSecret, elliptic_curve::sec1::ToEncodedPoint, PublicKe
 use sha2::{Digest, Sha256};
 
 use crate::azahar::{native_active_system, native_input_ready, set_native_input};
+use crate::connection_limit::ConnectionLimit;
 use crate::controller_host::frame_input;
 use crate::lan_peer::{advertisement_with_capabilities, parse_advertisement, CONTROL_PORT, DISCOVERY_ADDRESS, DISCOVERY_PORT, PROTOCOL_VERSION};
 const PAIRING_TTL: Duration = Duration::from_secs(120);
@@ -41,6 +42,8 @@ const MAX_FAILURES_PER_MINUTE: usize = 6;
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
 const ACK_INTERVAL: Duration = Duration::from_millis(200);
 const MAX_FRAME_BYTES: usize = 64 * 1024;
+const MAX_ACTIVE_HANDLERS: usize = 8;
+static ACTIVE_HANDLERS: ConnectionLimit = ConnectionLimit::new(MAX_ACTIVE_HANDLERS);
 const DIR_PHONE_TO_HOST: u32 = 1;
 const DIR_HOST_TO_PHONE: u32 = 2;
 
@@ -597,10 +600,15 @@ fn spawn_listener(stop: Arc<AtomicBool>, state: Arc<State>, name: String) -> Joi
         while !stop.load(Ordering::Relaxed) {
             match listener.accept() {
                 Ok((mut stream, peer)) => {
+                    let Some(permit) = ACTIVE_HANDLERS.try_acquire() else {
+                        drop(stream);
+                        continue;
+                    };
                     let state = state.clone();
                     let name = name.clone();
                     let stop = stop.clone();
                     std::thread::spawn(move || {
+                        let _permit = permit;
                         if stop.load(Ordering::Relaxed) {
                             return;
                         }
