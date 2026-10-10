@@ -63,11 +63,7 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
                     from PIL import Image, ImageChops
 
                     baseline_path = evidence / "3ds-title.png"
-                    baseline_meta = self.capture_window(window, baseline_path)
-                    with Image.open(baseline_path) as baseline_image:
-                        baseline = baseline_image.convert("RGB").copy()
-                    colors = len(baseline.getcolors(maxcolors=baseline.width * baseline.height) or [])
-                    self.assertGreater(colors, 16, "visible 3DS title frame is uniform or blank")
+                    baseline, baseline_meta, colors = self.wait_for_visible_frame(window, baseline_path)
 
                     subprocess.run(["xdotool", "keydown", "x"], check=True, timeout=10)
                     try:
@@ -114,7 +110,7 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
             "titleFrameDistinctColors": colors,
             "aInputChangedPixels": changed_pixels,
             "aInputChangedPercent": changed_percent,
-            "validation": "hosted Linux software-rendered window; physical GPU/display/input/audio and long-session behavior UNVERIFIED",
+            "validation": "hosted Linux software-rendered window after visible-frame wait; physical GPU/display/input/audio and long-session behavior UNVERIFIED",
         }
         (evidence / "3ds-smoke.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 
@@ -149,6 +145,29 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
         subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
         with Image.open(path) as image:
             return {"path": path.name, "width": image.width, "height": image.height}
+
+    @classmethod
+    def wait_for_visible_frame(cls, window, target_path):
+        from PIL import Image
+
+        deadline = time.monotonic() + 15
+        attempt = 0
+        last_colors = 0
+        while time.monotonic() < deadline:
+            attempt += 1
+            candidate = target_path.with_name(f"3ds-render-wait-{attempt:02d}.png")
+            metadata = cls.capture_window(window, candidate)
+            with Image.open(candidate) as image:
+                frame = image.convert("RGB").copy()
+            last_colors = len(frame.getcolors(maxcolors=frame.width * frame.height) or [])
+            if last_colors > 16:
+                candidate.replace(target_path)
+                metadata["path"] = target_path.name
+                metadata["visibleWaitSeconds"] = round(15 - max(0, deadline - time.monotonic()), 2)
+                return frame, metadata, last_colors
+            candidate.unlink(missing_ok=True)
+            time.sleep(1.0)
+        raise AssertionError(f"visible 3DS window stayed blank after 15 seconds ({last_colors} distinct colors)")
 
 
 if __name__ == "__main__":
