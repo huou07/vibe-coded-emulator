@@ -32,6 +32,7 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
         self.assertIn('wait_for("Add ROM GBA · NDS · 3DS")', SMOKE)
         self.assertIn('wait_for("Search games", pyatspi.ROLE_ENTRY)', SMOKE)
         self.assertIn("def capture_library_diagnostics()", SMOKE)
+        self.assertIn('"scrot", "-u", "-o", str(EVIDENCE / "library-window-after-wait.png")', SMOKE)
         self.assertIn('"scrot", "-o", str(EVIDENCE / "library-desktop.png")', SMOKE)
         self.assertIn('"libraryDiagnosticWaitSeconds": 5', SMOKE)
         for section in ("Library", "Settings", "Help", "About", "Play"):

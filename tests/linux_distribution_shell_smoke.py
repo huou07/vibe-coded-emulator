@@ -113,6 +113,11 @@ def capture_library_diagnostics():
         encoding="utf-8",
     )
     subprocess.run(
+        ["scrot", "-u", "-o", str(EVIDENCE / "library-window-after-wait.png")],
+        check=True,
+        timeout=10,
+    )
+    subprocess.run(
         ["scrot", "-o", str(EVIDENCE / "library-desktop.png")],
         check=True,
         timeout=10,
@@ -193,8 +198,8 @@ def main():
             "binarySha256": hashlib.sha256(binary_bytes).hexdigest(),
             "sections": sections,
             "emptyLibraryAccessible": True,
-            "libraryVisualState": "UNVERIFIED: screenshot was blank white despite accessible Library controls",
-            "libraryDiagnosticCaptures": ["library.png", "library-desktop.png"],
+            "libraryVisualState": "UNVERIFIED: paired post-wait screenshots retained for visual review",
+            "libraryDiagnosticCaptures": ["library.png", "library-window-after-wait.png", "library-desktop.png"],
             "libraryDiagnosticWaitSeconds": 5,
             "settingsVisible": True,
             "helpVisible": True,
