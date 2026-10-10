@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Verify the exact Linux DEB's Azahar core with the pinned lawful test app."""
+"""Verify the exact Linux DEB's Azahar core in its visible SDL window."""
 
 from pathlib import Path
 import hashlib
@@ -9,17 +9,16 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-AN3CTL = ROOT / "tools/an3ctl/bin/an3ctl"
 FIXTURE_COMMIT = "e5b13872f0c1207cb9c86e18e710c8f1fa269fb8"
 FIXTURE_SHA256 = "a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050"
 
 
 class LinuxPackaged3DSSmoke(unittest.TestCase):
-    def test_exact_deb_azahar_boots_and_responds_to_a(self):
+    def test_exact_deb_azahar_visible_output_and_a_input(self):
         player = Path(os.environ["AN3_LINUX_3DS_PLAYER"]).resolve()
         libdir = Path(os.environ["AN3_LINUX_3DS_LIBDIR"]).resolve()
         fixture_root = Path(os.environ["AN3_LINUX_3DS_FIXTURE_ROOT"]).resolve()
@@ -43,73 +42,61 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
             "LIBGL_ALWAYS_SOFTWARE": "1",
         })
 
-        def snapshot(storage, name, frames, sequence=None):
+        with tempfile.TemporaryDirectory(prefix="an3-linux-3ds-smoke-") as temp:
+            temp = Path(temp)
+            storage = temp / "storage"
             sd_game = storage / "saves/native-libretro/Azahar/sdmc/game"
             sd_game.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(fixture_game, sd_game)
-            args = [
-                str(AN3CTL), "emulator", "snapshot", "--rom", str(fixture),
-                "--system", "3ds", "--renderer", "vulkan", "--frames", str(frames),
-                "--storage", str(storage), "--json",
+            command = [
+                str(player), "--rom", str(fixture), "--system", "3ds",
+                "--renderer", "vulkan", "--control-stdin", "--storage", str(storage),
             ]
-            if sequence:
-                args.extend(["--seq", sequence])
-            result = subprocess.run(args, env=env, text=True, capture_output=True, timeout=180)
-            (evidence / f"{name}-command.json").write_text(json.dumps({
-                "args": args,
-                "returnCode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }, indent=2) + "\n", encoding="utf-8")
-            self.assertEqual(result.returncode, 0, f"an3ctl failed: {result.stdout}\n{result.stderr}")
-            payload = json.loads(result.stdout)
-            self.assertTrue(payload.get("ok"), payload)
-            data = payload["data"]
-            status = data["status"]
-            raw_path = Path(data["rawPath"])
-            png_path = Path(data["pngPath"])
-            raw = raw_path.read_bytes()
-            target_png = evidence / f"{name}.png"
-            target_raw = evidence / f"{name}.rgba"
-            shutil.copy2(png_path, target_png)
-            shutil.copy2(raw_path, target_raw)
-            self.assertEqual(status.get("system"), "3ds", status)
-            self.assertEqual(status.get("frames"), frames, status)
-            self.assertEqual(status.get("coreFrames"), frames, status)
-            self.assertTrue(status.get("running"), status)
-            self.assertTrue(status.get("captured"), status)
-            self.assertGreater(status.get("width", 0), 0, status)
-            self.assertGreater(status.get("height", 0), 0, status)
-            self.assertEqual(len(raw), status["width"] * status["height"] * 4)
-            colors = {raw[offset:offset + 4] for offset in range(0, len(raw), 4)}
-            self.assertGreater(len(colors), 16, "3DS capture was a uniform/blank frame")
-            snapshot_record = {
-                "name": name,
-                "frames": frames,
-                "inputSequence": sequence,
-                "status": status,
-                "rawHash": data["rawHash"],
-                "pngHash": data["pngHash"],
-                "distinctRgbaColors": len(colors),
-                "png": target_png.name,
-                "raw": target_raw.name,
-            }
-            raw_path.unlink(missing_ok=True)
-            png_path.unlink(missing_ok=True)
-            return snapshot_record, raw
+            log_path = evidence / "player.log"
+            with log_path.open("w", encoding="utf-8") as log:
+                process = subprocess.Popen(
+                    command, stdin=subprocess.PIPE, stdout=log, stderr=subprocess.STDOUT,
+                    text=True, env=env,
+                )
+                try:
+                    window = self.wait_for_window(player, process, log_path)
+                    from PIL import Image, ImageChops
 
-        with tempfile.TemporaryDirectory(prefix="an3-linux-3ds-smoke-") as temp:
-            temp = Path(temp)
-            baseline_record, baseline = snapshot(temp / "baseline-storage", "baseline", 120)
-            input_record, with_a = snapshot(temp / "input-storage", "input-a", 240, "A@120-122")
+                    baseline_path = evidence / "3ds-title.png"
+                    baseline_meta = self.capture_window(window, baseline_path)
+                    with Image.open(baseline_path) as baseline_image:
+                        baseline = baseline_image.convert("RGB").copy()
+                    colors = len(baseline.getcolors(maxcolors=baseline.width * baseline.height) or [])
+                    self.assertGreater(colors, 16, "visible 3DS title frame is uniform or blank")
 
-        self.assertEqual(len(baseline), len(with_a))
-        changed_pixels = sum(
-            baseline[offset:offset + 4] != with_a[offset:offset + 4]
-            for offset in range(0, len(baseline), 4)
-        )
-        changed_percent = changed_pixels * 100 / (len(baseline) // 4)
-        self.assertGreater(changed_percent, 1.0, "A input did not change the captured 3DS screen")
+                    subprocess.run(["xdotool", "keydown", "x"], check=True, timeout=10)
+                    try:
+                        time.sleep(0.5)
+                        input_path = evidence / "3ds-after-a.png"
+                        input_meta = self.capture_window(window, input_path)
+                    finally:
+                        subprocess.run(["xdotool", "keyup", "x"], check=False, timeout=10)
+
+                    with Image.open(input_path) as input_image:
+                        input_frame = input_image.convert("RGB")
+                    self.assertEqual(baseline.size, input_frame.size)
+                    difference = ImageChops.difference(baseline, input_frame)
+                    changed_pixels = sum(1 for pixel in difference.getdata() if pixel != (0, 0, 0))
+                    changed_percent = changed_pixels * 100 / (baseline.width * baseline.height)
+                    self.assertGreater(changed_percent, 1.0,
+                                       "visible 3DS screen did not change after pressing A")
+                finally:
+                    if process.poll() is None and process.stdin:
+                        process.stdin.write("QUIT\n")
+                        process.stdin.flush()
+                    try:
+                        return_code = process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        process.terminate()
+                        return_code = process.wait(timeout=5)
+                    if process.stdin:
+                        process.stdin.close()
+                    self.assertEqual(return_code, 0, f"packaged player exited {return_code}; see {log_path}")
 
         record = {
             "packageArtifactRunId": expected_package_run,
@@ -120,13 +107,48 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
             "fixtureLicense": "MIT",
             "fixtureSha256": FIXTURE_SHA256,
             "renderer": "Vulkan on Mesa llvmpipe (software)",
+            "capture": "visible SDL player window under Xvfb; this path is required for hardware-rendered 3DS",
             "audio": "SDL dummy driver; audible output UNVERIFIED",
-            "snapshots": [baseline_record, input_record],
+            "titleFrame": baseline_meta,
+            "afterAFrame": input_meta,
+            "titleFrameDistinctColors": colors,
             "aInputChangedPixels": changed_pixels,
             "aInputChangedPercent": changed_percent,
-            "validation": "hosted headless capture; physical GPU/display/input/audio and long-session behavior UNVERIFIED",
+            "validation": "hosted Linux software-rendered window; physical GPU/display/input/audio and long-session behavior UNVERIFIED",
         }
         (evidence / "3ds-smoke.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def wait_for_window(player, process, log_path):
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError(f"packaged player exited {process.returncode}; see {log_path}")
+            player_pid = process.pid
+            result = subprocess.run(
+                ["xdotool", "search", "--onlyvisible", "--pid", str(player_pid)],
+                text=True, capture_output=True, check=False,
+            )
+            for window in result.stdout.split():
+                title = subprocess.run(
+                    ["xdotool", "getwindowname", window], text=True, capture_output=True, check=False,
+                )
+                if title.returncode == 0 and title.stdout.strip() == "VibeCodedEmulator":
+                    subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+                    time.sleep(1.0)
+                    return window
+            time.sleep(0.25)
+        raise AssertionError(f"packaged 3DS window did not appear; see {log_path}")
+
+    @staticmethod
+    def capture_window(window, path):
+        from PIL import Image
+
+        subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+        time.sleep(0.35)
+        subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
+        with Image.open(path) as image:
+            return {"path": path.name, "width": image.width, "height": image.height}
 
 
 if __name__ == "__main__":
