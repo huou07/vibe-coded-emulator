@@ -56,7 +56,7 @@ The full license text is in [`LICENSE`](LICENSE).
 
 ### Source
 
-- Source repository: `https://github.com/YOUR_GITHUB_USER/vibe-coded-emulator`
+- Source repository: `https://github.com/huou07/vibe-coded-emulator`
 - The exact source revision for a released binary is the tagged commit listed in
   the release notes and `native-offline/releases/catalog.json`.
 

@@ -609,6 +609,7 @@ class LinuxControlPanel::Impl {
             text << "Renderer: requested " << current.video.requested << " · effective " << current.video.effective
                  << " · frames " << current.video.frames.presented_frames << " · drops " << current.video.frames.dropped_frames;
             if (!current.layout.empty()) text << " · layout " << current.layout;
+            if (!current.video.failure_reason.empty()) text << " · " << current.video.failure_reason;
             gtk_label_set_text(GTK_LABEL(graphics_label_), text.str().c_str());
         }
         if (audio_label_) {

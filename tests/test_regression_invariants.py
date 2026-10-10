@@ -88,7 +88,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertNotIn("desmume", PLAYER.lower())
         self.assertNotIn("startButtonClicked", PLAYER)
         self.assertIn('new URL(event.request.url).pathname', SERVICE_WORKER)
-        self.assertIn('an3-arcade-pwa-v31-__ASSET_VERSION__', SERVICE_WORKER)
+        self.assertIn('an3-arcade-pwa-v32-__ASSET_VERSION__', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/player-runtime.js', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/nds-touch.js', SERVICE_WORKER)
         self.assertIn('/static/v/__ASSET_VERSION__/local-save-recovery.js', SERVICE_WORKER)
@@ -297,7 +297,7 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn('playerSession?.saveStateManager.exportBytes()', PLAYER)
         self.assertIn('playerSession.inputRouter.setVirtualButton(index, value)', PLAYER)
         self.assertIn('const rendererPlan = playerSession?.videoBackend', PLAYER)
-        self.assertIn('if (config.mode !== "preload") queueTvDiscovery();', PLAYER)
+        self.assertNotIn("queueTvDiscovery", PLAYER)
         self.assertLess(APP.index('versioned_player_asset("player-runtime.js")'), APP.index('versioned_player_asset("player.js")'))
 
     def test_nds_default_pad_matches_approved_portrait_layout(self):
@@ -353,6 +353,17 @@ class RegressionInvariantTests(unittest.TestCase):
         self.assertIn("putCoreRecord(coreFile,coreData,report.buildStart)", PLAYER)
         self.assertIn("an3-arcade-cores-v1", PLAYER)
         self.assertIn('const CORE_CACHE = "an3-arcade-cores-v1"', SERVICE_WORKER)
+
+    def test_offline_navigation_prefers_cached_player_response_before_shell(self):
+        fallback = SERVICE_WORKER[SERVICE_WORKER.index('if (event.request.mode === "navigate")'):]
+        self.assertLess(fallback.index("caches.match(event.request)"), fallback.index("const pathname ="))
+
+    def test_nds_touch_release_only_prevents_cancelable_events(self):
+        root_touch = PLAYER[PLAYER.index("const bindRootNdsTouch"):PLAYER.index("const protectNdsCanvas")]
+        release = root_touch[root_touch.index("const end=event=>"):root_touch.index('gameRoot.addEventListener("touchstart"')]
+        self.assertIn("result.accepted&&event.cancelable", release)
+        self.assertIn("if(bridgePrevented)event.preventDefault()", release)
+        self.assertIn("family:\"touch\",bridgePrevented", release)
 
     def test_performance_polish_keeps_roms_out_of_pwa_cache_and_player_timers_bounded(self):
         self.assertIn('url.pathname.startsWith("/download/")', SERVICE_WORKER)

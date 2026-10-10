@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { An3Error, run, stateDir, httpJson } from "../lib/core.mjs";
-import { domTreeExpression, locateExpression } from "../lib/domtree.mjs";
+import { domTreeExpression, locateExpression, INTERACTIVE_SELECTOR } from "../lib/domtree.mjs";
 
 const SESSION = "an3-web";
 const DEFAULT_PORT = Number(process.env.AN3_WEB_PORT ?? 8099);
@@ -274,7 +274,7 @@ export class WebAdapter {
     if (!located?.found) {
       throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`, { selector: opts.selector });
     }
-    const script = `async (page) => {\n  const located = JSON.parse(await page.evaluate(() => ${locateExpression(opts.selector, { nth: opts.nth ?? 0 })}));\n  if (!located.found) return JSON.stringify({ found: false });\n  return await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify("a,button,input,select,textarea,[role],[data-testid]")}));\n    const el = all[idx];\n    return JSON.stringify({ found: !!el, value: el ? (el.value !== undefined ? String(el.value) : (el.innerText || '').trim()) : null });\n  }, located.index);\n}`;
+    const script = `async (page) => {\n  const located = JSON.parse(await page.evaluate(() => ${locateExpression(opts.selector, { nth: opts.nth ?? 0 })}));\n  if (!located.found) return JSON.stringify({ found: false });\n  return await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx];\n    return JSON.stringify({ found: !!el, value: el ? (el.value !== undefined ? String(el.value) : (el.innerText || '').trim()) : null });\n  }, located.index);\n}`;
     const result = await this.runCode(script);
     if (!result?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`);
     return result;
@@ -307,15 +307,15 @@ function actionBody(action, opts) {
   const common = `const idx = located.index;\n  `;
   switch (action) {
     case "click":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.scrollIntoView({block:'center'});\n    el.click();\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'click' });`;
+      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.scrollIntoView({block:'center'});\n    el.click();\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'click' });`;
     case "fill":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.focus();\n    el.value = ${JSON.stringify(String(opts.value ?? ""))};\n    el.dispatchEvent(new Event('input', { bubbles: true }));\n    el.dispatchEvent(new Event('change', { bubbles: true }));\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'fill', value: ${JSON.stringify(String(opts.value ?? ""))} });`;
+      return `${common}const value = ${JSON.stringify(String(opts.value ?? ""))};\n  const fileIndex = await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx];\n    return el instanceof HTMLInputElement && el.type === 'file'\n      ? Array.from(document.querySelectorAll('input[type="file"]')).indexOf(el)\n      : -1;\n  }, idx);\n  if (fileIndex >= 0) {\n    await page.locator('input[type="file"]').nth(fileIndex).setInputFiles(value ? value : []);\n  } else {\n    await page.evaluate(({ idx, value }) => {\n      const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n      const el = all[idx]; if (!el) throw new Error('element vanished');\n      el.focus();\n      el.value = value;\n      el.dispatchEvent(new Event('input', { bubbles: true }));\n      el.dispatchEvent(new Event('change', { bubbles: true }));\n    }, { idx, value });\n  }\n  return JSON.stringify({ performed: true, action: 'fill', value });`;
     case "press":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.focus();\n  }, idx);\n  await page.keyboard.press(${JSON.stringify(String(opts.key ?? "Enter"))});\n  return JSON.stringify({ performed: true, action: 'press', key: ${JSON.stringify(String(opts.key ?? "Enter"))} });`;
+      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.focus();\n  }, idx);\n  await page.keyboard.press(${JSON.stringify(String(opts.key ?? "Enter"))});\n  return JSON.stringify({ performed: true, action: 'press', key: ${JSON.stringify(String(opts.key ?? "Enter"))} });`;
     case "select":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.value = ${JSON.stringify(String(opts.value ?? ""))};\n    el.dispatchEvent(new Event('change', { bubbles: true }));\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'select', value: ${JSON.stringify(String(opts.value ?? ""))} });`;
+      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.value = ${JSON.stringify(String(opts.value ?? ""))};\n    el.dispatchEvent(new Event('change', { bubbles: true }));\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'select', value: ${JSON.stringify(String(opts.value ?? ""))} });`;
     case "check":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    const want = ${opts.checked === false ? "false" : "true"};\n    if (el.checked !== want) { el.click(); }\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'check' });`;
+      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    const want = ${opts.checked === false ? "false" : "true"};\n    if (el.checked !== want) { el.click(); }\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'check' });`;
     default:
       return `${common}return JSON.stringify({ performed: false, reason: 'unknown-action' });`;
   }

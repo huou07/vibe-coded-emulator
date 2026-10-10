@@ -3,7 +3,7 @@
 // app.py replaces this static template marker at request time. Keeping the
 // template itself hashable avoids a circular asset-version calculation while
 // giving every deployment an isolated PWA shell cache.
-const CACHE = "an3-arcade-pwa-v31-__ASSET_VERSION__";
+const CACHE = "an3-arcade-pwa-v32-__ASSET_VERSION__";
 const CORE_CACHE = "an3-arcade-cores-v1";
 const APP_SHELL = [
   "/", "/offline", "/download-app", "/static/site.css", "/static/site.js",
@@ -67,7 +67,9 @@ self.addEventListener("fetch", event => {
     event.respondWith(fetch(event.request).then(async response => {
       if (response.ok) await caches.open(CACHE).then(cache => cache.put(event.request, response.clone())).catch(() => {});
       return response;
-    }).catch(() => {
+    }).catch(async () => {
+      const exact = await caches.match(event.request);
+      if (exact) return exact;
       const pathname = new URL(event.request.url).pathname || "/";
       return caches.match(pathname).then(response => response || caches.match("/")).then(response => response || caches.match("/offline"));
     }));

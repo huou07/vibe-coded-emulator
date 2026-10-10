@@ -12,6 +12,7 @@
     "allow-start-native-game",
     "allow-stop-native-game",
     "allow-native-rom-library-manifest",
+    "allow-native-settings",
     "allow-switch-companion-detect",
     "allow-switch-companion-launch",
     "allow-switch-companion-launch-rom",

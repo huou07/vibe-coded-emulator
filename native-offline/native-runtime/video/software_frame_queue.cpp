@@ -5,6 +5,7 @@
 #include "../core/vendor/libretro.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace an3 {
@@ -26,6 +27,8 @@ bool NativeSoftwareFrameQueue::initialize(NativeWindowSurface&, std::string&) {
     dropped_frames_ = 0;
     duplicated_frames_ = 0;
     queue_depth_max_ = 0;
+    present_timings_.reset();
+    queue_depth_timings_.reset();
     for (auto& slot : slots_) {
         slot.state = SlotState::Free;
         slot.pixels.clear();
@@ -151,6 +154,7 @@ void NativeSoftwareFrameQueue::present_software(const void* data, unsigned width
         if (candidate.state == SlotState::Ready || candidate.state == SlotState::Presenting) ++ready;
     }
     queue_depth_max_ = std::max<uint32_t>(queue_depth_max_, static_cast<uint32_t>(ready));
+    queue_depth_timings_.add(ready);
     writing_slot_ = kNoSlot;
 }
 
@@ -184,9 +188,15 @@ bool NativeSoftwareFrameQueue::present_pending() {
         std::lock_guard<std::mutex> lock(mutex_);
         slot = &slots_[selected];
     }
+    const auto present_started = std::chrono::steady_clock::now();
     if (!slot->duplicate) {
         presenter_.present_software(slot->pixels.data(), slot->width, slot->height,
                                     slot->pitch, slot->pixel_format);
+    }
+    if (!slot->duplicate) {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - present_started).count();
+        present_timings_.add(static_cast<uint64_t>(std::max<int64_t>(elapsed, 0)));
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -207,6 +217,16 @@ std::size_t NativeSoftwareFrameQueue::pending_frames() const {
 
 NativeVideoStatus NativeSoftwareFrameQueue::metrics() const {
     NativeVideoStatus result = presenter_.metrics();
+    const auto present = present_timings_.summary();
+    const auto queue_depth = queue_depth_timings_.summary();
+    const auto to_us = [](uint64_t nanos) {
+        return static_cast<uint32_t>(std::min<uint64_t>(nanos / 1000u, UINT32_MAX));
+    };
+    result.frames.present_p50_us = to_us(present.p50_ns);
+    result.frames.present_p95_us = to_us(present.p95_ns);
+    result.frames.present_p99_us = to_us(present.p99_ns);
+    result.frames.present_max_us = to_us(present.max_ns);
+    result.frames.queue_depth_p95 = static_cast<uint32_t>(queue_depth.p95_ns);
     std::lock_guard<std::mutex> lock(mutex_);
     result.frames.dropped_frames += dropped_frames_;
     result.frames.duplicated_frames += duplicated_frames_;

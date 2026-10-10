@@ -66,10 +66,9 @@ def static_asset_version():
 ASSET_VERSION = static_asset_version()
 PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js", "nds-touch.js", "local-save-recovery.js", "player.js", "site.css"})
 
-# The public source location for the GPL corresponding source. The owner sets
-# the real URL (via AN3_SOURCE_REPOSITORY or by editing this default) so the
-# project never advertises an invented repository.
-SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://REPLACE-WITH-PUBLIC-REPOSITORY-URL")
+# The public source location for the GPL corresponding source. Deployments can
+# override the canonical project URL with AN3_SOURCE_REPOSITORY.
+SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://github.com/huou07/vibe-coded-emulator")
 
 # Shown on /licenses. Each component keeps its own copyright and license.
 LICENSES_THIRD_PARTY = (
@@ -719,6 +718,19 @@ def layout(title, content, lang, player=False, offline=False, library=False):
     if not player:
         body_classes.append("reference-shell")
     page_scripts = f'<script src="/static/site.js?v={ASSET_VERSION}" defer></script>'
+    if offline:
+        page_scripts += "".join(
+            f'<script src="{versioned_player_asset(name)}" defer></script>'
+            for name in (
+                "offline.js",
+                "player-ui.js",
+                "player-runtime.js",
+                "renderer-worker.js",
+                "nds-touch.js",
+                "local-save-recovery.js",
+                "player.js",
+            )
+        )
     return f"""<!doctype html>
 <html lang="{lang}" class="{'library-root' if library else ''}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07060c"><title>{esc(title)} · {esc(SITE_NAME)}</title>
@@ -990,7 +1002,7 @@ def home_page(lang):
     collection = f'''<section class="game-system-section collection-section" data-section-kind="collection"><div class="section-title"><div class="section-heading"><span class="ui-mask ui-gamepad" aria-hidden="true"></span><h2>{tr(lang,"Bộ sưu tập","Collection")}</h2></div><button class="section-link collection-link" type="button" data-library-reset>{tr(lang,"Xem tất cả","View all")}<span class="ui-mask ui-chevron-right" aria-hidden="true"></span></button></div><div class="game-grid">{collection_cards}</div></section>'''
     empty = f'<div class="empty-state"><strong>{tr(lang,"Thư viện đang chờ game đầu tiên.","The library is waiting for its first game.")}</strong><span>{tr(lang,"Bạn vẫn có thể mở ROM riêng đã lưu trên thiết bị.","You can still open a private ROM saved on this device.")}</span><a class="button primary" href="/offline">{tr(lang,"Mở thư viện ngoại tuyến","Open offline library")}</a></div>'
     populated_library = f'''<nav id="systemFilters" class="system-filters" aria-label="{tr(lang,"Lọc theo hệ máy","Filter by system")}"><button class="system-filter active" type="button" data-system-filter="all" aria-pressed="true">{tr(lang,"Tất cả","All")}<span>{len(games)}</span></button>{filters}</nav><p id="libraryStatus" class="library-status" aria-live="polite"></p>{collection}<div id="libraryNoResults" class="empty-state" hidden><strong>{tr(lang,"Không tìm thấy trò chơi phù hợp.","No matching games found.")}</strong><span>{tr(lang,"Thử từ khóa khác hoặc xóa bộ lọc hệ máy.","Try another search or clear the system filter.")}</span><button id="resetLibrary" class="button" type="button">{tr(lang,"Xóa tìm kiếm và bộ lọc","Clear search and filters")}</button></div>'''
-    body = f"""<main class="page library-page"><section class="library-head"><div><p class="eyebrow">example.com</p><h1>{tr(lang,"Thư viện trò chơi","Game library")}</h1><p class="muted">{tr(lang,"Chọn game và chơi ngay trên thiết bị của bạn.","Choose a game and play it on your own device.")}</p></div></section>
+    body = f"""<main class="page library-page"><section class="library-head"><div><p class="eyebrow">Vibe Coded Emulator</p><h1>{tr(lang,"Thư viện trò chơi","Game library")}</h1><p class="muted">{tr(lang,"Chọn game và chơi ngay trên thiết bị của bạn.","Choose a game and play it on your own device.")}</p></div></section>
 <section class="library-toolbar" aria-label="{tr(lang,'Tìm và lọc trò chơi','Find and filter games')}"><label class="search" for="gameSearch"><span>{tr(lang,'Tìm trò chơi','Search games')}</span><span class="search-field"><span class="ui-mask ui-search" aria-hidden="true"></span><input id="gameSearch" type="search" placeholder="{tr(lang,'Tìm trò chơi','Search games')}" autocomplete="off"><button id="clearSearch" class="search-clear" type="button" hidden>{tr(lang,'Xóa','Clear')}</button></span></label></section>
 <div id="gameGrid" class="game-library" data-library-version="{version}">{populated_library if games else empty}</div></main>"""
     return layout(tr(lang, "Trò chơi", "Games"), body, lang, library=True)
@@ -1031,28 +1043,24 @@ def game_page(game, lang):
 
 
 def offline_page(lang):
-    """Minimal offline notice.
-
-    Local ROM import, library management, core preloading and browser gameplay
-    now live only in the installed Vibe Coded Emulator app, so this page communicates the
-    connection state and points at the app instead of duplicating that UI.
-    """
-    facts = "".join(
-        f'<li>{ref_icon(icon)}{label}</li>'
-        for icon, label in (
-            ("hard-drive", "Play local games"),
-            ("folder-open", "Use your own ROMs"),
-            ("wifi", "No internet required"),
-        )
-    )
-    body = f'''<main class="page offline-state-page">
-<section class="offline-notice" aria-labelledby="offlineTitle">
-<span class="offline-notice-icon">{ref_icon("gamepad-2")}</span>
-<h1 id="offlineTitle">You're offline</h1>
-<p>No internet connection. Games already stored on this device can still be played in the Vibe Coded Emulator app.</p>
-<div class="offline-notice-actions"><a class="button primary" href="/offline">{ref_icon("arrow-right")}Try Again</a></div>
-<ul class="offline-notice-facts">{facts}</ul>
-</section></main>'''
+    """Browser-local ROM library and player, independent from server ROM routes."""
+    t = lambda vi, en: tr(lang, vi, en)
+    body = f'''<main class="page offline-page">
+<header class="library-head"><div><p class="eyebrow">{t("THƯ VIỆN RIÊNG TRÊN THIẾT BỊ","DEVICE-LOCAL LIBRARY")}</p><h1>{t("Chơi ngoại tuyến","Offline Play")}</h1><p class="muted">{t("ROM, tiến độ và core được lưu trong trình duyệt này. Tệp ROM của bạn không được tải lên máy chủ.","ROMs, progress and cores stay in this browser. Your ROM files are not uploaded to the server.")}</p></div></header>
+<section class="offline-readiness" aria-labelledby="offlineReadinessTitle"><div class="section-title"><h2 id="offlineReadinessTitle">{t("Trạng thái trên thiết bị này","This device")}</h2><button id="offlineShortcut" class="button" type="button">{t("Lưu ứng dụng","Save app")}</button></div><div class="offline-facts">
+<div class="offline-fact-card"><span class="ui-mask ui-ref-wifi" aria-hidden="true"></span><div><span>{t("Mạng","Network")}</span><strong id="offlineNetworkState">{t("Đang kiểm tra","Checking")}</strong><small>{t("Chỉ cần mạng để tải core lần đầu","Network is only needed for the first core download")}</small></div></div>
+<div class="offline-fact-card"><span class="ui-mask ui-ref-shield-check" aria-hidden="true"></span><div><span>{t("Kết nối an toàn","Secure context")}</span><strong id="offlineSecureState">{t("Đang kiểm tra","Checking")}</strong><small>{t("HTTPS hoặc localhost cho phép lưu toàn bộ trang","HTTPS or localhost enables full offline page storage")}</small></div></div>
+<div class="offline-fact-card"><span class="ui-mask ui-ref-monitor-down" aria-hidden="true"></span><div><span>{t("Giao diện","Interface")}</span><strong id="offlineShellState">{t("Đang kiểm tra","Checking")}</strong><small>{t("Trang và core được lưu riêng","The page and cores are stored separately")}</small></div></div>
+<div class="offline-fact-card"><span class="ui-mask ui-ref-hard-drive" aria-hidden="true"></span><div><span>{t("Game trên thiết bị","Local games")}</span><strong id="offlineGameCount">0</strong><small>{t("Lưu riêng trong trình duyệt này","Private to this browser")}</small></div></div>
+</div></section>
+<section class="offline-library" aria-labelledby="offlineLibraryTitle"><div class="offline-library-title"><div><h2 id="offlineLibraryTitle">{t("Thư viện trên thiết bị","Games on this device")}</h2><em>{t("RIÊNG TƯ","PRIVATE")}</em></div><span class="offline-library-views">{t("ROM chỉ nằm trong trình duyệt này","ROMs stay in this browser")}</span></div><div id="offlineGameGrid" class="offline-system-list" aria-live="polite"></div></section>
+<aside class="offline-upload" aria-labelledby="offlineImportTitle"><div class="section-title"><p class="eyebrow">{t("THÊM GAME","ADD A GAME")}</p><h2 id="offlineImportTitle">{t("Chọn một ROM từ thiết bị","Choose a ROM from this device")}</h2></div>
+<form id="offlineGameForm"><label id="offlineBrowserDropzone" class="offline-dropzone" for="offlineFile"><span class="ui-mask ui-ref-folder-open" aria-hidden="true"></span><strong>{t("Chọn tệp ROM","Choose a ROM file")}</strong><span>{t("Hỗ trợ GBA, NDS, 3DS và các core EmulatorJS ngoại tuyến","Supports GBA, NDS, 3DS and offline EmulatorJS cores")}</span><input id="offlineFile" name="file" type="file" required></label>
+<label class="offline-import-field">{t("Tên game","Game title")}<input id="offlineTitle" name="title" maxlength="120" required autocomplete="off"></label><label class="offline-import-field">{t("Hệ máy","System")}<select id="offlineSystem" name="system"></select></label><button id="offlineBrowserImport" class="button primary" type="submit">{t("Lưu trên thiết bị này","Save on this device")}</button></form><p id="offlineDetection" class="muted" role="status"></p>
+<div class="offline-private-note"><span class="ui-mask ui-ref-shield-check" aria-hidden="true"></span><div><strong>{t("Dữ liệu riêng trên thiết bị","Private device storage")}</strong><span>{t("ROM và dữ liệu lưu không được gửi tới AN3. Xóa dữ liệu trang web trong trình duyệt sẽ xóa các bản sao cục bộ.","ROMs and saves are not sent to AN3. Clearing this site's browser data removes local copies.")}</span></div></div>
+<div class="offline-quick-guide"><h3>{t("Bắt đầu chơi","Get started")}</h3><ol><li>{t("Chọn một ROM hợp pháp của bạn.","Choose a ROM you are authorized to use.")}</li><li>{t("Tải core một lần khi trực tuyến.","Download its core once while online.")}</li><li>{t("Mở game từ thư viện để chơi.","Open the game from your library.")}</li></ol></div></aside>
+<details id="coreManager" class="core-preload"><summary><strong>{t("Core ngoại tuyến","Offline cores")}</strong><span>{t("Mở","Open")}</span></summary><div class="core-preload-body"><p id="offlineCoreState" class="muted">{t("Trạng thái core được lưu riêng theo hệ máy.","Core status is stored separately by system.")}</p><div id="corePreloadGrid" class="core-preload-grid"></div><p id="corePreloadStatus" class="muted" role="status"></p></div></details>
+</main>'''
     return layout("Offline", body, lang, offline=True)
 
 
@@ -2150,7 +2158,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 version = library_fingerprint(conn)
             self.send_json({"version": version})
         elif path == "/offline":
-            self.send_html(offline_page(lang))
+            self.send_html(offline_page(lang), player=bool(query.get("play", [""])[0] or query.get("rom", [""])[0]))
         elif path == "/multiplayer":
             if not MULTIPLAYER_ENABLED:
                 self.send_html(status_page(404, lang), 404)

@@ -1,7 +1,7 @@
 # Provenance
 
 This repository is a **clean source snapshot** exported from the Vibe Coded
-Emulator development history on 2026-10-09.
+Emulator development history on 2026-10-10.
 
 - Only the product source is published here. The private development history
   (which contains local machine paths, private infrastructure configuration and
@@ -15,4 +15,4 @@ Emulator development history on 2026-10-09.
   other third-party components retain their own licenses; see
   `THIRD_PARTY_NOTICES.md` and `docs/licensing/`.
 
-Exported source revision: b86c5c3
+Exported source revision: ff66408

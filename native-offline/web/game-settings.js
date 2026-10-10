@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // External Game Settings + shared Application settings for the offline shell.
 // It renders the canonical model (native-settings.js) and persists through the
-// one Android settings adapter, so the library and the in-game menu can never
-// hold conflicting copies. A renderer that crashes the game process is edited
+// platform settings adapter. A renderer that crashes the game process is edited
 // here, outside that process, which is what makes a bad choice recoverable.
 (() => {
   const model = window.NativeSettingsModel;
-  const bridge = window.AN3AndroidSettings;
+  const bridge = window.AN3NativeSettings || window.AN3AndroidSettings;
+  const macNativeShell = bridge === window.AN3NativeSettings
+    && /Macintosh|Mac OS X/i.test(window.navigator?.userAgent || "");
 
-  const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
+  const parse = value => {
+    if (value && typeof value === "object") return value;
+    try { return JSON.parse(value || "{}"); } catch (_) { return {}; }
+  };
 
   const start = () => {
     const appCard = document.getElementById("nativeApplicationSettingsBody");
@@ -19,7 +23,7 @@
 
     const body = document.getElementById("nativeGameSettingsBody");
     const status = document.getElementById("nativeGameSettingsStatus");
-    let snapshot = bridge ? parse(bridge.all()) : {global: {}, systems: {}};
+    let snapshot = {global: {}, systems: {}};
     let system = model.systems[0];
     let category = "graphics";
 
@@ -38,6 +42,7 @@
       wrap.appendChild(caption);
       if (definition.type === "enum") {
         const select = document.createElement("select");
+        if (definition.id === "renderer") select.dataset.testid = "native-setting-renderer";
         for (const option of model.valuesOf(definition)) {
           const choice = document.createElement("option");
           choice.value = option;
@@ -68,8 +73,11 @@
     const renderGroup = (container, definitions, scope) => {
       container.textContent = "";
       const draft = {};
-      const editable = definitions.filter(definition => definition.editable !== false);
-      const pinned = definitions.filter(definition => definition.editable === false);
+      const isPlatformManaged = definition => macNativeShell && definition.id === "renderer";
+      const editable = definitions.filter(definition =>
+        definition.editable !== false && !isPlatformManaged(definition));
+      const pinned = definitions.filter(definition =>
+        definition.editable === false || isPlatformManaged(definition));
       if (editable.length === 0 && pinned.length === 0) {
         const empty = document.createElement("p");
         empty.className = "native-muted";
@@ -94,28 +102,35 @@
         const managed = document.createElement("p");
         managed.className = "native-muted";
         managed.dataset.gsPinned = scope == null ? "global" : scope;
+        if (pinned.some(definition => definition.id === "renderer")) {
+          managed.dataset.testid = "native-setting-managed-renderer";
+        }
         managed.textContent = `Managed automatically on this platform: ${pinned.map(definition => definition.label).join(", ")}.`;
         container.appendChild(managed);
       }
       if (scope == null) {
         const globalGroup = document.createElement("div");
         globalGroup.className = "native-settings-actions";
-        globalGroup.appendChild(action("Save application settings", () => saveDefinitions(editable, scope, draft)));
-        container.appendChild(globalGroup);
+        if (editable.length > 0) {
+          globalGroup.appendChild(action("Save application settings", () => saveDefinitions(editable, scope, draft)));
+          container.appendChild(globalGroup);
+        }
         return globalGroup;
       }
       const actions = document.createElement("div");
       actions.className = "native-settings-actions";
-      actions.appendChild(action("Save settings", () => saveDefinitions(editable, scope, draft)));
-      if (definitions.some(definition => definition.category === "graphics")) {
+      if (editable.length > 0) {
+        actions.appendChild(action("Save settings", () => saveDefinitions(editable, scope, draft)));
+      }
+      if (editable.some(definition => definition.category === "graphics")) {
         actions.appendChild(action("Reset Graphics to Defaults", () => {
           if (!bridge) return;
-          bridge.resetGraphics(scope);
-          reload();
-          setStatus(`Graphics defaults restored for ${model.systemLabels[scope]} only.`);
+          Promise.resolve().then(() => bridge.resetGraphics(scope)).then(reload).then(() => {
+            setStatus(`Graphics defaults restored for ${model.systemLabels[scope]} only.`);
+          }).catch(error => setStatus(`Could not reset graphics settings: ${error.message || error}`));
         }));
       }
-      container.appendChild(actions);
+      if (actions.children.length > 0) container.appendChild(actions);
       return actions;
     };
 
@@ -135,7 +150,7 @@
       return button;
     };
 
-    const saveDefinitions = (definitions, scope, draft) => {
+    const saveDefinitions = async (definitions, scope, draft) => {
       if (!bridge) { setStatus("Settings are read-only in this build."); return; }
       const edits = {};
       for (const definition of definitions) {
@@ -143,13 +158,19 @@
         if (!edit) { setStatus(`Unsupported value for ${definition.label}.`); return; }
         edits[edit.key] = edit.value;
       }
-      const result = parse(bridge.save(JSON.stringify(edits)));
+      let result;
+      try {
+        result = parse(await bridge.save(JSON.stringify(edits)));
+      } catch (error) {
+        setStatus(`Could not save settings: ${error.message || error}`);
+        return;
+      }
       if (result.ok === false && Array.isArray(result.rejected) && result.rejected.length > 0) {
         setStatus(`Rejected: ${result.rejected.join(", ")}`);
       } else {
         setStatus(`Saved ${model.systemLabels[scope] || "application"} settings. Renderer changes apply on the next launch.`);
       }
-      reload();
+      await reload();
     };
 
     const renderSystems = () => {
@@ -219,15 +240,20 @@
       renderGroup(appCard, model.externalGlobal(), null);
     };
 
-    const reload = () => {
+    const reload = async () => {
       if (!bridge) return;
-      snapshot = parse(bridge.all());
-      renderApplication();
-      render();
+      try {
+        snapshot = parse(await bridge.all());
+        renderApplication();
+        render();
+      } catch (error) {
+        setStatus(`Could not load settings: ${error.message || error}`);
+      }
     };
 
     renderApplication();
     render();
+    if (bridge) reload();
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, {once: true});

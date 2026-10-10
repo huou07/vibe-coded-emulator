@@ -33,11 +33,15 @@ GAME_ACTIVITY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom
 OVERLAY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeGameOverlay.kt"
 AUTOSAVE = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeAutoSave.kt"
 MAIN_ACTIVITY = NATIVE / "src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt"
+RUST_SETTINGS = NATIVE / "src-tauri/src/native_settings.rs"
+RUST_LIBRARY = NATIVE / "src-tauri/src/lib.rs"
+SETTINGS_MODEL = NATIVE / "shared/native-settings-model.json"
 JS_MODEL = NATIVE / "web" / "native-settings.js"
 WEB_UI = NATIVE / "web" / "game-settings.js"
 INDEX = NATIVE / "web" / "index.html"
 HOST = NATIVE / "native-runtime/core/libretro_host.cpp"
 NODE_TEST = ROOT / "tests" / "native_settings.test.mjs"
+ADAPTER_TEST = ROOT / "tests" / "native_settings_adapter.test.mjs"
 
 
 def source(path: pathlib.Path) -> str:
@@ -85,12 +89,12 @@ class NativeSettingsSchemaTests(unittest.TestCase):
         self.assertEqual(pinned["switch"]["android"], [])
 
     def test_generated_outputs_are_in_sync_with_the_schema(self):
-        before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL)}
+        before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL, SETTINGS_MODEL)}
         result = subprocess.run(
             ["node", str(GENERATOR)], cwd=NATIVE, capture_output=True, text=True, timeout=120,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL)}
+        after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (KOTLIN_SCHEMA, JS_MODEL, SETTINGS_MODEL)}
         self.assertEqual(before, after, "committed generated settings files are stale; run npm run prepare-web")
 
 
@@ -212,6 +216,43 @@ class NativeSettingsAdapterTests(unittest.TestCase):
         self.assertIn("effective", model)
         self.assertIn('"core-gba-mgba_gb_model"', model)
 
+    def test_desktop_settings_adapter_uses_the_generated_model_and_app_data(self):
+        rust = source(RUST_SETTINGS)
+        library = source(RUST_LIBRARY)
+        self.assertIn('include_str!("../../shared/native-settings-model.json")', rust)
+        self.assertIn('join("native-settings.json")', library)
+        self.assertIn('spawn_blocking', library)
+        self.assertIn('"reset-graphics"', rust)
+        self.assertIn('definition["editable"] != false', rust)
+
+    def test_shared_web_settings_adapter_supports_async_tauri_and_android(self):
+        ui = source(WEB_UI)
+        bootstrap = source(NATIVE / "web" / "native-bootstrap.js")
+        self.assertIn("window.AN3NativeSettings || window.AN3AndroidSettings", ui)
+        self.assertIn('"native_settings"', bootstrap)
+        self.assertIn("await bridge.all()", ui)
+
+    def test_linux_and_windows_launchers_pass_saved_core_settings_before_gameplay(self):
+        for platform in ("linux_runtime.rs", "windows_runtime.rs"):
+            launcher = source(NATIVE / "src-tauri/src" / platform)
+            self.assertIn("native_settings::launch_arguments", launcher)
+            self.assertIn("args(settings_args)", launcher)
+        runtime = source(NATIVE / "native-runtime/platform/linux/linux_runtime.cpp")
+        host = source(NATIVE / "native-runtime/core/libretro_host.cpp")
+        self.assertIn('argument == "--core-option"', runtime)
+        self.assertIn("options.core_options", runtime)
+        self.assertIn("initial_options", host)
+        self.assertIn("options_.set(key, value)", host)
+        mac_launcher = source(NATIVE / "src-tauri/src/azahar.rs")
+        mac_host = source(NATIVE / "src-tauri/src/azahar_host.mm")
+        self.assertIn("native_settings::launch_core_options", mac_launcher)
+        self.assertIn("an3_native_apply_core_options", mac_launcher)
+        self.assertIn("NSUserDefaults standardUserDefaults", mac_host)
+        self.assertIn("restore_core_options();", mac_host)
+        self.assertIn("core_options_.capture_legacy_variables(entries.data())", mac_host)
+        self.assertIn("an3_native_apply_core_options(const char* system", mac_host)
+        self.assertIn("core_option_namespace_for_system(system_name)", mac_host)
+
 
 class NativeSettingsWorkaroundTests(unittest.TestCase):
     def test_android_3ds_gles_and_vulkan_pins_remain(self):
@@ -239,6 +280,15 @@ class NativeSettingsBehaviorTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("pass", result.stdout)
+
+    def test_async_desktop_settings_adapter_ui(self):
+        result = subprocess.run(
+            ["node", "--test", str(ADAPTER_TEST)], cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("pass 2", result.stdout)
+        self.assertIn("desktop Settings adapter reads, saves, and reloads per-core values asynchronously", result.stdout)
+        self.assertIn("macOS desktop Settings shows its fixed renderer as platform-managed", result.stdout)
 
 
 if __name__ == "__main__":

@@ -361,6 +361,7 @@ function usage() {
     "  an3ctl ui click  --target web --testid open-rom",
     "  an3ctl app start  --target macos   # automation build (ui-control)",
     "  an3ctl ui tree   --target macos --json",
+    "  an3ctl ui tree   --target linux --control-file <forwarded-ui-control.json>",
     "  an3ctl ui click  --target macos --testid switch-launch",
     "  an3ctl ui wait   --target macos --testid switch-status --state running",
     "  an3ctl ui fill   --target web --id nativeSearch --value emerald",

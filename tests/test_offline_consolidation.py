@@ -22,14 +22,15 @@ PLAYER_JS = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
 
 
 class OfflineConsolidationTests(unittest.TestCase):
-    def test_offline_is_the_single_pwa_surface(self):
+    def test_browser_offline_library_and_native_app_share_the_local_player(self):
         source = pathlib.Path(app.__file__).read_text(encoding="utf-8")
-        # The web /offline page is now a minimal connection notice; the local
-        # ROM library lives only in the installed AN3 app.
-        self.assertIn('class="offline-notice"', source)
-        self.assertNotIn('id="offlineGameForm"', source)
-        self.assertNotIn('id="offlineShortcut"', source)
-        self.assertIn('versioned_player_asset("player.js")', source)
+        # Browser-local records stay in IndexedDB/OPFS and the browser PWA
+        # continues to use the same player assets as the installed app.
+        self.assertIn('id="offlineGameForm"', source)
+        self.assertIn('id="offlineGameGrid"', source)
+        self.assertIn('id="offlineShortcut"', source)
+        self.assertIn('"offline.js"', source)
+        self.assertIn('"player.js"', source)
         self.assertIn('path == "/offline-app-service-worker.js"', source)
         self.assertIn('self.registration.unregister()', source)
         self.assertNotIn('def offline_app_page', source)
@@ -47,6 +48,18 @@ class OfflineConsolidationTests(unittest.TestCase):
         self.assertIn('beforeinstallprompt', OFFLINE_JS)
         self.assertIn('deferredPrompt.prompt()', OFFLINE_JS)
         self.assertIn('Chrome/Edge', OFFLINE_JS)
+
+    def test_offline_readiness_checks_the_loaded_versioned_script(self):
+        self.assertIn(
+            'const offlineScriptPath = new URL(document.currentScript?.src || "/static/offline.js", location.href).pathname;',
+            OFFLINE_JS,
+        )
+        self.assertIn(
+            'const required=["/offline","/static/site.css",offlineScriptPath]',
+            OFFLINE_JS,
+        )
+        mirror = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/assets/static/offline.js").read_text(encoding="utf-8")
+        self.assertIn("offlineScriptPath", mirror)
 
     def test_3ds_uses_the_supported_azahar_core_and_has_separate_touch_pad(self):
         self.assertIn('"3ds":"azahar"', OFFLINE_JS)
@@ -75,6 +88,8 @@ class OfflineConsolidationTests(unittest.TestCase):
         self.assertIn('play.disabled=game.system==="html5"||androidThreeDsUnavailable(game.system);', OFFLINE_JS)
         self.assertIn('data-repair-native', OFFLINE_JS)
         self.assertIn('repairNativeRom', OFFLINE_JS)
+        self.assertIn('/the imported native rom is unavailable/i.test(message)', OFFLINE_JS)
+        self.assertNotIn('/unavailable/i.test(message)', OFFLINE_JS)
         # The native launch carries the recorded byte size so the Android side
         # can recover a ROM whose stored id no longer matches its file.
         self.assertIn('return launch(romId,game.system,"preserve",game.size);', OFFLINE_JS)
@@ -195,13 +210,13 @@ console.log(JSON.stringify(result));
         self.assertFalse(any(command.startswith("native_controller_") or command.startswith("native_latency_") for command in commands))
         self.assertNotIn("set_native_input", commands)
         build_rs = (native_root / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        # `ui_control_result` is feature-gated (test-only automation bridge), so
-        # it is pushed conditionally instead of appearing in the literal list.
-        manifest = build_rs[build_rs.index("let mut commands = vec!["):]
+        # The test bridge returns WebView results through Tauri's callback API;
+        # it must not register a stale result command in the app manifest.
+        manifest = build_rs[build_rs.index("let commands = vec!["):]
         manifest = manifest[:manifest.index("];")]
         declared = re.findall(r'"([a-z0-9_]+)"', manifest)
-        declared.append("ui_control_result")
         self.assertEqual(sorted(declared), sorted(commands), "build.rs commands must match the #[tauri::command] set")
+        self.assertNotIn('commands.push("ui_control_result")', build_rs)
         for command in commands:
             permission = "allow-" + command.replace("_", "-")
             self.assertIn(f'"{permission}"', capabilities, f"capability missing {permission}")

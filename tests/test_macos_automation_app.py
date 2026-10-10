@@ -41,6 +41,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AN3CTL = ROOT / "tools/an3ctl/bin/an3ctl"
 TAURI_CONF = ROOT / "native-offline/src-tauri/tauri.conf.json"
+UI_CONTROL = ROOT / "native-offline/src-tauri/src/ui_control.rs"
+NATIVE_BUILD_WORKFLOW = ROOT / ".github/workflows/native-build.yml"
 BUNDLE_DIR = ROOT / "native-offline/src-tauri/target/release/bundle/macos"
 AUTOMATION_APP = Path(
     os.environ.get("AN3_MACOS_AUTOMATION_APP", str(BUNDLE_DIR / "VibeCodedEmulatorAutomation.app"))
@@ -106,6 +108,77 @@ def _runtime_port_free() -> bool:
 
 
 class MacosAutomationAppTests(unittest.TestCase):
+    def test_hosted_macos_job_builds_and_retains_source_matched_test_app(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
+        self.assertIn("build_macos_candidate:", workflow)
+        self.assertIn("inputs.build_macos_candidate", macos_job)
+        self.assertIn("Build canonical macOS package", macos_job)
+        self.assertIn("Build source-matched macOS UI-control test app", macos_job)
+        self.assertIn("Verify macOS distribution and UI-control bundle separation", macos_job)
+        self.assertIn("test_10_automation_bundle_exposes_bridge_and_is_signed", macos_job)
+        self.assertIn("native-offline/scripts/build-macos-automation.sh", macos_job)
+        self.assertIn("name: macos-ui-control-test-app", macos_job)
+        self.assertIn("VibeCodedEmulatorAutomation.app.tar.gz", macos_job)
+        self.assertIn("retention-days: 7", macos_job)
+
+    def test_candidate_dispatch_gates_android_and_linux_to_their_own_inputs(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
+        android_job = workflow[workflow.index("  android-apk:"):workflow.index("  linux-deb:")]
+        linux_job = workflow[workflow.index("  linux-deb:"):workflow.index("  linux-deb-install:")]
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_macos_candidate",
+            macos_job,
+        )
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_android_candidate",
+            android_job,
+        )
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || inputs.build_linux_candidate",
+            linux_job,
+        )
+        for job in (android_job, linux_job):
+            self.assertNotIn("inputs.build_macos_candidate", job)
+            self.assertNotIn("inputs.build_windows_candidate", job)
+
+    def test_macos_automation_refresh_reuses_a_verified_prior_dmg(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        refresh = workflow[
+            workflow.index("  macos-ui-control-refresh:"):workflow.index("  android-apk:")
+        ]
+        self.assertIn("macos_artifact_run_id:", workflow)
+        self.assertIn("macos_expected_source_sha:", workflow)
+        self.assertIn("inputs.macos_artifact_run_id != ''", refresh)
+        self.assertIn("!inputs.build_macos_candidate && !inputs.build_windows_candidate", refresh)
+        self.assertIn("run-id: ${{ inputs.macos_artifact_run_id }}", refresh)
+        self.assertIn("name: web-runtime-cache", refresh)
+        self.assertIn("tar -xzf native-offline/work/web-runtime-cache.tar.gz", refresh)
+        self.assertIn('cp -R "$resources/libretro/macos-arm64/."', refresh)
+        self.assertIn('cp "$resources/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt"', refresh)
+        self.assertIn('cp -R "$resources/switch/macos-arm64/."', refresh)
+        self.assertIn('cd "$artifact_dir" && shasum -a 256 VibeCodedEmulatorAutomation.app.tar.gz', refresh)
+        self.assertIn("Source revision: $EXPECTED_SOURCE_SHA", refresh)
+        self.assertIn("build-macos-automation.sh", refresh)
+        self.assertNotIn("needs: web-runtime-cache", refresh)
+
+    def test_ui_control_click_sends_a_sampled_pointer_tap(self):
+        bridge = UI_CONTROL.read_text(encoding="utf-8")
+        self.assertIn("new PointerEvent('pointerdown'", bridge)
+        self.assertIn("new PointerEvent('pointerup'", bridge)
+        self.assertIn("new MouseEvent('click'", bridge)
+        self.assertIn("Duration::from_millis(100)", bridge)
+        self.assertNotIn("el.click()", bridge)
+
+    def test_workflow_only_pushes_use_portable_ci_without_native_matrix(self):
+        workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
+        push = workflow[workflow.index("  push:"):workflow.index("permissions:")]
+        self.assertNotIn(".github/workflows/**", push)
+        self.assertNotIn("tests/test_windows_runtime_smoke.py", push)
+        self.assertIn("!native-offline/src-tauri/src/ui_control.rs", push)
+        self.assertIn(".github/workflows/**", workflow[workflow.index("  pull_request:"):workflow.index("  push:")])
+
     def _stop(self, app: Path) -> None:
         subprocess.run(["pkill", "-f", str(app)], capture_output=True)
         for _ in range(20):
