@@ -217,7 +217,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                         module_script = (
                             f"$p = Get-Process -Id {process.pid}; "
                             "$p.Modules | ForEach-Object { "
-                            "'{0:X16}`t{1:X8}`t{2}' -f [uint64]$_.BaseAddress, "
+                            "'{0:X16}`t{1:X8}`t{2}' -f $_.BaseAddress.ToInt64(), "
                             "$_.ModuleMemorySize, $_.ModuleName }"
                         )
                         modules = subprocess.run(

@@ -163,6 +163,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn('"shutdownDebugger": shutdown_debugger', smoke)
         self.assertIn('"shutdownModules": shutdown_modules', smoke)
         self.assertIn("Get-Process -Id", smoke)
+        self.assertIn("$_.BaseAddress.ToInt64()", smoke)
         self.assertIn("ImageChops.difference", smoke)
         self.assertIn("game_area(baseline)", smoke)
         self.assertIn("visible_percent > 2.0", smoke)
