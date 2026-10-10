@@ -50,7 +50,7 @@ def matching_node(name, role=None):
     return None
 
 
-def wait_for(name, role=None, timeout=45):
+def wait_for(name, role=None, timeout=15):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         node = matching_node(name, role)
@@ -113,7 +113,7 @@ def main():
     log = log_path.open("w", encoding="utf-8")
     app = subprocess.Popen([str(BINARY)], env=env, stdout=log, stderr=subprocess.STDOUT)
     try:
-        wait_for("VibeCodedEmulator", pyatspi.ROLE_FRAME)
+        wait_for("VibeCodedEmulator", pyatspi.ROLE_FRAME, timeout=45)
         sections = []
         screenshots = {}
         click_button("Library")
@@ -124,7 +124,7 @@ def main():
 
         click_button("Settings")
         wait_for("Settings", pyatspi.ROLE_HEADING)
-        wait_for("Game Settings", pyatspi.ROLE_HEADING)
+        wait_for("Application settings", pyatspi.ROLE_HEADING)
         sections.append("settings")
         screenshots["settings"] = capture("settings")
 
