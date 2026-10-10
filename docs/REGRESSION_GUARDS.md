@@ -791,3 +791,9 @@ Update (2026-09-18, same physical Redmi `25057RN09G`, Adreno 619, driver 0762.40
 - The desktop direct-controller listener and native sync listener each admit at most eight active TCP handler threads. Once a listener reaches its limit, it closes an accepted socket before creating a thread. The RAII permit is held for the handler lifetime and releases on normal return or panic; its process-wide lifetime keeps stopped/restarted services within the same bound. I/O remains off the emulator render loop, and no waiting work queue is added.
 - Automated validation: `cargo test --lib` — 35 passed, 3 ignored; this includes the permit saturation/release test and existing direct-controller pairing/input integration tests. `cargo check --lib` and `rustfmt --check src/connection_limit.rs` pass.
 - Scope limit: packaged-runtime behavior under connection saturation and gameplay p95/p99 impact remain **UNVERIFIED**. Do not claim runtime latency acceptance from these source-level checks.
+
+## RG-143 — Native LAN sync requests stay off the UI thread (2026-10-10)
+
+- Native sync discovery waits up to two seconds on multicast UDP, and sync RPCs perform blocking socket writes and reads, including potentially large save/state payloads. Both Tauri commands must be `async` and call their socket work through `tauri::async_runtime::spawn_blocking`, so slow peers cannot freeze the UI thread or block the async executor.
+- Automated validation: `tests.test_native_sync_command` checks both commands' blocking-worker boundary; `cargo check --lib` validates the Rust commands; `node --test tests/native_sync.test.mjs tests/sync_transfer.test.mjs` covers the existing sync behavior and packaged JavaScript parity.
+- Runtime acceptance: slow-peer UI responsiveness during packaged save/state transfer remains **UNVERIFIED**; source and test checks do not prove the packaged interaction.
