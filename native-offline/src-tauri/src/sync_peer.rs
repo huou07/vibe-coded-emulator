@@ -474,6 +474,17 @@ fn sha256_bytes(bytes: &[u8]) -> String {
     hex(&digest.finalize())
 }
 
+fn native_blob_range(payload: &serde_json::Value) -> Result<Option<(u64, u64)>, String> {
+    match (payload.get("offset"), payload.get("length")) {
+        (None, None) => Ok(None),
+        (Some(offset), Some(length)) => Ok(Some((
+            offset.as_u64().ok_or("Invalid native sync blob chunk range.")?,
+            length.as_u64().ok_or("Invalid native sync blob chunk range.")?,
+        ))),
+        _ => Err("The native sync blob chunk range is incomplete.".into()),
+    }
+}
+
 fn native_manifest(runtime: &Runtime, payload: &serde_json::Value, _peer_id: &str) -> Result<serde_json::Value, String> {
     let context = native_context(payload)?;
     let Some((rom_id, _rom_path, root)) = find_native_game(&runtime.app_dir, &context, context.rom_id.as_deref()).ok() else {
@@ -577,15 +588,7 @@ fn native_blob(runtime: &Runtime, payload: &serde_json::Value) -> Result<serde_j
     if expected_size != metadata.len() || expected_hash.len() != 64 || !expected_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("Native sync blob verification failed.".into());
     }
-    let offset = payload.get("offset");
-    let length = payload.get("length");
-    if offset.is_some() != length.is_some() {
-        return Err("The native sync blob chunk range is incomplete.".into());
-    }
-    if let (Some(offset), Some(length)) = (
-        offset.and_then(|value| value.as_u64()),
-        length.and_then(|value| value.as_u64()),
-    ) {
+    if let Some((offset, length)) = native_blob_range(payload)? {
         if offset >= expected_size || length == 0 || length > SYNC_CHUNK_BYTES as u64 {
             return Err("Invalid native sync blob chunk range.".into());
         }
@@ -1453,5 +1456,13 @@ mod tests {
 
         drop(pending.take());
         assert!(ACTIVE_PUBLISHES.try_acquire().is_some());
+    }
+
+    #[test]
+    fn native_blob_ranges_reject_partial_and_mistyped_values() {
+        assert_eq!(native_blob_range(&serde_json::json!({})).unwrap(), None);
+        assert_eq!(native_blob_range(&serde_json::json!({"offset": 7, "length": 9})).unwrap(), Some((7, 9)));
+        assert!(native_blob_range(&serde_json::json!({"offset": 7})).is_err());
+        assert!(native_blob_range(&serde_json::json!({"offset": "7", "length": 9})).is_err());
     }
 }
