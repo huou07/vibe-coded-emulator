@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $evidence = Join-Path $env:RUNNER_TEMP 'vce-windows-nds-smoke'
-$installDir = Join-Path $evidence 'installed-app'
+$installDir = Join-Path $env:RUNNER_TEMP 'vce-windows-nds-installed'
 New-Item -ItemType Directory -Force -Path $evidence, $installDir | Out-Null
 
 if ($env:EXPECTED_SOURCE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'Expected Windows package source SHA is missing or invalid.' }
@@ -55,7 +55,7 @@ if ($fixtureHash -ne '3cbd04760c71e49ca2617604515abc7d26aeadd583418f28557d1a9ee7
 
 $env:AN3_OFFLINE_LIBDIR = $coreDir
 $env:SDL_AUDIODRIVER = 'dummy'
-$storage = Join-Path $evidence 'storage'
+$storage = Join-Path $env:RUNNER_TEMP 'vce-windows-nds-storage'
 $arguments = @(
   'tools/an3ctl/an3ctl.mjs', 'emulator', 'snapshot', '--rom', $fixture,
   '--system', 'nds', '--frames', '120', '--player', $player,

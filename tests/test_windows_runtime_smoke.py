@@ -132,6 +132,10 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("'--system', 'nds'", NDS_SMOKE)
         self.assertIn("$status.coreFrames -ne 120", NDS_SMOKE)
         self.assertIn("$colors.Count -le 16", NDS_SMOKE)
+        self.assertIn("$installDir = Join-Path $env:RUNNER_TEMP 'vce-windows-nds-installed'", NDS_SMOKE)
+        self.assertIn("$storage = Join-Path $env:RUNNER_TEMP 'vce-windows-nds-storage'", NDS_SMOKE)
+        self.assertNotIn("Join-Path $evidence 'installed-app'", NDS_SMOKE)
+        self.assertNotIn("Join-Path $evidence 'storage'", NDS_SMOKE)
 
     def test_native_player_shows_only_the_game_window(self):
         self.assertIn("$controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' }", SMOKE)
