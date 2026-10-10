@@ -143,6 +143,67 @@ def unresolved_wait_callers(stack_text):
     ]
 
 
+def unresolved_wait_gdb_thread(stack_text):
+    headers = list(re.finditer(r"^Thread (\d+) \(Thread \d+\.0x([0-9a-fA-F]+)\):", stack_text, re.M))
+    for index, header in enumerate(headers):
+        end = headers[index + 1].start() if index + 1 < len(headers) else len(stack_text)
+        block = stack_text[header.start():end]
+        if "WaitForSingleObjectEx" in block and re.search(r"#2\s+0x[0-9a-fA-F]+ in \?\?", block):
+            return int(header.group(1)), int(header.group(2), 16)
+    return None
+
+
+def inspect_joined_thread(pid, handle):
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.DuplicateHandle.argtypes = (
+        wintypes.HANDLE, wintypes.HANDLE, wintypes.HANDLE,
+        ctypes.POINTER(wintypes.HANDLE), wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+    )
+    kernel32.DuplicateHandle.restype = wintypes.BOOL
+    kernel32.GetThreadId.argtypes = (wintypes.HANDLE,)
+    kernel32.GetThreadId.restype = wintypes.DWORD
+    kernel32.GetExitCodeThread.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.GetExitCodeThread.restype = wintypes.BOOL
+    kernel32.GetThreadDescription.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.LPWSTR))
+    kernel32.GetThreadDescription.restype = ctypes.c_long
+    kernel32.LocalFree.argtypes = (wintypes.HLOCAL,)
+    kernel32.LocalFree.restype = wintypes.HLOCAL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    process = kernel32.OpenProcess(0x0040, False, pid)  # PROCESS_DUP_HANDLE
+    if not process:
+        raise ctypes.WinError(ctypes.get_last_error())
+    thread = wintypes.HANDLE()
+    try:
+        if not kernel32.DuplicateHandle(
+            process, wintypes.HANDLE(handle), kernel32.GetCurrentProcess(),
+            ctypes.byref(thread), 0, False, 0x2,  # DUPLICATE_SAME_ACCESS
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeThread(thread, ctypes.byref(exit_code)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        name_pointer = wintypes.LPWSTR()
+        name_status = kernel32.GetThreadDescription(thread, ctypes.byref(name_pointer))
+        name = ctypes.wstring_at(name_pointer) if name_status == 0 and name_pointer else ""
+        if name_pointer:
+            kernel32.LocalFree(ctypes.cast(name_pointer, wintypes.HLOCAL))
+        return {
+            "threadId": int(kernel32.GetThreadId(thread)),
+            "description": name,
+            "exitCode": int(exit_code.value),
+            "running": exit_code.value == 259,
+        }
+    finally:
+        if thread:
+            kernel32.CloseHandle(thread)
+        kernel32.CloseHandle(process)
+
+
 class WindowsPackaged3DSSmoke(unittest.TestCase):
     def test_exact_windows_package_azahar_visible_frame_and_a_input(self):
         runner_temp = Path(os.environ["RUNNER_TEMP"])
@@ -265,6 +326,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             shutdown_debugger = "not-needed"
             shutdown_modules = "not-needed"
             shutdown_memory_regions = []
+            shutdown_waited_thread = None
             if process.poll() is None and process.stdin:
                 process.stdin.write("QUIT\n")
                 process.stdin.flush()
@@ -291,6 +353,45 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                             f"exitCode: {trace.returncode}\nstdout:\n{trace.stdout}\nstderr:\n{trace.stderr}"
                         )
                         (evidence / "shutdown-stacks.txt").write_text(stack_text, encoding="utf-8")
+                        wait_thread = unresolved_wait_gdb_thread(stack_text)
+                        if wait_thread:
+                            gdb_number, os_thread_id = wait_thread
+                            handle_commands = evidence / "shutdown-wait-handle.commands"
+                            handle_commands.write_text(
+                                f"attach {process.pid}\ninfo threads\nthread {gdb_number}\n"
+                                "frame 2\nx/gx $r12+0x28\ndetach\n",
+                                encoding="utf-8",
+                            )
+                            try:
+                                handle_trace = subprocess.run(
+                                    [debugger, "-batch", "-x", str(handle_commands)],
+                                    capture_output=True, text=True, timeout=20,
+                                )
+                                (evidence / "shutdown-wait-handle.txt").write_text(
+                                    f"command: {debugger} -batch -x {handle_commands}\n"
+                                    f"exitCode: {handle_trace.returncode}\n"
+                                    f"stdout:\n{handle_trace.stdout}\nstderr:\n{handle_trace.stderr}",
+                                    encoding="utf-8",
+                                )
+                                selected = re.search(
+                                    rf"(?m)^\s*\*?\s*{gdb_number}\s+Thread\s+\d+\.0x{os_thread_id:x}\b",
+                                    handle_trace.stdout,
+                                )
+                                handle_match = re.search(
+                                    r"(?m)^\s*0x[0-9a-fA-F]+:\s+(0x[0-9a-fA-F]+)\s*$",
+                                    handle_trace.stdout,
+                                )
+                                if handle_trace.returncode == 0 and selected and handle_match:
+                                    shutdown_waited_thread = inspect_joined_thread(
+                                        process.pid, int(handle_match.group(1), 16),
+                                    )
+                                else:
+                                    shutdown_waited_thread = {
+                                        "error": "GDB did not confirm the waiting thread and expose its join handle",
+                                        "gdbExitCode": handle_trace.returncode,
+                                    }
+                            except (OSError, subprocess.TimeoutExpired) as error:
+                                shutdown_waited_thread = {"error": f"{type(error).__name__}: {error}"}
                         for address in unresolved_wait_callers(stack_text):
                             try:
                                 shutdown_memory_regions.append(inspect_memory_region(process.pid, address))
@@ -366,6 +467,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "shutdownDebugger": shutdown_debugger,
             "shutdownModules": shutdown_modules,
             "shutdownMemoryRegions": shutdown_memory_regions,
+            "shutdownWaitedThread": shutdown_waited_thread,
             "audio": "SDL dummy driver; audible output UNVERIFIED",
             "validation": "Hosted Windows visible window; physical GPU/display, controls, audible output, orderly process shutdown, and long-session behavior UNVERIFIED",
         }
