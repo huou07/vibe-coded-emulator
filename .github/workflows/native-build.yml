@@ -620,7 +620,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            xvfb xauth openbox dbus-x11 at-spi2-core python3-pyatspi scrot xdotool
+            xvfb xauth openbox dbus-x11 at-spi2-core python3-pyatspi scrot xdotool x11-utils
           cd artifacts/linux-deb
           sha256sum --check ./*.deb.sha256
           deb="$(find . -maxdepth 1 -name '*.deb' -print -quit)"

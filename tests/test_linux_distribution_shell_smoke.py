@@ -31,6 +31,9 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
         self.assertIn('"XDG_DATA_HOME": str(home / ".local/share")', SMOKE)
         self.assertIn('wait_for("Add ROM GBA · NDS · 3DS")', SMOKE)
         self.assertIn('wait_for("Search games", pyatspi.ROLE_ENTRY)', SMOKE)
+        self.assertIn("def capture_library_diagnostics()", SMOKE)
+        self.assertIn('"scrot", "-o", str(EVIDENCE / "library-desktop.png")', SMOKE)
+        self.assertIn('"libraryDiagnosticWaitSeconds": 5', SMOKE)
         for section in ("Library", "Settings", "Help", "About", "Play"):
             self.assertIn(f'click_button("{section}")', SMOKE)
         self.assertIn('"aboutVersion": "3.6.8"', SMOKE)

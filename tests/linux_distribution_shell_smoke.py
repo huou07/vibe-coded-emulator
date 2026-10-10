@@ -93,6 +93,32 @@ def capture(name):
     return path.name
 
 
+def capture_library_diagnostics():
+    """Capture rendering/window context without treating screenshots as acceptance."""
+    time.sleep(5)
+    active_window = subprocess.check_output(
+        ["xdotool", "getactivewindow"], text=True, timeout=10
+    ).strip()
+    window_info = subprocess.run(
+        ["xprop", "-id", active_window],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    (EVIDENCE / "library-active-window.txt").write_text(
+        f"activeWindow={active_window}\n"
+        f"xpropExitCode={window_info.returncode}\n"
+        f"{window_info.stdout}{window_info.stderr}",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["scrot", "-o", str(EVIDENCE / "library-desktop.png")],
+        check=True,
+        timeout=10,
+    )
+
+
 def main():
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     if not BINARY.is_file():
@@ -128,6 +154,7 @@ def main():
         wait_for("Add ROM GBA · NDS · 3DS")
         wait_for("Search games", pyatspi.ROLE_ENTRY)
         screenshots["library"] = capture("library")
+        capture_library_diagnostics()
         sections.append("library")
 
         click_button("Settings")
@@ -167,6 +194,8 @@ def main():
             "sections": sections,
             "emptyLibraryAccessible": True,
             "libraryVisualState": "UNVERIFIED: screenshot was blank white despite accessible Library controls",
+            "libraryDiagnosticCaptures": ["library.png", "library-desktop.png"],
+            "libraryDiagnosticWaitSeconds": 5,
             "settingsVisible": True,
             "helpVisible": True,
             "aboutVersion": "3.6.8",
