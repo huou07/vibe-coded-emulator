@@ -11,16 +11,16 @@
          never a secret or token; prepare-web injects the packaged value. -->
     <meta name="an3-support-origin" content="">
     <title>Vibe Coded Emulator</title>
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.3.3">
-    <link rel="stylesheet" href="/static/site.css?v=3.3.3">
-    <link rel="stylesheet" href="/static/theme-violet.css?v=3.3.3">
-    <link rel="stylesheet" href="/native.css?v=3.3.3">
-    <script src="/native-bootstrap.js?v=3.3.3"></script>  </head>
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v=3.6.6">
+    <link rel="stylesheet" href="/static/site.css?v=3.6.6">
+    <link rel="stylesheet" href="/static/theme-violet.css?v=3.6.6">
+    <link rel="stylesheet" href="/native.css?v=3.6.6">
+    <script src="/native-bootstrap.js?v=3.6.6"></script>  </head>
   <body class="reference-shell native-app-shell">
     <div class="native-app" id="nativeApp">
       <aside class="native-sidebar">
         <button class="native-brand" type="button" data-nav="play" aria-label="Vibe Coded Emulator home">
-          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.3.3" alt="Vibe Coded Emulator">          <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
+          <img class="native-brand-logo" src="/static/brand-logo.png?v=3.6.6" alt="Vibe Coded Emulator">          <span class="native-brand-sub" id="nativeEnvLabel">Offline</span>
         </button>
         <nav class="native-nav" aria-label="Main">
           <button type="button" class="native-nav-item active" data-nav="play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
@@ -46,6 +46,85 @@
 
         <div class="native-content">
           <section class="native-panel native-panel-play" data-panel="play">
+            <section class="native-card native-session-card" id="nativeSessionCard" data-testid="native-session" aria-labelledby="nativeSessionHeading" hidden>
+              <div class="native-session-heading">
+                <div>
+                  <p class="native-session-kicker">NOW PLAYING</p>
+                  <h2 id="nativeSessionHeading">Game session</h2>
+                  <p id="nativeSessionStatus" class="native-session-status" role="status" aria-live="polite"></p>
+                </div>
+                <button id="nativeSessionReturn" class="button danger" type="button" data-testid="native-session-return">Return to Library</button>
+              </div>
+              <div class="native-session-group">
+                <h3>Session</h3>
+                <div class="native-session-actions">
+                  <button class="button" type="button" data-native-control="pause" data-testid="native-session-pause">Pause</button>
+                  <button class="button" type="button" data-native-control="fullscreen" data-testid="native-session-fullscreen">Toggle fullscreen</button>
+                  <button class="button" type="button" data-native-speed="0.5">0.5×</button>
+                  <button class="button selected" type="button" data-native-speed="1">1×</button>
+                  <button class="button" type="button" data-native-speed="2">2×</button>
+                  <button class="button" type="button" data-native-speed="4">4×</button>
+                  <button class="button" type="button" data-native-speed="8">8×</button>
+                  <button class="button" type="button" data-native-control="clear-input" data-testid="native-session-release-input">Release held input</button>
+                </div>
+                <label class="native-field native-session-layout" id="nativeSessionLayoutWrap" hidden>
+                  <span>Screen layout</span>
+                  <select id="nativeSessionLayout" data-testid="native-session-layout">
+                    <option value="top-bottom">Top / Bottom</option>
+                    <option value="left-right">Side by Side</option>
+                  </select>
+                </label>
+              </div>
+              <div class="native-session-group">
+                <h3>Quick saves</h3>
+                <div class="native-session-save-row">
+                  <label class="native-field"><span>Slot</span>
+                    <select id="nativeSessionSaveSlot" data-testid="native-session-save-slot">
+                      <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+                      <option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+                    </select>
+                  </label>
+                  <button class="button primary" type="button" data-native-save="save" data-testid="native-session-save">Quick Save</button>
+                  <button class="button" type="button" data-native-save="load" data-testid="native-session-load">Quick Load</button>
+                </div>
+                <label class="native-field"><span>Auto Save</span>
+                  <select id="nativeSessionAutoSave" data-testid="native-session-auto-save">
+                    <option value="off">Off</option><option value="exit">On game exit</option>
+                    <option value="30">Every 30 seconds</option><option value="10">Every 10 seconds</option><option value="5">Every 5 seconds</option>
+                  </select>
+                </label>
+                <button class="button" type="button" data-native-control="load-auto">Load Auto Save</button>
+              </div>
+              <div class="native-session-group">
+                <h3>Virtual controls</h3>
+                <div class="native-session-pad" aria-label="Virtual game controller">
+                  <div class="native-session-cluster native-session-dpad" role="group" aria-label="Directional controls">
+                    <button class="button" type="button" data-native-button="4" aria-label="Up">▲</button>
+                    <button class="button" type="button" data-native-button="6" aria-label="Left">◀</button>
+                    <button class="button" type="button" data-native-button="5" aria-label="Down">▼</button>
+                    <button class="button" type="button" data-native-button="7" aria-label="Right">▶</button>
+                  </div>
+                  <div class="native-session-cluster native-session-facepad" role="group" aria-label="Action buttons">
+                    <button class="button" type="button" data-native-button="1" aria-label="Y">Y</button>
+                    <button class="button" type="button" data-native-button="9" aria-label="X">X</button>
+                    <button class="button" type="button" data-native-button="0" aria-label="B">B</button>
+                    <button class="button" type="button" data-native-button="8" aria-label="A">A</button>
+                  </div>
+                  <div class="native-session-cluster native-session-meta-pad" role="group" aria-label="Shoulder and system buttons">
+                    <button class="button" type="button" data-native-button="10" aria-label="L">L</button>
+                    <button class="button" type="button" data-native-button="11" aria-label="R">R</button>
+                    <button class="button" type="button" data-native-button="2" aria-label="Select">Select</button>
+                    <button class="button" type="button" data-native-button="3" aria-label="Start">Start</button>
+                  </div>
+                </div>
+                <p class="native-muted">Hold a button to press it. Release, cancel, or leave the app to release held input.</p>
+              </div>
+              <div class="native-session-group">
+                <h3>Audio</h3>
+                <label class="native-field" for="nativeSessionVolume"><span>Volume</span><input id="nativeSessionVolume" data-testid="native-session-volume" type="range" min="0" max="1" step="0.05" value="1"></label>
+                <label class="native-session-check"><input id="nativeSessionMute" data-testid="native-session-mute" type="checkbox"><span>Mute</span></label>
+              </div>
+            </section>
             <button class="native-play-card" type="button" data-open-rom>
               <span class="native-play-icon"><span class="ui-mask ui-play" aria-hidden="true"></span></span>
               <span class="native-play-copy"><strong>Play</strong><span>Open a ROM from this device</span></span>
@@ -152,7 +231,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong data-app-version="3.3.3">3.3.3</strong></div>                <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
+                <div class="native-fact"><span>Version</span><strong data-app-version="3.6.6">3.6.6</strong></div>                <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
           </section>
@@ -170,17 +249,17 @@
 
     <div id="toast" role="status"></div>
 
-    <script src="/static/offline.js?v=3.3.3" defer></script>
-    <script src="/static/player-ui.js?v=3.3.3" defer></script>
-    <script src="/static/player-runtime.js?v=3.3.3" defer></script>
-    <script src="/static/renderer-worker.js?v=3.3.3" defer></script>
-    <script src="/static/nds-touch.js?v=3.3.3" defer></script>
-    <script src="/static/local-save-recovery.js?v=3.3.3" defer></script>
-    <script src="/static/player.js?v=3.3.3" defer></script>
-    <script src="/native-settings.js?v=3.3.3" defer></script>
-    <script src="/game-settings.js?v=3.3.3" defer></script>
-    <script src="/static/bug-report.js?v=3.3.3" defer></script>
-    <script src="/native-support.js?v=3.3.3" defer></script>
-    <script src="/native-app.js?v=3.3.3" defer></script>
-    <script src="/android-staging.js?v=3.3.3" defer></script>  </body>
+    <script src="/static/offline.js?v=3.6.6" defer></script>
+    <script src="/static/player-ui.js?v=3.6.6" defer></script>
+    <script src="/static/player-runtime.js?v=3.6.6" defer></script>
+    <script src="/static/renderer-worker.js?v=3.6.6" defer></script>
+    <script src="/static/nds-touch.js?v=3.6.6" defer></script>
+    <script src="/static/local-save-recovery.js?v=3.6.6" defer></script>
+    <script src="/static/player.js?v=3.6.6" defer></script>
+    <script src="/native-settings.js?v=3.6.6" defer></script>
+    <script src="/game-settings.js?v=3.6.6" defer></script>
+    <script src="/static/bug-report.js?v=3.6.6" defer></script>
+    <script src="/native-support.js?v=3.6.6" defer></script>
+    <script src="/native-app.js?v=3.6.6" defer></script>
+    <script src="/android-staging.js?v=3.6.6" defer></script>  </body>
 </html>

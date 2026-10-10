@@ -71,7 +71,7 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --releases dist \
             --release-candidate "$TAG-staging" \
-            --runtime-status "Built by this tag workflow; per-platform runtime acceptance is recorded in the release notes." \
+            --runtime-status "Build succeeded; interactive runtime acceptance is pending maintainer verification." \
             || { echo 'Catalog generation failed; refusing to publish without it.' >&2; exit 1; }
 
           cat > release-notes.md <<'NOTES'
@@ -114,6 +114,19 @@ jobs:
           3DS by design. NDS runs melonDS in software-render mode, the accepted
           default for the pinned core. Switch runs only lawful homebrew through
           the separate Eden companion process.
+
+          ## Runtime acceptance
+
+          Build success does not establish interactive gameplay. Before
+          publishing, record installed-app results and evidence for each
+          available platform, and replace the pending values below.
+
+          | Platform | Status | Evidence |
+          | --- | --- | --- |
+          | macOS | Pending | |
+          | Windows | Pending | |
+          | Linux | Pending | |
+          | Android | Pending | |
           NOTES
           ((${#files[@]})) || { echo 'No installer artifacts were downloaded.' >&2; exit 1; }
           gh release create "$TAG" \

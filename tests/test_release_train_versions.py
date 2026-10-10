@@ -8,8 +8,10 @@ leftover file under the wrong name.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -155,6 +157,88 @@ class ReleaseTrainEvidenceWiringTests(unittest.TestCase):
         self.assertNotIn(
             '"$run_root" "$artifacts" "$run_id"', text
         )
+
+
+class ReleaseTrainStorageLifecycleTests(unittest.TestCase):
+    def cleanup_harness(
+        self,
+        root: Path,
+        keep_local: bool = False,
+        keep_remote: bool = False,
+        exit_code: int = 0,
+    ):
+        text = RELEASE_TRAIN.read_text(encoding="utf-8")
+        start = text.index("coordinated_cleanup() {")
+        end = text.index("\n}\ntrap coordinated_cleanup EXIT", start) + 2
+        function = text[start:end]
+        scratch = root / "run" / "macos-source"
+        scratch.mkdir(parents=True)
+        artifacts = root / "run" / "artifacts"
+        artifacts.mkdir()
+        (artifacts / "ARTIFACTS.sha256").write_text("preserved\n", encoding="utf-8")
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        ssh = bin_dir / "ssh"
+        ssh.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$SSH_RECORD\"\n", encoding="utf-8")
+        ssh.chmod(0o755)
+        env = os.environ.copy()
+        env.update({"PATH": f"{bin_dir}:{env['PATH']}", "SSH_RECORD": str(root / "ssh.log")})
+        if keep_local:
+            env["AN3_KEEP_LOCAL_BUILD_ROOTS"] = "1"
+        else:
+            env.pop("AN3_KEEP_LOCAL_BUILD_ROOTS", None)
+        if keep_remote:
+            env["AN3_KEEP_REMOTE_BUILD_ROOTS"] = "1"
+        else:
+            env.pop("AN3_KEEP_REMOTE_BUILD_ROOTS", None)
+        shell = f"""set -euo pipefail
+note() {{ :; }}
+windows_ps() {{ printf '%s\\n' "$2" >> "$WINDOWS_RECORD"; }}
+ssh_cmd=(ssh)
+linux_builder=linux-builder
+windows_builder=windows-builder
+cleanup_local_source={str(scratch)!r}
+cleanup_failed_root={str(root / 'run')!r}
+cleanup_linux_root=/tmp/an3-release-train-storage-test
+cleanup_windows_root=C:/AN3/release-train-storage-test
+WINDOWS_RECORD={str(root / 'windows.log')!r}
+{function}
+trap coordinated_cleanup EXIT
+exit {exit_code}
+"""
+        result = subprocess.run(["bash", "-c", shell], env=env, capture_output=True, text=True)
+        return scratch, result, root
+
+    def test_exit_cleanup_removes_scratch_but_preserves_verified_outputs(self):
+        with tempfile.TemporaryDirectory(prefix="an3-release-cleanup-") as temp:
+            scratch, result, root = self.cleanup_harness(Path(temp))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(scratch.exists())
+            self.assertEqual((root / "run" / "artifacts" / "ARTIFACTS.sha256").read_text(), "preserved\n")
+            self.assertIn("/tmp/an3-release-train-storage-test", (root / "ssh.log").read_text())
+            self.assertIn("C:/AN3/release-train-storage-test", (root / "windows.log").read_text())
+
+    def test_explicit_keep_flags_retain_local_and_remote_diagnostics(self):
+        with tempfile.TemporaryDirectory(prefix="an3-release-cleanup-") as temp:
+            scratch, result, root = self.cleanup_harness(Path(temp), keep_local=True, keep_remote=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(scratch.exists())
+            self.assertFalse((root / "ssh.log").exists())
+            self.assertFalse((root / "windows.log").exists())
+
+    def test_failed_build_removes_owned_attempt_root_and_preserves_failure_status(self):
+        with tempfile.TemporaryDirectory(prefix="an3-release-cleanup-") as temp:
+            scratch, result, root = self.cleanup_harness(Path(temp), exit_code=7)
+            self.assertEqual(result.returncode, 7)
+            self.assertFalse(scratch.exists())
+            self.assertFalse((root / "run").exists())
+
+    def test_keep_local_flag_retains_failed_attempt_for_diagnosis(self):
+        with tempfile.TemporaryDirectory(prefix="an3-release-cleanup-") as temp:
+            scratch, result, root = self.cleanup_harness(Path(temp), keep_local=True, exit_code=7)
+            self.assertEqual(result.returncode, 7)
+            self.assertTrue(scratch.exists())
+            self.assertTrue((root / "run" / "artifacts" / "ARTIFACTS.sha256").exists())
 
 
 if __name__ == "__main__":

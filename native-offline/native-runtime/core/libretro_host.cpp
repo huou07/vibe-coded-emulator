@@ -3,6 +3,7 @@
 #include "libretro_host.h"
 
 #include "core_options.h"
+#include "perf_telemetry.h"
 #include "save_persistence_worker.h"
 #include "vendor/libretro.h"
 
@@ -11,6 +12,7 @@
 #include <cerrno>
 #include <cmath>
 #include <cstdarg>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -145,6 +147,15 @@ NativeSystem detect_system(const std::filesystem::path& rom) {
     return NativeSystem::Unknown;
 }
 
+const char* system_name(NativeSystem system) {
+    switch (system) {
+    case NativeSystem::GBA: return "gba";
+    case NativeSystem::NDS: return "nds";
+    case NativeSystem::ThreeDS: return "3ds";
+    default: return "unknown";
+    }
+}
+
 bool read_bounded(const std::filesystem::path& path, std::vector<std::uint8_t>& bytes,
                   std::string& error) {
     std::error_code ec;
@@ -175,8 +186,13 @@ public:
     bool initialize(const std::string& core_path, const std::string& rom_path,
                     const std::string& save_directory, NativeVideoBackend& video,
                     NativeAudioBackend& audio, std::string& error, const std::string& nds_layout,
-                    const std::string& graphics_api);
+                    const std::string& graphics_api,
+                    const std::vector<std::pair<std::string, std::string>>& initial_options);
     bool run_one(std::string& error, bool present);
+    void reset_frame_timing_baseline() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_frame_begin_ns_ = 0;
+    }
     void shutdown();
     void shutdown_locked(SaveSnapshot& snapshot);
     void shutdown_locked();
@@ -192,6 +208,7 @@ public:
     bool flush_save_ram(std::string& error);
     bool queue_save_ram(std::string& error);
     bool environment(unsigned command, void* data);
+    void apply_initial_options();
     void video(const void* data, unsigned width, unsigned height, std::size_t pitch);
     int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) const;
 
@@ -245,10 +262,15 @@ public:
     NativeAudioBackend* audio_ = nullptr;
     NativeInput input_;
     CoreOptionsRegistry options_;
+    std::vector<std::pair<std::string, std::string>> initial_options_;
     std::string core_path_, rom_path_, save_path_, system_path_, content_path_, message_, rom_id_;
     std::vector<std::uint8_t> rom_data_;
     std::atomic<std::int64_t> frame_duration_ns_{16666667};
     std::atomic<std::uint64_t> core_frames_{0};
+    perf::TraceBuffer perf_trace_;
+    std::chrono::steady_clock::time_point perf_epoch_{};
+    uint64_t perf_frame_id_ = 0;
+    uint64_t last_frame_begin_ns_ = 0;
     NativeSystem system_ = NativeSystem::Unknown;
     std::string core_name_, core_version_;
     std::string nds_layout_="top-bottom";
@@ -281,7 +303,8 @@ NativeCoreHost::Impl* NativeCoreHost::Impl::active_ = nullptr;
 bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::string& rom_path,
                                       const std::string& save_directory, NativeVideoBackend& video,
                                       NativeAudioBackend& audio, std::string& error, const std::string& nds_layout,
-                                      const std::string& graphics_api) {
+                                      const std::string& graphics_api,
+                                      const std::vector<std::pair<std::string, std::string>>& initial_options) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (running_) { error = "A native core is already running in this host."; return false; }
     if (active_ && active_ != this) { error = "Only one libretro core may be active in this process."; return false; }
@@ -290,6 +313,10 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
     graphics_api_ = graphics_api;
     nds_layout_=nds_layout == "left-right" ? "left-right" : "top-bottom";
     system_ = detect_system(rom_path_);
+    perf_trace_.configure_from_env();
+    perf_epoch_ = std::chrono::steady_clock::now();
+    perf_frame_id_ = 0;
+    last_frame_begin_ns_ = 0;
     content_path_ = std::filesystem::path(rom_path_).parent_path().string();
     save_path_ = (std::filesystem::path(save_directory) / "native-libretro").string();
     system_path_ = (std::filesystem::path(save_path_) / "system").string();
@@ -302,9 +329,11 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
     if (core_.retro_api_version() != RETRO_API_VERSION) { error = "The native core uses an incompatible libretro API version."; library_.close(); return false; }
     active_ = this; video_ = &video; audio_ = &audio;
     options_.reset(std::filesystem::path(core_path_).stem().string());
+    initial_options_ = initial_options;
     core_.retro_set_environment(environment_cb); core_.retro_set_video_refresh(video_cb);
     core_.retro_set_audio_sample(audio_cb); core_.retro_set_audio_sample_batch(audio_batch_cb);
     core_.retro_set_input_poll(input_poll_cb); core_.retro_set_input_state(input_state_cb);
+    apply_initial_options();
     core_.retro_init(); initialized_ = true;
     // Some melonDS builds snapshot these announced options during load_game.
     // GET_VARIABLE also enforces the values for legacy option declarations.
@@ -314,6 +343,7 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
     (void)options_.set("melonds_show_cursor", "always");
     (void)options_.set("melonds_number_of_screen_layouts", "1");
     (void)options_.set("melonds_screen_layout1", nds_layout_);
+    apply_initial_options();
     retro_system_info info{}; core_.retro_get_system_info(&info);
     core_name_ = info.library_name ? info.library_name : "Unknown libretro core";
     core_version_ = info.library_version ? info.library_version : "";
@@ -378,6 +408,17 @@ bool NativeCoreHost::Impl::initialize(const std::string& core_path, const std::s
 bool NativeCoreHost::Impl::run_one(std::string& error, bool present) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!running_) { error = "No native core is running."; return false; }
+    perf::FrameSample trace_sample{};
+    uint64_t frame_begin_ns = 0;
+    if (perf_trace_.enabled()) {
+        frame_begin_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - perf_epoch_).count());
+        trace_sample.frame_id = ++perf_frame_id_;
+        trace_sample.core_deadline_ns = frame_begin_ns + static_cast<uint64_t>(frame_duration_ns_.load(std::memory_order_relaxed));
+        trace_sample.input_sample_ns = frame_begin_ns;
+        if (last_frame_begin_ns_) trace_sample.frame_interval_ns = frame_begin_ns - last_frame_begin_ns_;
+        last_frame_begin_ns_ = frame_begin_ns;
+    }
     // Frame pacing belongs to the adapter. A temporarily unavailable present
     // target may drop presentation, but must not turn core timing into vsync.
     present_frame_ = present;
@@ -389,8 +430,22 @@ bool NativeCoreHost::Impl::run_one(std::string& error, bool present) {
     sampled_pointer_pressed_=pending_pointer || input_.pointer_pressed_.load(std::memory_order_acquire);
     sampled_pointer_x_=input_.pointer_x_.load(std::memory_order_relaxed);
     sampled_pointer_y_=input_.pointer_y_.load(std::memory_order_relaxed);
+    if (perf_trace_.enabled()) {
+        trace_sample.input_sample_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - perf_epoch_).count());
+        trace_sample.emu_begin_ns = trace_sample.input_sample_ns;
+    }
     core_.retro_run();
+    if (perf_trace_.enabled()) {
+        trace_sample.emu_end_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - perf_epoch_).count());
+    }
     video_->finish_frame();
+    if (perf_trace_.enabled()) {
+        trace_sample.video_ready_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - perf_epoch_).count());
+        perf_trace_.add(trace_sample);
+    }
     core_frames_.fetch_add(1,std::memory_order_relaxed);
     return true;
 }
@@ -423,6 +478,10 @@ void NativeCoreHost::Impl::shutdown_locked(SaveSnapshot& snapshot) {
     initialized_ = false;
     if (audio_ready_ && audio_) audio_->shutdown();
     audio_ready_ = false;
+    if (perf_trace_.enabled()) {
+        (void)perf_trace_.write_jsonl(system_name(system_),
+            static_cast<uint64_t>(frame_duration_ns_.load(std::memory_order_relaxed)));
+    }
     if (active_ == this) active_ = nullptr;
     library_.close(); core_ = {}; video_ = nullptr; audio_ = nullptr;
     rom_data_.clear(); options_.reset({}); input_.clear();
@@ -561,6 +620,12 @@ bool NativeCoreHost::Impl::queue_save_ram(std::string& error) {
     return persist_snapshot(std::move(snapshot), false, error);
 }
 
+void NativeCoreHost::Impl::apply_initial_options() {
+    for (const auto& [key, value] : initial_options_) {
+        (void)options_.set_initial(key, value);
+    }
+}
+
 bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
     switch (command) {
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: if(!data)return false; *static_cast<const char**>(data) = system_path_.c_str(); return true;
@@ -611,11 +676,11 @@ bool NativeCoreHost::Impl::environment(unsigned command, void* data) {
     }
     case RETRO_ENVIRONMENT_SET_VARIABLES: {
         auto* vars=static_cast<retro_variable*>(data); if (!vars) return false; std::vector<const char*> pairs;
-        for (;vars->key;++vars) { pairs.push_back(vars->key); pairs.push_back(vars->value); } pairs.push_back(nullptr); options_.capture_legacy_variables(pairs.data()); return true;
+        for (;vars->key;++vars) { pairs.push_back(vars->key); pairs.push_back(vars->value); } pairs.push_back(nullptr); options_.capture_legacy_variables(pairs.data()); apply_initial_options(); return true;
     }
-    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: options_.capture_v2(reinterpret_cast<const RetroCoreOptionsV2*>(data)); return true;
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: options_.capture_v2(reinterpret_cast<const RetroCoreOptionsV2*>(data)); apply_initial_options(); return true;
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
-        auto* intl=reinterpret_cast<const RetroCoreOptionsIntl*>(data); if (intl) options_.capture_v2(intl->us ? intl->us : intl->local); return true;
+        auto* intl=reinterpret_cast<const RetroCoreOptionsIntl*>(data); if (intl) options_.capture_v2(intl->us ? intl->us : intl->local); apply_initial_options(); return true;
     }
     case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: *static_cast<unsigned*>(data)=2; return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *static_cast<bool*>(data)=options_.consume_update(); return true;
@@ -736,11 +801,12 @@ void NativeInput::clear() noexcept { buttons_=0;pending_buttons_=0;pointer_press
 
 NativeCoreHost::NativeCoreHost():impl_(std::make_unique<Impl>()) {}
 NativeCoreHost::~NativeCoreHost(){ shutdown(); }
-bool NativeCoreHost::initialize(const std::string&a,const std::string&b,const std::string&c,NativeVideoBackend&d,NativeAudioBackend&e,std::string&f,const std::string&layout,const std::string&graphics_api){return impl_->initialize(a,b,c,d,e,f,layout,graphics_api);}
+bool NativeCoreHost::initialize(const std::string&a,const std::string&b,const std::string&c,NativeVideoBackend&d,NativeAudioBackend&e,std::string&f,const std::string&layout,const std::string&graphics_api,const std::vector<std::pair<std::string,std::string>>&initial_options){return impl_->initialize(a,b,c,d,e,f,layout,graphics_api,initial_options);}
 bool NativeCoreHost::run_one(std::string& e,bool p){return impl_->run_one(e,p);}
 void NativeCoreHost::shutdown(){if(impl_)impl_->shutdown();}
 bool NativeCoreHost::running()const noexcept{return impl_->running_.load(std::memory_order_relaxed);}
 std::chrono::nanoseconds NativeCoreHost::frame_duration()const noexcept{return std::chrono::nanoseconds(impl_->frame_duration_ns_.load(std::memory_order_relaxed));}
+void NativeCoreHost::reset_frame_timing_baseline(){impl_->reset_frame_timing_baseline();}
 NativeCoreStatus NativeCoreHost::status() const {
     std::lock_guard<std::mutex> lock(impl_->mutex_);
     const std::string background_error = impl_->persistence_writer_.take_background_error();

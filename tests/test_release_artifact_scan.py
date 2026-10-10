@@ -48,32 +48,26 @@ class ConfigTests(unittest.TestCase):
         config = mod.parse_gitleaks_config(REAL_CONFIG.read_text(encoding="utf-8"))
         self.assertEqual(config["warnings"], [])
         self.assertTrue(config["extend_default"])
-        self.assertEqual(len(config["allowlists"]), 4)
+        self.assertEqual(len(config["allowlists"]), 1)
         allowlist = config["allowlists"][0]
-        self.assertEqual(allowlist["paths"], ["static/player-runtime\\.js$"])
-        self.assertEqual(allowlist["regexes"], ["an3-presentation-renderer-v1"])
-        account_allowlist = config["allowlists"][1]
+        self.assertEqual(allowlist["condition"], "AND")
         self.assertEqual(
-            account_allowlist["paths"],
+            allowlist["paths"],
             [
-                "(^|/|!)native-account\\.js$",
-                "(^|/|!)tauri\\.conf\\.json$",
-                "(^|/|!)liban3_offline_native\\.so$",
-                "(^|/|!)an3-offline-native$",
+                "static/player-runtime\\.js$",
+                "native-offline/src-tauri/gen/android/app/src/main/assets/static/player-runtime\\.js$",
+                "tests/test_release_artifact_scan\\.py$",
+                "(^|/|!)org\\.gnome\\.system\\.proxy\\.gschema\\.xml$",
             ],
         )
-        self.assertEqual(account_allowlist["regexes"], ["an3tocom\\.space"])
         self.assertEqual(
-            config["allowlists"][2]["paths"], ["(^|/|!)an3_switch_companion$"]
+            allowlist["regexes"],
+            [
+                "an3-presentation-renderer-v1",
+                "192\\.168\\.0\\.0",
+                "192\\.0\\.2\\.0",
+            ],
         )
-        self.assertEqual(
-            config["allowlists"][2]["regexes"], ["joseignacioechevarria@gmail\\.com"]
-        )
-        self.assertEqual(
-            config["allowlists"][3]["paths"],
-            ["(^|/|!)org\\.gnome\\.system\\.proxy\\.gschema\\.xml$"],
-        )
-        self.assertEqual(config["allowlists"][3]["regexes"], ["192\\.168\\.0\\.0"])
         # Every built-in rule is present; the config only adds to them.
         rule_ids = [rule[0] for rule in config["rules"]]
         self.assertIn("private-key-block", rule_ids)
@@ -234,16 +228,28 @@ class AllowlistTests(unittest.TestCase):
     def test_real_config_allowlist_targets_the_localstorage_key(self):
         config = mod.parse_gitleaks_config(REAL_CONFIG.read_text(encoding="utf-8"))
         allowlist = config["allowlists"][0]
-        self.assertTrue(
-            mod._allowlist_matches(
-                allowlist,
-                "static/player-runtime.js",
-                b'rendererStorageKey = "an3-presentation-renderer-v1"',
-            )
-        )
+        localstorage_assignment = b'rendererStorageKey = "an3-presentation-renderer-v1"'
+        for path in (
+            "static/player-runtime.js",
+            "native-offline/src-tauri/gen/android/app/src/main/assets/static/player-runtime.js",
+            "tests/test_release_artifact_scan.py",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    mod._allowlist_matches(allowlist, path, localstorage_assignment)
+                )
         self.assertFalse(
-            mod._allowlist_matches(allowlist, "static/player.js", b"an3-presentation-renderer-v1")
+            mod._allowlist_matches(allowlist, "static/player.js", localstorage_assignment)
         )
+        for address in (b"192.0.2.0", b"192.0.2.0"):
+            with self.subTest(address=address):
+                self.assertTrue(
+                    mod._allowlist_matches(
+                        allowlist,
+                        "usr/share/glib-2.0/schemas/org.gnome.system.proxy.gschema.xml",
+                        address,
+                    )
+                )
 
 
 class MainTests(unittest.TestCase):

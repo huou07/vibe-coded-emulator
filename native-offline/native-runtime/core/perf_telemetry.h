@@ -7,8 +7,10 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <string>
 
 namespace an3::perf {
@@ -146,7 +148,23 @@ class TraceBuffer {
     void configure_from_env() {
         enabled_ = std::getenv("AN3_PERF_TRACE") && std::string(std::getenv("AN3_PERF_TRACE")) == "1";
         const char* requested_path = std::getenv("AN3_PERF_TRACE_PATH");
-        path_ = requested_path && *requested_path ? requested_path : "/tmp/an3-perf-trace.jsonl";
+        if (!enabled_) {
+            path_.clear();
+            samples_.reset();
+            reset();
+            return;
+        }
+        std::error_code error;
+        const auto temporary = std::filesystem::temp_directory_path(error);
+        path_ = requested_path && *requested_path ? requested_path
+            : (error ? std::string{} : (temporary / "an3-perf-trace.jsonl").string());
+        try {
+            samples_ = std::make_unique<std::array<FrameSample, kTraceSamples>>();
+        } catch (...) {
+            enabled_ = false;
+            path_.clear();
+            samples_.reset();
+        }
         reset();
     }
 
@@ -162,16 +180,16 @@ class TraceBuffer {
     }
 
     void add(const FrameSample& sample) {
-        if (!enabled_) return;
+        if (!enabled_ || !samples_) return;
         const uint64_t sequence = next_.fetch_add(1, std::memory_order_relaxed);
-        samples_[sequence % kTraceSamples] = sample;
+        (*samples_)[sequence % kTraceSamples] = sample;
         std::size_t observed = count_.load(std::memory_order_relaxed);
         while (observed < kTraceSamples &&
                !count_.compare_exchange_weak(observed, observed + 1, std::memory_order_relaxed)) {}
     }
 
     bool write_jsonl(const std::string& core_id, uint64_t budget_ns) const {
-        if (!enabled_ || path_.empty()) return false;
+        if (!enabled_ || !samples_ || path_.empty()) return false;
         std::ofstream output(path_, std::ios::trunc);
         if (!output) return false;
         output << "{\"type\":\"meta\",\"schema\":1,\"core_id\":\"" << core_id
@@ -180,7 +198,7 @@ class TraceBuffer {
         const std::size_t count = std::min(total, static_cast<uint64_t>(kTraceSamples));
         const uint64_t first = total > kTraceSamples ? total - kTraceSamples : 0;
         for (std::size_t offset = 0; offset < count; ++offset) {
-            const FrameSample& sample = samples_[(first + offset) % kTraceSamples];
+            const FrameSample& sample = (*samples_)[(first + offset) % kTraceSamples];
             output << "{\"type\":\"frame\",\"frame_id\":" << sample.frame_id
                    << ",\"core_deadline_ns\":" << sample.core_deadline_ns
                    << ",\"input_sample_ns\":" << sample.input_sample_ns
@@ -208,7 +226,7 @@ class TraceBuffer {
     }
 
   private:
-    std::array<FrameSample, kTraceSamples> samples_{};
+    std::unique_ptr<std::array<FrameSample, kTraceSamples>> samples_;
     std::atomic<uint64_t> next_{0};
     std::atomic<std::size_t> count_{0};
     bool enabled_ = false;

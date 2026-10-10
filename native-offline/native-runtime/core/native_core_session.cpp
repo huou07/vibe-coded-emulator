@@ -136,10 +136,12 @@ bool NativeCoreSession::execute(Command& command) {
     bool success = true;
     switch (command.kind) {
     case CommandKind::Pause:
+        host_.reset_frame_timing_baseline();
         paused_.store(true, std::memory_order_release);
         host_.input().clear();
         break;
     case CommandKind::Resume:
+        host_.reset_frame_timing_baseline();
         paused_.store(false, std::memory_order_release);
         break;
     case CommandKind::SetSpeed:

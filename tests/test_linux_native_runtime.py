@@ -22,6 +22,14 @@ BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encod
 FLATPAK_INSTALL_VERIFY = (ROOT / "native-offline/scripts/verify-flatpak-install.sh").read_text(encoding="utf-8")
 RUNTIME = (LINUX / "linux_runtime.cpp").read_text(encoding="utf-8")
 CONTROLS = (LINUX / "linux_controls.cpp").read_text(encoding="utf-8")
+LINUX_TAURI = (ROOT / "native-offline/src-tauri/src/linux_runtime.rs").read_text(encoding="utf-8")
+WINDOWS_TAURI = (ROOT / "native-offline/src-tauri/src/windows_runtime.rs").read_text(encoding="utf-8")
+AZAHAR = (ROOT / "native-offline/src-tauri/src/azahar.rs").read_text(encoding="utf-8")
+TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+NATIVE_BOOTSTRAP = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
+NATIVE_APP = (ROOT / "native-offline/web/native-app.js").read_text(encoding="utf-8")
+NATIVE_HTML = (ROOT / "native-offline/web/index.html").read_text(encoding="utf-8")
+NATIVE_CSS = (ROOT / "native-offline/web/native.css").read_text(encoding="utf-8")
 SESSION_H = (ROOT / "native-offline/native-runtime/core/native_core_session.h").read_text(encoding="utf-8")
 SESSION_CPP = (ROOT / "native-offline/native-runtime/core/native_core_session.cpp").read_text(encoding="utf-8")
 FRAME_QUEUE_CPP = (ROOT / "native-offline/native-runtime/video/software_frame_queue.cpp").read_text(encoding="utf-8")
@@ -35,6 +43,63 @@ VULKAN = (ROOT / "native-offline/native-runtime/video/vulkan/vulkan_backend.cpp"
 
 
 class LinuxNativeRuntimeTests(unittest.TestCase):
+    def test_linux_shell_owns_the_active_session_controls(self):
+        self.assertIn('.args(["--control-stdin", "--no-controls"])', LINUX_TAURI)
+        self.assertIn('native_session_control,', TAURI_LIB)
+        self.assertIn('pub async fn native_session_control', AZAHAR)
+        self.assertIn('tauri::async_runtime::spawn_blocking', AZAHAR)
+        self.assertIn('AN3_NATIVE_CONTROL_RESULT', LINUX_TAURI)
+        self.assertIn('AN3_NATIVE_CONTROL_RESULT', RUNTIME)
+        self.assertIn('commands.size() >= 32', RUNTIME)
+        self.assertIn('apply_parent_controls();', RUNTIME)
+        self.assertIn('"Game window opened. Use the VCE Play page for session controls."', LINUX_TAURI)
+
+        for testid in (
+            "native-session", "native-session-return", "native-session-pause",
+            "native-session-save", "native-session-load", "native-session-layout",
+            "native-session-auto-save", "native-session-volume", "native-session-mute",
+        ):
+            self.assertIn(f'data-testid="{testid}"', NATIVE_HTML)
+        self.assertIn('AN3NativeSessionControls', NATIVE_BOOTSTRAP)
+        self.assertIn('an3-native-session-started', NATIVE_BOOTSTRAP)
+        self.assertIn('data-native-button', NATIVE_APP)
+        self.assertIn('pointercancel', NATIVE_APP)
+        self.assertIn('lostpointercapture', NATIVE_APP)
+        self.assertIn('window.addEventListener("blur", releaseButtons)', NATIVE_APP)
+        self.assertIn('sessionControls.stop()', NATIVE_APP)
+        self.assertIn('show("library")', NATIVE_APP)
+        self.assertIn('aria-label="Directional controls"', NATIVE_HTML)
+        self.assertIn('aria-label="Action buttons"', NATIVE_HTML)
+        self.assertIn('.native-session-dpad [data-native-button="4"]{grid-area:1/2}', NATIVE_CSS)
+        self.assertIn('.native-session-dpad [data-native-button="6"]{grid-area:2/1}', NATIVE_CSS)
+
+        slots = [f'<option value="{slot}">{slot}</option>' for slot in range(1, 11)]
+        self.assertTrue(all(option in NATIVE_HTML for option in slots))
+
+    def test_windows_shell_owns_session_controls_without_a_second_controls_window(self):
+        self.assertIn('.args(["--control-stdin", "--no-controls"])', WINDOWS_TAURI)
+        self.assertIn('"AN3_NATIVE_CONTROL_RESULT "', WINDOWS_TAURI)
+        self.assertIn('pub(super) fn control(action: &str, value: Option<&str>)', WINDOWS_TAURI)
+        self.assertIn('pub async fn native_session_control', AZAHAR)
+        self.assertIn('target_os = "windows"', AZAHAR[AZAHAR.index("pub async fn native_session_control"):])
+        self.assertIn('windows_runtime::control(&action, value.as_deref())', AZAHAR)
+        self.assertIn("desktopSessionControlShell", NATIVE_BOOTSTRAP)
+        self.assertIn('window.dispatchEvent(new CustomEvent("an3-native-session-started"', NATIVE_BOOTSTRAP)
+        self.assertIn('window.AN3NativeSessionControls = {', NATIVE_BOOTSTRAP)
+        self.assertIn('data-testid="native-session"', NATIVE_HTML)
+        self.assertIn('data-testid="native-session-pause"', NATIVE_HTML)
+
+    def test_linux_parent_control_actions_are_whitelisted_and_acknowledged(self):
+        for action in ('"pause"', '"speed"', '"save"', '"load"', '"layout"',
+                       '"auto-save"', '"volume"', '"mute"', '"button"',
+                       '"clear-input"', '"fullscreen"', '"load-auto"'):
+            self.assertIn(action, LINUX_TAURI)
+        self.assertIn('"Unsupported or invalid native control action."', LINUX_TAURI)
+        self.assertIn('"QUIT"', LINUX_TAURI)
+        self.assertIn('"quit"', RUNTIME)
+        self.assertIn('parent->enqueue(std::move(command))', RUNTIME)
+        self.assertIn('write_parent_control_result(command->id, ok, message)', RUNTIME)
+
     def test_build_entrypoint_creates_real_deb_and_flatpak(self):
         self.assertNotIn("LINUX_NATIVE_RUNTIME=BLOCKED", BUILD)
         for required in ("libretro_host.cpp", "vulkan_backend.cpp", "linux_runtime.cpp",
@@ -73,6 +138,11 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('std::strcmp(path, "libvulkan.so")', VULKAN)
         self.assertIn('dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL)', VULKAN)
 
+    def test_linux_player_finds_cores_beside_the_packaged_executable(self):
+        self.assertIn("SDL_GetBasePath()", RUNTIME)
+        self.assertIn('directory / "libretro" / filename', RUNTIME)
+        self.assertNotIn("/usr/lib/an3-offline-native/libretro", RUNTIME)
+
     def test_3ds_is_vulkan_only_and_software_cores_can_select_gl(self):
         self.assertIn('system == "3ds" && options.renderer == "opengl"', RUNTIME)
         self.assertIn('options.renderer == "auto" || options.renderer == "opengl"', RUNTIME)
@@ -83,8 +153,31 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
 
     def test_gl_reuses_resources_and_has_no_finish_or_readback_hot_path(self):
         self.assertIn("std::array<std::vector<uint8_t>, 2> staging", GL)
-        self.assertIn("if (impl_->texture_width != width || impl_->texture_height != height)", GL)
+        self.assertIn("std::array<std::vector<uint8_t>, 2> converted", GL)
+        self.assertIn("if (impl_->texture_width != allocation_width || impl_->texture_height != allocation_height)", GL)
+        self.assertIn('gl_version_at_least(1, 2) ||', GL)
+        self.assertIn('gl_has_extension(extensions, "GL_EXT_texture_edge_clamp")', GL)
+        self.assertIn("impl_->supports_edge_clamp ? GL_CLAMP_TO_EDGE : GL_CLAMP", GL)
+        self.assertIn("gl_version_at_least(1, 2) ? GL_RGBA : 4", GL)
+        self.assertIn("glTexImage2D(GL_TEXTURE_2D, 0, internal_format", GL)
+        self.assertIn("GL_MAX_TEXTURE_SIZE", GL)
+        self.assertIn('record_present_error("texture preflight", preallocation_error, context_details)', GL)
+        self.assertIn("max texture size ", GL)
+        self.assertIn("allocation_details", GL)
+        self.assertIn("unsigned next_power_of_two(unsigned value)", GL)
+        self.assertIn('gl_version_at_least(2, 0) || gl_has_extension(extensions, "GL_ARB_texture_non_power_of_two")', GL)
+        self.assertIn("impl_->supports_npot ? width : next_power_of_two(width)", GL)
+        self.assertIn("texture_max_u", GL)
+        self.assertIn("texture_max_v", GL)
+        self.assertIn('gl_version_at_least(1, 2) || gl_has_extension(extensions, "GL_EXT_bgra")', GL)
+        self.assertIn('gl_version_at_least(1, 2) || gl_has_extension(extensions, "GL_EXT_packed_pixels")', GL)
+        self.assertIn("convert_software_frame_to_rgba", GL)
+        self.assertIn("supports_packed_pixels);", GL)
         self.assertIn("glTexSubImage2D", GL)
+        self.assertIn('record_present_error("texture allocation", allocation_error, allocation_details)', GL)
+        self.assertIn('record_present_error("frame upload", upload_error)', GL)
+        self.assertIn('record_present_error("frame draw", draw_error)', GL)
+        self.assertIn("current.video.failure_reason", CONTROLS)
         self.assertNotIn("glFinish", GL)
         self.assertNotIn("glReadPixels", GL)
         self.assertLess(GL.index("SDL_GL_SetAttribute"), GL.index("surface->recreate_for_opengl"))

@@ -121,7 +121,14 @@ int main(int argc, char** argv) {
     }
     session.set_speed(2.0);
     session.set_paused(false);
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const auto resume_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (session.status().core_frames < 8 && std::chrono::steady_clock::now() < resume_deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (session.status().core_frames < 8) {
+        session.stop();
+        return fail("resumed session did not reach the expected frame count");
+    }
     session.set_paused(true);
     session.stop();
     if (host.running()) return fail("session stop left the native core running");

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "../core/video_backend.h"
+#include "../core/perf_telemetry.h"
 
 #include <array>
 #include <cstddef>
@@ -69,6 +70,8 @@ class NativeSoftwareFrameQueue final : public NativeVideoBackend {
     uint64_t dropped_frames_ = 0;
     uint64_t duplicated_frames_ = 0;
     uint32_t queue_depth_max_ = 0;
+    perf::TimingSeries present_timings_{};
+    perf::TimingSeries queue_depth_timings_{};
     bool active_ = true;
 };
 
