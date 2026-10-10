@@ -10,7 +10,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket},
     path::{Path, PathBuf},
     sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex, OnceLock},
@@ -25,7 +25,7 @@ use p256::{ecdh::EphemeralSecret, elliptic_curve::sec1::ToEncodedPoint, PublicKe
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::connection_limit::ConnectionLimit;
+use crate::connection_limit::{ConnectionLimit, ConnectionPermit};
 use crate::lan_peer::{advertisement_with_capabilities, parse_advertisement, DISCOVERY_ADDRESS, DISCOVERY_PORT, PROTOCOL_VERSION, SYNC_PORT};
 
 const PAIRING_TTL: Duration = Duration::from_secs(120);
@@ -37,6 +37,8 @@ static ACTIVE_HANDLERS: ConnectionLimit = ConnectionLimit::new(MAX_ACTIVE_HANDLE
 const MAX_NATIVE_MEMBERS: usize = 64;
 const MAX_NATIVE_SET_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_NATIVE_MEMBER_BYTES: u64 = 16 * 1024 * 1024;
+const SYNC_CHUNK_BYTES: usize = 768 * 1024;
+static ACTIVE_PUBLISHES: ConnectionLimit = ConnectionLimit::new(1);
 const DIR_CLIENT_TO_HOST: u32 = 11;
 const DIR_HOST_TO_CLIENT: u32 = 12;
 const IDENTITY_FILE: &str = "lan-sync-identity-v1.json";
@@ -117,6 +119,19 @@ struct ClientSession {
     challenge: String,
     account_verified: bool,
     remote_proof: String,
+}
+
+struct PendingPublish {
+    transfer_id: String,
+    payload: serde_json::Value,
+    members: Vec<PendingPublishMember>,
+    next_member: usize,
+    _permit: ConnectionPermit<'static>,
+}
+
+struct PendingPublishMember {
+    expected_size: usize,
+    bytes: Vec<u8>,
 }
 
 static RUNTIME: OnceLock<Mutex<Option<Arc<Runtime>>>> = OnceLock::new();
@@ -553,10 +568,36 @@ fn native_blob(runtime: &Runtime, payload: &serde_json::Value) -> Result<serde_j
         return Err("The save-state blob identity does not match its path.".into());
     }
     let path = if context.kind == "save" { root.join(relative) } else { root.join("states").join(relative) };
-    let bytes = native_member_bytes(&path)?;
+    let metadata = fs::metadata(&path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_NATIVE_MEMBER_BYTES {
+        return Err("Native sync member is empty or too large.".into());
+    }
     let expected_size = item.get("size").and_then(|value| value.as_u64()).ok_or("The sync blob request is missing its size.")?;
     let expected_hash = item.get("contentHash").and_then(|value| value.as_str()).unwrap_or("").to_ascii_lowercase();
-    if expected_size != bytes.len() as u64 || expected_hash != sha256_bytes(&bytes) { return Err("Native sync blob verification failed.".into()); }
+    if expected_size != metadata.len() || expected_hash.len() != 64 || !expected_hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Native sync blob verification failed.".into());
+    }
+    let offset = payload.get("offset");
+    let length = payload.get("length");
+    if offset.is_some() != length.is_some() {
+        return Err("The native sync blob chunk range is incomplete.".into());
+    }
+    if let (Some(offset), Some(length)) = (
+        offset.and_then(|value| value.as_u64()),
+        length.and_then(|value| value.as_u64()),
+    ) {
+        if offset >= expected_size || length == 0 || length > SYNC_CHUNK_BYTES as u64 {
+            return Err("Invalid native sync blob chunk range.".into());
+        }
+        let length = length.min(expected_size - offset) as usize;
+        let mut input = File::open(&path).map_err(|error| error.to_string())?;
+        input.seek(SeekFrom::Start(offset)).map_err(|error| error.to_string())?;
+        let mut bytes = vec![0; length];
+        input.read_exact(&mut bytes).map_err(|error| error.to_string())?;
+        return Ok(serde_json::json!({"data": B64.encode(bytes), "offset": offset, "size": expected_size, "contentHash": expected_hash}));
+    }
+    let bytes = native_member_bytes(&path)?;
+    if expected_hash != sha256_bytes(&bytes) { return Err("Native sync blob verification failed.".into()); }
     Ok(serde_json::json!({"data": B64.encode(bytes), "size": expected_size, "contentHash": expected_hash}))
 }
 
@@ -603,7 +644,7 @@ fn write_native_members(root: &Path, kind: &str, files: Vec<(String, Vec<u8>)>) 
     Ok(())
 }
 
-fn validate_publish_set(runtime: &Runtime, payload: &serde_json::Value, context: &NativeContext) -> Result<(Vec<(String, Vec<u8>)>, String), String> {
+fn validate_publish_set(runtime: &Runtime, payload: &serde_json::Value, context: &NativeContext, mut staged: Option<Vec<Vec<u8>>>) -> Result<(Vec<(String, Vec<u8>)>, String), String> {
     let set = payload.get("set").ok_or("The save-set publish is missing its manifest.")?;
     let set_id = set.get("setId").and_then(|value| value.as_str()).unwrap_or("");
     let base_id = native_set_id(context);
@@ -637,16 +678,20 @@ fn validate_publish_set(runtime: &Runtime, payload: &serde_json::Value, context:
     let items = payload.get("items").and_then(|value| value.as_array()).ok_or("The save-set publish is missing member data.")?;
     if items.len() != canonical.len() { return Err("The save-set publish is missing or adding members.".into()); }
     let mut by_key = HashMap::new();
-    for item in items {
+    for (index, item) in items.iter().enumerate() {
         let key = item.get("key").and_then(|value| value.as_str()).unwrap_or("").to_string();
-        if by_key.insert(key.clone(), item).is_some() { return Err("The save-set publish contains a duplicate member.".into()); }
+        if by_key.insert(key.clone(), (index, item)).is_some() { return Err("The save-set publish contains a duplicate member.".into()); }
     }
     let mut files = Vec::new();
     for member in &canonical {
         let key = format!("{set_id}:{}", member.member_id);
-        let item = by_key.remove(&key).ok_or("The save-set publish is missing a member.")?;
-        let data = item.get("data").and_then(|value| value.as_str()).ok_or("The save-set member has no data.")?;
-        let bytes = B64.decode(data).map_err(|_| "The save-set member data is not valid base64.")?;
+        let (index, item) = by_key.remove(&key).ok_or("The save-set publish is missing a member.")?;
+        let bytes = if let Some(staged) = staged.as_mut() {
+            staged.get_mut(index).map(std::mem::take).ok_or("The chunked save-set member data is missing.")?
+        } else {
+            let data = item.get("data").and_then(|value| value.as_str()).ok_or("The save-set member has no data.")?;
+            B64.decode(data).map_err(|_| "The save-set member data is not valid base64.")?
+        };
         if bytes.len() as u64 != member.size || sha256_bytes(&bytes) != member.content_hash { return Err("The save-set member failed size or SHA-256 validation.".into()); }
         files.push((if set_id.ends_with(".conflict") { format!("{}.an3-conflict-{}", member.member_id, &manifest_hash[..16]) } else { member.member_id.clone() }, bytes));
     }
@@ -655,14 +700,14 @@ fn validate_publish_set(runtime: &Runtime, payload: &serde_json::Value, context:
     Ok((files, manifest_hash))
 }
 
-fn validate_publish_state(payload: &serde_json::Value, context: &NativeContext) -> Result<Vec<(String, Vec<u8>)>, String> {
+fn validate_publish_state(payload: &serde_json::Value, context: &NativeContext, mut staged: Option<Vec<Vec<u8>>>) -> Result<Vec<(String, Vec<u8>)>, String> {
     let items = payload.get("items").and_then(|value| value.as_array()).ok_or("The save-state publish is missing member data.")?;
     if items.is_empty() || items.len() > MAX_NATIVE_MEMBERS { return Err("The save-state member list is invalid.".into()); }
     let prefix = format!("state:{}:{}:{}:", context.core, context.game_id, context.rom_hash);
     let mut seen = HashSet::new();
     let mut files = Vec::new();
     let mut total = 0_u64;
-    for item in items {
+    for (index, item) in items.iter().enumerate() {
         let key = item.get("key").and_then(|value| value.as_str()).unwrap_or("");
         let path = item.get("path").and_then(|value| value.as_str()).unwrap_or("");
         let member_id = path.strip_prefix("/data/states/").ok_or("Invalid native save-state path.")?;
@@ -671,8 +716,12 @@ fn validate_publish_state(payload: &serde_json::Value, context: &NativeContext) 
         if !key.starts_with(&prefix) || !valid_state_key(key) || !valid_member_path(member_id) || !seen.insert(member_id.to_string()) || size == 0 || size > MAX_NATIVE_MEMBER_BYTES || hash.len() != 64 || !hash.chars().all(|ch| ch.is_ascii_hexdigit()) {
             return Err("The save-state member manifest is invalid.".into());
         }
-        let data = item.get("data").and_then(|value| value.as_str()).ok_or("The save-state member has no data.")?;
-        let bytes = B64.decode(data).map_err(|_| "The save-state member data is not valid base64.")?;
+        let bytes = if let Some(staged) = staged.as_mut() {
+            staged.get_mut(index).map(std::mem::take).ok_or("The chunked save-state member data is missing.")?
+        } else {
+            let data = item.get("data").and_then(|value| value.as_str()).ok_or("The save-state member has no data.")?;
+            B64.decode(data).map_err(|_| "The save-state member data is not valid base64.")?
+        };
         if bytes.len() as u64 != size || sha256_bytes(&bytes) != hash { return Err("The save-state member failed size or SHA-256 validation.".into()); }
         total = total.saturating_add(size);
         if total > MAX_NATIVE_SET_BYTES { return Err("The save-state payload is too large.".into()); }
@@ -681,19 +730,88 @@ fn validate_publish_state(payload: &serde_json::Value, context: &NativeContext) 
     Ok(files)
 }
 
-fn native_publish(runtime: &Runtime, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+fn begin_native_publish(runtime: &Runtime, payload: &serde_json::Value, pending: &mut Option<PendingPublish>) -> Result<serde_json::Value, String> {
+    if pending.is_some() { return Err("A native sync publish is already active on this peer.".into()); }
+    let payload = payload.get("payload").cloned().ok_or("The chunked sync publish is missing its metadata.")?;
+    let context = native_context(&payload)?;
+    let _ = find_native_game(&runtime.app_dir, &context, context.rom_id.as_deref())?;
+    let items = payload.get("items").and_then(|value| value.as_array()).ok_or("The chunked sync publish is missing its members.")?;
+    if items.is_empty() || items.len() > MAX_NATIVE_MEMBERS { return Err("The chunked sync member list is invalid.".into()); }
+    let mut total = 0_u64;
+    let mut members = Vec::with_capacity(items.len());
+    for item in items {
+        if item.get("data").is_some() { return Err("Chunked sync metadata cannot contain inline member data.".into()); }
+        let size = item.get("size").and_then(|value| value.as_u64()).ok_or("The chunked sync member is missing its size.")?;
+        if size == 0 || size > MAX_NATIVE_MEMBER_BYTES { return Err("The chunked sync member is empty or too large.".into()); }
+        total = total.saturating_add(size);
+        if total > MAX_NATIVE_SET_BYTES { return Err("The chunked sync payload is too large.".into()); }
+        members.push(PendingPublishMember { expected_size: size as usize, bytes: Vec::new() });
+    }
+    let permit = ACTIVE_PUBLISHES.try_acquire().ok_or("Another native sync publish is active; retry after it completes.")?;
+    let transfer_id = hex(&random_bytes::<16>());
+    *pending = Some(PendingPublish { transfer_id: transfer_id.clone(), payload, members, next_member: 0, _permit: permit });
+    Ok(serde_json::json!({"transferId": transfer_id}))
+}
+
+fn append_native_publish_chunk(pending: &mut Option<PendingPublish>, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let transfer = pending.as_mut().ok_or("No native sync publish is active.")?;
+    if payload.get("transferId").and_then(|value| value.as_str()) != Some(transfer.transfer_id.as_str()) {
+        return Err("The native sync transfer identity does not match.".into());
+    }
+    let index = payload.get("index").and_then(|value| value.as_u64()).and_then(|value| usize::try_from(value).ok()).ok_or("The native sync chunk has an invalid member index.")?;
+    if index != transfer.next_member { return Err("Native sync chunks must arrive in member order.".into()); }
+    let member = transfer.members.get_mut(index).ok_or("The native sync chunk refers to an unknown member.")?;
+    let offset = payload.get("offset").and_then(|value| value.as_u64()).ok_or("The native sync chunk is missing its offset.")?;
+    if offset != member.bytes.len() as u64 { return Err("The native sync chunk offset is out of order.".into()); }
+    let encoded = payload.get("data").and_then(|value| value.as_str()).ok_or("The native sync chunk is missing its data.")?;
+    if encoded.is_empty() || encoded.len() > (SYNC_CHUNK_BYTES * 4 / 3 + 4) { return Err("The native sync chunk is empty or too large.".into()); }
+    let bytes = B64.decode(encoded).map_err(|_| "The native sync chunk is not valid base64.")?;
+    if bytes.is_empty() || bytes.len() > SYNC_CHUNK_BYTES || member.bytes.len().saturating_add(bytes.len()) > member.expected_size {
+        return Err("The native sync chunk exceeds its member size.".into());
+    }
+    member.bytes.extend_from_slice(&bytes);
+    let next_offset = member.bytes.len();
+    if next_offset == member.expected_size { transfer.next_member += 1; }
+    Ok(serde_json::json!({"nextOffset": next_offset}))
+}
+
+fn commit_native_publish(runtime: &Runtime, pending: &mut Option<PendingPublish>, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let transfer = pending.as_ref().ok_or("No native sync publish is active.")?;
+    if payload.get("transferId").and_then(|value| value.as_str()) != Some(transfer.transfer_id.as_str()) {
+        return Err("The native sync transfer identity does not match.".into());
+    }
+    if transfer.next_member != transfer.members.len() { return Err("The native sync publish is incomplete.".into()); }
+    let transfer = pending.take().ok_or("No native sync publish is active.")?;
+    let staged = transfer.members.into_iter().map(|member| member.bytes).collect();
+    native_publish_with_data(runtime, &transfer.payload, Some(staged))
+}
+
+fn abort_native_publish(pending: &mut Option<PendingPublish>, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let transfer = pending.as_ref().ok_or("No native sync publish is active.")?;
+    if payload.get("transferId").and_then(|value| value.as_str()) != Some(transfer.transfer_id.as_str()) {
+        return Err("The native sync transfer identity does not match.".into());
+    }
+    *pending = None;
+    Ok(serde_json::json!({"aborted": true}))
+}
+
+fn native_publish_with_data(runtime: &Runtime, payload: &serde_json::Value, staged: Option<Vec<Vec<u8>>>) -> Result<serde_json::Value, String> {
     let context = native_context(payload)?;
     let (_rom_id, _rom_path, root) = find_native_game(&runtime.app_dir, &context, context.rom_id.as_deref())?;
     if context.kind == "save" {
-        let (files, manifest_hash) = validate_publish_set(runtime, payload, &context)?;
+        let (files, manifest_hash) = validate_publish_set(runtime, payload, &context, staged)?;
         let count = files.len();
         write_native_members(&root, "save", files)?;
         return Ok(serde_json::json!({"ok": true, "accepted": count, "manifestHash": manifest_hash}));
     }
-    let files = validate_publish_state(payload, &context)?;
+    let files = validate_publish_state(payload, &context, staged)?;
     let count = files.len();
     write_native_members(&root, "state", files)?;
     Ok(serde_json::json!({"ok": true, "accepted": count}))
+}
+
+fn native_publish(runtime: &Runtime, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    native_publish_with_data(runtime, payload, None)
 }
 
 fn native_plan(payload: &serde_json::Value) -> Result<serde_json::Value, String> {
@@ -1057,6 +1175,7 @@ fn handle_client(runtime: &Arc<Runtime>, stream: &mut TcpStream, address: Socket
 
 fn serve_requests(runtime: &Arc<Runtime>, stream: &mut TcpStream, cipher: &Aes256Gcm, peer_id: &str, mut send_counter: u64) {
     let mut receive_counter = 1u64;
+    let mut pending_publish = None;
     while !runtime.stop.load(Ordering::Relaxed) {
         let Ok(body) = read_frame(stream) else { return };
         let Some(value) = open(cipher, DIR_CLIENT_TO_HOST, receive_counter, &body) else { return };
@@ -1066,11 +1185,15 @@ fn serve_requests(runtime: &Arc<Runtime>, stream: &mut TcpStream, cipher: &Aes25
         let method = value.get("method").and_then(|item| item.as_str()).unwrap_or("");
         let payload = value.get("payload").cloned().unwrap_or(serde_json::Value::Null);
         let result = match method {
-            "ping" => Ok(serde_json::json!({"ok":true,"peerId":peer_id})),
+            "ping" => Ok(serde_json::json!({"ok":true,"peerId":peer_id,"chunkedTransfers":1})),
             "manifest" => native_manifest(runtime, &payload, peer_id),
             "plan" => native_plan(&payload),
             "blob" => native_blob(runtime, &payload),
             "publish" => native_publish(runtime, &payload),
+            "publish-begin" => begin_native_publish(runtime, &payload, &mut pending_publish),
+            "publish-chunk" => append_native_publish_chunk(&mut pending_publish, &payload),
+            "publish-commit" => commit_native_publish(runtime, &mut pending_publish, &payload),
+            "publish-abort" => abort_native_publish(&mut pending_publish, &payload),
             "account-proof" => {
                 let proof = payload.get("proof").and_then(|value| value.as_str()).unwrap_or("").to_string();
                 if proof.is_empty() || proof.len() > 4096 { Err("Invalid account proof.".into()) }
@@ -1311,5 +1434,24 @@ mod tests {
         assert!(mode_valid("guest"));
         assert!(mode_valid("account"));
         assert!(!mode_valid("device"));
+    }
+
+    #[test]
+    fn chunked_publish_accepts_ordered_chunks_and_releases_its_slot() {
+        let mut pending = Some(PendingPublish {
+            transfer_id: "transfer-1".into(),
+            payload: serde_json::json!({}),
+            members: vec![PendingPublishMember { expected_size: 3, bytes: Vec::new() }],
+            next_member: 0,
+            _permit: ACTIVE_PUBLISHES.try_acquire().expect("publish slot"),
+        });
+        let result = append_native_publish_chunk(&mut pending, &serde_json::json!({
+            "transferId": "transfer-1", "index": 0, "offset": 0, "data": B64.encode(b"abc")
+        })).expect("ordered chunk");
+        assert_eq!(result["nextOffset"], 3);
+        assert_eq!(pending.as_ref().unwrap().next_member, 1);
+
+        drop(pending.take());
+        assert!(ACTIVE_PUBLISHES.try_acquire().is_some());
     }
 }

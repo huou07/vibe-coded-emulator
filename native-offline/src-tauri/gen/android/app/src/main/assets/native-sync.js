@@ -7,6 +7,9 @@
   "use strict";
   const MODE_KEY = "an3-lan-mode-v1";
   const BACKGROUND_KEY = "an3-lan-background-v1";
+  const TRANSFER_CHUNK_BYTES = 768 * 1024;
+  const TRANSFER_CHUNK_CHARS = TRANSFER_CHUNK_BYTES / 3 * 4;
+  const LEGACY_TRANSFER_BYTES = 4 * 1024 * 1024;
   const invoke = () => globalThis.AN3NativeInvoke?.() || globalThis.__TAURI__?.core?.invoke || globalThis.__TAURI_INTERNALS__?.invoke;
   const mode = () => {
     try { return localStorage.getItem(MODE_KEY) === "account" ? "account" : "guest"; } catch (_) { return "guest"; }
@@ -36,9 +39,10 @@
   const join = (code, peerId = null) => {
     const value = String(code || "");
     if (mode() === "guest" && !peerId && !/^\d{6}$/.test(value)) throw new Error("Enter exactly six decimal digits.");
+    chunkedTransfers = undefined;
     return call("native_sync_join", {code: value, mode: mode(), peerId});
   };
-  const reconnect = peerId => call("native_sync_join", {code: "", mode: mode(), peerId});
+  const reconnect = peerId => { chunkedTransfers = undefined; return call("native_sync_join", {code: "", mode: mode(), peerId}); };
   const forget = peerId => call("native_sync_forget", {peerId});
   const discover = () => call("native_sync_discover");
   const request = (method, payload) => call("native_sync_request", {method, payload});
@@ -52,6 +56,78 @@
     let binary = "";
     for (const byte of bytes) binary += String.fromCharCode(byte);
     return btoa(binary);
+  };
+  let chunkedTransfers;
+  const supportsChunkedTransfers = async () => {
+    if (!chunkedTransfers) {
+      chunkedTransfers = request("ping", {}).then(result => result?.chunkedTransfers === 1);
+    }
+    return chunkedTransfers;
+  };
+  const publish = async payload => {
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const totalSize = items.reduce((total, item) => total + Number(item?.size || 0), 0);
+    if (totalSize <= LEGACY_TRANSFER_BYTES) return request("publish", payload);
+    if (!(await supportsChunkedTransfers())) {
+      throw new Error("This sync peer needs an update before it can receive larger save data.");
+    }
+    const metadata = {...payload, items: items.map(({data, ...item}) => item)};
+    const started = await request("publish-begin", {payload: metadata});
+    const transferId = String(started?.transferId || "");
+    if (!transferId) throw new Error("The sync peer did not start the large transfer.");
+    try {
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        const encoded = String(item.data || "");
+        if (!Number.isSafeInteger(Number(item.size)) || Number(item.size) <= 0 || encoded.length !== Math.ceil(Number(item.size) / 3) * 4) {
+          throw new Error("A save member has invalid encoded data.");
+        }
+        let encodedOffset = 0;
+        let byteOffset = 0;
+        while (encodedOffset < encoded.length) {
+          const part = encoded.slice(encodedOffset, encodedOffset + TRANSFER_CHUNK_CHARS);
+          const padding = part.endsWith("==") ? 2 : part.endsWith("=") ? 1 : 0;
+          const partBytes = part.length / 4 * 3 - padding;
+          const result = await request("publish-chunk", {
+            transferId, index, offset: byteOffset, data: part,
+          });
+          byteOffset += partBytes;
+          encodedOffset += part.length;
+          if (result?.nextOffset !== byteOffset) throw new Error("The sync peer lost a save-data chunk.");
+        }
+        if (byteOffset !== Number(item.size)) throw new Error("A save member ended at the wrong size.");
+      }
+      return await request("publish-commit", {transferId});
+    } catch (error) {
+      try { await request("publish-abort", {transferId}); } catch (_) {}
+      throw error;
+    }
+  };
+  const blob = async (kind, item, context) => {
+    if (Number(item?.size) <= LEGACY_TRANSFER_BYTES) {
+      const result = await request("blob", {kind, item, context: context || null});
+      return bytesFromBase64(result?.data);
+    }
+    if (!(await supportsChunkedTransfers())) {
+      throw new Error("This sync peer needs an update before it can send larger save data.");
+    }
+    const size = Number(item.size);
+    if (!Number.isSafeInteger(size) || size <= 0) throw new Error("The sync peer announced an invalid save-data size.");
+    const result = new Uint8Array(size);
+    let offset = 0;
+    while (offset < size) {
+      const chunk = await request("blob", {
+        kind, item, context: context || null, offset, length: TRANSFER_CHUNK_BYTES,
+      });
+      const bytes = bytesFromBase64(chunk?.data);
+      if (chunk?.offset !== offset || chunk?.size !== size || chunk?.contentHash !== item.contentHash ||
+          bytes.length === 0 || bytes.length > TRANSFER_CHUNK_BYTES || offset + bytes.length > size) {
+        throw new Error("The sync peer returned an invalid save-data chunk.");
+      }
+      result.set(bytes, offset);
+      offset += bytes.length;
+    }
+    return result;
   };
   const contextFor = (kind, system, romId, identity) => ({
     kind,
@@ -127,8 +203,8 @@
     sameAccount,
     manifest: (kind, context) => request("manifest", {kind, context: context || null}),
     plan: payload => request("plan", payload),
-    publish: payload => request("publish", payload),
-    blob: (kind, item, context) => request("blob", {kind, item, context: context || null}),
+    publish,
+    blob,
     resolve: payload => request("resolve", payload),
     close: async () => {},
   });

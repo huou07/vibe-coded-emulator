@@ -140,3 +140,63 @@ test("account peer remains fail-closed until the encrypted-session proof is veri
   assert.equal(await verified.authenticateAccount(), true);
   assert.equal(verifiedCalls.at(-1).name, "native_sync_mark_account_verified");
 });
+
+test("large save publishes use bounded chunks and commit only after all chunks", async () => {
+  const calls = [];
+  const received = [];
+  let receivedSize = 0;
+  const sync = loadSync(calls, null, {
+    native_sync_request: ({method, payload}) => {
+      if (method === "ping") return {chunkedTransfers: 1};
+      if (method === "publish-begin") {
+        assert.equal(payload.payload.items[0].data, undefined);
+        return {transferId: "transfer-1"};
+      }
+      if (method === "publish-chunk") {
+        const bytes = Buffer.from(payload.data, "base64");
+        assert.ok(bytes.length <= 768 * 1024);
+        assert.equal(payload.offset, receivedSize);
+        received.push(bytes);
+        receivedSize += bytes.length;
+        return {nextOffset: receivedSize};
+      }
+      if (method === "publish-commit") return {ok: true, accepted: 1};
+      throw new Error(`Unexpected sync method: ${method}`);
+    },
+  });
+  const bytes = Buffer.alloc(4 * 1024 * 1024 + 13, 0x5a);
+  const result = await sync.transport.publish({
+    kind: "save",
+    items: [{key: "save:test", path: "/data/saves/test.srm", size: bytes.length, contentHash: "a".repeat(64), data: bytes.toString("base64")}],
+  });
+
+  assert.deepEqual(result, {ok: true, accepted: 1});
+  assert.deepEqual(Buffer.concat(received), bytes);
+  assert.equal(calls.at(-1).args.method, "publish-commit");
+});
+
+test("large save downloads assemble bounded range responses in order", async () => {
+  const calls = [];
+  const sync = loadSync(calls, null, {
+    native_sync_request: ({method, payload}) => {
+      if (method === "ping") return {chunkedTransfers: 1};
+      assert.equal(method, "blob");
+      const offset = payload.offset;
+      const bytes = Buffer.alloc(Math.min(768 * 1024, payload.item.size - offset), 0x36);
+      return {
+        offset,
+        size: payload.item.size,
+        contentHash: payload.item.contentHash,
+        data: bytes.toString("base64"),
+      };
+    },
+  });
+  const expected = Buffer.alloc(4 * 1024 * 1024 + 29, 0x36);
+  const item = {key: "save:test", path: "/data/saves/test.srm", size: expected.length, contentHash: "b".repeat(64)};
+  const result = await sync.transport.blob("save", item, {kind: "save"});
+
+  assert.deepEqual(Buffer.from(result), expected);
+  const blobCalls = calls.filter(call => call.args.method === "blob");
+  assert.equal(blobCalls.length, 6);
+  assert.deepEqual(blobCalls.map(call => call.args.payload.offset), [0, 768 * 1024, 1536 * 1024, 2304 * 1024, 3072 * 1024, 3840 * 1024]);
+});

@@ -229,13 +229,14 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    relay room name; peer media sync still unverified).
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
    **2026-10-10 private-branch update:** native peer listeners and client-store
-   wiring now transfer save/state bytes directly. The 3.6.8 core-only candidate
-   intentionally excludes this feature. Remaining P1 before restoring it to a
-   release: the native sync wire frame limit is 8 MiB while a member may be
-   16 MiB and a save set 64 MiB, so the current single-frame JSON/base64 path
-   cannot carry the largest accepted transfers. Confirm normal core state sizes
-   and implement bounded chunk transfer with an atomic publish path; preserve
-   the current authentication and hash checks.
+   wiring transfer save/state bytes directly. The P1 wire-size gap is closed
+   in private source: large members use authenticated 768 KiB chunks,
+   one active staged publish bounds memory, and complete sets retain the
+   existing hash validation and atomic publish path. The browser tests cover
+   large uploads/downloads and the Rust test covers chunk ordering and publish
+   slot release. Packaged peer-to-peer transfer and gameplay impact remain
+   **UNVERIFIED** pending hosted runtime acceptance. The frozen 3.6.8 core-only
+   candidate intentionally excludes LAN Sync.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
    **Done:** Android verified; Linux launch smoke; Windows launch smoke
    (gameplay unverified); CodeGraph synced.
