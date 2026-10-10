@@ -228,8 +228,14 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    code surfaced in the game UI. **Done and staging-verified** (invite code ==
    relay room name; peer media sync still unverified).
 4. **LAN discovery + direct transfer** and **sync wiring** in `app.py`.
-   **Sync wiring, LAN discovery, and LAN byte transfer done** (verified across
-   the MacBook and the Debian); true P2P listeners + client-store wiring open.
+   **2026-10-10 private-branch update:** native peer listeners and client-store
+   wiring now transfer save/state bytes directly. The 3.6.8 core-only candidate
+   intentionally excludes this feature. Remaining P1 before restoring it to a
+   release: the native sync wire frame limit is 8 MiB while a member may be
+   16 MiB and a save set 64 MiB, so the current single-frame JSON/base64 path
+   cannot carry the largest accepted transfers. Confirm normal core state sizes
+   and implement bounded chunk transfer with an atomic publish path; preserve
+   the current authentication and hash checks.
 5. **Windows/Linux 1.3.0 runtime smoke**; re-index CodeGraph.
    **Done:** Android verified; Linux launch smoke; Windows launch smoke
    (gameplay unverified); CodeGraph synced.
