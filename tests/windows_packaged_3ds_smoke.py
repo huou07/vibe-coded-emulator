@@ -123,7 +123,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         env.update({"AN3_OFFLINE_LIBDIR": str(libdir), "SDL_AUDIODRIVER": "dummy"})
         log_path = evidence / "player.log"
         command = [str(player), "--rom", str(fixture), "--system", "3ds",
-                   "--renderer", "vulkan", "--control-stdin", "--storage", str(storage)]
+                   "--renderer", "vulkan", "--control-stdin", "--no-controls",
+                   "--storage", str(storage)]
         log_stream = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True, env=env)
