@@ -39,7 +39,11 @@ def app_nodes():
 def matching_node(name, role=None):
     for node in app_nodes():
         try:
-            if node.name == name and (role is None or node.getRole() == role):
+            if name not in (node.name or "") or (role is not None and node.getRole() != role):
+                continue
+            if not node.getState().contains(pyatspi.STATE_SHOWING):
+                continue
+            if node.getState().contains(pyatspi.STATE_VISIBLE):
                 return node
         except Exception:
             continue
@@ -58,7 +62,8 @@ def wait_for(name, role=None, timeout=45):
         try:
             label = (node.name or "").strip()
             if label:
-                tree.append(f"{node.getRoleName()}: {label}")
+                state = "showing" if node.getState().contains(pyatspi.STATE_SHOWING) else "hidden"
+                tree.append(f"{state} {node.getRoleName()}: {label}")
         except Exception:
             continue
     (EVIDENCE / "accessibility-tree.txt").write_text(
