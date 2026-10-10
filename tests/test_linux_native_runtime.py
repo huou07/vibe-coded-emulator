@@ -134,6 +134,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertLess(build_step, install_step)
         self.assertLess(install_step, artifact_step)
         self.assertIn("python3 tools/testrom/gba_homebrew_test.py", flatpak_job)
+        self.assertIn('"$fixture" AN3FLATPAK', flatpak_job)
         self.assertIn('AN3_FLATPAK_SMOKE_ROM="$fixture"', flatpak_job)
         self.assertIn("bash native-offline/scripts/verify-flatpak-install.sh", flatpak_job)
         self.assertIn("xvfb xauth", flatpak_job)

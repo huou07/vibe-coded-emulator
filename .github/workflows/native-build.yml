@@ -635,7 +635,7 @@ jobs:
           set -euo pipefail
           sudo apt-get install -y --no-install-recommends xvfb xauth
           fixture="$RUNNER_TEMP/AN3FLATPAKTEST.gba"
-          python3 tools/testrom/gba_homebrew_test.py "$fixture" AN3FLATPAKTEST
+          python3 tools/testrom/gba_homebrew_test.py "$fixture" AN3FLATPAK
           bundle="$(find native-offline/releases -maxdepth 1 -name '*.flatpak' -print -quit)"
           test -n "$bundle" || { echo 'Linux Flatpak was not produced.' >&2; exit 1; }
           AN3_FLATPAK_SMOKE_ROM="$fixture" \
