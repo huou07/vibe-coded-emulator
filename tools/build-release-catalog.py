@@ -16,8 +16,8 @@ Usage:
 
 The version defaults to the desktop `tauri.conf.json` version, which is what
 `tools/release-train.sh` uses for the artifact filenames, so the catalog and the
-built filenames cannot drift. `core_support` defaults to the cores the native
-shell actually bundles; pass `--core` to override.
+built filenames cannot drift. `core_support` defaults to the systems supported
+by this release; pass `--core` to override.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ LAYOUT = (
     ("Windows", "EXE", "x64", "vibecodedemulator-{v}-windows-x64-staging.exe"),
 )
 
-DEFAULT_CORES = ("mGBA", "melonDS", "Azahar", "Eden")
+DEFAULT_CORES = ("mGBA", "melonDS", "Azahar")
 
 UNSIGNED = {
     "DMG": "Ad-hoc signed only; not notarized.",

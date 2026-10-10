@@ -90,6 +90,7 @@ class ReleaseCatalogGeneratorTests(unittest.TestCase):
         for entry in catalog["artifacts"]:
             with self.subTest(format=entry["format"]):
                 self.assertIn(self.version, entry["filename"])
+                self.assertEqual(entry["core_support"], ["mGBA", "melonDS", "Azahar"])
                 sidecar = (self.releases / (entry["filename"] + ".sha256")).read_text()
                 self.assertEqual(
                     sidecar.strip(), f"{entry['sha256']}  {entry['filename']}"
