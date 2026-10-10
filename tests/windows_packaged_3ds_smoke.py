@@ -199,7 +199,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                     try:
                         commands = evidence / "shutdown-gdb.commands"
                         commands.write_text(
-                            f"attach {process.pid}\nthread apply all backtrace\ndetach\n",
+                            f"attach {process.pid}\nthread apply all backtrace\n"
+                            "info sharedlibrary\ndetach\n",
                             encoding="utf-8",
                         )
                         trace = subprocess.run(

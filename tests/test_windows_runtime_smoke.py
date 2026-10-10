@@ -158,6 +158,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("AN3_NATIVE_CONTROL_RESULT 1 OK", smoke)
         self.assertIn("PostMessageW(hwnd, 0x0010", smoke)
         self.assertIn("thread apply all backtrace", smoke)
+        self.assertIn("info sharedlibrary", smoke)
         self.assertIn('"-batch", "-x", str(commands)', smoke)
         self.assertIn('"shutdownDebugger": shutdown_debugger', smoke)
         self.assertIn("ImageChops.difference", smoke)
