@@ -8,7 +8,6 @@
 #include <SDL2/SDL_opengl.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -40,10 +39,9 @@ unsigned next_power_of_two(unsigned value) {
     return result;
 }
 
-bool gl_version_at_least(int wanted_major, int wanted_minor) {
-    const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+bool gl_version_at_least(const std::string& version, int wanted_major, int wanted_minor) {
     int major = 0, minor = 0;
-    if (!version || std::sscanf(version, "%d.%d", &major, &minor) != 2) return false;
+    if (version.empty() || std::sscanf(version.data(), "%d.%d", &major, &minor) != 2) return false;
     return major > wanted_major || (major == wanted_major && minor >= wanted_minor);
 }
 
@@ -108,11 +106,26 @@ struct LinuxSdlGlBackend::Impl {
     bool supports_packed_pixels = false;
     bool supports_npot = false;
     std::array<std::vector<uint8_t>, 2> converted;
+    std::string gl_version = "unknown version";
+    std::string gl_renderer = "unknown renderer";
     bool active = false;
     NativeVideoStatus status{};
     mutable std::mutex status_mutex;
 
     bool current() const { return window && context && SDL_GL_MakeCurrent(window, context) == 0; }
+
+    std::string frame_details(unsigned width, unsigned height) const {
+        return "(frame " + std::to_string(width) + "x" + std::to_string(height) +
+            ", GL " + gl_version + " / " + gl_renderer + ")";
+    }
+
+    std::string allocation_details(unsigned width, unsigned height, unsigned allocation_width,
+                                   unsigned allocation_height, GLint maximum_texture_size) const {
+        return "(frame " + std::to_string(width) + "x" + std::to_string(height) +
+            ", allocation " + std::to_string(allocation_width) + "x" + std::to_string(allocation_height) +
+            ", max texture size " + std::to_string(maximum_texture_size) + ", GL " +
+            gl_version + " / " + gl_renderer + ")";
+    }
 
     void record_present_error(const char* stage, GLenum code, const std::string& details = {}) {
         std::lock_guard<std::mutex> lock(status_mutex);
@@ -146,13 +159,17 @@ bool LinuxSdlGlBackend::initialize(NativeWindowSurface& native_surface, std::str
         return false;
     }
     SDL_GL_SetSwapInterval(1);
+    const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    impl_->gl_version = version ? version : "unknown version";
+    impl_->gl_renderer = renderer ? renderer : "unknown renderer";
     const auto* extensions = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-    impl_->supports_edge_clamp = gl_version_at_least(1, 2) ||
+    impl_->supports_edge_clamp = gl_version_at_least(impl_->gl_version, 1, 2) ||
         gl_has_extension(extensions, "GL_EXT_texture_edge_clamp") ||
         gl_has_extension(extensions, "GL_SGIS_texture_edge_clamp");
-    impl_->supports_bgra = gl_version_at_least(1, 2) || gl_has_extension(extensions, "GL_EXT_bgra");
-    impl_->supports_packed_pixels = gl_version_at_least(1, 2) || gl_has_extension(extensions, "GL_EXT_packed_pixels");
-    impl_->supports_npot = gl_version_at_least(2, 0) || gl_has_extension(extensions, "GL_ARB_texture_non_power_of_two");
+    impl_->supports_bgra = gl_version_at_least(impl_->gl_version, 1, 2) || gl_has_extension(extensions, "GL_EXT_bgra");
+    impl_->supports_packed_pixels = gl_version_at_least(impl_->gl_version, 1, 2) || gl_has_extension(extensions, "GL_EXT_packed_pixels");
+    impl_->supports_npot = gl_version_at_least(impl_->gl_version, 2, 0) || gl_has_extension(extensions, "GL_ARB_texture_non_power_of_two");
     glGenTextures(1, &impl_->texture);
     glBindTexture(GL_TEXTURE_2D, impl_->texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -162,18 +179,14 @@ bool LinuxSdlGlBackend::initialize(NativeWindowSurface& native_surface, std::str
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, texture_wrap);
     const GLenum setup_error = glGetError();
     if (!impl_->texture || setup_error != GL_NO_ERROR) {
-        const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-        const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
         error = "Desktop OpenGL texture setup failed (error " + std::to_string(setup_error) + ", " +
-            (version ? version : "unknown version") + " / " + (renderer ? renderer : "unknown renderer") + ").";
+            impl_->gl_version + " / " + impl_->gl_renderer + ").";
         shutdown(); return false;
     }
     impl_->status.requested = "opengl";
     impl_->status.effective = "opengl";
     impl_->status.frames_in_flight = 2;
-    const char* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-    const char* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-    impl_->status.device_details = std::string(version ? version : "OpenGL") + " / " + (renderer ? renderer : "unknown renderer") +
+    impl_->status.device_details = impl_->gl_version + " / " + impl_->gl_renderer +
         " / reusable texture ring=2 / BGRA=" + (impl_->supports_bgra ? "direct" : "RGBA conversion") +
         " / RGB565=" + (impl_->supports_packed_pixels ? "direct" : "RGBA conversion") +
         " / NPOT=" + (impl_->supports_npot ? "direct" : "padded");
@@ -207,15 +220,10 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
     }
     const unsigned allocation_width = impl_->supports_npot ? width : next_power_of_two(width);
     const unsigned allocation_height = impl_->supports_npot ? height : next_power_of_two(height);
-    const auto upload_start = std::chrono::steady_clock::now();
     glBindTexture(GL_TEXTURE_2D, impl_->texture);
-    const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
-    const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
-    const std::string context_details = "(frame " + std::to_string(width) + "x" + std::to_string(height) +
-        ", GL " + (version ? version : "unknown") + " / " + (renderer ? renderer : "unknown renderer") + ")";
     const GLenum preallocation_error = glGetError();
     if (preallocation_error != GL_NO_ERROR) {
-        impl_->record_present_error("texture preflight", preallocation_error, context_details);
+        impl_->record_present_error("texture preflight", preallocation_error, impl_->frame_details(width, height));
         return;
     }
     if (impl_->texture_width != allocation_width || impl_->texture_height != allocation_height) {
@@ -223,26 +231,24 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximum_texture_size);
         const GLenum limit_query_error = glGetError();
         if (limit_query_error != GL_NO_ERROR) {
-            impl_->record_present_error("texture limit query", limit_query_error, context_details);
+            impl_->record_present_error("texture limit query", limit_query_error, impl_->frame_details(width, height));
             return;
         }
-        const std::string allocation_details = "(frame " + std::to_string(width) + "x" + std::to_string(height) +
-            ", allocation " + std::to_string(allocation_width) + "x" + std::to_string(allocation_height) +
-            ", max texture size " + std::to_string(maximum_texture_size) + ", GL " +
-            (version ? version : "unknown") + " / " + (renderer ? renderer : "unknown renderer") + ")";
         if (maximum_texture_size <= 0 || allocation_width > static_cast<unsigned>(maximum_texture_size) ||
             allocation_height > static_cast<unsigned>(maximum_texture_size)) {
-            impl_->record_present_error("texture size exceeds maximum", GL_INVALID_VALUE, allocation_details);
+            impl_->record_present_error("texture size exceeds maximum", GL_INVALID_VALUE,
+                impl_->allocation_details(width, height, allocation_width, allocation_height, maximum_texture_size));
             return;
         }
         // OpenGL 1.1 requires a component count (1–4) for the internal
         // format. Symbolic base formats such as GL_RGBA became valid in 1.2.
-        const GLint internal_format = gl_version_at_least(1, 2) ? GL_RGBA : 4;
+        const GLint internal_format = gl_version_at_least(impl_->gl_version, 1, 2) ? GL_RGBA : 4;
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, static_cast<GLsizei>(allocation_width),
                      static_cast<GLsizei>(allocation_height), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         const GLenum allocation_error = glGetError();
         if (allocation_error != GL_NO_ERROR) {
-            impl_->record_present_error("texture allocation", allocation_error, allocation_details);
+            impl_->record_present_error("texture allocation", allocation_error,
+                impl_->allocation_details(width, height, allocation_width, allocation_height, maximum_texture_size));
             return;
         }
         impl_->texture_width = allocation_width; impl_->texture_height = allocation_height;
@@ -287,7 +293,7 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, upload_format, upload_type, upload_pixels);
     const GLenum upload_error = glGetError();
     if (upload_error != GL_NO_ERROR) {
-        impl_->record_present_error("frame upload", upload_error);
+        impl_->record_present_error("frame upload", upload_error, impl_->frame_details(width, height));
         return;
     }
     {
@@ -313,7 +319,7 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
     glEnd(); glDisable(GL_TEXTURE_2D);
     const GLenum draw_error = glGetError();
     if (draw_error != GL_NO_ERROR) {
-        impl_->record_present_error("frame draw", draw_error);
+        impl_->record_present_error("frame draw", draw_error, impl_->frame_details(width, height));
         return;
     }
     SDL_GL_SwapWindow(impl_->window);
@@ -321,7 +327,6 @@ void LinuxSdlGlBackend::present_software(const void* framebuffer, unsigned width
         std::lock_guard<std::mutex> lock(impl_->status_mutex);
         ++impl_->status.frames.presented_frames;
     }
-    (void)upload_start;
     impl_->active_slot = (impl_->active_slot + 1) % impl_->staging.size();
 }
 
