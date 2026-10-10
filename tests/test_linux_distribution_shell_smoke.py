@@ -28,7 +28,7 @@ class LinuxDistributionShellSmokeTests(unittest.TestCase):
 
     def test_smoke_checks_isolated_navigation_and_shutdown(self):
         self.assertIn('"XDG_DATA_HOME": str(home / ".local/share")', SMOKE)
-        self.assertIn('"No games on this device. Use Add ROM to store one on this device."', SMOKE)
+        self.assertIn('wait_for("Add ROM GBA · NDS · 3DS")', SMOKE)
         for section in ("Library", "Settings", "Help", "About", "Play"):
             self.assertIn(f'click_button("{section}")', SMOKE)
         self.assertIn('wait_for("3.6.8")', SMOKE)

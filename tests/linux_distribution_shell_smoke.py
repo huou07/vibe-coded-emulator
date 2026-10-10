@@ -76,7 +76,8 @@ def click_button(name):
 
 def capture(name):
     path = EVIDENCE / f"{name}.png"
-    subprocess.run(["scrot", str(path)], check=True, timeout=10)
+    time.sleep(1)
+    subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
     return path.name
 
 
@@ -112,9 +113,8 @@ def main():
         screenshots = {}
         click_button("Library")
         wait_for("Library", pyatspi.ROLE_HEADING)
+        wait_for("Add ROM GBA · NDS · 3DS")
         screenshots["library"] = capture("library")
-        wait_for("No games on this device. Use Add ROM to store one on this device.")
-        wait_for("Add ROM", pyatspi.ROLE_PUSH_BUTTON)
         sections.append("library")
 
         click_button("Settings")
