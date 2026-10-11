@@ -27,6 +27,7 @@ class MainActivity : TauriActivity() {
     const val ROM_IMPORT_REQUEST = 0xA31
     const val STATE_EXPORT_REQUEST = 0xA32
     const val COPY_BUFFER_BYTES = 1024 * 1024
+    const val IMPORT_PROGRESS_BYTES = 16L * 1024 * 1024
     const val MAX_NATIVE_ROM_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_ENTRIES = 256
@@ -201,7 +202,11 @@ class MainActivity : TauriActivity() {
     try { contentResolver.takePersistableUriPermission(uri, permissions and Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
     Thread {
       try {
-        val imported = importRom(uri, romId)
+        sendImportProgress(romId, "inspecting")
+        val imported = importRom(uri, romId) { completed, total ->
+          sendImportProgress(romId, "copying", completed, total)
+        }
+        sendImportProgress(romId, "ready", imported.size, imported.size)
         sendImportResult(
           JSONObject()
             .put("ok", true)
@@ -248,7 +253,12 @@ class MainActivity : TauriActivity() {
     runOnUiThread { contentWebView?.evaluateJavascript("window.__AN3StateExportResult?.(${JSONObject.quote(message)})", null) }
   }
 
-  private fun importRom(uri: Uri, romId: String, requestedArchiveEntry: String? = null): ImportedRom {
+  private fun importRom(
+    uri: Uri,
+    romId: String,
+    requestedArchiveEntry: String? = null,
+    reportProgress: (Long?, Long?) -> Unit = { _, _ -> },
+  ): ImportedRom {
     val name = displayName(uri)
     val extension = safeExtension(name)
     val destinationDirectory = File(dataDir, "an3-roms")
@@ -297,9 +307,11 @@ class MainActivity : TauriActivity() {
       val destinationName = "$romId.${storageExtension(name, system)}"
       val destination = File(destinationDirectory, destinationName)
       val playableSize = declaredNcsdLength(uri, sourceSize)
-      copyUriPrefix(uri, temporary, playableSize)
+      copyUriPrefix(uri, temporary, playableSize, reportProgress)
+      sendImportProgress(romId, "finalizing")
       if (destination.exists() && !destination.delete()) throw IllegalStateException("Could not replace the prior ROM.")
       if (!temporary.renameTo(destination)) throw IllegalStateException("Could not finalize the imported ROM.")
+      sendImportProgress(romId, "updating_library")
       return ImportedRom(name, destinationName, destination.length(), system)
     } catch (error: Exception) {
       temporary.delete()
@@ -513,18 +525,34 @@ class MainActivity : TauriActivity() {
       ((bytes[offset + 2].toLong() and 0xffL) shl 16) or
       ((bytes[offset + 3].toLong() and 0xffL) shl 24)
 
-  private fun copyUriPrefix(uri: Uri, destination: File, expectedSize: Long?) {
+  private fun copyUriPrefix(
+    uri: Uri,
+    destination: File,
+    expectedSize: Long?,
+    reportProgress: (Long?, Long?) -> Unit,
+  ) {
     contentResolver.openInputStream(uri)?.use { source ->
       BufferedInputStream(source, COPY_BUFFER_BYTES).use { input ->
         FileOutputStream(destination, false).use { output ->
           val buffer = ByteArray(COPY_BUFFER_BYTES)
           var remaining = expectedSize
+          var completed = 0L
+          var lastReported = 0L
+          var lastReportTime = System.nanoTime()
           while (remaining == null || remaining > 0L) {
             val request = if (remaining == null) buffer.size else minOf(buffer.size.toLong(), remaining).toInt()
             val count = input.read(buffer, 0, request)
             if (count < 0) break
+            if (count == 0) throw IllegalStateException("The selected ROM could not be read.")
             output.write(buffer, 0, count)
+            completed += count
             if (remaining != null) remaining -= count.toLong()
+            val now = System.nanoTime()
+            if (completed == expectedSize || completed - lastReported >= IMPORT_PROGRESS_BYTES || now - lastReportTime >= 250_000_000L) {
+              reportProgress(completed, expectedSize)
+              lastReported = completed
+              lastReportTime = now
+            }
           }
           output.fd.sync()
         }
@@ -554,6 +582,14 @@ class MainActivity : TauriActivity() {
 
   private fun sendImportResult(result: JSONObject) {
     val script = "window.__AN3NativeRomImportResult && window.__AN3NativeRomImportResult(JSON.parse(${JSONObject.quote(result.toString())}));"
+    runOnUiThread { contentWebView?.evaluateJavascript(script, null) }
+  }
+
+  private fun sendImportProgress(romId: String, phase: String, completed: Long? = null, total: Long? = null) {
+    val progress = JSONObject().put("romId", romId).put("phase", phase)
+    if (completed != null) progress.put("completedBytes", completed)
+    if (total != null) progress.put("totalBytes", total)
+    val script = "window.__AN3NativeRomImportProgress && window.__AN3NativeRomImportProgress(JSON.parse(${JSONObject.quote(progress.toString())}));"
     runOnUiThread { contentWebView?.evaluateJavascript(script, null) }
   }
 

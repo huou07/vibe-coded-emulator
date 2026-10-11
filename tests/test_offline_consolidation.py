@@ -154,7 +154,7 @@ const result = ['Android', 'Macintosh', 'iPhone'].map(userAgent => {
 console.log(JSON.stringify(result));
 """
         systems = json.loads(subprocess.check_output(['node', '-e', script, json.dumps(bootstrap)], text=True))
-        self.assertEqual(systems, [["gba", "nds", "3ds", "switch"], ["gba", "nds", "3ds"], []])
+        self.assertEqual(systems, [["gba", "nds", "3ds"], ["gba", "nds", "3ds"], []])
         self.assertIn('window.AN3NativeLaunchGame = (romId, system, layout) => {', bootstrap)
         self.assertNotIn('AN3AndroidLaunchThreeDs', bootstrap)
         self.assertIn('const androidThreeDsUnavailable = system =>', OFFLINE_JS)

@@ -9,6 +9,7 @@
     "core:default",
     "dialog:default",
     "allow-pick-and-import-native-rom",
+    "allow-cancel-native-rom-import",
     "allow-remove-native-rom",
     "allow-native-capabilities",
     "allow-native-session-control",

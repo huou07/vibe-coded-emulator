@@ -117,7 +117,7 @@ class LicenseRouteTests(unittest.TestCase):
         self.assertIn("GPL-3.0-or-later", text)
         self.assertIn("Azahar Emulator Project", text)
         self.assertIn("/licenses/gpl-3.0.txt", text)
-        self.assertIn("https://github.com/huou07/vibe-coded-emulator", text)
+        self.assertIn("https://github.com/YOUR_GITHUB_USER/vibe-coded-emulator", text)
         self.assertNotIn("REPLACE-WITH-PUBLIC-REPOSITORY-URL", text)
 
     def test_license_text_is_served(self):

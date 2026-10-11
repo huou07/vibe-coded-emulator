@@ -33,6 +33,28 @@ test("the model exposes the four canonical systems and labels", () => {
   assert.equal(model.store, "an3-native-game");
 });
 
+test("experimental features are globally shared and disabled until explicitly enabled", () => {
+  const model = load();
+  const experimental = model.externalGlobal().filter(definition => definition.category === "experimental");
+  assert.deepEqual(Array.from(experimental, definition => definition.id), [
+    "experimental-phone-controller",
+    "experimental-lan-sync",
+    "experimental-switch-eden",
+  ]);
+  const store = memoryStore({});
+  for (const definition of experimental) {
+    assert.equal(definition.type, "bool");
+    assert.equal(model.coerce(definition, store.get(definition.id)), "false");
+    assert.equal(model.buildEdit(definition, null, "false").key, definition.id);
+  }
+  const phoneController = experimental[0];
+  const edit = model.buildEdit(phoneController, null, "true");
+  store.apply({[edit.key]: edit.value});
+  assert.equal(model.coerce(phoneController, store.get(phoneController.id)), "true");
+  assert.equal(store.get("experimental-lan-sync"), undefined);
+  assert.equal(store.get("experimental-switch-eden"), undefined);
+});
+
 test("every per-system definition is stored under a system-scoped key", () => {
   const model = load();
   for (const system of model.systems) {

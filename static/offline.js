@@ -578,14 +578,39 @@
 
   const setupLibrary = () => {
     const form=document.getElementById("offlineGameForm"),fileInput=document.getElementById("offlineFile"),titleInput=document.getElementById("offlineTitle"),systemInput=document.getElementById("offlineSystem"),status=document.getElementById("offlineDetection"),browserDropzone=document.getElementById("offlineBrowserDropzone"),browserImport=document.getElementById("offlineBrowserImport"),nativePicker=document.getElementById("offlineNativePicker");if(!form||!fileInput||!titleInput||!systemInput)return;
+    const importPanel=document.getElementById("nativeRomImportProgress"),importPhase=document.getElementById("nativeRomImportPhase"),importBar=document.getElementById("nativeRomImportBar"),importDetail=document.getElementById("nativeRomImportDetail"),importCancel=document.getElementById("nativeRomImportCancel");
+    let activeImportId=null;
+    const phaseText=phase=>({inspecting:text("Đang kiểm tra ROM…","Inspecting ROM…"),copying:text("Đang chép ROM vào ứng dụng…","Copying ROM into the app…"),finalizing:text("Đang hoàn tất tệp…","Finalizing file…"),updating_library:text("Đang cập nhật thư viện…","Updating library…"),ready:text("ROM đã sẵn sàng","ROM is ready")}[phase]||text("Đang chuẩn bị ROM…","Preparing ROM…"));
+    const tauriEvents=globalThis.__TAURI__?.event;
+    const updateImportProgress=progress=>{
+        if(!importPanel||!progress||progress.romId!==activeImportId)return;
+        importPanel.hidden=false;importPhase.textContent=phaseText(progress.phase);
+        if(progress.phase==="copying"&&Number.isFinite(progress.totalBytes)&&progress.totalBytes>0){
+          importBar.max=progress.totalBytes;importBar.value=Math.min(progress.completedBytes||0,progress.totalBytes);
+          importDetail.textContent=`${formatSize(importBar.value)} / ${formatSize(progress.totalBytes)} (${Math.floor(importBar.value*100/progress.totalBytes)}%)`;
+        }else if(progress.phase==="ready"){
+          importBar.max=1;importBar.value=1;importDetail.textContent=text("Đã lưu và xác minh ROM.","ROM saved and verified.");
+        }else{
+          importBar.removeAttribute("value");importDetail.textContent=text("Ứng dụng đang làm việc. Có thể mất một lúc với ROM lớn.","The app is working. Large ROMs can take a while.");
+        }
+        status.textContent=phaseText(progress.phase);
+      };
+    if(nativeOfflineApp&&typeof tauriEvents?.listen==="function"&&importPanel)tauriEvents.listen("native-rom-import-progress",event=>updateImportProgress(event?.payload)).catch(()=>{});
+    addEventListener("native-rom-import-progress",event=>updateImportProgress(event.detail));
+    importCancel?.addEventListener("click",async()=>{
+      if(!activeImportId)return;
+      importCancel.disabled=true;importCancel.textContent=text("Đang hủy…","Cancelling…");
+      try{await nativeBridge().invoke?.("cancel_native_rom_import",{romId:activeImportId});}catch(error){showToast(error.message||String(error),true);}
+    });
     Object.entries(systems).forEach(([key,system])=>{const option=document.createElement("option");option.value=key;option.textContent=system.label;systemInput.appendChild(option);});
     fileInput.addEventListener("change",async()=>{const file=fileInput.files?.[0];if(!file)return;titleInput.value=cleanTitle(file.name);status.textContent=text("Đang nhận diện hệ máy…","Detecting system…");const detected=await inferFile(file);if(detected){systemInput.value=detected;status.textContent=`${text("Đã nhận diện","Detected")}: ${systems[detected].label}`;}else{status.textContent=text("Không chắc chắn, hãy kiểm tra lựa chọn hệ máy.","Could not determine the system; please review the selection.");}});
     const configureNativePicker=()=>{
       if(!nativeRomPickerAvailable()||!nativePicker||nativePicker.dataset.ready)return false;
       browserDropzone.hidden=true;if(browserImport)browserImport.hidden=true;nativePicker.hidden=false;nativePicker.dataset.ready="true";
       nativePicker.addEventListener("click",async()=>{
-        const id=createOfflineId(),invoke=nativeBridge().invoke;
+        const id=createOfflineId(),invoke=nativeBridge().invoke;activeImportId=id;
         nativePicker.disabled=true;nativePicker.setAttribute("aria-busy","true");status.textContent=text("Đang chọn và chép ROM vào vùng riêng của ứng dụng…","Selecting and copying the ROM into the app’s private storage…");
+        if(importPanel){importPanel.hidden=true;importBar.removeAttribute("value");importCancel.disabled=false;importCancel.textContent=text("Hủy","Cancel");if(typeof globalThis.AN3AndroidNativeImport==="function")importCancel.hidden=true;else importCancel.hidden=false;}
         try{
           const imported=typeof globalThis.AN3AndroidNativeImport==="function"?await globalThis.AN3AndroidNativeImport(id):typeof invoke==="function"?await invoke("pick_and_import_native_rom",{romId:id}):null;
           if(!imported){status.textContent=text("Chưa chọn ROM.","No ROM selected.");return;}
@@ -599,7 +624,7 @@
           }
           const title=cleanTitle(imported.name),game={id,title,name:imported.name,system,size:imported.size,romHash:imported.romHash||"",addedAt:Date.now(),nativeRomId:id,...(imported.path?{nativePath:imported.path}:{nativeUrl:imported.url})};
           await put(game);await renderLibrary();navigator.storage?.persist?.().catch(()=>{});status.textContent="";showToast(text("Đã lưu ROM trong vùng riêng của ứng dụng.","ROM saved in the app’s private storage."));
-        }catch(error){status.textContent="";showToast(error.message||String(error),true);}finally{nativePicker.disabled=false;nativePicker.removeAttribute("aria-busy");}
+        }catch(error){status.textContent="";if(importPanel){importPanel.hidden=true;}showToast(error.message||String(error),true);}finally{activeImportId=null;nativePicker.disabled=false;nativePicker.removeAttribute("aria-busy");if(importCancel){importCancel.disabled=true;setTimeout(()=>{if(!activeImportId&&importPanel)importPanel.hidden=true;},2200);}}
       });
       return true;
     };

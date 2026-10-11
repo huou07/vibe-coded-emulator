@@ -18,10 +18,17 @@ use azahar::{native_capabilities, native_session_control, start_native_game, sto
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock,
+    },
+    time::Instant,
 };
+
 #[cfg(not(mobile))]
 use std::{
     io::{BufRead, BufReader},
@@ -30,10 +37,17 @@ use std::{
 };
 #[cfg(not(mobile))]
 use tauri::Url;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
+static SWITCH_FEATURE_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static SWITCH_FEATURE_LIFECYCLE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
+const IMPORT_PROGRESS_BYTES: u64 = 16 * 1024 * 1024;
+const IMPORT_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+static NATIVE_ROM_IMPORTS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 // The capability policy must name the local renderer's origin exactly.  A fixed
 // loopback-only port avoids granting Tauri IPC to arbitrary local web pages.
 #[cfg(not(mobile))]
@@ -52,16 +66,52 @@ struct ImportedNativeRom {
     system: Option<String>,
 }
 
-fn file_sha256(path: &Path) -> Result<String, String> {
-    let mut input = File::open(path).map_err(|error| error.to_string())?;
-    let mut digest = Sha256::new();
-    let mut buffer = [0_u8; COPY_BUFFER_BYTES];
-    loop {
-        let count = input.read(&mut buffer).map_err(|error| error.to_string())?;
-        if count == 0 { break; }
-        digest.update(&buffer[..count]);
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRomImportProgress {
+    rom_id: String,
+    phase: &'static str,
+    completed_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+}
+
+fn emit_native_rom_import_progress(app: &AppHandle, progress: NativeRomImportProgress) {
+    let _ = app.emit("native-rom-import-progress", progress);
+}
+
+fn native_rom_imports() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    NATIVE_ROM_IMPORTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn import_cancellation_flag(rom_id: &str) -> Result<Arc<AtomicBool>, String> {
+    let mut imports = native_rom_imports()
+        .lock()
+        .map_err(|_| "ROM import state is unavailable".to_string())?;
+    if imports.contains_key(rom_id) {
+        return Err("This ROM is already being imported.".into());
     }
-    Ok(digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
+    let cancelled = Arc::new(AtomicBool::new(false));
+    imports.insert(rom_id.to_owned(), cancelled.clone());
+    Ok(cancelled)
+}
+
+fn finish_native_rom_import(rom_id: &str, cancelled: &Arc<AtomicBool>) {
+    if let Ok(mut imports) = native_rom_imports().lock() {
+        if imports
+            .get(rom_id)
+            .is_some_and(|active| Arc::ptr_eq(active, cancelled))
+        {
+            imports.remove(rom_id);
+        }
+    }
+}
+
+fn sha256_hex(digest: Sha256) -> String {
+    digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn validate_rom_id(rom_id: &str) -> Result<(), String> {
@@ -201,29 +251,59 @@ fn declared_ncsd_length(source: &Path, file_size: u64) -> u64 {
     }
 }
 
-fn copy_prefix(source: &Path, destination: &Path, length: u64) -> Result<(), String> {
+fn copy_prefix(
+    source: &Path,
+    destination: &Path,
+    length: u64,
+    cancelled: &AtomicBool,
+    mut report_progress: impl FnMut(u64),
+) -> Result<String, String> {
     let mut input =
         File::open(source).map_err(|error| format!("Cannot open the selected ROM: {error}"))?;
     let mut output = File::create(destination)
         .map_err(|error| format!("Cannot create local ROM storage: {error}"))?;
     let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
+    let mut digest = Sha256::new();
     let mut remaining = length;
+    let mut completed = 0_u64;
+    let mut last_reported = 0_u64;
+    let mut last_report_time = Instant::now();
     while remaining > 0 {
+        if cancelled.load(Ordering::Acquire) {
+            return Err("ROM import cancelled.".into());
+        }
         let wanted = remaining.min(buffer.len() as u64) as usize;
         let count = input
             .read(&mut buffer[..wanted])
             .map_err(|error| format!("Cannot read the selected ROM: {error}"))?;
+        if count == 0 {
+            return Err("The selected ROM ended before the expected size.".into());
+        }
         if count == 0 {
             return Err("The selected ROM ended before its declared length".into());
         }
         output
             .write_all(&buffer[..count])
             .map_err(|error| format!("Cannot save the local ROM: {error}"))?;
+        digest.update(&buffer[..count]);
+        completed += count as u64;
         remaining -= count as u64;
+        if completed == length
+            || completed.saturating_sub(last_reported) >= IMPORT_PROGRESS_BYTES
+            || last_report_time.elapsed() >= IMPORT_PROGRESS_INTERVAL
+        {
+            report_progress(completed);
+            last_reported = completed;
+            last_report_time = Instant::now();
+        }
+    }
+    if cancelled.load(Ordering::Acquire) {
+        return Err("ROM import cancelled.".into());
     }
     output
         .sync_all()
-        .map_err(|error| format!("Cannot finish saving the local ROM: {error}"))
+        .map_err(|error| format!("Cannot finish saving the local ROM: {error}"))?;
+    Ok(sha256_hex(digest))
 }
 
 #[cfg(not(mobile))]
@@ -591,7 +671,17 @@ fn import_native_rom(
     app: &AppHandle,
     rom_id: &str,
     source: PathBuf,
+    cancelled: &AtomicBool,
 ) -> Result<ImportedNativeRom, String> {
+    emit_native_rom_import_progress(
+        app,
+        NativeRomImportProgress {
+            rom_id: rom_id.to_owned(),
+            phase: "inspecting",
+            completed_bytes: None,
+            total_bytes: None,
+        },
+    );
     validate_rom_id(rom_id)?;
     let source = source
         .canonicalize()
@@ -633,24 +723,76 @@ fn import_native_rom(
     let destination = directory.join(filename);
     let temporary = directory.join(format!(".{rom_id}.part"));
     let playable_size = declared_ncsd_length(&source, metadata.len());
-    if let Err(error) = copy_prefix(&source, &temporary, playable_size) {
-        let _ = fs::remove_file(&temporary);
-        return Err(error);
-    }
-    fs::rename(&temporary, &destination)
-        .map_err(|error| format!("Cannot finalize local ROM storage: {error}"))?;
     let name = source
         .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "The selected ROM has no usable filename".to_string())?
         .to_string();
-    let rom_hash = file_sha256(&destination)?;
+    emit_native_rom_import_progress(
+        app,
+        NativeRomImportProgress {
+            rom_id: rom_id.to_owned(),
+            phase: "copying",
+            completed_bytes: Some(0),
+            total_bytes: Some(playable_size),
+        },
+    );
+    let import_app = app.clone();
+    let progress_rom_id = rom_id.to_owned();
+    let rom_hash = match copy_prefix(&source, &temporary, playable_size, cancelled, |completed| {
+        emit_native_rom_import_progress(
+            &import_app,
+            NativeRomImportProgress {
+                rom_id: progress_rom_id.clone(),
+                phase: "copying",
+                completed_bytes: Some(completed),
+                total_bytes: Some(playable_size),
+            },
+        );
+    }) {
+        Ok(hash) => hash,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+    };
+    emit_native_rom_import_progress(
+        app,
+        NativeRomImportProgress {
+            rom_id: rom_id.to_owned(),
+            phase: "finalizing",
+            completed_bytes: None,
+            total_bytes: None,
+        },
+    );
+    if let Err(error) = fs::rename(&temporary, &destination) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Cannot finalize local ROM storage: {error}"));
+    }
+    emit_native_rom_import_progress(
+        app,
+        NativeRomImportProgress {
+            rom_id: rom_id.to_owned(),
+            phase: "updating_library",
+            completed_bytes: None,
+            total_bytes: None,
+        },
+    );
     // Seed the local library identity cache with the import-time hash so the
     // next library refresh does not re-hash the whole file.
     if let Some(app_dir) = directory.parent() {
         native_rom_library::prime_content_hash(app_dir, &destination, &rom_hash);
     }
+    emit_native_rom_import_progress(
+        app,
+        NativeRomImportProgress {
+            rom_id: rom_id.to_owned(),
+            phase: "ready",
+            completed_bytes: Some(playable_size),
+            total_bytes: Some(playable_size),
+        },
+    );
     Ok(ImportedNativeRom {
         url: format!("/_an3/rom/{rom_id}.{extension}"),
         name,
@@ -658,6 +800,29 @@ fn import_native_rom(
         rom_hash,
         system: Some(system.to_owned()),
     })
+}
+
+fn import_native_rom_tracked(
+    app: &AppHandle,
+    rom_id: &str,
+    source: PathBuf,
+) -> Result<ImportedNativeRom, String> {
+    let cancelled = import_cancellation_flag(rom_id)?;
+    let result = import_native_rom(app, rom_id, source, &cancelled);
+    finish_native_rom_import(rom_id, &cancelled);
+    result
+}
+
+#[tauri::command]
+fn cancel_native_rom_import(rom_id: String) -> Result<bool, String> {
+    validate_rom_id(&rom_id)?;
+    let imports = native_rom_imports().lock().map_err(|_| "ROM import state is unavailable".to_string())?;
+    if let Some(cancelled) = imports.get(&rom_id) {
+        cancelled.store(true, Ordering::Release);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -673,7 +838,7 @@ async fn pick_and_import_native_rom(
         if !path.is_empty() {
             let import_app = app.clone();
             let imported = tauri::async_runtime::spawn_blocking(move || {
-                import_native_rom(&import_app, &rom_id, PathBuf::from(path))
+                import_native_rom_tracked(&import_app, &rom_id, PathBuf::from(path))
             })
             .await
             .map_err(|error| format!("Native ROM import failed: {error}"))?;
@@ -698,7 +863,7 @@ async fn pick_and_import_native_rom(
         .map_err(|error| format!("The selected ROM is not a local file path: {error}"))?;
     let import_app = app.clone();
     let imported = tauri::async_runtime::spawn_blocking(move || {
-        import_native_rom(&import_app, &rom_id, source)
+        import_native_rom_tracked(&import_app, &rom_id, source)
     })
     .await
     .map_err(|error| format!("Native ROM import failed: {error}"))?;
@@ -729,19 +894,99 @@ async fn native_settings(
     let path = app.path().app_data_dir()
         .map_err(|error| format!("Cannot locate VibeCodedEmulator settings storage: {error}"))?
         .join("native-settings.json");
-    tauri::async_runtime::spawn_blocking(move || {
+    let switch_was_disabled = action == "save"
+        && edits.as_ref().and_then(|edits| edits.get("experimental-switch-eden"))
+            .is_some_and(|value| value.as_bool() == Some(false) || value.as_str() == Some("false"));
+    let switch_setting_changed = action == "save"
+        && edits.as_ref().is_some_and(|edits| edits.contains_key("experimental-switch-eden"));
+    let switch_was_enabled = SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire);
+    let switch_settings_path = path.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
         native_settings::execute(&path, &action, system.as_deref(), edits)
     })
     .await
-    .map_err(|error| format!("Native settings operation failed: {error}"))?
+    .map_err(|error| format!("Native settings operation failed: {error}"))??;
+    let reported_switch_setting = result["global"]["experimental-switch-eden"]
+        .as_bool()
+        .or_else(|| {
+            result["global"]["experimental-switch-eden"]
+                .as_str()
+                .map(|value| value == "true")
+        });
+    let saved_switch_setting = if switch_setting_changed {
+        Some(tauri::async_runtime::spawn_blocking(move || {
+            native_settings::experimental_enabled(&switch_settings_path, "experimental-switch-eden")
+        })
+        .await
+        .map_err(|error| format!("Could not read Switch / Eden setting: {error}"))??)
+    } else {
+        None
+    };
+    if let Some(enabled) = saved_switch_setting.or(reported_switch_setting) {
+        SWITCH_FEATURE_ENABLED.store(enabled, std::sync::atomic::Ordering::Release);
+    }
+    if switch_was_disabled {
+        SWITCH_FEATURE_ENABLED.store(false, std::sync::atomic::Ordering::Release);
+    }
+    if switch_was_disabled && switch_was_enabled {
+        tauri::async_runtime::spawn_blocking(|| {
+            let _lifecycle = SWITCH_FEATURE_LIFECYCLE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            SWITCH_FEATURE_ENABLED.store(false, std::sync::atomic::Ordering::Release);
+            hosted_frame::stop();
+            switch_companion::stop();
+        })
+        .await
+        .map_err(|error| format!("Could not stop Switch / Eden: {error}"))?;
+    }
+    Ok(result)
 }
 
 // Nintendo Switch runs as a separate companion process (never linked into this
 // binary); these commands are its CompanionSystem lifecycle surface.
 
+fn switch_feature_enabled(app: &AppHandle) -> Result<bool, String> {
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot locate VibeCodedEmulator settings storage: {error}"))?
+        .join("native-settings.json");
+    match native_settings::experimental_enabled(&path, "experimental-switch-eden") {
+        Ok(enabled) => {
+            SWITCH_FEATURE_ENABLED.store(enabled, std::sync::atomic::Ordering::Release);
+            Ok(enabled)
+        }
+        Err(error) => {
+            SWITCH_FEATURE_ENABLED.store(false, std::sync::atomic::Ordering::Release);
+            Err(error)
+        }
+    }
+}
+
+fn require_switch_feature() -> Result<(), String> {
+    if SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire) {
+        Ok(())
+    } else {
+        Err("Switch / Eden is off. Enable it in Experimental Features first.".to_string())
+    }
+}
+
 #[tauri::command]
 fn switch_companion_detect(app: AppHandle) -> switch_companion::CompanionInfo {
-    switch_companion::detect(&app)
+    match switch_feature_enabled(&app) {
+        Ok(true) => switch_companion::detect(&app),
+        Ok(false) => switch_companion::CompanionInfo {
+            available: false,
+            path: None,
+            detail: "Switch / Eden is off in Experimental Features".to_string(),
+        },
+        Err(detail) => switch_companion::CompanionInfo {
+            available: false,
+            path: None,
+            detail,
+        },
+    }
 }
 
 #[tauri::command]
@@ -751,6 +996,10 @@ fn switch_companion_launch(
     visible: Option<bool>,
     hosted: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
+    let _lifecycle = SWITCH_FEATURE_LIFECYCLE
+        .lock()
+        .map_err(|_| "Switch / Eden lifecycle is unavailable".to_string())?;
+    require_switch_feature()?;
     let hosted = hosted.unwrap_or(false);
     // Hosted presentation replaces the companion's own window: launch hidden and
     // let AN3's pointer-inert overlay show the frames.
@@ -775,6 +1024,10 @@ fn switch_companion_launch_rom(
     visible: Option<bool>,
     hosted: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
+    let _lifecycle = SWITCH_FEATURE_LIFECYCLE
+        .lock()
+        .map_err(|_| "Switch / Eden lifecycle is unavailable".to_string())?;
+    require_switch_feature()?;
     #[cfg(not(mobile))]
     {
         let hosted = hosted.unwrap_or(false);
@@ -798,7 +1051,11 @@ fn switch_companion_launch_rom(
 
 #[tauri::command]
 fn switch_companion_status() -> switch_companion::CompanionStatus {
-    switch_companion::status()
+    if SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire) {
+        switch_companion::status()
+    } else {
+        switch_companion::CompanionStatus::default()
+    }
 }
 
 #[tauri::command]
@@ -809,22 +1066,26 @@ fn switch_companion_stop() -> switch_companion::CompanionStatus {
 }
 
 #[tauri::command]
-fn switch_companion_focus() -> Result<String, String> {
+fn switch_companion_focus(_app: AppHandle) -> Result<String, String> {
+    require_switch_feature()?;
     switch_companion::focus()
 }
 
 #[tauri::command]
 fn switch_companion_input(button: String, pressed: bool) -> Result<String, String> {
+    require_switch_feature()?;
     switch_companion::input_button(&button, pressed)
 }
 
 #[tauri::command]
 fn switch_companion_analog(stick: String, x: f64, y: f64) -> Result<String, String> {
+    require_switch_feature()?;
     switch_companion::input_analog(&stick, x, y)
 }
 
 #[tauri::command]
-fn switch_companion_audio() -> Result<switch_companion::CompanionAudio, String> {
+fn switch_companion_audio(_app: AppHandle) -> Result<switch_companion::CompanionAudio, String> {
+    require_switch_feature()?;
     switch_companion::audio()
 }
 
@@ -832,7 +1093,9 @@ fn switch_companion_audio() -> Result<switch_companion::CompanionAudio, String> 
 /// The native consumer uses this handle to attach; no pixels cross this command.
 #[tauri::command]
 fn switch_companion_hosted_frame() -> Option<switch_companion::HostedFrameInfo> {
-    switch_companion::hosted_frame()
+    SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire)
+        .then(switch_companion::hosted_frame)
+        .flatten()
 }
 
 /// Attach the native consumer to the companion's ring and present the newest
@@ -841,6 +1104,7 @@ fn switch_companion_hosted_frame() -> Option<switch_companion::HostedFrameInfo> 
 fn switch_companion_hosted_frame_start(
     app: AppHandle,
 ) -> Result<hosted_frame::HostedConsumerStats, String> {
+    require_switch_feature()?;
     hosted_frame::start(&app)
 }
 
@@ -852,13 +1116,17 @@ fn switch_companion_hosted_frame_stop() -> Option<hosted_frame::HostedConsumerSt
 
 #[tauri::command]
 fn switch_companion_hosted_frame_stats() -> Option<hosted_frame::HostedConsumerStats> {
-    hosted_frame::stats()
+    SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire)
+        .then(hosted_frame::stats)
+        .flatten()
 }
 
 /// Diagnostic only: reads the latest imported texture back on the CPU.
 #[tauri::command]
 fn switch_companion_hosted_frame_verify() -> Option<hosted_frame::HostedConsumerStats> {
-    hosted_frame::verify_latest()
+    SWITCH_FEATURE_ENABLED.load(std::sync::atomic::Ordering::Acquire)
+        .then(hosted_frame::verify_latest)
+        .flatten()
 }
 
 #[tauri::command]
@@ -939,6 +1207,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             pick_and_import_native_rom,
+            cancel_native_rom_import,
             remove_native_rom,
             native_capabilities,
             native_session_control,
@@ -1014,7 +1283,13 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_extension_for_system, native_rom_request_parts, native_system_from_extension,
+        canonical_extension_for_system, copy_prefix, native_rom_request_parts,
+        native_system_from_extension, require_switch_feature, SWITCH_FEATURE_ENABLED,
+    };
+    use std::{
+        fs,
+        sync::atomic::AtomicBool,
+        time::{SystemTime, UNIX_EPOCH},
     };
 
     const ROM_ID: &str = "01234567-89ab-cdef-0123-456789abcdef";
@@ -1048,5 +1323,59 @@ mod tests {
         assert_eq!(canonical_extension_for_system("gba"), Some("gba"));
         assert_eq!(canonical_extension_for_system("nds"), Some("nds"));
         assert_eq!(canonical_extension_for_system("3ds"), Some("3ds"));
+    }
+
+    #[test]
+    fn switch_commands_are_rejected_while_the_experimental_feature_is_off() {
+        SWITCH_FEATURE_ENABLED.store(false, std::sync::atomic::Ordering::Release);
+        assert!(require_switch_feature().is_err());
+        SWITCH_FEATURE_ENABLED.store(true, std::sync::atomic::Ordering::Release);
+        assert!(require_switch_feature().is_ok());
+        SWITCH_FEATURE_ENABLED.store(false, std::sync::atomic::Ordering::Release);
+    }
+
+    fn unique_test_directory() -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir()
+            .join(format!("an3-rom-import-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    #[test]
+    fn native_rom_copy_hashes_the_exact_written_prefix_and_reports_progress() {
+        let directory = unique_test_directory();
+        let source = directory.join("source.rom");
+        let destination = directory.join("copy.part");
+        fs::write(&source, b"abcdef-extra").unwrap();
+        let cancelled = AtomicBool::new(false);
+        let mut reports = Vec::new();
+        let hash = copy_prefix(&source, &destination, 6, &cancelled, |bytes| {
+            reports.push(bytes)
+        })
+        .unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"abcdef");
+        assert_eq!(
+            hash,
+            "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721"
+        );
+        assert_eq!(reports, vec![6]);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn native_rom_copy_stops_at_a_cancellation_boundary() {
+        let directory = unique_test_directory();
+        let source = directory.join("source.rom");
+        let destination = directory.join("copy.part");
+        fs::write(&source, vec![7_u8; 2 * 1024 * 1024]).unwrap();
+        let cancelled = AtomicBool::new(true);
+        let result = copy_prefix(&source, &destination, 2 * 1024 * 1024, &cancelled, |_| {});
+        assert_eq!(result.unwrap_err(), "ROM import cancelled.");
+        assert_eq!(fs::metadata(&destination).unwrap().len(), 0);
+        fs::remove_dir_all(directory).unwrap();
     }
 }

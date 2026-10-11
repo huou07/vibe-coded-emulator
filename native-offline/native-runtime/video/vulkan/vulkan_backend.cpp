@@ -243,6 +243,10 @@ struct PortableVulkanBackend::Impl {
     std::vector<VkCommandBuffer> command_buffers;
     std::vector<bool> image_initialized;
     std::vector<VkFence> image_in_flight;
+    // A submit fence only proves that GPU commands finished; it does not
+    // prove that the presentation engine consumed a vkQueuePresentKHR wait.
+    // Reuse these only after vkAcquireNextImageKHR returns the same image.
+    std::vector<VkSemaphore> render_finished_semaphores;
     VkCommandPool command_pool = VK_NULL_HANDLE;
 
     // A CoreVulkan frame can fail before the normal presentation submit gets
@@ -259,7 +263,6 @@ struct PortableVulkanBackend::Impl {
     // used to let the emulation core run farther ahead of input.
     struct PresentationFrame {
         VkSemaphore image_available = VK_NULL_HANDLE;
-        VkSemaphore render_finished = VK_NULL_HANDLE;
         VkFence in_flight = VK_NULL_HANDLE;
         bool submitted = false;
     };
@@ -637,9 +640,12 @@ struct PortableVulkanBackend::Impl {
         for (auto& frame : presentation_frames) {
             if (frame.in_flight && destroy_fence) destroy_fence(device, frame.in_flight, nullptr);
             if (frame.image_available && destroy_semaphore) destroy_semaphore(device, frame.image_available, nullptr);
-            if (frame.render_finished && destroy_semaphore) destroy_semaphore(device, frame.render_finished, nullptr);
             frame = {};
         }
+        for (const auto semaphore : render_finished_semaphores) {
+            if (semaphore && destroy_semaphore) destroy_semaphore(device, semaphore, nullptr);
+        }
+        render_finished_semaphores.clear();
         next_presentation_frame = 0;
         active_presentation_frame = kNoFrameSlot;
         last_submitted_fence = VK_NULL_HANDLE;
@@ -1085,9 +1091,15 @@ struct PortableVulkanBackend::Impl {
         fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         for (auto& frame : presentation_frames) {
             if (create_semaphore(device, &semaphore_info, nullptr, &frame.image_available) != VK_SUCCESS ||
-                create_semaphore(device, &semaphore_info, nullptr, &frame.render_finished) != VK_SUCCESS ||
                 create_fence(device, &fence_info, nullptr, &frame.in_flight) != VK_SUCCESS) {
                 error = "Vulkan runtime could not create presentation synchronization primitives.";
+                return false;
+            }
+        }
+        render_finished_semaphores.assign(count, VK_NULL_HANDLE);
+        for (auto& semaphore : render_finished_semaphores) {
+            if (create_semaphore(device, &semaphore_info, nullptr, &semaphore) != VK_SUCCESS) {
+                error = "Vulkan runtime could not create per-swapchain-image presentation semaphores.";
                 return false;
             }
         }
@@ -1248,7 +1260,7 @@ struct PortableVulkanBackend::Impl {
         }
         frame_index = next_presentation_frame;
         auto& frame = presentation_frames[frame_index];
-        if (!frame.in_flight || !frame.image_available || !frame.render_finished) return false;
+        if (!frame.in_flight || !frame.image_available) return false;
         if (frame.submitted &&
             wait_for_fences(device, 1, &frame.in_flight, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
             return false;
@@ -1632,11 +1644,13 @@ struct PortableVulkanBackend::Impl {
             create_swapchain_resources(ignored_error);
             return false;
         }
-        if ((acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) || image_index >= command_buffers.size()) {
+        if ((acquired != VK_SUCCESS && acquired != VK_SUBOPTIMAL_KHR) ||
+            image_index >= command_buffers.size() || image_index >= render_finished_semaphores.size()) {
             abandon();
             destroy_swapchain_resources(true);
             return false;
         }
+        const VkSemaphore render_finished = render_finished_semaphores[image_index];
         const VkFence image_fence = image_in_flight[image_index];
         if (image_fence && image_fence != frame.in_flight &&
             wait_for_fences(device, 1, &image_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
@@ -1761,7 +1775,7 @@ struct PortableVulkanBackend::Impl {
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &command;
         submit.signalSemaphoreCount = 1;
-        submit.pSignalSemaphores = &frame.render_finished;
+        submit.pSignalSemaphores = &render_finished;
         if (reset_fences(device, 1, &frame.in_flight) != VK_SUCCESS ||
             queue_submit(queue, 1, &submit, frame.in_flight) != VK_SUCCESS) {
             abandon();
@@ -1773,7 +1787,7 @@ struct PortableVulkanBackend::Impl {
         VkPresentInfoKHR present{};
         present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         present.waitSemaphoreCount = 1;
-        present.pWaitSemaphores = &frame.render_finished;
+        present.pWaitSemaphores = &render_finished;
         present.swapchainCount = 1;
         present.pSwapchains = &swapchain;
         present.pImageIndices = &image_index;
@@ -1820,8 +1834,13 @@ bool PortableVulkanBackend::initialize_software(NativeWindowSurface* native_surf
 void PortableVulkanBackend::shutdown() { impl_->shutdown(); }
 bool PortableVulkanBackend::ready() const { return impl_->active; }
 void* PortableVulkanBackend::hardware_interface() { return impl_->active ? &impl_->interface : nullptr; }
-uint32_t PortableVulkanBackend::sync_index() const { return impl_->current_sync_index.load(std::memory_order_relaxed); }
-uint32_t PortableVulkanBackend::sync_index_mask() const { return 0x3u; }
+uint32_t PortableVulkanBackend::sync_index() const {
+    // libretro_vulkan.h defines the mask as the set of indices this callback
+    // may return. The internal counter is intentionally monotonic for metrics,
+    // but the public frame slot must stay inside the advertised ring.
+    return impl_->current_sync_index.load(std::memory_order_relaxed) % kFrameRingSize;
+}
+uint32_t PortableVulkanBackend::sync_index_mask() const { return (1u << kFrameRingSize) - 1u; }
 uint64_t PortableVulkanBackend::presented_frames() const { return impl_->frame_count.load(std::memory_order_relaxed); }
 NativeRendererMetrics PortableVulkanBackend::renderer_metrics() const {
     std::scoped_lock lock{impl_->mutex};

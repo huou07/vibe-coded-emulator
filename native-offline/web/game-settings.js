@@ -171,6 +171,9 @@
         setStatus(`Saved ${model.systemLabels[scope] || "application"} settings. Renderer changes apply on the next launch.`);
       }
       await reload();
+      if (scope == null && Object.prototype.hasOwnProperty.call(edits, "experimental-switch-eden")) {
+        try { await window.AN3RefreshSwitchAvailability?.(); } catch (_) {}
+      }
     };
 
     const renderSystems = () => {

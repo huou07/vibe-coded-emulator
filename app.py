@@ -68,7 +68,7 @@ PLAYER_BOOT_ASSETS = frozenset({"offline.js", "player-ui.js", "player-runtime.js
 
 # The public source location for the GPL corresponding source. Deployments can
 # override the canonical project URL with AN3_SOURCE_REPOSITORY.
-SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://github.com/huou07/vibe-coded-emulator")
+SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://github.com/YOUR_GITHUB_USER/vibe-coded-emulator")
 
 # Shown on /licenses. Each component keeps its own copyright and license.
 LICENSES_THIRD_PARTY = (

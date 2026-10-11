@@ -69,6 +69,21 @@ def wait_for_output(lines, prefix, timeout=10):
     raise TimeoutError(f"Native player did not acknowledge {prefix}.")
 
 
+def wait_for_native_progress(lines, timeout=15):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            line = lines.get(timeout=min(0.25, deadline - time.monotonic()))
+        except queue.Empty:
+            continue
+        if not line.startswith("AN3_NATIVE_STATUS "):
+            continue
+        fields = dict(re.findall(r"(core|present|drops)=([0-9]+)", line))
+        if "core" in fields and "present" in fields:
+            return {key: int(value) for key, value in fields.items()}
+    raise TimeoutError("Native 3DS gameplay did not report sustained core/presentation progress.")
+
+
 class MemoryBasicInformation(ctypes.Structure):
     _fields_ = [
         ("BaseAddress", ctypes.c_void_p),
@@ -321,6 +336,31 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             changed = sum(pixel != (0, 0, 0) for pixel in difference.getdata())
             changed_percent = changed * 100 / (baseline_game.width * baseline_game.height)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
+
+            # The initial frame and one changed screenshot do not prove that
+            # the Vulkan/core loop continues. Exercise repeated input edges,
+            # then require renderer and core counters to advance together over
+            # multiple reporting intervals (at least 360 additional frames).
+            input_transitions = []
+            for command_id, pressed in ((2, 0), (3, 1), (4, 0), (5, 1), (6, 0)):
+                process.stdin.write(f"{command_id}\tbutton\t8:{pressed}\n")
+                process.stdin.flush()
+                wait_for_output(output_lines, f"AN3_NATIVE_CONTROL_RESULT {command_id} OK")
+                input_transitions.append({"commandId": command_id, "pressed": bool(pressed)})
+
+            progression = []
+            for _ in range(3):
+                sample = wait_for_native_progress(output_lines, timeout=20)
+                if progression:
+                    self.assertGreater(sample["core"], progression[-1]["core"],
+                                       "core frame count stopped advancing during gameplay")
+                    self.assertGreater(sample["present"], progression[-1]["present"],
+                                       "Vulkan presentation count stopped advancing during gameplay")
+                progression.append(sample)
+            self.assertGreaterEqual(progression[-1]["core"] - progression[0]["core"], 240,
+                                    "3DS core did not sustain multiple frame intervals")
+            self.assertGreaterEqual(progression[-1]["present"] - progression[0]["present"], 240,
+                                    "3DS Vulkan presenter did not sustain multiple frame intervals")
         finally:
             shutdown_mode = "already-exited"
             shutdown_debugger = "not-needed"
@@ -462,6 +502,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             "afterAFrame": {"path": input_path.name},
             "aInputChangedPixels": changed,
             "aInputChangedPercent": round(changed_percent, 4),
+            "inputTransitions": input_transitions,
+            "sustainedProgression": progression,
             "shutdown": shutdown_mode,
             "shutdownExitCode": return_code,
             "shutdownDebugger": shutdown_debugger,

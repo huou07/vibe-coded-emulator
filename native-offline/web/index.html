@@ -152,6 +152,11 @@
                 <button id="offlineBrowserImport" data-testid="import-rom" class="button primary" type="submit">Add to device</button>
               </form>
               <p id="offlineDetection" class="native-status" role="status"></p>
+              <div id="nativeRomImportProgress" class="native-import-progress" hidden aria-live="polite">
+                <div class="native-import-progress-heading"><span id="nativeRomImportPhase">Preparing ROM…</span><button id="nativeRomImportCancel" class="button" type="button">Cancel</button></div>
+                <progress id="nativeRomImportBar"></progress>
+                <span id="nativeRomImportDetail" class="muted"></span>
+              </div>
             </details>
             <div id="offlineGameGrid" data-testid="game-grid" class="native-grid" aria-live="polite"></div>
           </section>

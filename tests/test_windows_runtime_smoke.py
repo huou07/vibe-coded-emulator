@@ -15,6 +15,17 @@ NDS_SMOKE = (ROOT / "tools/windows-nds-runtime-smoke.ps1").read_text(encoding="u
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
+    def test_release_windows_shell_uses_gui_subsystem_but_debug_keeps_console(self):
+        main_rs = (ROOT / "native-offline/src-tauri/src/main.rs").read_text(encoding="utf-8")
+        self.assertIn('#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]', main_rs)
+
+    def test_packaged_3ds_smoke_requires_sustained_core_and_present_progress(self):
+        smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
+        self.assertIn("wait_for_native_progress", smoke)
+        self.assertIn("core frame count stopped advancing", smoke)
+        self.assertIn("Vulkan presentation count stopped advancing", smoke)
+        self.assertIn("sustainedProgression", smoke)
+
     def test_smoke_harness_changes_do_not_rebuild_the_all_platform_matrix_on_push(self):
         self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 1)
         self.assertGreaterEqual(WORKFLOW.count("tools/windows-runtime-smoke.ps1"), 2)
@@ -128,6 +139,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("windows-nds-fixture", nds_job)
         self.assertIn("retention-days: 3", nds_job)
         self.assertIn("EXPECTED_SOURCE_SHA", NDS_SMOKE)
+
         self.assertIn("melondsds_libretro.dll", NDS_SMOKE)
         self.assertIn("'--system', 'nds'", NDS_SMOKE)
         self.assertIn("$status.coreFrames -ne 120", NDS_SMOKE)

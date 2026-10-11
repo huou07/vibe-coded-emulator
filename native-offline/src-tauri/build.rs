@@ -56,6 +56,7 @@ fn main() {
 
     let commands = vec![
             "pick_and_import_native_rom",
+            "cancel_native_rom_import",
             "remove_native_rom",
             "native_capabilities",
             "native_session_control",

@@ -26,10 +26,9 @@ if (!an3MobileNativeShell) {
 // injected bridge. The launcher itself still resolves the bridge at click
 // time, so the library cannot briefly advertise an external native player on
 // macOS while WebKit finishes injection.
-// Installed Android release candidates carry the same four-core surface as
-// desktop. Switch remains a native Eden launch (not the browser EmulatorJS
-// path); the Android bridge performs a final runtime-availability check.
-window.AN3NativeIntegratedSystems = /Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds", "switch"] : (an3MobileNativeShell ? [] : ["gba", "nds", "3ds"]);
+// Android exposes GBA, NDS, and 3DS in this build. Switch stays hidden unless
+// the platform ships the experimental Eden companion.
+window.AN3NativeIntegratedSystems = an3MobileNativeShell ? (/Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds"] : []) : ["gba", "nds", "3ds"];
 // Compatibility signal for pre-generic library assets. New code reads the
 // systems list above so GBA and NDS can use the same in-process launch path.
 window.AN3NativeIntegratedThreeDs = !an3MobileNativeShell;
@@ -119,18 +118,16 @@ window.AN3OfflineEmulatorOrigin = "";
       }
       window.AN3NativeSwitch.detect().then(info => {
         window.AN3SwitchDetect = { ok: true, available: info?.available === true, detail: info?.detail, path: info?.path };
-        if (info?.available) {
-          const systems = window.AN3NativeIntegratedSystems;
-          if (Array.isArray(systems) && !systems.includes("switch")) {
-            window.AN3NativeIntegratedSystems = [...systems, "switch"];
-          }
-          if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
-        }
+        const systems = (window.AN3NativeIntegratedSystems || []).filter(system => system !== "switch");
+        if (info?.available) systems.push("switch");
+        window.AN3NativeIntegratedSystems = systems;
+        if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
       }).catch(error => {
         window.AN3SwitchDetect = { ok: false, error: String(error) };
         if (attempt < 40) schedule(() => advertiseSwitch(attempt + 1), 250);
       });
     };
+    window.AN3RefreshSwitchAvailability = () => advertiseSwitch();
     advertiseSwitch();
 
   }
@@ -167,6 +164,9 @@ window.AN3OfflineEmulatorOrigin = "";
     for (const [id, value] of pending) if (value === entry) pending.delete(id);
     if (result?.ok) entry.resolve(result);
     else entry.reject(new Error(result?.error || "Could not import the ROM."));
+  };
+  window.__AN3NativeRomImportProgress = progress => {
+    window.dispatchEvent(new CustomEvent("native-rom-import-progress", {detail: progress}));
   };
   window.AN3AndroidRemoveRom = romId => bridge.removeRom?.(romId);
 })();

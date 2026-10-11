@@ -1,19 +1,18 @@
 # Provenance
 
 This repository is a **clean source snapshot** exported from the Vibe Coded
-Emulator development history on 2026-10-10.
+Emulator development history on 2026-10-11.
 
 - Only the product source is published here. The private development history
   (which contains local machine paths, private infrastructure configuration and
   personal development notes) is intentionally **not** published, and its commit
   history is not part of this repository.
 - The snapshot was produced by `tools/build-public-snapshot.sh` at the source
-  revision recorded below; that revision identifies the base export, not the
-  current release source. Later product fixes are recorded in this repository's
-  clean public Git history. Each release is built from an exact commit or tag
-  in that history.
+  revision recorded below; it is a faithful export of that revision with
+  personal data and private infrastructure values replaced by documented
+  examples.
 - No third-party source has been removed or re-licensed. Emulator cores and
   other third-party components retain their own licenses; see
   `THIRD_PARTY_NOTICES.md` and `docs/licensing/`.
 
-Exported source revision: f899d96
+Exported source revision: d55e5f6
