@@ -61,10 +61,14 @@ def input_indicator_area(image):
     """Capture the fixture's Up marker in its lower 3DS screen."""
     game = game_area(image)
     scale = min(game.width / 400, game.height / 480)
-    left = (game.width - 400 * scale) / 2
-    top = (game.height - 480 * scale) / 2
-    marker_x = left + 48 * scale
-    marker_y = top + (240 + 100) * scale
+    # The fixture's Up sprite is composed into the Windows client capture with
+    # extra transparent padding around the controller art. The original
+    # source-space estimate (48, 340) selected empty space; on the packaged
+    # capture the marker is at roughly 40% width and 81% height. Keep a scaled
+    # local crop around that visible marker so the check measures the actual
+    # press/release state instead of unrelated frame changes.
+    marker_x = game.width * 0.395
+    marker_y = game.height * 0.81
     radius = max(16, round(28 * scale))
     x, y = round(marker_x), round(marker_y)
     return game.crop((x - radius, y - radius, x + radius, y + radius))
