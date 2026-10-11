@@ -57,6 +57,14 @@ def game_area(image):
     return image.crop((0, 0, image.width, max(1, image.height - 48)))
 
 
+def changed_pixel_percent(before, after):
+    if before.size != after.size:
+        raise ValueError("Captured gameplay frame dimensions changed during input validation.")
+    difference = ImageChops.difference(before, after)
+    changed = sum(pixel != (0, 0, 0) for pixel in difference.getdata())
+    return changed * 100 / (before.width * before.height)
+
+
 def wait_for_output(lines, prefix, timeout=10):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -67,6 +75,21 @@ def wait_for_output(lines, prefix, timeout=10):
         if prefix in line:
             return line
     raise TimeoutError(f"Native player did not acknowledge {prefix}.")
+
+
+def wait_for_native_progress(lines, timeout=15):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            line = lines.get(timeout=min(0.25, deadline - time.monotonic()))
+        except queue.Empty:
+            continue
+        if not line.startswith("AN3_NATIVE_STATUS "):
+            continue
+        fields = dict(re.findall(r"(core|present|drops)=([0-9]+)", line))
+        if "core" in fields and "present" in fields:
+            return {key: int(value) for key, value in fields.items()}
+    raise TimeoutError("Native 3DS gameplay did not report sustained core/presentation progress.")
 
 
 class MemoryBasicInformation(ctypes.Structure):
@@ -317,10 +340,59 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             after_a = capture_client(hwnd, input_path)
             baseline_game, after_a_game = game_area(baseline), game_area(after_a)
             self.assertEqual(baseline_game.size, after_a_game.size)
-            difference = ImageChops.difference(baseline_game, after_a_game)
-            changed = sum(pixel != (0, 0, 0) for pixel in difference.getdata())
-            changed_percent = changed * 100 / (baseline_game.width * baseline_game.height)
+            changed_percent = changed_pixel_percent(baseline_game, after_a_game)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
+
+            # The initial frame and one changed screenshot do not prove that
+            # the Vulkan/core loop continues. Exercise repeated input edges,
+            # then require renderer and core counters to advance together over
+            # multiple reporting intervals (at least 360 additional frames).
+            input_transitions = []
+            neutral_frame = game_area(after_a)
+            for command_id in (2, 4, 6):
+                press_id, release_id = command_id, command_id + 1
+                process.stdin.write(f"{press_id}\tbutton\t8:1\n")
+                process.stdin.flush()
+                wait_for_output(output_lines, f"AN3_NATIVE_CONTROL_RESULT {press_id} OK")
+                time.sleep(0.2)
+                pressed_frame = game_area(capture_client(hwnd, evidence / f"3ds-a-pressed-{press_id}.png"))
+                press_changed_percent = changed_pixel_percent(neutral_frame, pressed_frame)
+                self.assertGreater(
+                    press_changed_percent, 0.05,
+                    f"A press {press_id} was acknowledged but did not visibly change 3DS gameplay",
+                )
+
+                process.stdin.write(f"{release_id}\tbutton\t8:0\n")
+                process.stdin.flush()
+                wait_for_output(output_lines, f"AN3_NATIVE_CONTROL_RESULT {release_id} OK")
+                time.sleep(0.2)
+                released_frame = game_area(capture_client(hwnd, evidence / f"3ds-a-released-{release_id}.png"))
+                release_changed_percent = changed_pixel_percent(pressed_frame, released_frame)
+                self.assertGreater(
+                    release_changed_percent, 0.05,
+                    f"A release {release_id} was acknowledged but did not visibly change 3DS gameplay",
+                )
+                neutral_frame = released_frame
+                input_transitions.append({
+                    "pressCommandId": press_id,
+                    "releaseCommandId": release_id,
+                    "pressedChangedPixelsPercent": round(press_changed_percent, 4),
+                    "releasedChangedPixelsPercent": round(release_changed_percent, 4),
+                })
+
+            progression = []
+            for _ in range(3):
+                sample = wait_for_native_progress(output_lines, timeout=20)
+                if progression:
+                    self.assertGreater(sample["core"], progression[-1]["core"],
+                                       "core frame count stopped advancing during gameplay")
+                    self.assertGreater(sample["present"], progression[-1]["present"],
+                                       "Vulkan presentation count stopped advancing during gameplay")
+                progression.append(sample)
+            self.assertGreaterEqual(progression[-1]["core"] - progression[0]["core"], 240,
+                                    "3DS core did not sustain multiple frame intervals")
+            self.assertGreaterEqual(progression[-1]["present"] - progression[0]["present"], 240,
+                                    "3DS Vulkan presenter did not sustain multiple frame intervals")
         finally:
             shutdown_mode = "already-exited"
             shutdown_debugger = "not-needed"
@@ -460,8 +532,9 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                            "height": baseline.height, "distinctColors": colors,
                            "visiblePixelsPercent": round(visible_percent, 4)},
             "afterAFrame": {"path": input_path.name},
-            "aInputChangedPixels": changed,
             "aInputChangedPercent": round(changed_percent, 4),
+            "inputTransitions": input_transitions,
+            "sustainedProgression": progression,
             "shutdown": shutdown_mode,
             "shutdownExitCode": return_code,
             "shutdownDebugger": shutdown_debugger,

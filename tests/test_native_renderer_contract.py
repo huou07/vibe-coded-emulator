@@ -28,6 +28,24 @@ class NativeRendererContractTests(unittest.TestCase):
         self.assertIn("receive_image", VULKAN)
         self.assertIn("VulkanFrontend::present(unsigned width, unsigned height)", VULKAN)
 
+    def test_vulkan_sync_indices_stay_inside_the_advertised_frame_ring(self):
+        portable = (ROOT / "native-offline" / "native-runtime" / "video" / "vulkan" / "vulkan_backend.cpp").read_text(encoding="utf-8")
+        self.assertIn("load(std::memory_order_relaxed) % kFrameRingSize", portable)
+        self.assertIn("return (1u << kFrameRingSize) - 1u", portable)
+        self.assertIn("load(std::memory_order_relaxed) % kFrameRingSize", VULKAN)
+        self.assertIn("return (1u << kFrameRingSize) - 1u", VULKAN)
+
+    def test_present_wait_semaphores_are_reused_only_after_the_swapchain_image_is_reacquired(self):
+        portable = (ROOT / "native-offline" / "native-runtime" / "video" / "vulkan" / "vulkan_backend.cpp").read_text(encoding="utf-8")
+        for backend in (portable, VULKAN):
+            self.assertIn("std::vector<VkSemaphore> render_finished_semaphores", backend)
+            self.assertIn("render_finished_semaphores.assign(count, VK_NULL_HANDLE)", backend)
+            self.assertIn("image_index >= render_finished_semaphores.size()", backend)
+            self.assertIn("render_finished_semaphores[image_index]", backend)
+            self.assertIn("submit.pSignalSemaphores = &render_finished", backend)
+            self.assertIn("present.pWaitSemaphores = &render_finished", backend)
+            self.assertNotIn("frame.render_finished", backend)
+
     def test_direct_write_abi_is_experimental_and_falls_back_without_changing_state_bytes(self):
         self.assertIn("RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER = 40 | RETRO_ENVIRONMENT_EXPERIMENTAL", HOST)
         self.assertIn("struct retro_framebuffer", HOST)
