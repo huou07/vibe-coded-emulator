@@ -57,6 +57,19 @@ def game_area(image):
     return image.crop((0, 0, image.width, max(1, image.height - 48)))
 
 
+def input_indicator_area(image):
+    """Capture the fixture's Up marker in its lower 3DS screen."""
+    game = game_area(image)
+    scale = min(game.width / 400, game.height / 480)
+    left = (game.width - 400 * scale) / 2
+    top = (game.height - 480 * scale) / 2
+    marker_x = left + 48 * scale
+    marker_y = top + (240 + 100) * scale
+    radius = max(16, round(28 * scale))
+    x, y = round(marker_x), round(marker_y)
+    return game.crop((x - radius, y - radius, x + radius, y + radius))
+
+
 def changed_pixel_percent(before, after):
     if before.size != after.size:
         raise ValueError("Captured gameplay frame dimensions changed during input validation.")
@@ -284,7 +297,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
                     "AN3_VULKAN_TRACE": "1"})
         log_path = evidence / "player.log"
         command = [str(player), "--rom", str(fixture), "--system", "3ds",
-                   "--renderer", "vulkan", "--control-stdin", "--no-controls",
+                   "--renderer", "vulkan", "--layout", "top-bottom",
+                   "--control-stdin", "--no-controls",
                    "--storage", str(storage)]
         log_stream = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -351,8 +365,10 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             process.stdin.flush()
             wait_for_output(output_lines, "AN3_NATIVE_CONTROL_RESULT 2 OK")
             time.sleep(0.2)
-            neutral_frame = game_area(capture_client(hwnd, evidence / "3ds-a-released-2.png"))
 
+            # The fixture draws A's indicator at the far edge of its lower
+            # screen, where a scaled capture can clip it. Use its clearly
+            # visible Up marker in an explicit top/bottom layout instead.
             # The initial frame and one changed screenshot do not prove that
             # the Vulkan/core loop continues. Exercise repeated input edges,
             # then require renderer and core counters to advance together over
@@ -360,33 +376,38 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             input_transitions = []
             for command_id in (3, 5, 7):
                 press_id, release_id = command_id, command_id + 1
-                process.stdin.write(f"{press_id}\tbutton\t8:1\n")
+                neutral_indicator = input_indicator_area(capture_client(
+                    hwnd, evidence / f"3ds-up-neutral-before-{press_id}.png",
+                ))
+                process.stdin.write(f"{press_id}\tbutton\t4:1\n")
                 process.stdin.flush()
                 wait_for_output(output_lines, f"AN3_NATIVE_CONTROL_RESULT {press_id} OK")
                 time.sleep(0.2)
-                pressed_frame = game_area(capture_client(hwnd, evidence / f"3ds-a-pressed-{press_id}.png"))
-                press_changed_percent = changed_pixel_percent(neutral_frame, pressed_frame)
+                pressed_capture = capture_client(hwnd, evidence / f"3ds-up-pressed-{press_id}.png")
+                pressed_frame = input_indicator_area(pressed_capture)
+                press_changed_percent = changed_pixel_percent(neutral_indicator, pressed_frame)
                 self.assertGreater(
                     press_changed_percent, 0.05,
-                    f"A press {press_id} was acknowledged but did not visibly change 3DS gameplay",
+                    f"Up press {press_id} was acknowledged but did not change the visible 3DS input indicator",
                 )
 
-                process.stdin.write(f"{release_id}\tbutton\t8:0\n")
+                process.stdin.write(f"{release_id}\tbutton\t4:0\n")
                 process.stdin.flush()
                 wait_for_output(output_lines, f"AN3_NATIVE_CONTROL_RESULT {release_id} OK")
                 time.sleep(0.2)
-                released_frame = game_area(capture_client(hwnd, evidence / f"3ds-a-released-{release_id}.png"))
+                released_capture = capture_client(hwnd, evidence / f"3ds-up-released-{release_id}.png")
+                released_frame = input_indicator_area(released_capture)
                 release_changed_percent = changed_pixel_percent(pressed_frame, released_frame)
                 self.assertGreater(
                     release_changed_percent, 0.05,
-                    f"A release {release_id} was acknowledged but did not visibly change 3DS gameplay",
+                    f"Up release {release_id} was acknowledged but did not clear the visible 3DS input indicator",
                 )
-                neutral_frame = released_frame
                 input_transitions.append({
                     "pressCommandId": press_id,
                     "releaseCommandId": release_id,
-                    "pressedChangedPixelsPercent": round(press_changed_percent, 4),
-                    "releasedChangedPixelsPercent": round(release_changed_percent, 4),
+                    "button": "Up",
+                    "pressedIndicatorChangedPixelsPercent": round(press_changed_percent, 4),
+                    "releasedIndicatorChangedPixelsPercent": round(release_changed_percent, 4),
                 })
 
             progression = []

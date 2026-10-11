@@ -21,9 +21,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("core frame count stopped advancing", smoke)
         self.assertIn("Vulkan presentation count stopped advancing", smoke)
         self.assertIn("sustainedProgression", smoke)
-        self.assertIn("pressedChangedPixelsPercent", smoke)
-        self.assertIn("releasedChangedPixelsPercent", smoke)
-        self.assertIn("acknowledged but did not visibly change 3DS gameplay", smoke)
+        self.assertIn("pressedIndicatorChangedPixelsPercent", smoke)
+        self.assertIn("releasedIndicatorChangedPixelsPercent", smoke)
+        self.assertIn("acknowledged but did not change the visible 3DS input indicator", smoke)
 
     def test_smoke_harness_changes_do_not_rebuild_the_all_platform_matrix_on_push(self):
         self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 1)
@@ -165,6 +165,8 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050", fixture_job)
         self.assertIn("\"--system\", \"3ds\"", smoke)
         self.assertIn("\"--renderer\", \"vulkan\"", smoke)
+        self.assertIn("\"--layout\", \"top-bottom\"", smoke)
+        self.assertIn('process.stdin.write(f\"{press_id}\\tbutton\\t4:1\\n\")', smoke)
         self.assertIn('process.stdin.write("1\\tbutton\\t8:1\\n")', smoke)
         self.assertIn("AN3_NATIVE_CONTROL_RESULT 1 OK", smoke)
         self.assertIn("PostMessageW(hwnd, 0x0010", smoke)
