@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #if defined(_WIN32)
 #include <windows.h>
@@ -47,6 +48,8 @@ static_assert(AN3_FRAME_RING_SIZE >= 2 && AN3_FRAME_RING_SIZE <= 3,
 constexpr uint32_t kFrameRingSize = AN3_FRAME_RING_SIZE;
 constexpr uint32_t kMaxSourceWaitSemaphores = 8;
 constexpr uint32_t kNoFrameSlot = std::numeric_limits<uint32_t>::max();
+constexpr uint32_t kVulkanTraceLimit = 32768;
+std::atomic<uint32_t> g_vulkan_trace_events{0};
 
 struct RetroVulkanImage {
     VkImageView image_view;
@@ -270,6 +273,7 @@ struct PortableVulkanBackend::Impl {
     uint32_t next_presentation_frame = 0;
     uint32_t active_presentation_frame = kNoFrameSlot;
     VkFence last_submitted_fence = VK_NULL_HANDLE;
+    uint32_t last_submitted_fence_slot = kNoFrameSlot;
 
     // Each software slot owns its persistently mapped staging allocation,
     // upload command buffer and upload semaphore. It is reused only after its
@@ -311,8 +315,21 @@ struct PortableVulkanBackend::Impl {
     };
     Mode mode = Mode::None;
     bool active = false;
+    bool sync_trace_enabled = false;
     std::atomic<uint32_t> current_sync_index{0};
     std::atomic<uint64_t> frame_count{0};
+
+    void trace_sync(const char* phase, uint64_t frame, uint32_t sync_index,
+                    uint32_t slot, int result = 0, uint64_t wait_us = 0) const {
+        if (!sync_trace_enabled) return;
+        const uint32_t event = g_vulkan_trace_events.fetch_add(1, std::memory_order_relaxed);
+        if (event >= kVulkanTraceLimit) return;
+        std::fprintf(stderr,
+                     "AN3_VK_TRACE frame=%llu phase=%s sync=%u slot=%u result=%d wait_us=%llu\n",
+                     static_cast<unsigned long long>(frame), phase, sync_index, slot, result,
+                     static_cast<unsigned long long>(wait_us));
+        std::fflush(stderr);
+    }
 
     static constexpr size_t kMetricSamples = 256;
     struct TimingSeries {
@@ -1128,6 +1145,9 @@ struct PortableVulkanBackend::Impl {
         shutdown();
         current_sync_index.store(0, std::memory_order_relaxed);
         frame_count.store(0, std::memory_order_relaxed);
+        sync_trace_enabled = std::getenv("AN3_VULKAN_TRACE") &&
+                             std::strcmp(std::getenv("AN3_VULKAN_TRACE"), "1") == 0;
+        g_vulkan_trace_events.store(0, std::memory_order_relaxed);
         metrics = {};
         window_surface = native_surface;
         if (!window_surface) { error = "native-surface: unavailable"; return false; }
@@ -1232,6 +1252,8 @@ struct PortableVulkanBackend::Impl {
                        const VkSemaphore* semaphores, uint32_t source_queue_family) {
         if (!image) return;
         std::scoped_lock lock{mutex};
+        trace_sync("image_received", frame_count.load(std::memory_order_relaxed),
+                   current_sync_index.load(std::memory_order_relaxed), active_presentation_frame);
         if (!active || mode != Mode::CoreVulkan) return;
         // The supported core currently supplies one semaphore. Keep a small
         // fixed-size boundary here so the native hot path never allocates
@@ -1261,9 +1283,15 @@ struct PortableVulkanBackend::Impl {
         frame_index = next_presentation_frame;
         auto& frame = presentation_frames[frame_index];
         if (!frame.in_flight || !frame.image_available) return false;
-        if (frame.submitted &&
-            wait_for_fences(device, 1, &frame.in_flight, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-            return false;
+        if (frame.submitted) {
+            const uint64_t trace_frame = frame_count.load(std::memory_order_relaxed);
+            const auto wait_started = std::chrono::steady_clock::now();
+            trace_sync("frame_fence_wait_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index);
+            const VkResult waited = wait_for_fences(device, 1, &frame.in_flight, VK_TRUE, UINT64_MAX);
+            const auto wait_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - wait_started).count());
+            trace_sync("frame_fence_wait_end", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index, waited, wait_us);
+            if (waited != VK_SUCCESS) return false;
         }
         frame.submitted = false;
         active_presentation_frame = frame_index;
@@ -1276,6 +1304,7 @@ struct PortableVulkanBackend::Impl {
             auto& frame = presentation_frames[frame_index];
             frame.submitted = true;
             last_submitted_fence = frame.in_flight;
+            last_submitted_fence_slot = frame_index;
             next_presentation_frame = (frame_index + 1u) % kFrameRingSize;
         }
         active_presentation_frame = kNoFrameSlot;
@@ -1604,6 +1633,8 @@ struct PortableVulkanBackend::Impl {
                        uint32_t source_queue_family,
                        const VkSemaphore* source_semaphores, uint32_t source_semaphore_count,
                        unsigned width, unsigned height) {
+        const uint64_t trace_frame = frame_count.load(std::memory_order_relaxed);
+        trace_sync("present_image_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), next_presentation_frame);
         if (!source_image || !width || !height ||
             width > static_cast<unsigned>(std::numeric_limits<int32_t>::max()) ||
             height > static_cast<unsigned>(std::numeric_limits<int32_t>::max()) ||
@@ -1637,7 +1668,9 @@ struct PortableVulkanBackend::Impl {
                                       VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)
             ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
         uint32_t image_index = 0;
+        trace_sync("acquire_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index);
         const VkResult acquired = acquire_next_image(device, swapchain, UINT64_MAX, frame.image_available, VK_NULL_HANDLE, &image_index);
+        trace_sync("acquire_end", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index, acquired);
         if (acquired == VK_ERROR_OUT_OF_DATE_KHR) {
             abandon();
             destroy_swapchain_resources(true);
@@ -1652,10 +1685,17 @@ struct PortableVulkanBackend::Impl {
         }
         const VkSemaphore render_finished = render_finished_semaphores[image_index];
         const VkFence image_fence = image_in_flight[image_index];
-        if (image_fence && image_fence != frame.in_flight &&
-            wait_for_fences(device, 1, &image_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
-            abandon();
-            return false;
+        if (image_fence && image_fence != frame.in_flight) {
+            const auto wait_started = std::chrono::steady_clock::now();
+            trace_sync("image_fence_wait_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), image_index);
+            const VkResult waited = wait_for_fences(device, 1, &image_fence, VK_TRUE, UINT64_MAX);
+            const auto wait_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - wait_started).count());
+            trace_sync("image_fence_wait_end", trace_frame, current_sync_index.load(std::memory_order_relaxed), image_index, waited, wait_us);
+            if (waited != VK_SUCCESS) {
+                abandon();
+                return false;
+            }
         }
         const VkCommandBuffer command = command_buffers[image_index];
         if (reset_command_buffer(command, 0) != VK_SUCCESS) {
@@ -1776,8 +1816,15 @@ struct PortableVulkanBackend::Impl {
         submit.pCommandBuffers = &command;
         submit.signalSemaphoreCount = 1;
         submit.pSignalSemaphores = &render_finished;
-        if (reset_fences(device, 1, &frame.in_flight) != VK_SUCCESS ||
-            queue_submit(queue, 1, &submit, frame.in_flight) != VK_SUCCESS) {
+        if (reset_fences(device, 1, &frame.in_flight) != VK_SUCCESS) {
+            abandon();
+            destroy_swapchain_resources(true);
+            return false;
+        }
+        trace_sync("queue_submit_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index);
+        const VkResult submitted = queue_submit(queue, 1, &submit, frame.in_flight);
+        trace_sync("queue_submit_end", trace_frame, current_sync_index.load(std::memory_order_relaxed), frame_index, submitted);
+        if (submitted != VK_SUCCESS) {
             abandon();
             destroy_swapchain_resources(true);
             return false;
@@ -1791,7 +1838,9 @@ struct PortableVulkanBackend::Impl {
         present.swapchainCount = 1;
         present.pSwapchains = &swapchain;
         present.pImageIndices = &image_index;
+        trace_sync("queue_present_begin", trace_frame, current_sync_index.load(std::memory_order_relaxed), image_index);
         const VkResult presented = queue_present(presentation_queue, &present);
+        trace_sync("queue_present_end", trace_frame, current_sync_index.load(std::memory_order_relaxed), image_index, presented);
         if (presented == VK_SUCCESS || presented == VK_SUBOPTIMAL_KHR) {
             image_initialized[image_index] = true;
             current_sync_index.fetch_add(1, std::memory_order_relaxed);
@@ -1889,7 +1938,15 @@ bool PortableVulkanBackend::discard_pending_core_frame() {
 void PortableVulkanBackend::wait_sync_index() {
     std::scoped_lock lock{impl_->mutex};
     if (impl_->active && impl_->last_submitted_fence && impl_->wait_for_fences) {
-        impl_->wait_for_fences(impl_->device, 1, &impl_->last_submitted_fence, VK_TRUE, UINT64_MAX);
+        const uint64_t frame = impl_->frame_count.load(std::memory_order_relaxed);
+        const uint32_t sync_index = impl_->current_sync_index.load(std::memory_order_relaxed);
+        const auto wait_started = std::chrono::steady_clock::now();
+        impl_->trace_sync("sync_fence_wait_begin", frame, sync_index, impl_->last_submitted_fence_slot);
+        const VkResult waited = impl_->wait_for_fences(
+            impl_->device, 1, &impl_->last_submitted_fence, VK_TRUE, UINT64_MAX);
+        const auto wait_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - wait_started).count());
+        impl_->trace_sync("sync_fence_wait_end", frame, sync_index, impl_->last_submitted_fence_slot, waited, wait_us);
     }
 }
 

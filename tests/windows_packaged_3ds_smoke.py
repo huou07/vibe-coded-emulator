@@ -280,7 +280,8 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         sd_game.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(fixture_root / "game", sd_game)
         env = os.environ.copy()
-        env.update({"AN3_OFFLINE_LIBDIR": str(libdir), "SDL_AUDIODRIVER": "dummy"})
+        env.update({"AN3_OFFLINE_LIBDIR": str(libdir), "SDL_AUDIODRIVER": "dummy",
+                    "AN3_VULKAN_TRACE": "1"})
         log_path = evidence / "player.log"
         command = [str(player), "--rom", str(fixture), "--system", "3ds",
                    "--renderer", "vulkan", "--control-stdin", "--no-controls",
