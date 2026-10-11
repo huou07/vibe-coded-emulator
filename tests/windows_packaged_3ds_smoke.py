@@ -343,13 +343,21 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             changed_percent = changed_pixel_percent(baseline_game, after_a_game)
             self.assertGreater(changed_percent, 1.0, "visible 3DS screen did not change after A input")
 
+            # The first A press exits the fixture's title screen. It is not a
+            # held-button sample, so release it before checking fresh A edges
+            # on the controller screen below.
+            process.stdin.write("2\tbutton\t8:0\n")
+            process.stdin.flush()
+            wait_for_output(output_lines, "AN3_NATIVE_CONTROL_RESULT 2 OK")
+            time.sleep(0.2)
+            neutral_frame = game_area(capture_client(hwnd, evidence / "3ds-a-released-2.png"))
+
             # The initial frame and one changed screenshot do not prove that
             # the Vulkan/core loop continues. Exercise repeated input edges,
             # then require renderer and core counters to advance together over
             # multiple reporting intervals (at least 360 additional frames).
             input_transitions = []
-            neutral_frame = game_area(after_a)
-            for command_id in (2, 4, 6):
+            for command_id in (3, 5, 7):
                 press_id, release_id = command_id, command_id + 1
                 process.stdin.write(f"{press_id}\tbutton\t8:1\n")
                 process.stdin.flush()
