@@ -209,8 +209,14 @@ print(f"sanitized files: {changed}; revision: {revision}")
 PY
 
 # --- 7. Fail if any personal/infrastructure pattern survived ------------------
-if grep -rlE "/Users/[A-Za-z]|192\.168\.[0-9]+\.|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.|\bmeomeo\b|an3_codex" "$OUT" 2>/dev/null | grep -q .; then
-  die "personal-data or infrastructure patterns remain in the snapshot"
+# A grep error must not read as "nothing survived sanitisation".
+survivor_error=""
+survivors="$(grep -rlE "/Users/[A-Za-z]|192\.168\.[0-9]+\.|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.|\bmeomeo\b|an3_codex" -- "$OUT" 2>/tmp/an3-survivor.err)" \
+  || survivor_error="$(head -5 /tmp/an3-survivor.err)"
+rm -f /tmp/an3-survivor.err
+[[ -z "$survivor_error" ]] || die "post-sanitisation scan could not complete: $survivor_error"
+if [[ -n "$survivors" ]]; then
+  die "personal-data or infrastructure patterns remain in the snapshot: $(printf '%s' "$survivors" | tr '\n' ' ')"
 fi
 
 note "files=$(find "$OUT" -type f | wc -l | tr -d ' ') size=$(du -sh "$OUT" | cut -f1)"

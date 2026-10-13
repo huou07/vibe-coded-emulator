@@ -62,13 +62,16 @@ for forbidden in .opencode .codex AGENTS.md reports work tools/ssh; do
 done
 
 # --- 3. Prohibited binary/content types ---------------------------------------
-if find "$CANDIDATE" -type f \( -iname '*.gba' -o -iname '*.nds' -o -iname '*.3ds' \
+# A find error must not read as "nothing prohibited was found".
+prohibited_error=""
+prohibited_hit="$(find "$CANDIDATE" -type f \( -iname '*.gba' -o -iname '*.nds' -o -iname '*.3ds' \
   -o -iname '*.nro' -o -iname '*.xci' -o -iname '*.db' -o -iname '*.sqlite*' \
   -o -iname 'prod.keys' -o -iname 'title.keys' -o -iname '*.dmg' -o -iname '*.apk' \
   -o -iname '*.exe' -o -iname '*.dll' -o -iname '*.dylib' -o -iname '*.so' \) \
-  -print -quit | grep -q .; then
-  fail "prohibited binary or game/keys content found in the candidate"
-fi
+  -print -quit 2>/tmp/an3-find.err)" || prohibited_error="$(head -5 /tmp/an3-find.err)"
+rm -f /tmp/an3-find.err
+[[ -z "$prohibited_error" ]] || fail "prohibited-content scan could not complete; publication blocked"
+[[ -z "$prohibited_hit" ]] || fail "prohibited binary or game/keys content found: $prohibited_hit"
 
 # --- 4. Secret scanning (fail closed when unavailable) ------------------------
 command -v gitleaks >/dev/null 2>&1 || fail "gitleaks is required but not installed"
@@ -98,10 +101,26 @@ case "$FINDINGS" in
 esac
 
 # --- 5. Project-specific patterns (no values printed) -------------------------
-if git -C "$CANDIDATE" grep -lIE \
-    'AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.' \
-    -- . 2>/dev/null | grep -q .; then
-  fail "project-specific personal-data/secret patterns matched"
+# This scan must not depend on the candidate being a Git repository.
+# tools/build-public-snapshot.sh does not run `git init`, and
+# tools/publish-github.sh runs this gate *before* it initialises the snapshot,
+# so a `git grep` here silently matched nothing on the primary publication path
+# and reported "clean". Plain grep is used instead, and a scanner error is
+# treated as a failure rather than as a clean result.
+PROJECT_PATTERNS='AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.'
+
+# grep exit codes: 0 = at least one match, 1 = no match, >=2 = error.
+scan_error=""
+scan_matches="$(grep -rIlE "$PROJECT_PATTERNS" -- "$CANDIDATE" 2>/tmp/an3-pubscan.err)" \
+  || scan_error="$(head -5 /tmp/an3-pubscan.err)"
+rm -f /tmp/an3-pubscan.err
+
+if [[ -n "$scan_error" ]]; then
+  fail "project-specific pattern scan could not complete; publication blocked"
+fi
+if [[ -n "$scan_matches" ]]; then
+  # Report file names only. Never print matched content.
+  fail "project-specific personal-data/secret patterns matched in: $(printf '%s' "$scan_matches" | tr '\n' ' ')"
 fi
 note "personal-data and infra patterns: clean"
 
