@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libvulkan-dev
       - name: Python syntax
-        run: python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py
+        run: python3 -m py_compile app.py netcode.py qrcodegen.py sync_engine.py
       - name: Python regression suite
         run: python3 -m unittest discover -s tests -v
 
@@ -54,7 +54,10 @@ jobs:
       - name: Native build-script syntax
         run: npm --prefix native-offline run check
       - name: JavaScript regression suites
-        run: node --test tests/*.test.js tests/*.test.mjs native-offline/tests/*.test.mjs
+        # Only tests/*.test.{js,mjs} hold Node suites here; native-offline/tests
+        # contains C++ and Objective-C++ sources, so a *.test.mjs glob under it
+        # matches nothing and node --test would fail on the empty pattern.
+        run: node --test --test-concurrency=1 tests/*.test.js tests/*.test.mjs
 
   rust-portable:
     name: Rust portable tests

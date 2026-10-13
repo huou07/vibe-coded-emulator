@@ -1,0 +1,73 @@
+# Private-repository CI.
+#
+# This runs the same gate a developer runs locally, so a green run here means
+# `bash tools/verify-project.sh` would also pass. It is deliberately minimal:
+# one aggregate job plus a publication-gate job. Native packages are not built
+# here; that needs the pinned core artifacts and per-platform toolchains, and
+# claiming otherwise would be unverified.
+#
+# The public snapshot gets its own workflows from tools/publication/.github/;
+# this file is not published.
+name: verify
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  project-verify:
+    name: Project verify gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - name: Install native guard headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan-dev
+      - name: Install native JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Run tools/verify-project.sh
+        run: bash tools/verify-project.sh
+
+  publication-gate:
+    name: Publication gate (fail closed)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+      - name: Build the public snapshot
+        run: bash tools/build-public-snapshot.sh --output work/public-snapshot
+      - name: Scan the snapshot
+        # This is the same gate tools/publish-github.sh runs before it can push.
+        # It must fail closed: a scanner that cannot run blocks publication.
+        run: bash tools/publication-check.sh work/public-snapshot
+      - name: Publication gate regression tests
+        run: python3 -m unittest tests.test_publication_gate -v
