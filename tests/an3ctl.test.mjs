@@ -31,6 +31,10 @@ function cli(args, { timeoutMs = 180000 } = {}) {
     }, timeoutMs);
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolvePromise({ code: 127, stdout, stderr: stderr + error.message });
+    });
     child.on("close", (code) => {
       clearTimeout(timer);
       resolvePromise({ code, stdout, stderr });
@@ -52,7 +56,7 @@ test("targets: discovery returns an envelope with every target", async () => {
   for (const name of ["web", "android", "emulator", "macos", "linux", "windows"]) {
     assert.ok(name in envelope.data.targets, `missing target ${name}`);
   }
-  assert.equal(envelope.data.targets.web.hasPlaywright, true);
+  assert.equal(typeof envelope.data.targets.web.hasPlaywright, "boolean");
 });
 
 test("usage: an unknown command is a usage error (exit 2)", async () => {
@@ -63,6 +67,11 @@ test("usage: an unknown command is a usage error (exit 2)", async () => {
 });
 
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
+  const targets = parse(await cli(["targets", "--json"]));
+  if (!targets.data.targets.web.hasPlaywright) {
+    t.skip("playwright-cli is not installed");
+    return;
+  }
   const port = process.env.AN3_TEST_PORT ?? "8097";
   const started = parse(await cli(["app", "start", "--target", "web", "--port", port, "--json"]));
   if (!started.ok) {

@@ -25,6 +25,10 @@ SNAPSHOT="${AN3_PUBLICATION_CANDIDATE:-$ROOT/work/public-snapshot}"
 CONFIRMED=0
 ADOPT_REMOTE=0
 BRANCH=""
+BASE_BRANCH="main"
+CREATE_PR=1
+USE_PREBUILT_SNAPSHOT=0
+COMMIT_SUBJECT="Update clean public source snapshot"
 
 usage() {
   cat <<'USAGE'
@@ -32,7 +36,11 @@ Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
 
   --confirm        required; acknowledge that this publishes publicly
   --adopt-remote   merge an existing remote main into the snapshot (no force-push)
-  --branch NAME    publish one clean snapshot commit on NAME and open a PR to main
+  --branch NAME    publish one clean snapshot commit on NAME
+  --base NAME      base branch for a new review branch (default: main)
+  --no-pr           push a review branch without opening or editing a PR
+  --prebuilt        publish the already-built and scanned snapshot at --snapshot
+  --message TITLE   public commit title (default: Update clean public source snapshot)
   --repo OWNER/NAME  default: huou07/vibe-coded-emulator
   --snapshot DIR     default: work/public-snapshot
   -h, --help       show this help
@@ -46,6 +54,10 @@ while [[ $# -gt 0 ]]; do
     --confirm) CONFIRMED=1; shift ;;
     --adopt-remote) ADOPT_REMOTE=1; shift ;;
     --branch) [[ -n "${2:-}" ]] || { printf 'ERROR: --branch needs a name\n' >&2; exit 2; }; BRANCH="$2"; shift 2 ;;
+    --base) [[ -n "${2:-}" ]] || { printf 'ERROR: --base needs a branch name\n' >&2; exit 2; }; BASE_BRANCH="$2"; shift 2 ;;
+    --no-pr) CREATE_PR=0; shift ;;
+    --prebuilt) USE_PREBUILT_SNAPSHOT=1; shift ;;
+    --message) [[ -n "${2:-}" ]] || { printf 'ERROR: --message needs a title\n' >&2; exit 2; }; COMMIT_SUBJECT="$2"; shift 2 ;;
     --repo) [[ -n "${2:-}" ]] || { printf 'ERROR: --repo needs OWNER/NAME\n' >&2; exit 2; }; REPO="$2"; shift 2 ;;
     --snapshot) [[ -n "${2:-}" ]] || { printf 'ERROR: --snapshot needs a directory\n' >&2; exit 2; }; SNAPSHOT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -62,6 +74,12 @@ step() { printf '\n== %s\n' "$*"; }
 if [[ -n "$BRANCH" && ( ! "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ || "$BRANCH" == *..* || "$BRANCH" == */ ) ]]; then
   die "invalid branch name"
 fi
+if [[ ! "$BASE_BRANCH" =~ ^[A-Za-z0-9._/-]+$ || "$BASE_BRANCH" == *..* || "$BASE_BRANCH" == */ ]]; then
+  die "invalid base branch name"
+fi
+if [[ "$CREATE_PR" -eq 0 && -z "$BRANCH" ]]; then
+  die "--no-pr requires --branch"
+fi
 command -v git >/dev/null || die "git is required"
 command -v python3 >/dev/null || die "python3 is required"
 
@@ -71,7 +89,12 @@ AUTHOR_NAME="${AN3_PUBLIC_AUTHOR_NAME:-$OWNER}"
 AUTHOR_EMAIL="${AN3_PUBLIC_AUTHOR_EMAIL:-${OWNER}@users.noreply.github.com}"
 
 step "1/7 build the sanitized snapshot"
-"$ROOT/tools/build-public-snapshot.sh" "$SNAPSHOT" >/dev/null
+if [[ "$USE_PREBUILT_SNAPSHOT" -eq 0 ]]; then
+  "$ROOT/tools/build-public-snapshot.sh" "$SNAPSHOT" >/dev/null
+else
+  [[ -d "$SNAPSHOT" ]] || die "prebuilt snapshot is missing: $SNAPSHOT"
+  note "using prebuilt snapshot: $SNAPSHOT"
+fi
 
 step "2/7 security gate (fail closed)"
 AN3_PUBLICATION_CANDIDATE="$SNAPSHOT" "$ROOT/tools/publication-check.sh" "$SNAPSHOT"
@@ -101,16 +124,21 @@ fi
 if gh repo view "$REPO" >/dev/null 2>&1; then
   note "repository exists: $REPO"
 else
+  [[ -z "$BRANCH" ]] || die "review-branch publication requires the existing repository $REPO"
   gh repo create "$REPO" --public --description \
     "Open-source, cross-platform emulator with native apps, offline play, and local game libraries." \
     >/dev/null
   note "created: $REPO"
 fi
-gh repo edit "$REPO" \
-  --description "Open-source, cross-platform emulator with native apps, offline play, and local game libraries." \
-  --add-topic emulator --add-topic gba --add-topic nds --add-topic nintendo-3ds \
-  --add-topic tauri --add-topic rust --add-topic python --add-topic vulkan \
-  --add-topic webassembly --add-topic gplv3 >/dev/null 2>&1 || note "topics/description: partially applied"
+if [[ -z "$BRANCH" ]]; then
+  gh repo edit "$REPO" \
+    --description "Open-source, cross-platform emulator with native apps, offline play, and local game libraries." \
+    --add-topic emulator --add-topic gba --add-topic nds --add-topic nintendo-3ds \
+    --add-topic tauri --add-topic rust --add-topic python --add-topic vulkan \
+    --add-topic webassembly --add-topic gplv3 >/dev/null 2>&1 || note "topics/description: partially applied"
+else
+  note "repository description, topics, and settings left unchanged for review-branch publication"
+fi
 
 step "5/7 push main (no force)"
 git -C "$SNAPSHOT" remote remove origin 2>/dev/null || true
@@ -130,12 +158,18 @@ git -C "$SNAPSHOT" remote add origin "$REMOTE"
 
 if [[ -n "$BRANCH" ]]; then
   SNAPSHOT_COMMIT="$(git -C "$SNAPSHOT" rev-parse HEAD)"
-  git -C "$SNAPSHOT" fetch -q origin main || die "could not fetch origin/main for the review branch"
+  git -C "$SNAPSHOT" fetch -q origin \
+    "refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH" \
+    || die "could not fetch origin/$BASE_BRANCH for the review branch"
   if git -C "$SNAPSHOT" ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-    git -C "$SNAPSHOT" fetch -q origin "$BRANCH" || die "could not fetch the existing review branch"
+    git -C "$SNAPSHOT" fetch -q origin \
+      "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" \
+      || die "could not fetch the existing review branch"
     git -C "$SNAPSHOT" checkout -q -b "$BRANCH" "origin/$BRANCH"
+    git -C "$SNAPSHOT" merge-base --is-ancestor "origin/$BASE_BRANCH" "origin/$BRANCH" \
+      || die "existing review branch is not based on origin/$BASE_BRANCH"
   else
-    git -C "$SNAPSHOT" checkout -q -b "$BRANCH" origin/main
+    git -C "$SNAPSHOT" checkout -q -b "$BRANCH" "origin/$BASE_BRANCH"
   fi
   # Overlay the clean candidate on current public source. Files omitted by the
   # curated snapshot remain intact on main; the development history is never
@@ -147,9 +181,15 @@ if [[ -n "$BRANCH" ]]; then
   fi
   git -C "$SNAPSHOT" \
     -c user.name="$AUTHOR_NAME" -c user.email="$AUTHOR_EMAIL" \
-    commit -q -m "Update clean public source snapshot" \
+    commit -q -m "$COMMIT_SUBJECT" \
     -m "Curated source snapshot exported without private development history. See PROVENANCE.md."
   git -C "$SNAPSHOT" push -u origin "$BRANCH"
+  if [[ "$CREATE_PR" -eq 0 ]]; then
+    step "7/7 review branch pushed"
+    note "branch: $BRANCH"
+    note "base: $BASE_BRANCH"
+    exit 0
+  fi
   pr_body="$(mktemp -t an3-pr-body.XXXXXX)"
   trap 'rm -f "${pr_body:-}"' EXIT
   cat > "$pr_body" <<'BODY'
@@ -168,7 +208,7 @@ BODY
     gh pr edit --repo "$REPO" "$PR_URL" --body-file "$pr_body" \
       || die "branch was pushed, but pull request update failed"
   else
-    PR_URL="$(gh pr create --repo "$REPO" --base main --head "$BRANCH" \
+    PR_URL="$(gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
       --title "Add local build storage preflight guards" --body-file "$pr_body")" \
       || die "branch was pushed, but pull request creation failed"
   fi
