@@ -42,7 +42,16 @@ and what is already implemented so completed work is not repeated.
   - `auth` (phone→host, counter 0) — proves the code/token by AEAD success.
   - `ready` (host→phone) — `{"k":"ready","token":"<b64 32B|null>","system":"gba"}`; the
     host issues a new token and invalidates the code on first pairing.
-  - `state` (phone→host) — `{"k":"state","s":seq,"b":[names],"a":[lx,ly,rx,ry],"t":[x,y]?}`.
+  - `state` (phone→host) — `{"k":"state","s":seq,"b":[names],"a":[lx,ly,rx,ry],"t":[x,y]?}`,
+    plus an optional one-shot utility list
+    `"u":[{"action":"QUICK_SAVE"|"SPEED_UP"|"SPEED_DOWN"|"OPEN_MENU","sequence":N}]`.
+    Actions are the canonical ids from
+    `native-offline/shared/input-actions-schema.json` with a per-press
+    sequence, dispatched once through the shared host sink; an unsupported
+    action advances nothing and a retried frame never re-runs. Implemented in
+    `lan_host.rs::apply_state` (`dispatch_utilities` over the `u` array) and
+    covered by the direct-transport integration test (canonical
+    `QUICK_SAVE`, retry ignored).
   - `ack` (host→phone) — `{"k":"ack","s":seq,"inputActive":bool,"system":"gba"}`.
 - Security properties: encryption + authentication via standard primitives
   (p256 ECDH, HKDF-SHA256, AES-256-GCM). Pairing is local-network only,
