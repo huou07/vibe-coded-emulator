@@ -1,0 +1,3 @@
+
+(an3-offline-native:3833920): dbind-WARNING **: 23:40:50.539: AT-SPI: Error retrieving accessibility bus address: org.freedesktop.DBus.Error.ServiceUnknown: The name org.a11y.Bus was not provided by any .service files
+an3-ui-control listening on 127.0.0.1:33519

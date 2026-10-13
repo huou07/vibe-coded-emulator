@@ -1,0 +1,21 @@
+{
+  "status": {
+    "disabled": false,
+    "role": null,
+    "state": "running",
+    "tag": "small",
+    "testid": "native-status",
+    "text": "Native game window opened. Menu: F2 \u00b7 Pad: F3 \u00b7 Next Layout: F1",
+    "visible": false
+  },
+  "nativeDiagnostics": {
+    "presentedFrames": 0,
+    "running": true
+  },
+  "focusedSdlWindow": "8388610",
+  "keyboardAction": "x key-down held 1s, then key-up",
+  "screenshots": [
+    "gba-x-released.png",
+    "gba-x-held.png"
+  ]
+}

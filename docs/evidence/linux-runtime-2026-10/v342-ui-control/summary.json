@@ -1,0 +1,90 @@
+{
+  "candidate": "vce-342-candidate/vibecodedemulator-3.4.2-linux-amd64.deb",
+  "candidateSha256": "93ae37d7ede0008f3ce587a2d8e06e73e547215efc2d5d92595e536af697998c",
+  "fixtureSha256": "28ce2a0220d178e4f79b8ae93a0a0aa1316e442f5979edfbeb837af7fa0d61bc",
+  "testBinarySha256": "a7b42ed0116d2e37224f6cda58eb4f04bdf4234065f271716d1252340ab3357b",
+  "bridgeDiag": {
+    "body": 18362,
+    "detect": "{\"ok\":true,\"available\":true,\"detail\":\"Switch companion is available\",\"path\":\"/home/huou07/vce-342-linux-ui-acceptance/root/usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion\"}",
+    "hasRerender": "function",
+    "hasSwitchApi": true,
+    "href": "http://127.0.0.1:38471/",
+    "ready": "complete",
+    "systems": "gba,nds,3ds,switch",
+    "testids": 26,
+    "title": "Vibe Coded Emulator"
+  },
+  "gameGrid": {
+    "disabled": false,
+    "role": null,
+    "state": null,
+    "tag": "div",
+    "testid": "game-grid",
+    "text": "No games on this device.Use Add ROM to store one on this device.",
+    "visible": false
+  },
+  "emptyLibraryCard": null,
+  "gbaCard": {
+    "disabled": false,
+    "role": null,
+    "state": null,
+    "tag": "article",
+    "testid": "game-card",
+    "text": "Game Boy Advancefixture1 KBPlay GBA nativeNative GBA runs inside VibeCodedEmulator. Press Esc or Menu \u2192 Return to library to exit.Download fileRemove",
+    "visible": false
+  },
+  "launchControl": {
+    "disabled": false,
+    "role": null,
+    "state": null,
+    "tag": "button",
+    "testid": "game-launch",
+    "text": "Play GBA native",
+    "visible": false
+  },
+  "nativeStatus": {
+    "disabled": false,
+    "role": null,
+    "state": "running",
+    "tag": "small",
+    "testid": "native-status",
+    "text": "Native game window opened. Menu: F2 \u00b7 Pad: F3 \u00b7 Next Layout: F1",
+    "visible": false
+  },
+  "nativeDiagnosticsAtLaunch": {
+    "presentedFrames": 0,
+    "running": true
+  },
+  "nativeStatusAfter3s": {
+    "disabled": false,
+    "role": null,
+    "state": "running",
+    "tag": "small",
+    "testid": "native-status",
+    "text": "Native game window opened. Menu: F2 \u00b7 Pad: F3 \u00b7 Next Layout: F1",
+    "visible": false
+  },
+  "nativeDiagnosticsAfter3s": {
+    "presentedFrames": 0,
+    "running": true
+  },
+  "visibleWindows": [
+    {
+      "id": "4194307",
+      "name": "VibeCodedEmulator",
+      "geometry": "WINDOW=4194307 X=2 Y=40 WIDTH=1278 HEIGHT=795 SCREEN=0"
+    },
+    {
+      "id": "8388610",
+      "name": "VibeCodedEmulator",
+      "geometry": "WINDOW=8388610 X=2 Y=90 WIDTH=1280 HEIGHT=720 SCREEN=0"
+    },
+    {
+      "id": "12582915",
+      "name": "VibeCodedEmulator Controls",
+      "geometry": "WINDOW=12582915 X=2 Y=40 WIDTH=849 HEIGHT=620 SCREEN=0"
+    }
+  ],
+  "runtimeEvidence": "Linux control bridge reports running; presented-frame counter is platform-unavailable (0 on non-macOS).",
+  "profile": "/home/huou07/vce-342-linux-ui-acceptance/profile"
+}

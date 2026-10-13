@@ -1,0 +1,1 @@
+{"documented_quit_exit_code": 0, "first_core_present_frames": 120, "fixture_sha256": "88d9484604729ad05cecb06a5666c8123158a320b90ae78f7d1503a940fea430", "frame_drops": 0, "frame_status_lines_during_pause": 0, "next_core_present_frames": 240, "pause_ack": true, "paused_seconds": 2.5, "renderer_ready": "vulkan", "resume_ack": true, "verdict": "PASS"}

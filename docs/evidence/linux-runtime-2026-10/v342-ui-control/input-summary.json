@@ -1,0 +1,25 @@
+{
+  "candidateSha256": "93ae37d7ede0008f3ce587a2d8e06e73e547215efc2d5d92595e536af697998c",
+  "testBinarySha256": "a7b42ed0116d2e37224f6cda58eb4f04bdf4234065f271716d1252340ab3357b",
+  "fixtureSha256": "28ce2a0220d178e4f79b8ae93a0a0aa1316e442f5979edfbeb837af7fa0d61bc",
+  "appStatus": {
+    "disabled": false,
+    "role": null,
+    "state": "running",
+    "tag": "small",
+    "testid": "native-status",
+    "text": "Native game window opened. Menu: F2 \u00b7 Pad: F3 \u00b7 Next Layout: F1",
+    "visible": false
+  },
+  "nativeDiagnostics": {
+    "presentedFrames": 0,
+    "running": true
+  },
+  "focusedSdlWindow": "8388610",
+  "keyboardAction": "z key-down held 1s, then key-up",
+  "screenshots": [
+    "/home/huou07/vce-342-linux-ui-acceptance/gba-z-released.png",
+    "/home/huou07/vce-342-linux-ui-acceptance/gba-z-held.png"
+  ],
+  "audio": "SDL dummy backend; real audio unverified"
+}
