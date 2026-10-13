@@ -1,9 +1,10 @@
 # Linux runtime acceptance evidence (2026-10)
 
-Curated from operator-home acceptance runs that were archived out of
-`/home/huou07` on 2026-10-13. The full run trees are preserved as zstd tarballs
-under `/home/agents-worker/vce-scratch-archive/evidence/`; only the durable
-artifacts are tracked here.
+Curated from operator-home acceptance runs that were archived out of the
+operator's home directory on 2026-10-13. The full run trees are preserved as
+zstd tarballs in the operator scratch archive; only the durable artifacts are
+tracked here. The archive location is deliberately not recorded in this
+repository.
 
 ## v342-ui-control — v3.4.2 Linux UI control acceptance
 
@@ -45,5 +46,5 @@ paused-control probes from that soak run.
 - The only files tar could not read were root-owned Mesa shader caches, which
   carry no evidentiary value.
 
-See `docs/checkpoints/home-scratch-cleanup.md` for how this archive was
-produced and how to restore from it.
+See `docs/archive/checkpoint-home-scratch-cleanup.md` for how this archive
+was produced and how to restore from it.

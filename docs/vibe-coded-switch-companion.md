@@ -1,8 +1,14 @@
-# Vibe Coded Emulator — Nintendo Switch companion design (draft for sign-off)
+# Vibe Coded Emulator — Nintendo Switch companion design
 
-Status: **design note only. No Switch code is integrated.** `NativeSystem` is
-unchanged. This resolves the architecture, licensing, and safety questions so a
-first companion phase can be approved explicitly.
+Status: **superseded as a status source.** This note settled the architecture,
+licensing and safety questions. The companion has since been implemented —
+`native-offline/src-tauri/src/switch_companion.rs` and the out-of-process bridge
+in `native/eden-bridge/`. For what is true today, read
+[`checkpoints/eden-native-integration.md`](checkpoints/eden-native-integration.md)
+and `docs/REGRESSION_GUARDS.md` (RG-141, RG-148).
+
+`NativeSystem` is unchanged; the companion stays behind its own abstraction and
+a separate process for the GPLv3 isolation recorded below.
 
 Date: 2026-09-16. Owner decision already recorded: GPLv3 is acceptable; Switch
 must sit behind its own abstraction, separate from `NativeSystem`.
@@ -72,7 +78,7 @@ stays untouched.
 
 ## 5. Platform phasing
 
-1. **Phase 0 — sign-off (this note).** No code.
+1. **Phase 0 — sign-off (this note).** Completed; Phase 1 and later shipped.
 2. **Phase 1 — one desktop platform** (Linux via the Dell builder, or Windows
    via the VM): download/pin a verified Eden build, add the launcher +
    `CompanionSystem`, and produce a launch smoke with a legal homebrew NRO:

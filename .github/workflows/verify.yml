@@ -10,6 +10,11 @@
 # this file is not published.
 name: verify
 
+# GitHub Actions is the build and test authority for VCE. The private-repository
+# gate below mirrors tools/verify-project.sh exactly, so a green run here means
+# the local gate would also pass. Cross-platform packaging lives in the release
+# train on its dedicated builders, not here.
+
 on:
   push:
     branches:
@@ -29,6 +34,7 @@ jobs:
   project-verify:
     name: Project verify gate
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -48,10 +54,13 @@ jobs:
         run: npm ci
       - name: Run tools/verify-project.sh
         run: bash tools/verify-project.sh
+      - name: Confirm the gate left the tree clean
+        run: git diff --exit-code
 
   publication-gate:
     name: Publication gate (fail closed)
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

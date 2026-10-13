@@ -8,14 +8,19 @@
 | Staging LAN | `http://192.168.1.8:8092` | `an3-arcade-staging.service`; `/opt/an3-arcade-staging/current`; `/srv/an3-arcade-staging` |
 | Public | `https://an3tocom.space` | Cloudflare Tunnel to production only |
 
-The current accepted production and staging asset is `46a5125abb00`. The P3 release provenance is recorded in `<legacy-checkout>/reports/handoff/02-p3-operational-ux-and-automation-2026-08-23.md`; the P3 dirty-tree decision is recorded in `<legacy-checkout>/reports/p3/00-repo-reconciliation.md`.
+The accepted production and staging asset is whatever the running service
+reports at `/health`; confirm it live before acting on this document. The
+published installer inventory is `native-offline/releases/catalog.json` and the
+source revision is Git. Large per-run capture reports are not kept in this
+repository, so this document cites the catalog and Git rather than a report
+file.
 
 ## Safety rules
 
 - Begin any production consideration with the latest handoff, `git status --short --branch`, `git rev-parse HEAD`, `git diff --check`, read-only health checks, and the exact staged source boundary.
 - Never destructive-clean the intentional dirty worktree. Do not use `git reset --hard`, `git clean -fdx`, or broad checkout.
 - Never write passwords, tokens, cookies, pepper values, production user records, device identifiers, or SSH credentials into reports, commands, commits, or documentation.
-- For staging SSH, use only the verified key/agent control path in `<legacy-checkout>/tools/ssh/README.md`. It must run with password authentication disabled and `StrictHostKeyChecking=yes`.
+- For staging SSH, use only the verified key/agent control path in `tools/ssh/README.md`. It must run with password authentication disabled and `StrictHostKeyChecking=yes`.
 - Use SQLite Online Backup for backups/snapshots; never raw-copy a live WAL database.
 - Production deploy, Cloudflare/tunnel change, production data change, destructive batch operation, and migration each require separate explicit owner approval.
 

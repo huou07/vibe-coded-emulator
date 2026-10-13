@@ -71,9 +71,10 @@ Mỗi thư mục con bên trong `ai-content/` tương ứng một game.
 
 Ảnh đề xuất phải là PNG, JPEG hoặc WebP. Đừng dùng thumbnail YouTube thay cho cover hoặc screenshot.
 
-## Script `tools/upload_ai_proposals.py`
+## Script upload
 
-Script dưới đây dùng thư viện `requests`. Nó không gọi endpoint duyệt proposal.
+Script dưới đây dùng thư viện `requests` và được lưu **ngoài repository** (nó
+chứa thông tin nội bộ của proposal). Nó không gọi endpoint duyệt proposal.
 
 ```python
 #!/usr/bin/env python3

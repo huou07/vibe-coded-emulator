@@ -55,3 +55,17 @@ native-offline/releases/*.dmg
 native-offline/releases/*.flatpak
 native-offline/releases/*.exe
 native-offline/releases/*.idsig
+
+# Cloud credential directories must never be committed from a workstation
+.aws/
+**/.aws/
+.azure/
+.gcloud/
+
+# Editor and merge residue
+*.orig
+*.rej
+*.bak
+*~
+.idea/
+.vscode/

@@ -1,4 +1,34 @@
-# AN3 Arcade regression guards
+# Vibe Coded Emulator — regression guards
+
+Status: **current.** This is the durable cross-platform guard ledger.
+
+How to read it:
+
+- The **numbered `RG-###` guards** are live. They state why a behaviour is
+  protected, what owns it, and what evidence is allowed to call it `GOOD`.
+  Newest guards are added at the top; the ledger is never rewritten.
+- The **dated `## Current authority — ...` narrative sections** are the
+  historical acceptance record for the release train they are named after.
+  They are kept because they explain *why* a guard exists. Read them as history,
+  not as the current deployment state — the current state is the deployed
+  service, `native-offline/releases/catalog.json`, and Git.
+- Per-run capture reports are **not** stored in this repository. A section that
+  says so is recording that the live evidence existed, not inviting you to open
+  a file. New evidence worth keeping goes under `docs/evidence/`.
+
+Status vocabulary, used literally throughout:
+
+| Word | Meaning |
+| --- | --- |
+| `GOOD` | The listed automated and live runtime evidence is current. |
+| `UNVERIFIED` | The implementation exists; the required live check is absent. |
+| `KNOWN LIMITATION` | Reproduced and not claimed fixed. |
+| `PENDING` | A targeted fix awaits the next staging smoke. |
+
+Source contracts are necessary but never sufficient for interactive behaviour.
+A feature is not `GOOD` until its matching behavioural and live acceptance
+checks pass.
+
 
 ## Local package builds preserve a 25 GiB disk reserve
 
@@ -460,7 +490,7 @@ The owner's architecture correction supersedes earlier Android WebView gameplay 
 
 - RG-066: Native Vulkan software blit uses IDENTITY transform and compositor rotation, with an explicit unsupported-transform failure instead of sideways/stretching output. **PASS** final portrait → landscape → portrait NDS runtime remained upright and unstretched; the persisted-layout touch result is separately accepted under RG-062.
 
-Evidence: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P5_NATIVE_MIGRATION_20260910.md
+Capture: per-run report from that release train, not retained in this repository.
 
 ## Current authority — P3 completion, 2026-09-09
 
@@ -470,19 +500,7 @@ P3 COMPLETE. Final staging e9cca6502858 adds renderer choice and safe diagnostic
 - RG-055: copied diagnostics use named scalar fields only, preserve null/zero and sanitize fallback reasons to fixed text. Never serialize arbitrary session/renderer data, raw exceptions, private paths, cookies or ROM contents. Owner player-runtime.js/player.js; adversarial privacy test and live Copied result PASS.
 - RG-056: player CSS must be pathname-versioned and included in immutable route allowlist and offline shell. Older query-insensitive service workers served stale CSS and clipped new controls. Owner app.py/service-worker.js; exact-byte route test and previously stale-origin live grid/overflow check PASS.
 
-Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P3_20260909.md
-
-This is the durable cross-platform regression ledger for the packaged native
-app, the browser player, and the offline shell. It records why a behavior is
-protected, how it failed, what fixed it, and what evidence is allowed to call
-it good. Source contracts are necessary but never sufficient for interactive
-behavior: a feature is not `GOOD` until its matching behavioral and live
-acceptance checks pass.
-
-Status vocabulary: `GOOD` means the listed automated and runtime evidence is
-current; `UNVERIFIED` means the implementation exists but the required live
-check is absent; `KNOWN LIMITATION` means the limitation is reproduced and not
-claimed fixed; `PENDING` means a targeted fix awaits the next staging smoke.
+Report: per-run report from that release train, not retained in this repository.
 
 ## Current authority — release train P2, 2026-09-09T14:45:14+07:00
 
@@ -493,7 +511,7 @@ P2 is **COMPLETE** under the permitted insufficient-evidence classification afte
 - Matched Mac New Game samples: WebGPU core 60.0001/presentation 60.0799 FPS; WebGL2 core 60.0143/presentation 59.9713 FPS. Both have zero dropped/replaced/skipped frames and sub-millisecond capture/render percentiles at 2560x1212, DPR2.
 - Final staging asset af16e551490f has four-file source/served SHA-256 parity and a live explicit-WebGL2 telemetry smoke. 93 Python/9 Node tests PASS. The AVD host-GPU run showed core about38.5 FPS and presentation about60 FPS with inexpensive capture/render, but both source and presentation were black; WebGPU requestAdapter failed with correct WebGL2 fallback. SwiftShader stalled at completed startup. Classification is insufficient evidence for Redmi/visible gameplay, with a scoped virtual DEVICE/CPU/WASM signal only. No performance optimization was made. Production untouched.
 
-Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P2_20260909.md
+Report: per-run report from that release train, not retained in this repository.
 
 ## Current authority — P1 completion, 2026-09-09T09:29:59+07:00
 
@@ -506,7 +524,7 @@ P1 **COMPLETE**; overall release readiness is not declared CLEAN. This supersede
 - Settings open/close, pointer-inert presentation/source ownership and fullscreen resize smoke PASS. Fresh physical Redmi, full audio/save/latency/layout/orientation matrix remains UNVERIFIED. Owner-confirmed prior Redmi tap/drag/gameplay evidence retained.
 -93 Python/8 Node tests and syntax/native/diff checks PASS; four JS hash parity PASS; staging asset11290264c01d. Production untouched. No new application edits in resumed acceptance.
 
-Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P1_20260909_COMPLETION.md
+Report: per-run report from that release train, not retained in this repository.
 
 ## Current authority — release train P1, 2026-09-08T16:32:16+07:00
 
@@ -519,8 +537,8 @@ P1 and overall release readiness: **BLOCKED**. This section supersedes the histo
 - RG-015/RG-017/RG-033/RG-043/RG-044/RG-048: preserve prior owner-confirmed Redmi Chrome tap/drag/gameplay response PASS. DEVICE_CONNECTED=no during P1 prevents fresh device verification and does not revoke that owner evidence.
 - Baseline 91 Python PASS; after changes 93 Python PASS including renderer behavior wrapper, direct Node touch plus renderer 8 PASS, syntax/diff/native build checks PASS.
 
-Detailed current report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P1_20260908.md
-Evidence: <legacy-checkout>/reports/staging/p1-20260908
+Captures: per-run reports and staging captures from 2026-09-08, not retained in this
+repository. The asset hashes quoted in this section remain the durable record.
 
 ### Additional P1 guards
 
@@ -808,7 +826,7 @@ Update (2026-09-18, same physical Redmi `25057RN09G`, Adreno 619, driver 0762.40
 
 - `VkPresentInfoKHR::pWaitSemaphores` must use a semaphore associated with the acquired swapchain image, not a frame-in-flight slot. A `vkQueueSubmit` fence does not prove the presentation engine consumed its wait semaphore; reusing the frame-slot semaphore can therefore violate Vulkan synchronization and hang or corrupt presentation on physical drivers.
 - The beta fix is commit `1731316a6fba190eca1967cd5dcc66a214eb3aef` on `codex/vce-optional-features-beta`: both portable desktop and macOS Vulkan presenters allocate one `render_finished` semaphore per swapchain image and select it using the acquired image index. Their libretro sync index is constrained to its advertised mask. The packaged Windows 3DS smoke now requires continuing core/present counters across multiple intervals and repeated input transitions.
-- Focused validation on the beta worktree: 111 tests passed, 5 skipped; Python smoke syntax checks and `git diff --check` passed. Hosted Windows package run `38117097243` built an unsigned x64 installer from `dd1cbc40ac854dbdc087f0c8657ee746de69909f`; packaged shell/GBA and NDS checks passed on that artifact. The first 3DS smoke failure was a missing release edge in the test sequence, corrected in review-only commit `756a659f0f9d04649f264e12e41db4b07f266266` (only `tests/windows_packaged_3ds_smoke.py` changed). Its exact-SHA artifact-reuse run `38120522197` still failed: SwiftShader reported core/presentation counters through 1,406 frames, then no further progress; release input command 2 was acknowledged only at shutdown, after the 10-second smoke wait expired. Diagnostic log and screenshots are artifact `windows-packaged-3ds-diagnostics` (ID `11695516123`). This is a hosted software-Vulkan freeze/responsiveness failure after input, so the P0 remains open. It is not a harness-only failure and cannot be waived by the earlier first-frame result. Physical Windows GPU acceptance remains **UNVERIFIED**. Upstream's exact pinned core source waits in `PresentWindow::GetRenderFrame()` on the frontend's `wait_sync_index` callback before selecting its frame; libretro specifies that callback must wait for frontend activity on the current sync index before the core may reuse that image ([Azahar 2126.1.2 source](https://github.com/azahar-emu/azahar/blob/9e6f523a57fac9564ac0bf8286db3c3702d301ec/src/citra_libretro/libretro_vk.cpp), [libretro Vulkan contract](https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro_vulkan.h)). Both `UINT64_MAX` fence/acquire waits in VCE and the void callback's no-timeout contract need safe session-level containment; returning early from the callback is not safe. The Vulkan rule follows the [Khronos Vulkan Guide on swapchain semaphore reuse](https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/swapchain_semaphore_reuse.adoc).
+- Focused validation on the beta worktree: 111 tests passed, 5 skipped; Python smoke syntax checks and `git diff --check` passed. Hosted Windows package run `38117097243` built an unsigned x64 installer from `dd1cbc40ac854dbdc087f0c8657ee746de69909f`; packaged shell/GBA and NDS checks passed on that artifact. The first 3DS smoke failure was a missing release edge in the test sequence, corrected in review-only commit `756a659f0f9d04649f264e12e41db4b07f266266` (only the Windows 3DS packaged smoke changed). Its exact-SHA artifact-reuse run `38120522197` still failed: SwiftShader reported core/presentation counters through 1,406 frames, then no further progress; release input command 2 was acknowledged only at shutdown, after the 10-second smoke wait expired. Diagnostic log and screenshots are artifact `windows-packaged-3ds-diagnostics` (ID `11695516123`). This is a hosted software-Vulkan freeze/responsiveness failure after input, so the P0 remains open. It is not a harness-only failure and cannot be waived by the earlier first-frame result. Physical Windows GPU acceptance remains **UNVERIFIED**. Upstream's exact pinned core source waits in `PresentWindow::GetRenderFrame()` on the frontend's `wait_sync_index` callback before selecting its frame; libretro specifies that callback must wait for frontend activity on the current sync index before the core may reuse that image ([Azahar 2126.1.2 source](https://github.com/azahar-emu/azahar/blob/9e6f523a57fac9564ac0bf8286db3c3702d301ec/src/citra_libretro/libretro_vk.cpp), [libretro Vulkan contract](https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro_vulkan.h)). Both `UINT64_MAX` fence/acquire waits in VCE and the void callback's no-timeout contract need safe session-level containment; returning early from the callback is not safe. The Vulkan rule follows the [Khronos Vulkan Guide on swapchain semaphore reuse](https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/swapchain_semaphore_reuse.adoc).
 
 ## RG-146 — Native large-ROM import reports real progress and hashes during copy (2026-10-11)
 
@@ -819,7 +837,7 @@ Update (2026-09-18, same physical Redmi `25057RN09G`, Adreno 619, driver 0762.40
 ## RG-147 — Windows release shell does not create a console window (2026-10-11)
 
 - The Tauri shell executable must use the Windows GUI subsystem in release builds so launching the installed app does not create a CMD window. Keep debug builds attached to a console for diagnostics. The SDL child continues to hide its own console with `CREATE_NO_WINDOW`.
-- The 3.6.9 private branch applies the conditional subsystem attribute in `native-offline/src-tauri/src/main.rs` and adds a source guard in `tests/test_windows_runtime_smoke.py`.
+- The 3.6.9 private branch applies the conditional subsystem attribute in `native-offline/src-tauri/src/main.rs` and adds a source guard in `tests/test_regression_invariants.py`.
 - Source assertion and Python syntax validation pass. PE subsystem inspection and exact packaged launch acceptance remain **UNVERIFIED** until the updated Windows artifact is built and launched.
 ## Switch/Eden experimental OFF lifecycle — RG-148, 2026-10-11
 

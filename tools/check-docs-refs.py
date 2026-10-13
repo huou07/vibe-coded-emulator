@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Fail when the documentation points at something the repository does not have.
+
+Two failure classes, both real:
+
+1. A path reference that does not resolve in the tracked tree. This is how a
+   document ends up citing a per-run report that only ever existed on one
+   machine, or an absolute path from a retired workstation.
+2. An absolute path into somebody's home directory. Those never resolve on a
+   different host and they leak a person's directory layout into a public
+   snapshot.
+
+Existence is decided against ``git ls-files``, so a sparse checkout does not
+make a tracked file look missing and an untracked scratch file does not make a
+tracked file look present.
+
+``docs/archive/`` is skipped on purpose: archived documents are historical
+records that are deliberately not maintained. Rewriting them would destroy the
+only record of why a decision was taken.
+
+Exit status: 0 clean, 1 findings, 2 the check could not run (fail closed).
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+ARCHIVE_PREFIX = "docs/archive/"
+
+# Documentation roots. Anything else in the tree is product source, not prose.
+DOC_GLOBS = ("*.md", "docs/**/*.md", "tools/**/*.md", "deploy/**/*.md",
+             "native-offline/**/*.md", "rust-gateway/**/*.md", "native/**/*.md")
+
+# A backticked token is treated as a path reference when it looks like one.
+PATH_TOKEN = re.compile(
+    r"`([^`\n]+?)`",
+)
+PATHISH = re.compile(
+    r"^[A-Za-z0-9_./@+-]+$",            # no spaces or shell metacharacters
+)
+PLACEHOLDER = re.compile(r"[*?${}<>|]")
+MD_LINK = re.compile(r"\]\(([^)\s]+)")
+# Directories at the top of a path reference, to avoid matching bare words like
+# `core` or a code identifier that happens to contain a slash-free name.
+KNOWN_ROOTS = frozenset("""
+AGENTS.md LICENSE README.md THIRD_PARTY_NOTICES.md LICENSE.txt
+app.py netcode.py qrcodegen.py sync_engine.py
+data deploy docs native native-offline reports rust-gateway static tests tools work
+""".split())
+
+
+def tracked_files() -> set[str]:
+    """Tracked files plus every tracked directory prefix.
+
+    A document may legitimately name a directory (``native-offline/scripts/``).
+    Git lists files, not directories, so the directory prefixes are derived here
+    so that naming a directory is not reported as a missing path.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files"], cwd=ROOT, check=True,
+            capture_output=True, text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"check-docs-refs: cannot list tracked files: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    files = {line.strip() for line in out.splitlines() if line.strip()}
+    prefixes: set[str] = set()
+    for name in files:
+        parts = name.split("/")
+        for depth in range(1, len(parts)):
+            prefixes.add("/".join(parts[:depth]))
+    return files | prefixes
+
+
+def ignored_paths() -> list[str]:
+    """Paths the project deliberately keeps out of Git.
+
+    A documented path that ``.gitignore`` excludes is an intentional decision,
+    not a dangling reference — ``data/`` holds runtime state that must never be
+    versioned, and a document is allowed to say so.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--ignored=matching"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+    except OSError:
+        return []
+    ignored: list[str] = []
+    for line in result.stdout.splitlines():
+        if "!!" in line:
+            ignored.append(line.split("!!", 1)[1].strip().rstrip("/"))
+    return ignored
+
+
+def doc_files() -> list[Path]:
+    seen: dict[Path, None] = {}
+    for pattern in DOC_GLOBS:
+        for path in ROOT.glob(pattern):
+            if path.is_file():
+                seen.setdefault(path.relative_to(ROOT).as_posix(), None)
+    return sorted(ROOT / p for p in seen)
+
+
+def top_segment(token: str) -> str:
+    return token.split("/", 1)[0]
+
+
+def check_absolute(line_no: int, doc: str, token: str, findings: list[str]) -> None:
+    if token.startswith("/Users/") or token.startswith("/home/") or token.startswith("~"):
+        findings.append(
+            f"{doc}:{line_no}: absolute personal path {token!r} — use a "
+            f"repository-relative path or a named environment variable"
+        )
+
+
+def check_repo_relative(line_no: int, doc: str, token: str,
+                        tracked: set[str], ignored: set[str],
+                        findings: list[str]) -> None:
+    if token.startswith(("http://", "https://", "mailto:", "#")):
+        return
+    target = token.split("#", 1)[0].split("?", 1)[0].rstrip("/")
+    if not target or PLACEHOLDER.search(target):
+        return
+    # A bare word, a filename we do not own, or something outside the repo.
+    head = top_segment(target)
+    if head not in KNOWN_ROOTS:
+        return
+    candidates = {target, target.lstrip("./")}
+    doc_dir = str(Path(doc).parent)
+    if doc_dir not in (".", ""):
+        candidates.add(f"{doc_dir}/{target}")
+    if any(c in tracked for c in candidates):
+        return
+    # A deliberately unversioned path is still a real path.
+    if any(c in ignored for c in candidates):
+        return
+    findings.append(
+        f"{doc}:{line_no}: {token!r} is not a path in this repository"
+    )
+
+
+def scan(doc: Path, tracked: set[str], ignored: set[str]) -> list[str]:
+    rel = doc.relative_to(ROOT).as_posix()
+    if rel.startswith(ARCHIVE_PREFIX):
+        return []
+    findings: list[str] = []
+    for line_no, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            continue
+        targets = [m.group(1) for m in MD_LINK.finditer(line)]
+        targets += [m.group(1) for m in PATH_TOKEN.finditer(line)]
+        for raw in targets:
+            token = raw.strip()
+            if not PATHISH.match(token):
+                continue
+            check_absolute(line_no, rel, token, findings)
+            check_repo_relative(line_no, rel, token, tracked, ignored, findings)
+    return findings
+
+
+def main() -> int:
+    tracked = tracked_files()
+    ignored = set(ignored_paths())
+    docs = doc_files()
+    findings: list[str] = []
+    for doc in docs:
+        findings.extend(scan(doc, tracked, ignored))
+    if findings:
+        print("Documentation reference check FAILED:\n", file=sys.stderr)
+        for finding in findings:
+            print(f"  {finding}", file=sys.stderr)
+        print(
+            f"\n{len(findings)} finding(s) across {len(docs)} document(s).\n"
+            "Fix the reference, or move a superseded document to docs/archive/ "
+            "with a reason. Do not silence the check.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Documentation reference check: clean ({len(docs)} documents, "
+          f"{len(tracked)} tracked paths)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

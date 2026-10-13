@@ -159,7 +159,7 @@ From the original spec plus later requests:
 | `find … -quit` reused a stale DEB | Solved | script clears `bundle/deb` before building (done). |
 | PowerShell `ErrorActionPreference=Stop` treats native stderr as fatal | Solved | scripts use `Continue` + `$LASTEXITCODE` (done). |
 | Google sign-in | No | Removed. Google cloud sync is not a product feature. |
-| Switch: **no maintained libretro core**; GPLv3 accepted | Yes, architectural | Isolate behind a new companion-core abstraction; do not add Switch to `NativeSystem` until the companion design is agreed. **Design note written:** `docs/vibe-coded-switch-companion.md` (Eden, launched as a separate process; Phase 1 pending sign-off). |
+| Switch: **no maintained libretro core**; GPLv3 accepted | Yes, architectural | Isolate behind a new companion-core abstraction; do not add Switch to `NativeSystem` until the companion design is agreed. **Design note written:** `docs/vibe-coded-switch-companion.md` (Eden, launched as a separate process; the companion is since implemented — see `docs/checkpoints/eden-native-integration.md`). |
 | Android generated Kotlin under `native-offline/src-tauri/gen` is untracked | Yes, hygiene | Decide: track `gen/android/app/src/main/java` + assets, or move the custom Kotlin out of the generated tree. |
 | CodeGraph index is **stale** for `app.py`, `libretro_host.cpp`, `player-runtime.js`, etc. | Yes, tooling | Re-run `codegraph init`/sync for this project. |
 | QR display needs a generator; CSP forbids external scripts/CDNs | Minor | Vendor a tiny local QR encoder (or draw it server-side as an SVG). |
@@ -245,9 +245,9 @@ hit (version bumps, stale artifacts, VM lifecycle, missing modules, guard tests)
    **Done:** Android verified; Linux launch smoke; Windows launch smoke
    (gameplay unverified); CodeGraph synced.
 6. **Create the skills/agents** in §7 as the workflows stabilize.
-7. **Switch companion** last, behind its own abstraction and after a design sign-off.
+7. **Switch companion** last, behind its own abstraction and after a design sign-off. *(Done: the design was signed off and the companion shipped.)*
    **Design note written** (`docs/vibe-coded-switch-companion.md`: Eden, separate
    process, GPL boundary, no keys/firmware, Phase 1 = one desktop platform).
-   Implementation awaits sign-off.
+   Implementation shipped; see `docs/checkpoints/eden-native-integration.md`.
 
 Each step: build → focused tests → staging deploy → record UNVERIFIED vs GOOD.

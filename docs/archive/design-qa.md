@@ -1,3 +1,13 @@
+<!--
+Status: archival.
+
+This is a design-QA record for a 2026 UI iteration. Its screenshots were
+per-run captures that were never committed, its source evidence lived on a
+retired workstation, and its target host no longer exists. It is kept only as a
+record of what was reviewed and found acceptable then. It carries no current
+claim about the product.
+-->
+
 # Design QA — Reference-matched game library
 
 > **Historical.** This record cites macOS design-source images

@@ -7,8 +7,9 @@ Windows, Linux and Android and a browser player served by a small Python server.
 ## Highlights
 
 - **Web app** (`app.py`): bilingual library, per-game pages, web player
-  (EmulatorJS), local save slots and autosave, controller pairing, multiplayer
-  rooms on a LAN relay, phone-as-controller, LAN save transfer.
+  (EmulatorJS), local save slots and autosave, direct-LAN phone-as-controller
+  and LAN save transfer. The server is not a multiplayer relay: peers find and
+  talk to each other directly on the LAN.
 - **Native desktop/Android apps** (`native-offline/`): Tauri shell plus a
   portable libretro player for GBA/NDS/3DS with per-platform renderers
   (Metal/Vulkan on macOS, Vulkan/OpenGL on Linux/Windows, Vulkan/OpenGL ES on

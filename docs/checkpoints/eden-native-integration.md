@@ -85,7 +85,7 @@ versions, and that the suite passed.
 `native/eden-bridge/`: versioned C ABI (`include/an3_eden_bridge.h`), dispatcher
 with handle/state validation and exception containment
 (`src/an3_eden_bridge.cpp`), a `null` backend, CMake build, and a C smoke test
-(`tests/bridge_smoke.c`). Null-backend build: 38 checks, 0 failures.
+(`native/eden-bridge/tests/bridge_smoke.c`). Null-backend build: 38 checks, 0 failures.
 
 ### Phase 2 — Eden baseline build (Milestone A, DONE)
 

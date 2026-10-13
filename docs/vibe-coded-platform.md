@@ -17,7 +17,7 @@ Dates and version numbers below reflect the current source tree.
 | Native cores | libretro host (mGBA, melonDS DS, Azahar) | `native-offline/native-runtime/` |
 | Netplay relay | EmulatorJS-Netplay Rust relay (staging-only) | `rust-gateway/`, `Dockerfile.rust-netplay` |
 | Sync core (new) | Transport-agnostic sync planning | `sync_engine.py` |
-| Google sync | **Removed** — not a product feature. See `docs/checkpoints/google-sync-removal.md` | — |
+| Google sync | **Removed** — not a product feature. See `docs/archive/checkpoint-google-sync-removal.md` | — |
 | Shared networking (new) | Pairing, sessions, controller, rooms | `netcode.py` |
 
 ## 2. Emulator core abstraction
@@ -128,7 +128,7 @@ its tests were deleted on 2026-10-13; `app.py` now hard-codes
 answer 409 `drive-unavailable` and the UI never advertises the option.
 
 Local saves, LAN save/state transfer and the pure `sync_engine` decision core
-are unaffected. See `docs/checkpoints/google-sync-removal.md`.
+are unaffected. See `docs/archive/checkpoint-google-sync-removal.md`.
 
 ## 7. Sync engine and conflict resolution
 
