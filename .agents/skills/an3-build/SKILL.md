@@ -3,11 +3,16 @@ name: an3-build
 description: Use when building, versioning, or publishing a packaged Vibe Coded Emulator (AN3 Arcade) app for macOS, Android, Linux DEB/Flatpak, or Windows — including version bumps, the per-platform build commands, artifact/sidecar collection, catalog updates, and release verification. Triggers on "build the DMG/APK/DEB/Flatpak/EXE", "publish version", "bump the app version", "update the release catalog".
 ---
 
-# Build and publish an AN3 packaged app
+# Build and publish a VCE packaged app
 
-Repo root for source/edits/deploys: `<repo-root>`
-(`native-offline/` holds the packages). Never build into the read-only legacy
-checkout; it may be used only for warm caches.
+Repo root for source, edits and builds: this repository — resolve it with
+`git rev-parse --show-toplevel`, never a hardcoded path. `native-offline/`
+holds the packages.
+
+**This host cannot build them.** Packaging needs the pinned core artifacts and a
+per-platform toolchain on the dedicated builders. Locally you may only edit
+version fields, `native-offline/releases/catalog.json`, and the packaging
+scripts; `bash tools/verify-project.sh` and GitHub Actions do the rest.
 
 ## Version-bump rule (owner-mandated)
 
