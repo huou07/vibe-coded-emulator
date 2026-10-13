@@ -157,9 +157,13 @@ class ControllerUtilityNetcodeTests(unittest.TestCase):
         wire = state.to_wire()
         self.assertEqual(wire["u"], "quick_save")
         self.assertEqual(wire["us"], 2)
+        # Ingress normalizes to the canonical id every host sink dispatches.
         restored = nc.ControllerState.from_wire(wire)
-        self.assertEqual(restored.utility_action, "quick_save")
+        self.assertEqual(restored.utility_action, "QUICK_SAVE")
         self.assertEqual(restored.utility_sequence, 2)
+        canonical = nc.ControllerState.from_wire({"s": 5, "b": [], "u": "QUICK_SAVE", "us": 3})
+        self.assertEqual(canonical.utility_action, "QUICK_SAVE")
+        self.assertEqual(canonical.utility_sequence, 3)
 
     def test_unknown_utility_names_are_ignored(self):
         state = nc.ControllerState.from_wire({"s": 1, "b": [], "u": "evil_command", "us": 9})
@@ -172,15 +176,28 @@ class ControllerUtilityNetcodeTests(unittest.TestCase):
         session.accept_state({"s": 1, "b": [], "u": "speed_up", "us": 1}, token=token)  # duplicate
         session.accept_state({"s": 2, "b": [], "u": "quick_save", "us": 2}, token=token)
         pending = session.pending_utilities()
-        self.assertEqual([item["action"] for item in pending], ["speed_up", "quick_save"])
+        self.assertEqual([item["action"] for item in pending], ["SPEED_UP", "QUICK_SAVE"])
         session.ack(2, 2)
+        self.assertEqual(session.pending_utilities(), [])
+
+    def test_phone_canonical_names_queue_as_dispatchable_actions(self):
+        # The phone page sends canonical ids (utilityWireToAction); the queue
+        # must carry exactly what the canonical-keyed host sinks dispatch.
+        session, token = self._paired()
+        session.accept_state({"s": 1, "b": [], "u": "QUICK_SAVE", "us": 1}, token=token)
+        pending = session.pending_utilities()
+        self.assertEqual([item["action"] for item in pending], ["QUICK_SAVE"])
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        for item in pending:
+            self.assertIn(item["action"], schema["utility"])
+        session.ack(1, 1)
         self.assertEqual(session.pending_utilities(), [])
 
     def test_stale_utility_sequence_is_ignored(self):
         session, token = self._paired()
         session.accept_state({"s": 3, "b": [], "u": "open_menu", "us": 5}, token=token)
         session.accept_state({"s": 4, "b": [], "u": "speed_down", "us": 4}, token=token)
-        self.assertEqual([item["action"] for item in session.pending_utilities()], ["open_menu"])
+        self.assertEqual([item["action"] for item in session.pending_utilities()], ["OPEN_MENU"])
 
     def test_disconnect_drops_pending_utilities(self):
         session, token = self._paired()

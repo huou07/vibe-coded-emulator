@@ -14,6 +14,8 @@ import pathlib
 import subprocess
 import unittest
 
+import netcode as nc
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "native-offline" / "shared" / "input-actions-schema.json"
@@ -51,6 +53,25 @@ class SharedUtilityActionTests(unittest.TestCase):
         netcode = source(NETCODE)
         self.assertIn("input-actions-schema.json", netcode)
         self.assertIn("CONTROLLER_UTILITY_ACTIONS", netcode)
+
+    def test_netcode_queues_canonical_names_every_host_dispatches(self):
+        # The phone page sends canonical ids (utilityWireToAction); the
+        # browser dispatcher, the desktop azahar sink and the Android overlay
+        # all key on canonical ids, so the queued command must be canonical.
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        session = nc.ControllerSession(code="ABC123", host_device_id="host", created_at=0.0, clock=lambda: 0.0)
+        token = session.pair("phone")
+        session.accept_state({"s": 1, "b": [], "u": "QUICK_SAVE", "us": 1}, token=token)
+        pending = session.pending_utilities()
+        self.assertEqual([item["action"] for item in pending], ["QUICK_SAVE"])
+        for item in pending:
+            self.assertIn(item["action"], schema["utility"])
+        # Wire spellings normalize to the same dispatchable id.
+        session.accept_state({"s": 2, "b": [], "u": "speed_up", "us": 2}, token=token)
+        self.assertEqual(
+            [item["action"] for item in session.pending_utilities()],
+            ["QUICK_SAVE", "SPEED_UP"],
+        )
 
 
 class BrowserHostTests(unittest.TestCase):

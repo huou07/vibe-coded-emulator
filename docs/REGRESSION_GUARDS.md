@@ -29,6 +29,39 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Phone controller utility naming — 2026-10-13
+
+- **Phone utility actions (Quick Save, Speed, Menu) were silently dropped
+  end to end on the staging path.** The phone page sends canonical ids
+  (`static/controller.js` `sendUtility` maps through
+  `AN3InputActions.utilityWireToAction`, so `u` carries e.g. `QUICK_SAVE`),
+  but `netcode.ControllerState.from_wire` only accepted wire spellings
+  (`quick_save`) and discarded canonical ids without queueing anything.
+  Conversely, a wire-spelled frame queued `{"action": "quick_save"}`, which
+  no host sink can dispatch: the browser `AN3ControllerUtility` dispatcher,
+  the desktop `azahar::apply_controller_utility` match, and the Android
+  overlay all key on canonical ids, so the entry ended as `unsupported`
+  (`quick_save is unavailable on this host`). The existing suites stayed
+  green because they posted wire names and asserted queueing only, never
+  dispatch. Fix: `netcode.py` loads the canonical ids and the
+  wire→canonical map from `native-offline/shared/input-actions-schema.json`
+  (`CONTROLLER_UTILITY_CANONICAL`, `UTILITY_WIRE_TO_CANONICAL`) and
+  `from_wire` normalizes both spellings to canonical on ingress, matching
+  the field's own documented contract ("One-shot canonical utility
+  action"). Unknown names remain ignored.
+- Automated: `tests.test_input_actions` (ingress normalization both
+  spellings, canonical queue contents, ack/disconnect semantics),
+  `tests.test_multiplayer_api` (HTTP-level canonical queueing),
+  `tests.test_phone_controller_hosts`
+  (`test_netcode_queues_canonical_names_every_host_dispatches`), plus the
+  unchanged browser dispatcher suite. Status: **GOOD** at the automated
+  level. Live phone-to-host utility execution on packaged apps remains
+  **UNVERIFIED** (no device harness on this host).
+- Owners: `netcode.py`; consumers unchanged (`static/player.js`,
+  `native-offline/src-tauri/src/controller_host.rs`,
+  `.../azahar.rs`, `ControllerClient.kt`, `NativeGameOverlay.kt`).
+  Blast: Phone Controller one-shot actions on every host.
+
 
 ## Local package builds preserve a 25 GiB disk reserve
 

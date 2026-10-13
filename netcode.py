@@ -61,7 +61,37 @@ def _load_input_actions() -> Tuple[frozenset, frozenset]:
     )
 
 
+def _load_utility_canonical() -> Tuple[frozenset, Dict[str, str]]:
+    """Canonical utility ids and the wire-name mapping from the shared schema.
+
+    Every host sink dispatches canonical ids (the browser
+    ``AN3ControllerUtility`` dispatcher, the desktop ``azahar`` match, the
+    Android overlay); the phone page sends canonical ids
+    (``utilityWireToAction``). The server normalizes both spellings to
+    canonical on ingress so a queued command is always dispatchable.
+    """
+
+    path = pathlib.Path(__file__).with_name("native-offline") / "shared" / "input-actions-schema.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        table = data["utility"]
+        canonical = frozenset(str(name) for name in table)
+        wire_to_canonical = {str(entry["wire"]): str(name) for name, entry in table.items()}
+        if canonical and len(wire_to_canonical) == len(canonical):
+            return canonical, wire_to_canonical
+    except (OSError, KeyError, TypeError, ValueError, AttributeError):
+        pass
+    canonical = frozenset({"QUICK_SAVE", "SPEED_UP", "SPEED_DOWN", "OPEN_MENU"})
+    return canonical, {
+        "quick_save": "QUICK_SAVE",
+        "speed_up": "SPEED_UP",
+        "speed_down": "SPEED_DOWN",
+        "open_menu": "OPEN_MENU",
+    }
+
+
 CONTROLLER_BUTTONS, CONTROLLER_UTILITY_ACTIONS = _load_input_actions()
+CONTROLLER_UTILITY_CANONICAL, UTILITY_WIRE_TO_CANONICAL = _load_utility_canonical()
 
 
 # Crockford-style alphabet: no I, L, O, U to avoid transcription errors.
@@ -254,8 +284,14 @@ class ControllerState:
         utility_action = ""
         utility_sequence = 0
         candidate = str(payload.get("u") or "")
-        if candidate and (not CONTROLLER_UTILITY_ACTIONS or candidate in CONTROLLER_UTILITY_ACTIONS):
-            utility_action = candidate
+        # The phone page sends canonical ids (QUICK_SAVE) while older frames
+        # carry wire names (quick_save); both normalize to canonical because
+        # every host sink dispatches canonical ids. Anything else is ignored.
+        canonical = UTILITY_WIRE_TO_CANONICAL.get(candidate)
+        if canonical is None and candidate in CONTROLLER_UTILITY_CANONICAL:
+            canonical = candidate
+        if canonical:
+            utility_action = canonical
             try:
                 utility_sequence = int(payload.get("us") or 0)
             except (TypeError, ValueError):

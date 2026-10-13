@@ -513,10 +513,19 @@ class ControllerUtilityApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertFalse(json.loads(body)["applied"])
         pending = self._utilities(session)
-        self.assertEqual([item["action"] for item in pending], ["speed_up"])
+        self.assertEqual([item["action"] for item in pending], ["SPEED_UP"])
         status, _ = self.request("POST", "/api/controller/ack", {"code": session["code"], "hostToken": session["hostToken"], "sequence": 1, "utilitySequence": 1})
         self.assertEqual(status, 200)
         self.assertEqual(self._utilities(session), [])
+
+    def test_phone_canonical_utility_is_queued_dispatchable(self):
+        # The phone page sends canonical ids (utilityWireToAction); the host
+        # endpoint must queue the canonical id every host sink dispatches.
+        session, phone = self._paired()
+        status, body = self.request("POST", "/api/controller/state", {"code": session["code"], "token": phone["token"], "s": 1, "b": [], "u": "QUICK_SAVE", "us": 1})
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["applied"])
+        self.assertEqual([item["action"] for item in self._utilities(session)], ["QUICK_SAVE"])
 
     def test_unknown_utility_is_ignored(self):
         session, phone = self._paired()
