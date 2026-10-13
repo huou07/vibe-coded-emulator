@@ -227,11 +227,21 @@ class SyncApiTests(unittest.TestCase):
         status, _ = self.request("POST", "/api/sync/settings", {"mode": "lan_drive"})
         self.assertEqual(status, 409)
 
-    def test_drive_mode_is_accepted_when_credentials_are_configured(self):
-        with patch.object(app, "GOOGLE_DRIVE_ENABLED", True):
-            status, body = self.request("POST", "/api/sync/settings", {"mode": "lan_drive"})
+    def test_drive_mode_is_permanently_unavailable(self):
+        """Google cloud sync was removed as a product feature.
+
+        The Drive transport no longer exists, so the mode must never become
+        acceptable, even if something in the environment looks configured.
+        """
+        with patch.object(app, "GOOGLE_DRIVE_ENABLED", False):
+            status, body = self.request("POST", "/api/sync/settings", {"mode": "drive"})
+            self.assertEqual(status, 409)
+            self.assertEqual(json.loads(body)["reason"], "drive-unavailable")
+            status, _ = self.request("POST", "/api/sync/settings", {"mode": "lan_drive"})
+            self.assertEqual(status, 409)
+            status, body = self.request("GET", "/api/sync/settings")
             self.assertEqual(status, 200)
-            self.assertTrue(json.loads(body)["driveConfigured"])
+            self.assertFalse(json.loads(body)["driveConfigured"])
 
     # -- planning ----------------------------------------------------------
 

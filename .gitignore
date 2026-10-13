@@ -17,6 +17,21 @@ work/
 .env.*
 *.secret
 *.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# OS-generated metadata (never source)
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
 
 # Temporary release archives
 *.tgz

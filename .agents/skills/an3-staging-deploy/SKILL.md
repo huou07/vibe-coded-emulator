@@ -12,7 +12,7 @@ approval**.
 ## Deploy (from any worktree that has `tools/ssh/staging-env.sh`)
 
 ```bash
-cd "/Users/meomeo/Documents/edit an3tocom apps&web"
+cd "$(git rev-parse --show-toplevel)"
 source tools/ssh/staging-env.sh
 tools/ssh/check-staging-key.sh          # must print STAGING_SSH_KEY_AUTH=PASS
 ./deploy-stage.sh                       # packages, scp, root release helper, switches current

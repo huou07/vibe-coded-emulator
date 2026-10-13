@@ -208,10 +208,11 @@ def controller_reap():
 # Legacy web sync fixtures are staging/development-only. The pure planning core
 # lives in sync_engine; installed AN3 applications use the direct native peer
 # transport and do not call this application for LAN data.
-# Google Drive transport needs owner OAuth credentials and stays unavailable
-# (mode rejected, option unadvertised) until configured.
+# Google Drive cloud sync is not a product feature. Its transport module is gone
+# and the mode is permanently rejected, so the option is never advertised as
+# available. Local saves and LAN save/state transfer are unaffected.
 SYNC_ENABLED = ENVIRONMENT in {"staging", "development"}
-GOOGLE_DRIVE_ENABLED = bool(os.environ.get("AN3_GOOGLE_CLIENT_ID", "").strip())
+GOOGLE_DRIVE_ENABLED = False
 LAN_PEER_TTL_SECONDS = 90
 LAN_PEERS = {}
 LAN_PEERS_LOCK = threading.Lock()

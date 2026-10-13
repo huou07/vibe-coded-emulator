@@ -12,7 +12,7 @@ matching guards **before and after** the edit, in the repo root.
 ## Run these
 
 ```bash
-cd "/Users/meomeo/Documents/edit an3tocom apps&web"
+cd "$(git rev-parse --show-toplevel)"
 
 # Python guards
 PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m unittest \

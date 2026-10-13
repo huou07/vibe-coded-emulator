@@ -54,7 +54,6 @@ class LicenseFileTests(unittest.TestCase):
             "app.py",
             "netcode.py",
             "sync_engine.py",
-            "google_sync.py",
             "static/player.js",
             "static/controller.js",
             "native-offline/src-tauri/src/lib.rs",

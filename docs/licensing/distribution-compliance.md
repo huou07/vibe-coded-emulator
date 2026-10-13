@@ -54,7 +54,8 @@ way.
 
 ## Secrets and private data
 
-- Google OAuth `AN3_GOOGLE_CLIENT_ID`/`AN3_GOOGLE_CLIENT_SECRET` live only in the
+- Google OAuth `AN3_GOOGLE_CLIENT_ID`/`AN3_GOOGLE_CLIENT_SECRET` (removed; no longer
+  configured) lived only in the
   server environment (`/etc/an3-arcade-staging.env`), never in the repository or
   release artifacts.
 - No `prod.keys`, `title.keys`, firmware, BIOS, commercial ROMs, or owner

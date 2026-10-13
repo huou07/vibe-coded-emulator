@@ -5,7 +5,7 @@ description: Use when building, versioning, or publishing a packaged Vibe Coded 
 
 # Build and publish an AN3 packaged app
 
-Repo root for source/edits/deploys: `/Users/meomeo/Documents/edit an3tocom apps&web`
+Repo root for source/edits/deploys: `<repo-root>`
 (`native-offline/` holds the packages). Never build into the read-only legacy
 checkout; it may be used only for warm caches.
 

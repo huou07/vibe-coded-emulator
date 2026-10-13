@@ -8,13 +8,13 @@ audio, or input is fixed from compilation, source review, or a green test suite.
 
 ## Scope
 
-Repo root: `/Users/meomeo/Documents/edit an3tocom apps&web`. Load and follow the
+Repo root: `<repo-root>`. Load and follow the
 `an3-player-regression` skill before and after any player-surface edit.
 
 ## Web / Python guards
 
 ```bash
-cd "/Users/meomeo/Documents/edit an3tocom apps&web"
+cd "$(git rev-parse --show-toplevel)"
 PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m unittest \
   tests.test_regression_invariants tests.test_web_nds_touch_behavior \
   tests.test_native_regression_guards tests.test_shared_player_ui

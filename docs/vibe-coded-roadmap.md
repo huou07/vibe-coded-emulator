@@ -89,7 +89,7 @@ From the original spec plus later requests:
   TCP server; Settings → Phone controller UI; macOS DMG 1.4.0 built, launched,
   deployed. Live desktop pairing is UNVERIFIED; see
   `reports/handoff/DESKTOP_NATIVE_CONTROLLER_20260916.md`.
-- Shared cores: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
+- Shared cores: `sync_engine.py`, `netcode.py` (unit-tested).
 - **Sync mode wired into `app.py`** (staging-only): per-device Off/LAN/Drive/
   LAN+Drive mode, a plan/conflict API over the pure `sync_engine`, and a
   subnet-scoped LAN peer registry with a `/sync` page. Drive stays unavailable
@@ -119,7 +119,6 @@ From the original spec plus later requests:
   It is LAN-mediated through the staging server (the LAN rendezvous); true
   peer-to-peer device listeners and client-store wiring remain.
 - **Google sign-in + Drive transport** (owner skipped; needs OAuth
-  credentials). `google_sync.py` is tested against an injected transport only.
 - **Switch companion** integration: the companion process, its rendering,
   input, saves and automation are built and verified on macOS; what remains is
   the Tauri `CompanionSystem` (detect/launch/focus/stop), `.nro` detection,
@@ -159,7 +158,7 @@ From the original spec plus later requests:
 | Dell `rustc 1.85` too old for the lock | Solved | user-level rustup stable on the Dell (done). |
 | `find … -quit` reused a stale DEB | Solved | script clears `bundle/deb` before building (done). |
 | PowerShell `ErrorActionPreference=Stop` treats native stderr as fatal | Solved | scripts use `Continue` + `$LASTEXITCODE` (done). |
-| Google sign-in needs OAuth client id/secret + redirect URIs | Yes, external | Owner must create credentials; code path exists (`google_sync.py`) and is tested against an injected transport. |
+| Google sign-in | No | Removed. Google cloud sync is not a product feature. |
 | Switch: **no maintained libretro core**; GPLv3 accepted | Yes, architectural | Isolate behind a new companion-core abstraction; do not add Switch to `NativeSystem` until the companion design is agreed. **Design note written:** `docs/vibe-coded-switch-companion.md` (Eden, launched as a separate process; Phase 1 pending sign-off). |
 | Android generated Kotlin under `native-offline/src-tauri/gen` is untracked | Yes, hygiene | Decide: track `gen/android/app/src/main/java` + assets, or move the custom Kotlin out of the generated tree. |
 | CodeGraph index is **stale** for `app.py`, `libretro_host.cpp`, `player-runtime.js`, etc. | Yes, tooling | Re-run `codegraph init`/sync for this project. |

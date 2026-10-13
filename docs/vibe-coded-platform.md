@@ -17,7 +17,7 @@ Dates and version numbers below reflect the current source tree.
 | Native cores | libretro host (mGBA, melonDS DS, Azahar) | `native-offline/native-runtime/` |
 | Netplay relay | EmulatorJS-Netplay Rust relay (staging-only) | `rust-gateway/`, `Dockerfile.rust-netplay` |
 | Sync core (new) | Transport-agnostic sync planning | `sync_engine.py` |
-| Google sync (new) | OAuth 2.0 PKCE + Drive app-data client | `google_sync.py` |
+| Google sync | **Removed** — not a product feature. See `docs/checkpoints/google-sync-removal.md` | — |
 | Shared networking (new) | Pairing, sessions, controller, rooms | `netcode.py` |
 
 ## 2. Emulator core abstraction
@@ -120,28 +120,15 @@ compatibility renderer vs native, Azahar side-by-side layout).
     Kotlin compile, and a rebuilt
     `releases/vibecodedemulator-1.1.0-android-arm64-staging.apk`.
 
-## 6. Google sign-in and Drive sync (core implemented; server wiring pending)
+## 6. Google sign-in and Drive sync (removed)
 
-`google_sync.py` implements, and `tests/test_google_sync.py` verifies against an
-injected transport:
+Google cloud sync is not a product feature. The OAuth/Drive client module and
+its tests were deleted on 2026-10-13; `app.py` now hard-codes
+`GOOGLE_DRIVE_ENABLED = False`, so `POST /api/sync/settings` and `/plan` always
+answer 409 `drive-unavailable` and the UI never advertises the option.
 
-- OAuth 2.0 Authorization Code flow with **PKCE (S256)**, `access_type=offline`,
-  and no client secret for public clients. The secret is server-only and
-  optional (`OAuthConfig.is_confidential_client`).
-- Token exchange, refresh, revoke, and ID-token claim decoding. Callers must
-  only consume an ID token that came from a server-side code exchange.
-- Drive v3 client restricted to `drive.appdata`, so it can only touch files the
-  app created. Simple multipart upload below 5 MiB, resumable chunked upload
-  above it, plus download/list/delete.
-- File identity is the app's own **SHA-256**, stored in Drive `appProperties`,
-  so hashes are comparable across devices rather than relying on Drive's MD5.
-- Firmware and key kinds are rejected by `sync_engine.is_sync_eligible`, so they
-  can never be uploaded.
-
-**Not done:** the `/api/auth/google/*` and `/api/sync/*` routes and the account
-UI are not wired into `app.py` yet, and no live Google credentials exist in this
-environment, so end-to-end Google sign-in/Drive sync is **UNVERIFIED**. Login
-remains optional: local ROMs, play and saves work without any account.
+Local saves, LAN save/state transfer and the pure `sync_engine` decision core
+are unaffected. See `docs/checkpoints/google-sync-removal.md`.
 
 ## 7. Sync engine and conflict resolution
 
@@ -271,7 +258,6 @@ Run on macOS (developer host), 2026-09-16:
 | --- | --- | --- |
 | Full suite | `python3 -m unittest discover -s tests` | 195 tests, 1 pre-existing failure (`test_current_staging_catalog_names_only_the_current_verified_installers`, expects the previous `1.0.0` catalog) |
 | Sync engine | `python3 -m unittest tests.test_sync_engine` | 18 pass |
-| Google OAuth/Drive | `python3 -m unittest tests.test_google_sync` | 14 pass (injected transport) |
 | Netcode | `python3 -m unittest tests.test_netcode` | 23 pass |
 | Phase A contracts | `python3 -m unittest tests.test_phase_a_branding_autosave_exit` | 8 pass |
 | Web player render | `tests.test_integration` | rendered `/play/<slug>` includes autosave + Exit Game controls |

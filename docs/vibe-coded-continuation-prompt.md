@@ -75,7 +75,7 @@ matrix · repo skills/agents.
   (macOS/Android/Linux).
 - Staging-only multiplayer room API + `/multiplayer`; phone-controller API +
   `/controller`, `/controller/join`.
-- Shared modules: `sync_engine.py`, `google_sync.py`, `netcode.py` (unit-tested).
+- Shared modules: `sync_engine.py`, `netcode.py` (unit-tested).
 - 1.3.0 artifacts: DMG 44,706,349 · APK 49,571,879 · DEB 45,484,618 ·
   Flatpak 29,090,480 · EXE 46,720,549. `RELEASE_CATALOG=PASS`; suite 225 tests.
 
