@@ -3,13 +3,18 @@
 Verified 2026-09-16 against the working tree, the release catalog and the git
 worktrees. Nothing here is claimed beyond what was run.
 
-## 1. Roots and credentials we can use now
+> **Historical.** Section 1 described macOS worktrees that do not exist on the
+> current Debian host. The active root is this repository; resolve it with
+> `git rev-parse --show-toplevel` rather than a fixed path. The branch and HEAD
+> values below are kept as evidence of the 2026-09-16 verification.
+
+## 1. Roots and credentials we can use now (2026-09-16, no longer present)
 
 | Purpose | Path | Branch / HEAD |
 | --- | --- | --- |
-| Original dev/build root (warm caches: `target`, `node_modules`; intentionally dirty) | `/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade` | `ui/production-ux-refresh` @ `542ef98` |
-| Clean checkpoint worktree | `/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/vibe-coded-emulator` | `vibe-coded-emulator` @ `af09bff` |
-| Second clean worktree (the renamed `edit an3tocom apps&web`) | `/Users/meomeo/Documents/edit an3tocom apps&web` | `apps-web` @ `b7cc433` |
+| Original dev/build root (warm caches: `target`, `node_modules`; intentionally dirty) | `<legacy-checkout>` | `ui/production-ux-refresh` @ `542ef98` |
+| Clean checkpoint worktree | `<removed-macos-worktree>` | `vibe-coded-emulator` @ `af09bff` |
+| Second clean worktree (the renamed `edit an3tocom apps&web`) | `<repo-root>` | `apps-web` @ `b7cc433` |
 
 - All three hold the current source. The two worktrees are self-contained for
   source, tests and deploys.
@@ -19,7 +24,7 @@ worktrees. Nothing here is claimed beyond what was run.
   `npm ci` in `<worktree>/native-offline` once.
 
 **Staging SSH**
-- Private key: `/Users/meomeo/.ssh/an3_codex_ed25519` (600, owner-only).
+- Private key: `~/an3_codex_ed25519` (600, owner-only).
 - Env: `AN3_STAGING_SSH_IDENTITY_FILE` and
   `AN3_STAGING_SSH_KNOWN_HOSTS=$HOME/.ssh/known_hosts`.
 - Helper (committed, paths only, no secret): `tools/ssh/staging-env.sh` —

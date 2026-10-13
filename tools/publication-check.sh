@@ -55,8 +55,12 @@ grep -q "Version 3, 29 June 2007" "$CANDIDATE/LICENSE" || fail "LICENSE is not t
 grep -q "GPL-3.0-or-later" "$CANDIDATE/README.md" || fail "README does not state GPL-3.0-or-later"
 
 # --- 2. Forbidden AI/workflow/private material --------------------------------
-for forbidden in .opencode .codex AGENTS.md reports work tools/ssh; do
-  if [[ -e "$CANDIDATE/$forbidden" ]]; then
+# Agent frameworks, handoff/status notes and operator scratch must never reach
+# the public candidate. build-public-snapshot.sh does not copy them; this list
+# is the second line of defence for --prebuilt snapshots.
+for forbidden in .opencode .codex .agents .parallelism AGENTS.md opencode.json \
+                 reports work tools/ssh AN3-ARCADE-FULL-SYSTEM-HANDOFF-*.md; do
+  if compgen -G "$CANDIDATE/$forbidden" >/dev/null; then
     fail "forbidden path present in the candidate: $forbidden"
   fi
 done
@@ -67,7 +71,10 @@ prohibited_error=""
 prohibited_hit="$(find "$CANDIDATE" -type f \( -iname '*.gba' -o -iname '*.nds' -o -iname '*.3ds' \
   -o -iname '*.nro' -o -iname '*.xci' -o -iname '*.db' -o -iname '*.sqlite*' \
   -o -iname 'prod.keys' -o -iname 'title.keys' -o -iname '*.dmg' -o -iname '*.apk' \
-  -o -iname '*.exe' -o -iname '*.dll' -o -iname '*.dylib' -o -iname '*.so' \) \
+  -o -iname '*.exe' -o -iname '*.dll' -o -iname '*.dylib' -o -iname '*.so' \
+  -o -iname '*.iso' -o -iname '*.img' -o -iname '*.bin' \
+  -o -iname '*.tgz' -o -iname '*.tar.gz' -o -iname '*.zip' -o -iname '*.7z' \
+  -o -iname '*.pem' -o -iname '*.p12' -o -iname '*.keystore' -o -iname 'id_rsa*' \) \
   -print -quit 2>/tmp/an3-find.err)" || prohibited_error="$(head -5 /tmp/an3-find.err)"
 rm -f /tmp/an3-find.err
 [[ -z "$prohibited_error" ]] || fail "prohibited-content scan could not complete; publication blocked"
@@ -107,7 +114,7 @@ esac
 # so a `git grep` here silently matched nothing on the primary publication path
 # and reported "clean". Plain grep is used instead, and a scanner error is
 # treated as a failure rather than as a clean result.
-PROJECT_PATTERNS='AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.'
+PROJECT_PATTERNS='AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|AN3_GOOGLE_CLIENT_ID=[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com|CF_API_TOKEN=[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.'
 
 # grep exit codes: 0 = at least one match, 1 = no match, >=2 = error.
 scan_error=""

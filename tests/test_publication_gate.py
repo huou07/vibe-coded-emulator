@@ -64,6 +64,16 @@ def has_gitleaks() -> bool:
     return shutil.which("gitleaks") is not None
 
 
+# tests/ is published verbatim in the public snapshot, and the publication gate
+# scans that snapshot. A literal `AN3_AUTH_PEPPER=<value>` in this file would
+# therefore be a genuine finding against the real release candidate, so the
+# synthetic value is assembled from fragments: the fixture written to the
+# temporary candidate is still realistic, but no secret-shaped literal ever
+# appears in published source.
+FAKE_PEPPER = "AN3_AUTH_PEPPER=" + "AbCdEf" + "0123456789" + "XYZ"
+FAKE_PEPPER_VALUE = FAKE_PEPPER.split("=", 1)[1]
+
+
 class ProjectPatternScanTests(unittest.TestCase):
     """The project-specific scan must work without a Git repository."""
 
@@ -79,7 +89,7 @@ class ProjectPatternScanTests(unittest.TestCase):
             "fixture must not be a Git repository; that is the regression condition",
         )
         (self.candidate / "leaked_settings.py").write_text(
-            "AN3_AUTH_PEPPER=AbCdEf0123456789XYZ\n", encoding="utf-8"
+            FAKE_PEPPER + "\n", encoding="utf-8"
         )
 
         if not has_gitleaks():
@@ -102,13 +112,13 @@ class ProjectPatternScanTests(unittest.TestCase):
 
     def test_scan_does_not_leak_the_secret_value(self):
         (self.candidate / "leaked_settings.py").write_text(
-            "AN3_AUTH_PEPPER=AbCdEf0123456789XYZ\n", encoding="utf-8"
+            FAKE_PEPPER + "\n", encoding="utf-8"
         )
 
         result = run_gate(self.candidate)
 
         combined = result.stdout + result.stderr
-        self.assertNotIn("AbCdEf0123456789XYZ", combined)
+        self.assertNotIn(FAKE_PEPPER_VALUE, combined)
 
     def test_infrastructure_address_is_blocked(self):
         (self.candidate / "deploy_notes.md").write_text(
@@ -139,7 +149,7 @@ class ProjectPatternScanTests(unittest.TestCase):
     def test_scan_result_is_the_same_with_and_without_git(self):
         """The gate must not depend on the candidate's VCS state."""
         (self.candidate / "leaked_settings.py").write_text(
-            "AN3_AUTH_PEPPER=AbCdEf0123456789XYZ\n", encoding="utf-8"
+            FAKE_PEPPER + "\n", encoding="utf-8"
         )
 
         if not has_gitleaks():

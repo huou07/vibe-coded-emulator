@@ -6,7 +6,7 @@ alongside the existing Python service. It does **not** replace or restart
 `deploy.sh`.
 
 The current release contract from
-`/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/09-admin-tab-layout-production-2026-08-24.md`
+`<legacy-checkout>/reports/handoff/09-admin-tab-layout-production-2026-08-24.md`
 still applies: validate staging first, retain artifacts/rollback targets, prepare
 a matching production review artifact, and never let Codex deploy production.
 
@@ -36,13 +36,13 @@ Do not add a Cloudflare/tunnel route for port `18093`.
 ## Verified SSH requirement
 
 Use the owner-installed key/agent and verified host key process in
-`/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/tools/ssh/README.md`.
+`<legacy-checkout>/tools/ssh/README.md`.
 The supplied SSH **client-key** fingerprint is not a staging-server host-key
 verification; verify the server key out of band and store it in a persistent,
 owner-controlled known-hosts file first.
 
 ```bash
-ROOT=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade
+ROOT=<legacy-checkout>
 export AN3_STAGING_SSH_IDENTITY_FILE=/absolute/path/to/owner-approved-staging-key
 export AN3_STAGING_SSH_KNOWN_HOSTS=/absolute/path/to/verified-known_hosts
 "$ROOT/tools/ssh/check-staging-key.sh"
@@ -61,7 +61,7 @@ installs root-owned helpers and creates the root-owned staging config if absent;
 it does not start Docker, delete anything, or touch existing application data.
 
 ```bash
-ROOT=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade
+ROOT=<legacy-checkout>
 source "$ROOT/tools/ssh/staging-common.sh"
 "$ROOT/tools/ssh/check-staging-key.sh"
 BOOTSTRAP_DIR="/tmp/an3-rust-shadow-helper-$(date +%Y%m%d-%H%M%S)"
@@ -94,7 +94,7 @@ Run local tests first. This runbook changes only the shadow service; it does
 not authorize a legacy service or production release.
 
 ```bash
-ROOT=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade
+ROOT=<legacy-checkout>
 cd "$ROOT"
 bash -n deploy-rust-shadow-stage.sh deploy/shadow/*.sh
 SMOKE_DIR="$ROOT/work/shadow-deploy-artifacts/package-smoke-$(date +%Y%m%d-%H%M%S)"
@@ -129,7 +129,7 @@ PRODUCTION_SHADOW_EXECUTED=NO
 Validate the returned staging shadow directly through the same strict SSH path:
 
 ```bash
-ROOT=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade
+ROOT=<legacy-checkout>
 source "$ROOT/tools/ssh/staging-common.sh"
 staging_ssh 'curl --fail --silent --show-error -D - http://127.0.0.1:18093/health'
 ```
@@ -143,7 +143,7 @@ Every successful release prints `STAGING_SHADOW_ROLLBACK_TARGET`. To rollback,
 use that retained direct release directory:
 
 ```bash
-ROOT=/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade
+ROOT=<legacy-checkout>
 source "$ROOT/tools/ssh/staging-common.sh"
 staging_ssh 'sudo -n /usr/local/sbin/an3-rust-shadow-staging-rollback /opt/an3-rust-shadow-staging/releases/YYYYMMDD-HHMMSS-asset'
 ```
@@ -188,5 +188,5 @@ The normal shadow service remains loopback-only. There is no supported staging
 or production cutover in this release: both retained cutover helper paths fail
 closed without changing listeners, systemd units, containers, or legacy
 services. See
-`/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/docs/rust-shadow-staging-cutover.md`
+`<legacy-checkout>/docs/rust-shadow-staging-cutover.md`
 for the boundary and future-design requirements.

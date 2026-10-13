@@ -16,9 +16,9 @@ phases, build + test each phase, deploy to **staging only**, and report honestly
 
 | Purpose | Path | Branch @ HEAD |
 | --- | --- | --- |
-| Original dev/build root (warm caches `target/`, `node_modules/`; intentionally dirty — never destructive-clean) | `/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade` | `ui/production-ux-refresh` @ `542ef98` |
+| Original dev/build root (warm caches `target/`, `node_modules/`; intentionally dirty — never destructive-clean) | `<legacy-checkout>` | `ui/production-ux-refresh` @ `542ef98` |
 | Clean checkpoint worktree | `/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/vibe-coded-emulator` | `vibe-coded-emulator` @ `4fceec7` |
-| **Primary work root (use this)** | `/Users/meomeo/Documents/edit an3tocom apps&web` | `apps-web` @ `add0053` |
+| **Primary work root (use this)** | `<repo-root>` | `apps-web` @ `add0053` |
 
 - **Do edit/commit/deploy from `apps-web`.** Keep `.../an3-arcade` only for
   build jobs that benefit from warm caches (or run `npm ci` once in the
@@ -27,7 +27,7 @@ phases, build + test each phase, deploy to **staging only**, and report honestly
   two worktrees, `codegraph sync` for the main tree). Use
   `codegraph_explore` MCP with `projectPath` (or `codegraph explore "<query>"
   --path ...`) before any grep/read of source.
-- **Staging SSH:** key `/Users/meomeo/.ssh/an3_codex_ed25519`;
+- **Staging SSH:** key `~/an3_codex_ed25519`;
   `source tools/ssh/staging-env.sh` (sets `AN3_STAGING_SSH_IDENTITY_FILE` +
   `AN3_STAGING_SSH_KNOWN_HOSTS=$HOME/.ssh/known_hosts`), then
   `tools/ssh/check-staging-key.sh` (must print `STAGING_SSH_KEY_AUTH=PASS`) and

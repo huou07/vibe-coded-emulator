@@ -4,7 +4,7 @@ Recovery point before the GPLv3 transition and any Switch/Eden work.
 
 ## Starting state
 
-- Workspace: `/Users/meomeo/Documents/edit an3tocom apps&web` (branch `apps-web`).
+- Workspace: `<repo-root>` (branch `apps-web`).
 - Starting commit: `c10ab03` (`docs(vibe): record LAN transfer progress in the roadmap`).
 - `git status`: clean (no uncommitted changes) at the checkpoint.
 - Remote `origin` is a local path (`/Users/meomeo/Documents/Codex/2026-08-11/an3-arcade`);

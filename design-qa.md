@@ -1,5 +1,10 @@
 # Design QA — Reference-matched game library
 
+> **Historical.** This record cites macOS design-source images
+> (`/Users/meomeo/Downloads/...`) and screenshot paths from the 2026-08 work on
+> the former macOS host. Those files are not present on the current Debian
+> host; the paths are kept unchanged as evidence of what was reviewed.
+
 ## Result
 
 **final result: passed**

@@ -460,7 +460,7 @@ The owner's architecture correction supersedes earlier Android WebView gameplay 
 
 - RG-066: Native Vulkan software blit uses IDENTITY transform and compositor rotation, with an explicit unsupported-transform failure instead of sideways/stretching output. **PASS** final portrait → landscape → portrait NDS runtime remained upright and unstretched; the persisted-layout touch result is separately accepted under RG-062.
 
-Evidence: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/RELEASE_TRAIN_P5_NATIVE_MIGRATION_20260910.md
+Evidence: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P5_NATIVE_MIGRATION_20260910.md
 
 ## Current authority — P3 completion, 2026-09-09
 
@@ -470,7 +470,7 @@ P3 COMPLETE. Final staging e9cca6502858 adds renderer choice and safe diagnostic
 - RG-055: copied diagnostics use named scalar fields only, preserve null/zero and sanitize fallback reasons to fixed text. Never serialize arbitrary session/renderer data, raw exceptions, private paths, cookies or ROM contents. Owner player-runtime.js/player.js; adversarial privacy test and live Copied result PASS.
 - RG-056: player CSS must be pathname-versioned and included in immutable route allowlist and offline shell. Older query-insensitive service workers served stale CSS and clipped new controls. Owner app.py/service-worker.js; exact-byte route test and previously stale-origin live grid/overflow check PASS.
 
-Report: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/RELEASE_TRAIN_P3_20260909.md
+Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P3_20260909.md
 
 This is the durable cross-platform regression ledger for the packaged native
 app, the browser player, and the offline shell. It records why a behavior is
@@ -493,7 +493,7 @@ P2 is **COMPLETE** under the permitted insufficient-evidence classification afte
 - Matched Mac New Game samples: WebGPU core 60.0001/presentation 60.0799 FPS; WebGL2 core 60.0143/presentation 59.9713 FPS. Both have zero dropped/replaced/skipped frames and sub-millisecond capture/render percentiles at 2560x1212, DPR2.
 - Final staging asset af16e551490f has four-file source/served SHA-256 parity and a live explicit-WebGL2 telemetry smoke. 93 Python/9 Node tests PASS. The AVD host-GPU run showed core about38.5 FPS and presentation about60 FPS with inexpensive capture/render, but both source and presentation were black; WebGPU requestAdapter failed with correct WebGL2 fallback. SwiftShader stalled at completed startup. Classification is insufficient evidence for Redmi/visible gameplay, with a scoped virtual DEVICE/CPU/WASM signal only. No performance optimization was made. Production untouched.
 
-Report: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/RELEASE_TRAIN_P2_20260909.md
+Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P2_20260909.md
 
 ## Current authority — P1 completion, 2026-09-09T09:29:59+07:00
 
@@ -506,7 +506,7 @@ P1 **COMPLETE**; overall release readiness is not declared CLEAN. This supersede
 - Settings open/close, pointer-inert presentation/source ownership and fullscreen resize smoke PASS. Fresh physical Redmi, full audio/save/latency/layout/orientation matrix remains UNVERIFIED. Owner-confirmed prior Redmi tap/drag/gameplay evidence retained.
 -93 Python/8 Node tests and syntax/native/diff checks PASS; four JS hash parity PASS; staging asset11290264c01d. Production untouched. No new application edits in resumed acceptance.
 
-Report: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/RELEASE_TRAIN_P1_20260909_COMPLETION.md
+Report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P1_20260909_COMPLETION.md
 
 ## Current authority — release train P1, 2026-09-08T16:32:16+07:00
 
@@ -519,8 +519,8 @@ P1 and overall release readiness: **BLOCKED**. This section supersedes the histo
 - RG-015/RG-017/RG-033/RG-043/RG-044/RG-048: preserve prior owner-confirmed Redmi Chrome tap/drag/gameplay response PASS. DEVICE_CONNECTED=no during P1 prevents fresh device verification and does not revoke that owner evidence.
 - Baseline 91 Python PASS; after changes 93 Python PASS including renderer behavior wrapper, direct Node touch plus renderer 8 PASS, syntax/diff/native build checks PASS.
 
-Detailed current report: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/RELEASE_TRAIN_P1_20260908.md
-Evidence: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/staging/p1-20260908
+Detailed current report: <legacy-checkout>/reports/handoff/RELEASE_TRAIN_P1_20260908.md
+Evidence: <legacy-checkout>/reports/staging/p1-20260908
 
 ### Additional P1 guards
 
@@ -803,3 +803,33 @@ Update (2026-09-18, same physical Redmi `25057RN09G`, Adreno 619, driver 0762.40
 - Native sync frames remain capped at 8 MiB. Members up to 16 MiB and sets up to 64 MiB transfer through ordered 768 KiB chunks; each receiving client checks the complete member SHA-256 before local persistence. Upload metadata and all received members are validated before the existing atomic set publish. At most one chunked publish may be staged process-wide; other peers receive a retryable busy error. Peers without chunk support retain the legacy path for transfers up to 4 MiB, while larger transfers fail with an update-required message.
 - Automated validation: `node --test tests/native_sync.test.mjs tests/sync_transfer.test.mjs` covers chunked uploads/downloads, byte order, and Android asset parity; `cargo test --lib` covers server chunk order and publish-slot release; `cargo check --lib` validates the native implementation.
 - Runtime acceptance: a packaged two-peer transfer above 8 MiB, atomic recovery after interruption, and gameplay p95/p99 impact remain **UNVERIFIED**. Source and unit tests do not prove the packaged interaction.
+
+## RG-145 — Vulkan presentation semaphores follow swapchain-image lifetime (2026-10-11)
+
+- `VkPresentInfoKHR::pWaitSemaphores` must use a semaphore associated with the acquired swapchain image, not a frame-in-flight slot. A `vkQueueSubmit` fence does not prove the presentation engine consumed its wait semaphore; reusing the frame-slot semaphore can therefore violate Vulkan synchronization and hang or corrupt presentation on physical drivers.
+- The beta fix is commit `1731316a6fba190eca1967cd5dcc66a214eb3aef` on `codex/vce-optional-features-beta`: both portable desktop and macOS Vulkan presenters allocate one `render_finished` semaphore per swapchain image and select it using the acquired image index. Their libretro sync index is constrained to its advertised mask. The packaged Windows 3DS smoke now requires continuing core/present counters across multiple intervals and repeated input transitions.
+- Focused validation on the beta worktree: 111 tests passed, 5 skipped; Python smoke syntax checks and `git diff --check` passed. Hosted Windows package run `38117097243` built an unsigned x64 installer from `dd1cbc40ac854dbdc087f0c8657ee746de69909f`; packaged shell/GBA and NDS checks passed on that artifact. The first 3DS smoke failure was a missing release edge in the test sequence, corrected in review-only commit `756a659f0f9d04649f264e12e41db4b07f266266` (only `tests/windows_packaged_3ds_smoke.py` changed). Its exact-SHA artifact-reuse run `38120522197` still failed: SwiftShader reported core/presentation counters through 1,406 frames, then no further progress; release input command 2 was acknowledged only at shutdown, after the 10-second smoke wait expired. Diagnostic log and screenshots are artifact `windows-packaged-3ds-diagnostics` (ID `11695516123`). This is a hosted software-Vulkan freeze/responsiveness failure after input, so the P0 remains open. It is not a harness-only failure and cannot be waived by the earlier first-frame result. Physical Windows GPU acceptance remains **UNVERIFIED**. Upstream's exact pinned core source waits in `PresentWindow::GetRenderFrame()` on the frontend's `wait_sync_index` callback before selecting its frame; libretro specifies that callback must wait for frontend activity on the current sync index before the core may reuse that image ([Azahar 2126.1.2 source](https://github.com/azahar-emu/azahar/blob/9e6f523a57fac9564ac0bf8286db3c3702d301ec/src/citra_libretro/libretro_vk.cpp), [libretro Vulkan contract](https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro_vulkan.h)). Both `UINT64_MAX` fence/acquire waits in VCE and the void callback's no-timeout contract need safe session-level containment; returning early from the callback is not safe. The Vulkan rule follows the [Khronos Vulkan Guide on swapchain semaphore reuse](https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/swapchain_semaphore_reuse.adoc).
+
+## RG-146 — Native large-ROM import reports real progress and hashes during copy (2026-10-11)
+
+- Native ROM import must not silently wait through a multi-gigabyte copy or read the completed file a second time solely to compute SHA-256. Copy from the selected source to the existing `.part` file in bounded 1 MiB chunks, hash the same bytes as they are written, preserve `sync_all` and atomic rename, and seed the existing library identity cache from that digest.
+- The 3.6.9 development branch adds keyed progress events for inspection, byte-counted copying, finalization, and library update. The installed library shows an accessible progress state, determinate byte progress while copying, and an indeterminate animation for phases without a known duration. Import and hashing remain in Tauri's blocking worker.
+- Focused validation: `tests.test_offline_consolidation` (12 tests), JavaScript syntax check, source invariants, and `git diff --check` pass. The new Rust copy/hash unit test is present but has not yet run. Packaged macOS/Windows runtime interaction with a multi-gigabyte ROM remains **UNVERIFIED**; do not label the user journey GOOD until it is exercised in an installed build.
+
+## RG-147 — Windows release shell does not create a console window (2026-10-11)
+
+- The Tauri shell executable must use the Windows GUI subsystem in release builds so launching the installed app does not create a CMD window. Keep debug builds attached to a console for diagnostics. The SDL child continues to hide its own console with `CREATE_NO_WINDOW`.
+- The 3.6.9 private branch applies the conditional subsystem attribute in `native-offline/src-tauri/src/main.rs` and adds a source guard in `tests/test_windows_runtime_smoke.py`.
+- Source assertion and Python syntax validation pass. PE subsystem inspection and exact packaged launch acceptance remain **UNVERIFIED** until the updated Windows artifact is built and launched.
+## Switch/Eden experimental OFF lifecycle — RG-148, 2026-10-11
+
+- RG-148: With `experimental-switch-eden` OFF or missing from a profile, startup detection must not resolve the companion path, launch must be rejected, and status/hosted-frame/input commands must not touch the companion runtime. Saving OFF while the feature was active must disable command access and stop the hosted-frame consumer and companion before returning to the inactive UI. The fast command guard reads a process-owned atomic setting snapshot; settings storage is read on startup detection or settings save, not per input event. Enabling the feature makes availability discoverable but does not launch it.
+- Beta implementation: commit `1b66954` on `/private/tmp/vce-optional-features-beta` (branch `codex/vce-optional-features-beta`), product version 3.6.9. It also removes Switch from Android's advertised systems because that package does not ship the companion. The setting remains OFF by default.
+- Focused validation: Rust test `native_settings::tests::experimental_preferences_are_off_for_a_fresh_profile_and_persist_opt_in` PASS; `tests::switch_commands_are_rejected_while_the_experimental_feature_is_off` PASS; touched JavaScript `node --check` PASS; `git diff --check` PASS. Rust tests used the existing vendored runtime inputs through temporary symlinks in the beta worktree, then removed those links and the 1.3 GB Cargo target tree.
+- **UNVERIFIED:** packaged UI transition from ON to OFF, active companion shutdown, and no process/GPU/wakeup in an installed beta build. The beta line has no Phone Controller or LAN Sync runtime integration yet; those toggles must not be represented as working services until their feature paths are integrated.
+
+## RG-149 — Native large-ROM import progress and single-pass digest update (2026-10-11)
+
+- Desktop native import reads and hashes each bounded source chunk while writing the same bytes to the existing `.part` file, then syncs and atomically finalizes it. The existing content-hash cache is seeded from that digest, avoiding a second full read. Progress events are keyed to the ROM and report real byte totals during copy; inspection/finalization/library work remains indeterminate. Cancellation is checked between chunks and removes the partial file.
+- Android's direct native ROM copy reports the same progress phases into the shared UI event path. Its file-provider access remains owned by the existing background import thread. Android cancellation is not exposed until that native picker/import path supports it.
+- Source validation on beta `codex/vce-optional-features-beta` at working-tree base `7d8bdef09572a8d6515a241f568c4efee8fda56a`: `cargo test --lib native_rom` passed 6 tests (including exact-prefix hash/progress and cancellation); `tests.test_offline_consolidation tests.test_native_regression_guards` passed 49 tests; JavaScript syntax, Cargo metadata/JSON parsing, and `git diff --check` passed. Full `cargo test --lib` compiled but one existing ABI test failed because this isolated checkout did not contain the pinned mGBA core; 19 passed and 5 were ignored. Android Gradle/Kotlin compilation and packaged import UX remain **UNVERIFIED** because this checkout has no Android SDK or Gradle wrapper. No installed-runtime claim is made.

@@ -426,7 +426,7 @@ Release complete. On a future change, start from this checkpoint, retain the lis
 ### Owner-requested APK 3DS production reupload — 2026-09-14
 - COMPLETE: uploaded the unchanged 86,441,975-byte 3DS-enabled APK and SHA-256 sidecar again; production replacement was verified, backup retained at `/opt/an3-arcade-backups/apk-reupload-20260914T053753.244863Z`.
 - Public HTTPS download returned HTTP 200 and SHA-256 `4ee9e6399a4f08880a71c2c5f3955949cf4b252412883bd3f6151759efc6b3cb`; no-store/BYPASS, exact Release Center link, stale-hash 404 and production health passed. Catalog and other platform installers were preserved; no service restart or new gameplay smoke.
-- Full handoff: /Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/reports/handoff/APK_3DS_PRODUCTION_REUPLOAD_20260914.md
+- Full handoff: <legacy-checkout>/reports/handoff/APK_3DS_PRODUCTION_REUPLOAD_20260914.md
 - Download verification: /Users/meomeo/Documents/Codex/2026-09-14/use-codegraph-first-to-narrow-symbols/work/apk-reupload/production-http-verification.json
 - Exact next step: none; the requested reupload is complete.
 
