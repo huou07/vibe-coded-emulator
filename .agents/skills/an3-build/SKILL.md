@@ -1,6 +1,6 @@
 ---
 name: an3-build
-description: Use when building, versioning, or publishing a packaged Vibe Coded Emulator (AN3 Arcade) app for macOS, Android, Linux DEB/Flatpak, or Windows — including version bumps, the per-platform build commands, artifact/sidecar collection, catalog updates, and release verification. Triggers on "build the DMG/APK/DEB/Flatpak/EXE", "publish version", "bump the app version", "update the release catalog".
+description: Use when building, versioning, or publishing a packaged Vibe Coded Emulator (AN3 Arcade) app for macOS, Android, Linux DEB/Flatpak, or Windows — including version bumps, the per-platform build commands, artifact/sidecar collection, catalog updates, and release verification. Triggers on "build the DMG/APK/DEB/Flatpak/EXE", "publish version", "bump the app version", "update the release catalog". Do not use for a Web-only change, ordinary test diagnosis or a status-only request.
 ---
 
 # Build and publish a VCE packaged app
@@ -13,6 +13,14 @@ holds the packages.
 per-platform toolchain on the dedicated builders. Locally you may only edit
 version fields, `native-offline/releases/catalog.json`, and the packaging
 scripts; `bash tools/verify-project.sh` and GitHub Actions do the rest.
+
+## Preconditions and authority
+
+Inspect source identity, the affected package and its current version/catalog.
+Read packaging scripts before execution. This procedure prepares source and
+artifact evidence; release/publication requires explicit owner authorization.
+Builder commands below are references for authorized dedicated builders, not
+permission to start local VMs, install toolchains or access protected credentials.
 
 ## Version-bump rule (owner-mandated)
 
@@ -77,9 +85,17 @@ node --check static/player.js
 
 ## Windows VM lifecycle
 
-Start `an3-win11-build` only when needed; shut it down gracefully from inside
-Windows (`shutdown /s` over SSH — ACPI `virsh shutdown` alone does not
-complete); keep autostart `disable`. Do not root devices or record serials.
+On an explicitly authorized dedicated builder only, start `an3-win11-build` when
+needed and shut it down gracefully from Windows (`shutdown /s` over SSH; ACPI
+shutdown alone may not complete). Preserve disabled autostart. This workstation
+must not run the VM. Do not root devices or record serials.
+
+## Stop and report
+
+Report package/platform, source SHA, version changes, artifact size/hash/catalog,
+checks and missing builder/runtime evidence. Stop at the reviewable source or
+artifact result when release authorization is absent. A build proves compilation;
+packaged runtime acceptance must be independently recorded.
 
 ## Rules
 

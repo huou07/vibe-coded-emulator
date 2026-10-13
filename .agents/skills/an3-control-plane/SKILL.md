@@ -11,6 +11,15 @@ any app interaction. Never begin with screenshot, coordinate, xdotool, CGEvent,
 
 Launcher: `tools/an3ctl/bin/an3ctl` (repo root). All commands accept `--json`.
 
+## Preconditions and boundaries
+
+Do not load for documentation, packaging-only work or ordinary backend edits.
+Read project guidance and the CLI contract; inspect `targets --json` before
+choosing a target. Availability and bridges are current runtime observations,
+not promises from this document. Run only authorized targets; this workstation
+must not start native toolchains, VMs or emulators. Missing targets are UNVERIFIED.
+Track any process started by this task and stop only processes this task owns.
+
 ## The loop
 
 1. **Read state** — `an3ctl ui tree --target <t> --json` (compact semantic tree).
@@ -87,8 +96,9 @@ Player selection: `AN3_PLAYER` (local path) or
 `--player-target linux|windows [--player PATH] [--libdir DIR]`. The verdict is
 JSON, e.g. `{"match":false,"differentPixels":37327,"differentPercent":97.2057,"maxChannelError":255}`.
 
-Hardware-rendered 3DS content is **not** headless-capturable yet; run bounded
-windowed runs under Xvfb/SwiftShader, or wait for the GPU readback.
+Hardware-rendered 3DS capture requires a verified supported adapter. Bounded
+windowed runs under Xvfb/SwiftShader belong to an authorized capable builder;
+otherwise report capture UNVERIFIED rather than starting local heavy workloads.
 
 ## Tests
 
@@ -101,9 +111,14 @@ node --test tests/an3ctl.test.mjs
 
 - Structured selectors only: `--testid` > `--id` > `--role`+`--name` > `--name` >
   `--text` > `--css`. Never use layout paths or coordinates.
-- Screenshots are a diagnostic fallback, never the PASS/FAIL path.
+- Use structured assertions for machine PASS/FAIL. Screenshots support rendering
+  diagnosis and manual UX evidence; they do not prove semantic state by themselves.
 - Never automate Finder/Open dialogs. Use `an3ctl rom load` / the emulator CLI.
 - Debug bridges are test-only and loopback/SSH-forwarded; never expose them.
 - Report `UNVERIFIED` rather than `GOOD` when a runtime was not actually run.
+
+Stop when the requested interaction has structured evidence, or a concrete target
+is unavailable. Report target, source/runtime identity, commands and exit codes,
+observed state, task-owned process cleanup and unverified visual/runtime claims.
 
 See `docs/agent-control-plane.md` for the full contract.

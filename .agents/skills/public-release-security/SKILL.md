@@ -9,6 +9,14 @@ Fails closed. If a required scanner is unavailable or a check cannot finish,
 publication is blocked. A scanner that silently matches nothing is treated as
 a failure, never as a clean result — see "Fail-open history" below.
 
+## Preconditions and authority
+
+Resolve the exact publication candidate, source identity and requested operation.
+Skip routine internal edits and non-public status requests. Review and snapshot
+preparation do not authorize a push or release; preserve the owner publication
+gate. Read snapshot/gate scripts before running them and inspect the candidate's
+licence contract rather than changing licence text to obtain a pass.
+
 ## Run
 
 ```bash
@@ -68,12 +76,20 @@ Do not reintroduce a scan whose correctness depends on the candidate's VCS
 state, and do not pipe a scanner through `grep -q` such that a non-zero scanner
 exit is indistinguishable from "no findings".
 
+## Stop and report
+
+Stop at the candidate verdict or a failed/unavailable gate. Report source and
+candidate identity, scanner coverage/results, licence review, redacted findings
+and owner-only next actions. A clean gate is not proof of safety or permission
+to publish. Do not execute publication merely because review passed.
+
 ## Rules
 
 - Never print or commit a secret value. Report only: secret category, affected
   file (path redacted), whether it is in Git history, and whether rotation is
   required.
-- Deleting a credential does not make it safe: rotate or revoke it first.
+- Deleting a credential does not make it safe. The owner must rotate or revoke
+  it through the authorized credential-management path; review grants no such access.
 - Publishing is blocked while an active exposed credential is unresolved.
 - False-positive suppressions must be narrowly scoped and documented in
   `.gitleaks.toml` without exposing private data.

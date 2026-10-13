@@ -9,6 +9,14 @@ Any edit to `static/player.js`, `static/nds-touch.js`, `static/site.css`, or
 `static/renderer-worker.js` that affects player canvas/input/layers must run the
 matching guards **before and after** the edit, in the repo root.
 
+## Scope and authority
+
+Use for behaviour affecting player input, canvas, layering, save/audio or shared
+models. Skip unrelated backend changes, documentation and CSS values that do not
+affect the player. Select the guards relevant to the changed contract; use the
+project's authorized local gate and delegate platform/runtime proof to CI or
+capable builders. This skill does not authorize local emulators or deployment.
+
 ## Run these
 
 ```bash
@@ -47,6 +55,13 @@ PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m unittest discover -s tests
 
 - `docs/REGRESSION_GUARDS.md` and `reports/handoff/SYSTEM_INSPECTION_HANDOFF.md`.
 - `docs/player-layering.md` for any player-shell change.
+
+## Stop and output
+
+Stop when relevant guards and available journey evidence cover the change, or
+record the exact missing runtime capability. Report source identity, before/after
+commands/results, preserved contracts, new regression guard and UNVERIFIED items.
+Do not repeat a passing gate without a new change, failure or unresolved risk.
 
 ## Honest labeling
 

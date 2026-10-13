@@ -9,6 +9,17 @@ Staging is `http://192.168.1.8:8092` (host `huou07@192.168.1.8`). Production is
 `192.168.1.8:8091` and **must never be touched without explicit owner
 approval**.
 
+## Preconditions and authority
+
+Skip ordinary source edits and local status questions. A deployment request
+permits only the named staging scope within host/tool permissions; production and
+public release need explicit owner authority. First read the deployment scripts
+and current endpoint/rollback configuration. Do not run a root helper with
+model-controlled arguments or access protected owner keys. If the available
+identity cannot use the approved operator path, prepare the candidate and report
+the exact boundary for the operator. Never improvise sudo or a credential helper.
+For health-only requests, use read-only health checks; do not redeploy.
+
 ## Deploy (from any worktree that has `tools/ssh/staging-env.sh`)
 
 ```bash
@@ -47,7 +58,16 @@ The netplay relay is `http://192.168.1.8:8094` (LAN only).
 ## Rollback
 
 Roll back by pointing `current` at `STAGING_ROLLBACK_TARGET` using the
-root-owned staging release helper — never by editing files in place.
+approved operator release path within explicit authorization. Agents must not
+invoke a root helper with model-controlled arguments or edit deployment files in
+place; hand the validated rollback target to the operator when privileges are needed.
+
+## Stop and report
+
+Stop after the requested staging operation and relevant health/asset checks.
+Report source/asset identity, environment, observed health, rollback target,
+commands/results and unverified browser/installer acceptance. Neither a deployment
+marker nor an HTTP 200 proves the full user journey.
 
 ## Rules
 

@@ -97,10 +97,20 @@ interaction contracts in `docs/player-layering.md`.
 - `tools/publication-check.sh` fails closed. If a scanner cannot run,
   publication is blocked, not waved through.
 
+## Instruction artifacts
+
+Keep project guidance and skill resources in English; use the owner's preferred
+language in conversation. Current source, CI and runtime evidence establish
+capabilities; dated documents and skips do not. Load only the relevant procedure,
+and report missing tools or unavailable source identity explicitly.
+
 ## Agents and skills
 
 Project skills in `.agents/skills/` load on demand and cover the areas a
 generic agent cannot know: `an3-build` (packaging and the release catalog),
 `an3-control-plane` (the `an3ctl` runtime control loop), `an3-player-regression`
 (the player guards), `an3-staging-deploy`, `public-release-security`. Prefer
-these and the shared host skills over inventing a parallel process.
+these and the shared host skills over inventing a parallel process. See
+`.agents/skills.md` for positive/negative routing and authority. Skill descriptions
+and builder examples do not authorize running VMs, reading protected keys,
+publishing or changing privileged services.
