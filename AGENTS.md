@@ -1,82 +1,41 @@
-# AN3 Arcade session rules
+# VCE Development Guide
 
-## CodeGraph is the mandatory first step
+Vibe Coded Emulator is a cross-platform emulator front end with a Python-served
+browser product and a native Tauri application. Keep product behavior and
+platform limits truthful; the repository root, `docs/`, and their linked source
+are authoritative when this file is opened independently of the Hub.
 
-This repo has a `.codegraph/` index. Before any grep/glob/read of source, run
-`codegraph_explore` (MCP) or `codegraph explore "<symbols/question>"` (shell)
-and read only the files it narrows down. Re-check with CodeGraph before every
-edit to get callers/callees/blast radius. Skip it only if the area is genuinely
-outside the index (config/CSS/HTML strings, non-code assets) and say why.
+## Project map
 
-## App versioning rule (owner-mandated)
+- `app.py`, top-level Python modules, and `static/`: browser library, player,
+  account/sync endpoints, and local web UI.
+- `native-offline/`: Tauri application, shared player UI, Rust/C++ runtime, web
+  bridge, Android Kotlin/JNI host, and per-platform packaging.
+- `tests/`: Python server/runtime tests and Node browser/native-model tests.
+- `tools/`, `native-offline/scripts/`, and `deploy/`: verification, build, and
+  staging/release operations. Read a script before using it.
 
-Every change to a packaged app must bump that app's version, and the bump size
-follows the change type:
+## Verification
 
-- Bug fix → bump the patch: `X.X.X+1` (e.g. `0.4.7` → `0.4.8`).
-- New feature or small update → bump the minor: `X.X+1.X` (e.g. `0.4.8` → `0.5.0`).
-- Refactor or big update → bump the major: `X+1.X.X` (e.g. `0.5.0` → `1.0.0`).
+- `bash tools/verify-project.sh` runs the deterministic Web, application-source,
+  and JavaScript checks available in this checkout.
+- Web only: `python3 -m unittest discover -s tests`.
+- Web/native JavaScript behavior: `node --test --test-concurrency=1 tests/*.test.mjs tests/*.test.js`.
+- Native application glue: `npm --prefix native-offline run check`.
+- Native packages require the matching platform toolchain and pinned core
+  artifacts; source checks do not prove an installable package or gameplay.
 
-Apply it to the version fields the app actually uses (Android
-`tauri.android.conf.json` `version`, desktop `tauri.conf.json`/`package.json`
-when those artifacts are rebuilt), the artifact filename, the release catalog,
-and the sidecar. Never republish changed bytes under an already-published
-version + filename.
+## Invariants and safety
 
-- This is the new development workspace for the 2026-08-11 session.
-- Treat `/Users/meomeo/Documents/Codex/2026-08-08/v/outputs/an3-arcade` as read-only legacy reference.
-- Preserve the handoff invariants: client-side emulation, melonDS with auto-start, NDS touch bridge, EmulatorJS IndexedDB core contract, report-first core selection, persistent core cache, NDS ZIP delivery, and offline browser-local data.
-- Never expose secrets or production data. Do not mix staging and production paths.
-- Runtime changes require local baseline/tests and staging verification before any production consideration. Production deployment requires explicit approval.
-- P2 UI work follows `docs/design-system.md` and `docs/ui-page-contract.md`; keep generic consumer/admin styling scoped away from the protected player surface. Any player input, canvas, overlay, or virtual-pad geometry change is a separate task.
-- Read the latest comprehensive handoff and P2/P3 acceptance handoffs before production work. Write new handoffs and report references with their full absolute paths.
-- Work staging-first. Run the Android regression harness before player/mobile releases; do not root devices or record device serials/private data.
-- All new non-player pages must use the shared AN3 design system. Read `docs/player-layering.md` before any player-shell change and preserve player interaction invariants.
-- Preserve intentional dirty work; never destructive-clean it. Never expose secrets. Production deploys require explicit user approval and must never be automatic.
-- Staging SSH must use `/Users/meomeo/Documents/Codex/2026-08-12/an3-arcade-production-ui-ux-codex/an3-arcade/tools/ssh/README.md`: owner-installed verified key/agent auth only, password auth disabled, and strict host-key checking. Never create an SSH password helper.
-
-## Regression Safety
-
-- Read `reports/handoff/SYSTEM_INSPECTION_HANDOFF.md` and `docs/REGRESSION_GUARDS.md` before shared emulator-host work.
-- Before modifying shared host code, identify every protected behavior that file can affect; run its baseline tests before and the same tests after the edit.
-- Never broad-revert a shared subsystem to fix one bug. User-reported packaged-runtime regressions override earlier PASS claims.
-- Do not declare UX, audio, or input fixed from compilation, accessibility state, telemetry, or source review alone; verify the packaged app at runtime.
-- Add every newly fixed regression to `docs/REGRESSION_GUARDS.md` with its validation before finishing the task.
-
-## Regression ledger workflow
-
-- Before editing a file or symbol, search `docs/REGRESSION_GUARDS.md` and the handoff index for every guard that names it or its subsystem; record that blast radius in the work notes.
-- Before and after each shared emulator, renderer, input, audio, save, settings, or player-layer edit, run every matching guard, including its behavioral and live requirement.
-- Static/source checks and a truthful status label are not interactive acceptance. If a browser or packaged runtime was not exercised, record `UNVERIFIED` rather than `GOOD`.
-- Web NDS touch must resolve the EmulatorJS source canvas; presentation canvases are output-only and must remain pointer-inert. Validate Top/Bottom, Left/Right, scaled/letterboxed, pointer capture, release/cancel, menu precedence, and keyboard passthrough.
-- Any edit to `static/player.js`, `static/nds-touch.js`, `static/site.css`, or `static/renderer-worker.js` that affects player canvas/input/layers must run the Web NDS gameplay-touch, menu-precedence, Settings-clickability, virtual-pad-precedence, presentation/source-ownership, pointer-release/cancel, and fullscreen/resize tests before and after the edit.
-- For staging verification, record the asset version, active release, browser/runtime, ROM identity, visible-frame result, input result, and console/runtime errors. Do not access production while performing this audit.
-
-## Public release security gate (mandatory)
-
-Before any push, release, or publication to a public GitHub repository, run the
-public-release-security workflow (`tools/publication-check.sh`, policy in
-`.agents/skills/public-release-security/SKILL.md`). Do not publish if secret
-scanning, personal-data checks, licence checks, or relevant source-history
-checks are incomplete or failing. Never bypass the security gate without
-explicit user approval of the specific finding — and approval does not make an
-exposed active credential safe: rotate or revoke it first.
-
-Publishing rules for this repo:
-
-- The public repository is only the product source. Never publish `.opencode/`,
-  `.codex/`, `AGENTS.md`, `reports/`, `work/`, handoff/status documents,
-  staging/production operational docs, SSH material, real environment files,
-  ROMs, saves, firmware or keys.
-- The development history contains personal paths and private infrastructure
-  details. Do not push this history to a public remote; export a clean snapshot
-  and add a truthful provenance note instead.
-- All source comments, documentation and public-facing text must be in English.
-
-## Never publish automatically
-
-Do **not** push to GitHub (or any public remote) on your own initiative. Publish
-only when the user explicitly asks for it in the current request. When asked,
-run `tools/build-public-snapshot.sh` then `tools/publication-check.sh`, and only
-then `tools/publish-github.sh --confirm` (a single fresh public commit — never
-the development history).
+- Preserve client-side emulation, offline browser-local data, the EmulatorJS
+  IndexedDB core contract, report-first core selection, persistent core cache,
+  NDS ZIP delivery, melonDS auto-start, and the NDS touch bridge.
+- Player canvas, input, layering, save, audio, and renderer changes require the
+  relevant guards in `docs/REGRESSION_GUARDS.md` and interaction contracts in
+  `docs/player-layering.md` before and after the change.
+- Use only lawful fixtures. Do not add ROMs, firmware, keys, saves, or other
+  copyrighted/private data to source control. Preserve third-party notices.
+- Check `docs/native-offline.md`, `docs/android-regression.md`,
+  `docs/agent-control-plane.md`, and `docs/licensing/` for the relevant area.
+- Work staging-first. Do not push publicly, publish a release, or deploy to
+  production without explicit human approval. Never rewrite release history.

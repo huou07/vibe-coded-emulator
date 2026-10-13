@@ -109,19 +109,19 @@ class SystemInferenceTests(unittest.TestCase):
     def test_current_staging_catalog_names_only_the_current_verified_installers(self):
         import app
         available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
+        # Platform artifacts are rebuilt independently, so the catalog can
+        # truthfully contain different release versions at the same time.
+        expected = {
+            "DMG": ("3.2.3", "vibecodedemulator-3.2.3-macos-aarch64.dmg"),
+            "APK": ("3.2.3", "vibecodedemulator-3.2.3-android-arm64-staging.apk"),
+            "DEB": ("3.2.2", "vibecodedemulator-3.2.2-linux-amd64.deb"),
+            "Flatpak": ("3.2.2", "an3-offline-3.2.2-linux-amd64-staging.flatpak"),
+            "EXE": ("2.2.0", "vibecodedemulator-2.2.0-windows-x64-staging.exe"),
+        }
+        self.assertEqual({item["format"] for item in available}, set(expected))
         self.assertEqual(
-            [item["filename"] for item in available],
-            [
-                "vibecodedemulator-2.2.0-macos-aarch64.dmg",
-                "vibecodedemulator-2.2.0-android-arm64-staging.apk",
-                "vibecodedemulator-2.2.0-linux-amd64.deb",
-                "an3-offline-2.2.0-linux-amd64-staging.flatpak",
-                "vibecodedemulator-2.2.0-windows-x64-staging.exe",
-            ],
-        )
-        self.assertEqual(
-            {item["format"]: item["version"] for item in available},
-            {"DMG": "2.2.0", "APK": "2.2.0", "DEB": "2.2.0", "Flatpak": "2.2.0", "EXE": "2.2.0"},
+            {item["format"]: (item["version"], item["filename"]) for item in available},
+            expected,
         )
         self.assertTrue(all(item["size"] and item["sha256"] for item in available))
 
@@ -635,14 +635,29 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
         self.assertIn(b'nav-download-app', public.request("GET", "/")[2])
 
         import app
-        available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
-        self.assertTrue(available)
-        for item in available:
+        catalog = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
+        manifest = {
+            item["filename"]: item
+            for item in app.native_artifact_manifest()["artifacts"]
+            if item["filename"]
+        }
+        self.assertTrue(catalog)
+        self.assertEqual(set(manifest), {item["filename"] for item in catalog})
+        for item in catalog:
             with self.subTest(installer=item["filename"]):
-                status, headers, _ = public.raw("HEAD", f"/download-app/release/{item['filename']}?sha256={item['sha256']}")
-                self.assertEqual(status, 200)
-                self.assertEqual(headers.get("Content-Length"), str(item["size"]))
-                self.assertIn("no-store", headers.get("Cache-Control", ""))
+                artifact = manifest[item["filename"]]
+                status, headers, _ = public.raw(
+                    "HEAD",
+                    f"/download-app/release/{item['filename']}?sha256={item['sha256']}",
+                )
+                if artifact["status"] == "available":
+                    self.assertEqual(status, 200)
+                    self.assertEqual(headers.get("Content-Length"), str(item["size"]))
+                    self.assertIn("no-store", headers.get("Cache-Control", ""))
+                else:
+                    self.assertEqual(artifact["status"], "blocked")
+                    self.assertIsNone(artifact["download_url"])
+                    self.assertEqual(status, 404)
 
     def test_multiplayer_is_absent_in_production(self):
         public = Client(PRODUCTION_PORT)

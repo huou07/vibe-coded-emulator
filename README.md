@@ -18,9 +18,11 @@ Windows, Linux and Android and a browser player served by a small Python server.
 
 ## Building
 
-See `native-offline/scripts/` for the per-platform build scripts and
-`deploy/` for staging packaging. The web app runs with the Python standard
-library only:
+The browser app and installed native application have separate runtime and
+verification paths. See [`docs/development-workflows.md`](docs/development-workflows.md)
+for the project map, exact checks, and platform limits. See
+`native-offline/scripts/` for per-platform build scripts and `deploy/` for
+staging packaging. The web app runs with the Python standard library only:
 
 ```bash
 python3 app.py            # serve the web app

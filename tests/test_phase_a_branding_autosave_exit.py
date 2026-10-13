@@ -58,13 +58,18 @@ class PhaseABrandingTests(unittest.TestCase):
         self.assertEqual(package["version"], tauri["version"])
         self.assertRegex(android["version"], r"^\d+\.\d+\.\d+$")
 
-    def test_flatpak_sources_track_the_desktop_version(self):
-        tauri = json.loads((ROOT / "native-offline" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+    def test_flatpak_sources_match_the_catalog_linux_release(self):
+        import app
         manifest = (ROOT / "native-offline" / "flatpak" / "space.an3tocom.offline.yml").read_text(encoding="utf-8")
         metainfo = (ROOT / "native-offline" / "flatpak" / "space.an3tocom.offline.metainfo.xml").read_text(encoding="utf-8")
-        self.assertIn(f"vibecodedemulator-{tauri['version']}-linux-amd64.deb", manifest)
-        self.assertIn(f'version="{tauri["version"]}"', metainfo)
-
+        catalog = {item["format"]: item for item in app.NATIVE_RELEASE_CATALOG if item.get("filename")}
+        deb = catalog["DEB"]
+        flatpak = catalog["Flatpak"]
+        self.assertEqual(deb["version"], flatpak["version"])
+        self.assertIn("path: ../releases/" + deb["filename"], manifest)
+        self.assertIn("- ar -x " + deb["filename"], manifest)
+        current_appstream_release = metainfo.split("<release version=" + chr(34), 1)[1].split(chr(34), 1)[0]
+        self.assertEqual(current_appstream_release, flatpak["version"])
 
 class PhaseAAutosaveExitTests(unittest.TestCase):
     def test_autosave_modes_match_the_required_set(self):
