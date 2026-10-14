@@ -79,8 +79,10 @@ inspected CI failure causes and corresponding repairs,
 server-rendered library semantics and compact-card action review, and
 [`save-slots-2026-10-14.md`](evidence/save-slots-2026-10-14.md) for deterministic
 quick-save storage behavior and the remaining real-browser/runtime acceptance,
-[`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md) for
-retained Linux probes and the current gameplay-performance target audit. Large
+[`staging-availability-2026-10-14.md`](evidence/staging-availability-2026-10-14.md)
+for the read-only staging health and artifact-size probe plus its local builder
+dependency, and [`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md)
+for retained Linux probes and the current gameplay-performance target audit. Large
 per-run captures are **not** committed: a machine-specific path under `reports/` is not
 a durable reference, and nothing in `docs/` points at one.
 `tools/verify-project.sh` fails if such a reference reappears.
