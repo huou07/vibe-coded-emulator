@@ -102,6 +102,7 @@
       let sequence = 0;
       let utilitySequence = 0;
       let controllerMode = false;
+      let controllerWasPaired = false;
       let system = "auto";
       let manualLayout = false;
       let movement = "dpad";
@@ -162,7 +163,7 @@
         utilitySequence += 1;
         sendState({u: [{action, sequence: utilitySequence}]});
       };
-      const releaseAll = () => {
+      const releaseAll = (transmit = true) => {
         pressed.clear();
         axes.lx = 0; axes.ly = 0; axes.rx = 0; axes.ry = 0;
         touch.active = false; touch.x = 0; touch.y = 0;
@@ -173,7 +174,7 @@
           stick.style.setProperty("--sx", "0px");
           stick.style.setProperty("--sy", "0px");
         });
-        sendSnapshot();
+        if (transmit) sendSnapshot();
       };
       const renderPad = status => {
         const visible = status?.role === "controller" && status.running;
@@ -357,8 +358,17 @@
       const refresh = async () => {
         try {
           const status = await window.AN3NativeController.status();
+          const controllerDisconnected = status.role === "controller" && controllerWasPaired && !status.paired;
+          if (controllerDisconnected) releaseAll(false);
+          controllerWasPaired = status.role === "controller" && status.paired;
           controllerButton.textContent = status.running ? "Stop" : "Start Hosting";
           if (controllerCode) controllerCode.textContent = status.running && status.code ? status.code : "\u2014";
+          if (controllerJoinButton) {
+            controllerJoinButton.textContent = status.canReconnect ? "Reconnect" : "Join Host";
+            controllerJoinButton.disabled = status.role === "controller" && status.paired;
+          }
+          const pairField = controllerPairCode?.closest(".native-field");
+          if (pairField) pairField.hidden = status.role === "controller";
           renderPad(status);
           setStatus(status.error ? status.error : words(status));
         } catch (error) {
@@ -391,22 +401,29 @@
         }
       });
       controllerJoinButton?.addEventListener("click", async () => {
-        const code = String(controllerPairCode?.value || "").trim();
-        if (!/^\d{6}$/.test(code)) {
-          setStatus("Enter exactly six decimal digits.");
-          controllerPairCode?.focus();
-          return;
-        }
-        if (typeof window.AN3NativeController.join !== "function") {
-          setStatus("Direct LAN joining is not available in this build.");
-          return;
-        }
+        const status = await window.AN3NativeController.status().catch(() => ({}));
         try {
-          setStatus("Finding host on the local network…");
-          const session = await window.AN3NativeController.join(code);
+          let session;
+          if (status.canReconnect && typeof window.AN3NativeController.reconnect === "function") {
+            setStatus("Reconnecting to the paired host…");
+            session = await window.AN3NativeController.reconnect();
+          } else {
+            const code = String(controllerPairCode?.value || "").trim();
+            if (!/^\d{6}$/.test(code)) {
+              setStatus("Enter exactly six decimal digits.");
+              controllerPairCode?.focus();
+              return;
+            }
+            if (typeof window.AN3NativeController.join !== "function") {
+              setStatus("Direct LAN joining is not available in this build.");
+              return;
+            }
+            setStatus("Finding host on the local network…");
+            session = await window.AN3NativeController.join(code);
+          }
           if (controllerCode) controllerCode.textContent = session.code || "—";
           renderPad(session);
-          setStatus("Connected directly to host");
+          setStatus(session.error || (session.paired ? "Connected directly to host" : words(session)));
           poll();
         } catch (error) {
           setStatus(error?.message || "Could not join the direct LAN host.");

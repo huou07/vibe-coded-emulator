@@ -175,6 +175,38 @@ class AndroidHostUnchangedTests(unittest.TestCase):
         self.assertIn('hello.optString("capability") != "controller"', client)
         self.assertIn('Regex("^[A-Za-z0-9._-]{8,64}$").matches(peerId)', client)
 
+    def test_android_direct_controller_keeps_resume_token_private_and_reconnects_to_same_host(self):
+        client = source(ANDROID_CLIENT)
+        host = source(ANDROID_HOST)
+        bridge = source(ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt")
+        bootstrap = source(ROOT / "native-offline/web/native-bootstrap.js")
+        shell = source(ROOT / "native-offline/web/native-app.js")
+        self.assertIn("hostResumeToken: ByteArray?", client)
+        self.assertIn("clientResumeToken: ByteArray?", client)
+        self.assertIn('put("canReconnect", canReconnect)', client)
+        self.assertIn("discoverController(if (pairing) null else clientHostId)", client)
+        self.assertIn('if (usedCode) encode(hostResumeToken', client)
+        self.assertIn("fun reconnect(): ControllerStatus", client)
+        self.assertIn("clientResumeToken = null", client)
+        self.assertIn("hostSocket != null && shouldApply() && paired", client)
+        self.assertIn("try { hostSocket?.close() }", client)
+        self.assertIn("if (hostSocket === connection)", client)
+        self.assertIn("if (previous != null && previous !== connection)", client)
+        self.assertIn(
+            "lastSequence = 0\n                    lastUtility = 0\n                    ackSequence = 0\n                    hostSocket.also { hostSocket = connection }",
+            client,
+        )
+        self.assertIn("(!activated || hostSocket === connection)", client)
+        self.assertIn("fun reconnect(): ControllerStatus", host)
+        self.assertIn("fun reconnect(): String", bridge)
+        self.assertIn("reconnect: () => androidController.reconnect", bootstrap)
+        self.assertIn('status.canReconnect ? "Reconnect" : "Join Host"', shell)
+
+    def test_android_controller_clears_local_holds_when_transport_drops(self):
+        shell = source(ROOT / "native-offline/web/native-app.js")
+        self.assertIn("const controllerDisconnected =", shell)
+        self.assertIn("if (controllerDisconnected) releaseAll(false)", shell)
+
 
 if __name__ == "__main__":
     unittest.main()

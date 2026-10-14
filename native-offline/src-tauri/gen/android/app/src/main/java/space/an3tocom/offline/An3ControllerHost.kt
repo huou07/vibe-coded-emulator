@@ -81,6 +81,12 @@ object An3ControllerHost {
         created.join(code)
     }
 
+    @Synchronized
+    fun reconnect(): ControllerStatus {
+        val current = client ?: return status.copy(error = "No direct controller session is available to reconnect.")
+        return current.reconnect()
+    }
+
     fun send(state: String): ControllerStatus {
         val current = client ?: return status.copy(error = "No direct controller session is active.")
         return try {

@@ -136,6 +136,7 @@ window.AN3OfflineEmulatorOrigin = "";
         direct: true,
         start: () => Promise.resolve(parse(androidController.start())),
         join: code => androidController.join ? Promise.resolve(parse(androidController.join(code))) : Promise.reject(new Error("Direct LAN joining is unavailable in this Android build.")),
+        reconnect: () => androidController.reconnect ? Promise.resolve(parse(androidController.reconnect())) : Promise.reject(new Error("Direct LAN reconnect is unavailable in this Android build.")),
         send: state => androidController.send ? Promise.resolve(parse(androidController.send(JSON.stringify(state)))) : Promise.reject(new Error("Direct controller input is unavailable on this Android build.")),
         stop: () => { const result = parse(androidController.stop()); return Promise.resolve(result); },
         status: () => Promise.resolve(parse(androidController.status()))

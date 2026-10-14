@@ -93,9 +93,9 @@ packaged and two-device acceptance.
   “not started,” obscuring a real reconnect gap and overstating remaining work.
 - Outcome: Android process-memory token reconnect now targets the paired host,
   keeps the token out of status/discovery, replaces a stale host socket safely,
-  ignores errors from replaced sockets, and reports input inactive after loss. The packaged Android shell
-  and bootstrap assets were refreshed; a regression guard now checks both against
-  source. Packaged/two-peer behavior remains UNVERIFIED.
+  ignores errors from replaced sockets, and reports input inactive after loss.
+  The packaged Android shell and bootstrap assets were refreshed; a regression
+  guard checks both against source. Packaged/two-peer behavior remains UNVERIFIED.
 - Friction found: the Android generated shell/bootstrap copies had fallen behind
   their source, and the host could continue reporting active input after a peer
   disconnected. The existing package synchronization test exposed the first
@@ -103,19 +103,25 @@ packaged and two-device acceptance.
 - Outcome: regenerated the two affected assets, expanded the equality guard, and
   tied host input status/release to the currently active socket. No unrelated
   build outputs were regenerated.
+- Further friction found during reconnect review: a WebView reload resets the
+  phone's frame counters while the Android host retained the counters from the
+  previous authenticated socket. After reconnect, fresh controller frames could
+  therefore be discarded as old input.
+- Outcome: reset state and utility counters inside the new authenticated socket
+  activation, and added a regression guard for that boundary. The full local
+  gate passes; reconnect remains UNVERIFIED on a real Android peer.
 - Target evidence: `an3ctl targets --json` reported no connected Android device;
   Playwright was unavailable for the Web target. No replacement app server or
   emulator was started.
 - Latest local gate: 2026-10-14 on branch `feature/semantic-ui-inspection`,
-  base HEAD `08c944bbc913fe5dec5f872689815f914815dc11` plus current worktree
-  changes. That tested tree included the Switch test/checkpoint changes later
-  committed as `b5be4cdba6f72810afb0c473997e571427ed85ab`; additional direct-LAN,
-  skill and documentation work remains uncommitted. `bash tools/verify-project.sh`
+  base HEAD `26eef158a4731990e9e7e81f7c4dfe5ac705ae55` plus current worktree
+  changes. The checked tree included the Android reconnect counter fix and
+  generated asset synchronization changes. `bash tools/verify-project.sh`
   exited 0: 475 Python tests passed with 20 skipped; JavaScript 90 passed with 3
   skipped; native JS syntax and whitespace checks passed; documentation
   references were clean. The three JS skips were unavailable Playwright, Android
-  device and emulator targets. The modified-file Gitleaks scan found no leaks.
-  No Android/Kotlin build or direct-peer runtime was run.
+  device and emulator targets. The scoped modified-source Gitleaks scan found no
+  leaks. No Android/Kotlin build or direct-peer runtime was run.
 
 ## Next discriminating actions
 

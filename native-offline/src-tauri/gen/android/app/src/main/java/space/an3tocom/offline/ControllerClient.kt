@@ -33,7 +33,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/** Snapshot of the direct-LAN phone-controller host. No server token exists. */
+/** Public controller status; resume credentials never leave this process. */
 data class ControllerStatus(
     val running: Boolean,
     val role: String,
@@ -44,6 +44,7 @@ data class ControllerStatus(
     val ackSequence: Int,
     val input: String,
     val error: String,
+    val canReconnect: Boolean = false,
 ) {
     fun toJson(): String = JSONObject()
         .put("running", running)
@@ -55,6 +56,7 @@ data class ControllerStatus(
         .put("ackSequence", ackSequence)
         .put("input", input)
         .put("error", error)
+        .put("canReconnect", canReconnect)
         .toString()
 }
 
@@ -92,7 +94,7 @@ class ControllerClient(
         private const val AXIS_THRESHOLD = 0.35f
         private const val DIR_PHONE_TO_HOST = 1
         private const val DIR_HOST_TO_PHONE = 2
-        private val EMPTY = ControllerStatus(false, "off", false, "", false, 0, 0, "", "")
+        private val EMPTY = ControllerStatus(false, "off", false, "", false, 0, 0, "", "", false)
         private val RANDOM = SecureRandom()
         private val failureLock = Any()
         private val failedAttempts = mutableMapOf<String, MutableList<Long>>()
@@ -105,10 +107,14 @@ class ControllerClient(
     @Volatile private var server: ServerSocket? = null
     @Volatile private var discovery: DatagramSocket? = null
     @Volatile private var clientSocket: Socket? = null
+    @Volatile private var hostSocket: Socket? = null
     @Volatile private var clientKey: ByteArray? = null
     @Volatile private var clientSystem = "auto"
     @Volatile private var clientInputActive = false
     @Volatile private var clientSendCounter = 1L
+    @Volatile private var hostResumeToken: ByteArray? = null
+    @Volatile private var clientResumeToken: ByteArray? = null
+    @Volatile private var clientHostId: String? = null
     @Volatile private var code = ""
     @Volatile private var codeExpiresAt = 0L
     @Volatile private var paired = false
@@ -123,7 +129,7 @@ class ControllerClient(
     private val deviceId = randomHex(16)
     private val pairingLock = Any()
 
-    val running: Boolean get() = (server != null || clientSocket != null) && !stopping.get()
+    val running: Boolean get() = (server != null || clientSocket != null || clientResumeToken != null) && !stopping.get()
 
     private fun failureKey(address: InetAddress): String = address.hostAddress ?: address.toString()
 
@@ -186,6 +192,7 @@ class ControllerClient(
         stopping.set(false)
         code = ""
         codeExpiresAt = 0L
+        clientHostId = null
         paired = false
         lastSequence = 0
         lastUtility = 0
@@ -194,8 +201,47 @@ class ControllerClient(
         clientInputActive = false
         error = ""
         try {
-            val peer = discoverController()
-            val connection = Socket()
+            connectController(normalized.toByteArray(Charsets.UTF_8), pairing = true)
+        } catch (failure: Exception) {
+            clientSocket = null
+            clientKey = null
+            clientResumeToken = null
+            paired = false
+            clientInputActive = false
+            error = failure.message ?: "Could not join the direct LAN host."
+            onStatus(status())
+        }
+    }
+
+    /** Resume a previously paired direct session using its host-issued token. */
+    @Synchronized
+    fun reconnect(): ControllerStatus {
+        val token = clientResumeToken
+        if (token == null) {
+            error = "No saved direct-session token is available. Pair with a new code."
+            onStatus(status())
+            return status()
+        }
+        if (clientSocket != null) return status()
+        stopping.set(false)
+        error = ""
+        try {
+            connectController(token, pairing = false)
+        } catch (failure: Exception) {
+            clientSocket = null
+            clientKey = null
+            paired = false
+            clientInputActive = false
+            error = failure.message ?: "Could not reconnect to the direct LAN host."
+            onStatus(status())
+        }
+        return status()
+    }
+
+    private fun connectController(secretBytes: ByteArray, pairing: Boolean) {
+        val peer = discoverController(if (pairing) null else clientHostId)
+        val connection = Socket()
+        try {
             connection.connect(InetSocketAddress(peer.address, peer.port), 30_000)
             connection.soTimeout = 30_000
             val inputStream = DataInputStream(connection.getInputStream())
@@ -213,15 +259,27 @@ class ControllerClient(
             require(response.optString("k") == "hello" && response.optInt("v") == PROTOCOL_VERSION) {
                 "The direct peer uses an incompatible protocol."
             }
+            val hostId = response.optString("id")
+            require(hostId.isNotBlank() && (pairing || hostId == clientHostId)) {
+                "The discovered host is not the paired device."
+            }
             val peerPublic = publicKeyFromRaw(decode(response.optString("pub")))
             val agreement = KeyAgreement.getInstance("ECDH")
             agreement.init(secret.private)
             agreement.doPhase(peerPublic, true)
-            val sessionKey = deriveKey(agreement.generateSecret(), normalized.toByteArray(Charsets.UTF_8))
+            val sessionKey = deriveKey(agreement.generateSecret(), secretBytes)
             writeFrame(outputStream, seal(sessionKey, DIR_PHONE_TO_HOST, 0, JSONObject().put("k", "auth")))
             val ready = open(sessionKey, DIR_HOST_TO_PHONE, 0, readFrame(inputStream))
-                ?: throw IllegalStateException("The direct peer rejected the pairing code.")
-            require(ready.optString("k") == "ready") { "The direct peer did not confirm pairing." }
+                ?: throw IllegalStateException("The direct peer rejected the pairing code or resume token.")
+            require(ready.optString("k") == "ready") { "The direct peer did not confirm the session." }
+            val tokenText = ready.optString("token", "")
+            val returnedToken = try { decode(tokenText).takeIf { it.size == 32 } } catch (_: Exception) { null }
+            if (pairing) {
+                clientResumeToken = returnedToken
+                clientHostId = hostId
+            } else if (returnedToken != null) {
+                clientResumeToken = returnedToken
+            }
             clientSocket = connection
             clientKey = sessionKey
             clientSendCounter = 1L
@@ -230,13 +288,8 @@ class ControllerClient(
             onStatus(status())
             executor.execute { clientReadLoop(connection, inputStream, sessionKey) }
         } catch (failure: Exception) {
-            try { clientSocket?.close() } catch (_: Exception) {}
-            clientSocket = null
-            clientKey = null
-            paired = false
-            clientInputActive = false
-            error = failure.message ?: "Could not join the direct LAN host."
-            onStatus(status())
+            try { connection.close() } catch (_: Exception) {}
+            throw failure
         }
     }
 
@@ -246,13 +299,18 @@ class ControllerClient(
         try { server?.close() } catch (_: Exception) {}
         try { discovery?.close() } catch (_: Exception) {}
         try { clientSocket?.close() } catch (_: Exception) {}
+        try { hostSocket?.close() } catch (_: Exception) {}
         server = null
         discovery = null
         clientSocket = null
+        hostSocket = null
         clientKey = null
         clientSystem = "auto"
         clientInputActive = false
         clientSendCounter = 1L
+        clientResumeToken = null
+        clientHostId = null
+        hostResumeToken = null
         release()
         code = ""
         codeExpiresAt = 0L
@@ -286,14 +344,15 @@ class ControllerClient(
         val client = clientSocket != null
         return ControllerStatus(
             running = running,
-            role = if (client) "controller" else if (server != null) "host" else "off",
+            role = if (client || clientResumeToken != null) "controller" else if (server != null) "host" else "off",
             paired = paired,
-            code = if (!client && running && !paired && System.currentTimeMillis() < codeExpiresAt) code else "",
-            inputActive = if (client) clientInputActive else shouldApply() && paired,
+            code = if (!client && server != null && running && !paired && System.currentTimeMillis() < codeExpiresAt) code else "",
+            inputActive = if (client) clientInputActive else hostSocket != null && shouldApply() && paired,
             lastSequence = lastSequence,
             ackSequence = ackSequence,
             input = if (client) "" else input,
             error = error,
+            canReconnect = !client && clientResumeToken != null,
         )
     }
 
@@ -334,9 +393,9 @@ class ControllerClient(
         }
     }
 
-    private data class DiscoveredPeer(val address: InetAddress, val port: Int)
+    private data class DiscoveredPeer(val address: InetAddress, val port: Int, val id: String)
 
-    private fun discoverController(): DiscoveredPeer {
+    private fun discoverController(expectedId: String? = null): DiscoveredPeer {
         MulticastSocket(DISCOVERY_PORT).use { socket ->
             val group = InetAddress.getByName(DISCOVERY_ADDRESS)
             socket.joinGroup(group)
@@ -354,14 +413,15 @@ class ControllerClient(
                     val id = record.optString("id")
                     val name = record.optString("name")
                     val port = record.optInt("port", 0)
-                    if (!sensitive && record.optString("an3") == "peer" && record.optString("service") == "an3-peer" && record.optInt("v") == PROTOCOL_VERSION && controller && port in 1..65535 && Regex("^[A-Za-z0-9._-]{8,64}$").matches(id) && name.length in 1..64) {
-                        return DiscoveredPeer(packet.address, port)
+                    if (!sensitive && record.optString("an3") == "peer" && record.optString("service") == "an3-peer" && record.optInt("v") == PROTOCOL_VERSION && controller && port in 1..65535 && Regex("^[A-Za-z0-9._-]{8,64}$").matches(id) && name.length in 1..64 && (expectedId == null || id == expectedId)) {
+                        return DiscoveredPeer(packet.address, port, id)
                     }
                 } catch (_: Exception) {
                     // Keep listening until the bounded discovery window expires.
                 }
             }
         }
+        if (expectedId != null) throw IllegalStateException("The paired controller host was not found on the local network.")
         throw IllegalStateException("No AN3 controller host was found on the local network.")
     }
 
@@ -396,6 +456,7 @@ class ControllerClient(
 
     private fun handle(socket: Socket) {
         socket.use { connection ->
+            var activated = false
             try {
                 val peerAddress = connection.inetAddress
                 connection.soTimeout = 30_000
@@ -422,17 +483,30 @@ class ControllerClient(
                     .put("name", "Android device")
                 writeFrame(outputStream, response.toString().toByteArray(Charsets.UTF_8))
 
-                if (paired || System.currentTimeMillis() >= codeExpiresAt) return
-                val sessionKey = deriveKey(shared, code.toByteArray(Charsets.UTF_8))
-                val auth = open(sessionKey, DIR_PHONE_TO_HOST, 0, readFrame(inputStream))
-                if (auth?.optString("k") != "auth") {
+                val sealedAuth = readFrame(inputStream)
+                var sessionKey: ByteArray? = null
+                var usedCode = false
+                val tokenCandidate = hostResumeToken
+                if (tokenCandidate != null) {
+                    val candidate = deriveKey(shared, tokenCandidate)
+                    if (open(candidate, DIR_PHONE_TO_HOST, 0, sealedAuth)?.optString("k") == "auth") {
+                        sessionKey = candidate
+                    }
+                }
+                if (sessionKey == null && !paired && System.currentTimeMillis() < codeExpiresAt) {
+                    val candidate = deriveKey(shared, code.toByteArray(Charsets.UTF_8))
+                    if (open(candidate, DIR_PHONE_TO_HOST, 0, sealedAuth)?.optString("k") == "auth") {
+                        sessionKey = candidate
+                        usedCode = true
+                    }
+                }
+                // Pairing is one-shot even when two peers race to use the
+                // displayed code; token-authenticated sessions can reconnect.
+                val authenticatedKey = sessionKey ?: run {
                     noteFailure(peerAddress)
                     return
                 }
-                // Pairing is one-shot even when two peers race to use the
-                // same displayed code. The second authenticated socket is
-                // rejected before it can receive a ready frame.
-                synchronized(pairingLock) {
+                if (usedCode) synchronized(pairingLock) {
                     if (paired || System.currentTimeMillis() >= codeExpiresAt) {
                         noteFailure(peerAddress)
                         return
@@ -440,18 +514,41 @@ class ControllerClient(
                     paired = true
                     code = ""
                     codeExpiresAt = 0L
+                    val token = ByteArray(32).also { RANDOM.nextBytes(it) }
+                    hostResumeToken = token
                 }
                 clearFailures(peerAddress)
+                val previous = synchronized(pairingLock) {
+                    // State sequences belong to this authenticated transport. A
+                    // resumed controller may have reloaded its WebView and
+                    // restarted its local counters at zero.
+                    lastSequence = 0
+                    lastUtility = 0
+                    ackSequence = 0
+                    hostSocket.also { hostSocket = connection }
+                }
+                activated = true
+                if (previous != null && previous !== connection) {
+                    try { previous.close() } catch (_: Exception) {}
+                }
                 val ready = JSONObject()
                     .put("k", "ready")
-                    .put("token", JSONObject.NULL)
+                    .put("token", if (usedCode) encode(hostResumeToken ?: ByteArray(0)) else JSONObject.NULL)
                     .put("system", systemProvider() ?: "auto")
-                writeFrame(outputStream, seal(sessionKey, DIR_HOST_TO_PHONE, 0, ready))
-                readFrames(inputStream, outputStream, sessionKey)
+                writeFrame(outputStream, seal(authenticatedKey, DIR_HOST_TO_PHONE, 0, ready))
+                readFrames(inputStream, outputStream, authenticatedKey)
             } catch (failure: Exception) {
-                if (!stopping.get()) setError("Direct LAN controller session ended")
+                if (!stopping.get() && (!activated || hostSocket === connection)) {
+                    setError("Direct LAN controller session ended")
+                }
             } finally {
-                release()
+                if (activated) synchronized(pairingLock) {
+                    if (hostSocket === connection) {
+                        hostSocket = null
+                        release()
+                        onStatus(status())
+                    }
+                }
             }
         }
     }

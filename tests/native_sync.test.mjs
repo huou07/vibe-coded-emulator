@@ -7,13 +7,16 @@ const source = await readFile(new URL("../native-offline/web/native-sync.js", im
 
 test("Android packaged sync scripts match their source files", async () => {
   const androidAssets = new URL("../native-offline/src-tauri/gen/android/app/src/main/assets/", import.meta.url);
-  const [packagedSync, appSource, packagedApp] = await Promise.all([
+  const [packagedSync, appSource, packagedApp, bootstrapSource, packagedBootstrap] = await Promise.all([
     readFile(new URL("native-sync.js", androidAssets), "utf8"),
     readFile(new URL("../native-offline/web/native-app.js", import.meta.url), "utf8"),
     readFile(new URL("native-app.js", androidAssets), "utf8"),
+    readFile(new URL("../native-offline/web/native-bootstrap.js", import.meta.url), "utf8"),
+    readFile(new URL("native-bootstrap.js", androidAssets), "utf8"),
   ]);
   assert.equal(packagedSync, source);
   assert.equal(packagedApp, appSource);
+  assert.equal(packagedBootstrap, bootstrapSource);
 });
 
 const loadSync = (calls = [], statusPayload = null, overrides = {}, account = null) => {

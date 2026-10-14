@@ -86,6 +86,9 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
+    fun reconnect(): String = An3ControllerHost.reconnect().toJson()
+
+    @JavascriptInterface
     fun send(state: String): String = An3ControllerHost.send(state).toJson()
 
     @JavascriptInterface
