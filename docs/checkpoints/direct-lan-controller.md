@@ -113,15 +113,18 @@ packaged and two-device acceptance.
 - Target evidence: `an3ctl targets --json` reported no connected Android device;
   Playwright was unavailable for the Web target. No replacement app server or
   emulator was started.
-- Latest local gate: 2026-10-14 on branch `feature/semantic-ui-inspection`,
-  base HEAD `26eef158a4731990e9e7e81f7c4dfe5ac705ae55` plus current worktree
-  changes. The checked tree included the Android reconnect counter fix and
-  generated asset synchronization changes. `bash tools/verify-project.sh`
-  exited 0: 475 Python tests passed with 20 skipped; JavaScript 90 passed with 3
-  skipped; native JS syntax and whitespace checks passed; documentation
-  references were clean. The three JS skips were unavailable Playwright, Android
-  device and emulator targets. The scoped modified-source Gitleaks scan found no
-  leaks. No Android/Kotlin build or direct-peer runtime was run.
+- Latest full local gate in this session: job `bash-711` was launched on
+  2026-10-14 from commit `5a132d5`, after the Android reconnect implementation in
+  `8f8fabc` and the CI fixes in `08c944b`/`b5be4cd`. The worktree also contained
+  the preserved `app.py` and `static/site.css` edits and evidence-only changes.
+  `bash tools/verify-project.sh` exited 0: 475 Python tests passed with 20
+  skipped; JavaScript 90 passed with 3 skipped; native JS syntax, documentation
+  references and whitespace checks passed. Playwright, Android device and local
+  emulator legs were skipped because their targets were unavailable. This is
+  source-gate evidence, not a clean-artifact or packaged runtime result. The
+  later commits `67a81d1`, `d7d89d1` and `e8b4765` update documentation/evidence;
+  the current source HEAD is `e8b4765`. No Android/Kotlin build or direct-peer
+  runtime was run.
 
 ## Next discriminating actions
 
