@@ -29,6 +29,22 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Quick-save storage round-trip — RG-150, 2026-10-14
+
+- RG-150: **Web quick-save slots 1–10 must retain their raw state bytes across
+  a player restart, and autosave must remain isolated from manual slots.**
+  `QuickSaveManager` uses one IndexedDB record per game/slot and one separate
+  autosave record. A failed autosave transaction must leave the prior autosave
+  and manual saves intact.
+- Automated: `node tests/player_save_storage.test.js` exercises the actual
+  `QuickSaveManager` against an in-memory IndexedDB API model: all ten slots,
+  boundary rejection, manager recreation, byte round-trip, timestamps, autosave
+  isolation, and aborted-write recovery. This is behavioral storage-model
+  evidence, not a browser or emulator journey. Browser restart and game-level
+  save/load remain **UNVERIFIED** until exercised on a real supported target.
+- Owners: `static/player-runtime.js::QuickSaveManager`. Preserve the existing
+  database name, store, keys, and raw core-state format.
+
 ## Phone controller utility naming — 2026-10-13
 
 - **Phone utility actions (Quick Save, Speed, Menu) were silently dropped

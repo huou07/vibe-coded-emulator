@@ -77,6 +77,8 @@ to keep in Git. See [`ci-2026-10-14.md`](evidence/ci-2026-10-14.md) for the
 inspected CI failure causes and corresponding repairs,
 [`ui-library-2026-10-14.md`](evidence/ui-library-2026-10-14.md) for the
 server-rendered library semantics and compact-card action review, and
+[`save-slots-2026-10-14.md`](evidence/save-slots-2026-10-14.md) for deterministic
+quick-save storage behavior and the remaining real-browser/runtime acceptance,
 [`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md) for
 retained Linux probes and the current gameplay-performance target audit. Large
 per-run captures are **not** committed: a machine-specific path under `reports/` is not
