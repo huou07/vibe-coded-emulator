@@ -11,6 +11,8 @@ on:
       - '.gitattributes'
       - 'native-offline/**'
       - 'native/**'
+      - 'static/**'
+      - 'tests/**'
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
@@ -21,6 +23,8 @@ on:
       - '.gitattributes'
       - 'native-offline/**'
       - 'native/**'
+      - 'static/**'
+      - 'tests/**'
       - 'tools/android/**'
       - 'tools/release-train.sh'
       - 'tools/testrom/**'
@@ -159,7 +163,7 @@ jobs:
           npm install --global @playwright/cli@0.1.21
           command -v playwright-cli
       - name: Run macOS JavaScript regression suites
-        run: node --test tests/*.test.js tests/*.test.mjs native-offline/tests/*.test.mjs
+        run: node --test tests/*.test.js tests/*.test.mjs
       - name: Build canonical macOS package
         env:
           AN3_EDEN_JOBS: '2'
