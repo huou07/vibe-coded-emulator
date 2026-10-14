@@ -62,3 +62,30 @@ corrected the evidence boundary; no local-ROM acceptance claim was added. The
 offline import, core readiness, launch, restart persistence and relaunch without
 internet remain **UNVERIFIED** until a packaged Android or desktop runtime and a
 lawful fixture are available.
+
+## Native import-path follow-up (source `4f01bf53da501f4b719150c75bee9c7dc7537114`)
+
+The `vce-product-journeys` and `an3-control-plane` procedures were dogfooded
+again against the offline-first local-ROM flow. A fresh
+`tools/an3ctl/bin/an3ctl targets --json` returned exit 0: Web is available but
+has no Playwright bridge; Android has no connected device; the deterministic
+emulator has no local player; Switch has no harness; macOS has no active UI
+bridge; Linux lacks WebKitGTK WebDriver/display; Windows is unreachable.
+No application process was started in this follow-up.
+
+Source trace: `native-app.js::openRom` opens Library/Add ROM and clicks the
+native picker when configured, otherwise the browser file input. In
+`offline.js::setupLibrary`, the native path reports busy status, awaits the
+platform import, validates the reported system, removes an unsupported import
+when possible, and only then stores the local game record and rerenders the
+library. A later missing-native-ROM launch failure exposes **Re-import ROM**.
+These branches and the platform bridge wiring are covered by
+`tests/test_offline_consolidation.py`, but the test does not invoke a real OS
+picker or native host.
+
+Outcome: no reproducible source defect was established, so no import code was
+changed. The import, cancellation/error recovery, capability readiness, launch,
+offline relaunch, and preservation of an existing library remain **UNVERIFIED**.
+The concrete next requirement is a reachable packaged test target with its real
+file picker and a lawful fixture; the current worker exposes none of the targets
+needed to complete that journey.
