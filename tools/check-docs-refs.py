@@ -78,11 +78,12 @@ def tracked_files() -> set[str]:
 
 
 def ignored_paths() -> list[str]:
-    """Paths the project deliberately keeps out of Git.
+    """Paths deliberately excluded by Git, whether or not they exist locally.
 
-    A documented path that ``.gitignore`` excludes is an intentional decision,
-    not a dangling reference — ``data/`` holds runtime state that must never be
-    versioned, and a document is allowed to say so.
+    ``git status --ignored`` reports only materialized paths. A clean CI checkout
+    may not contain runtime state such as ``data/``, even though ``.gitignore``
+    intentionally excludes it. Check the documented root paths against ignore
+    rules as well as collecting any currently materialized ignored paths.
     """
     try:
         result = subprocess.run(
@@ -91,11 +92,28 @@ def ignored_paths() -> list[str]:
         )
     except OSError:
         return []
-    ignored: list[str] = []
+    ignored: set[str] = set()
     for line in result.stdout.splitlines():
         if "!!" in line:
-            ignored.append(line.split("!!", 1)[1].strip().rstrip("/"))
-    return ignored
+            ignored.add(line.split("!!", 1)[1].strip().rstrip("/"))
+
+    candidates = sorted(
+        path for root in KNOWN_ROOTS for path in (root, f"{root}/")
+    )
+    try:
+        configured = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--stdin"],
+            cwd=ROOT, input="\n".join(candidates) + "\n",
+            capture_output=True, text=True,
+        )
+    except OSError as exc:
+        print(f"check-docs-refs: cannot check ignore rules: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    if configured.returncode not in (0, 1):
+        print("check-docs-refs: cannot check ignore rules", file=sys.stderr)
+        raise SystemExit(2)
+    ignored.update(line.strip().rstrip("/") for line in configured.stdout.splitlines())
+    return sorted(ignored)
 
 
 def doc_files() -> list[Path]:
@@ -137,8 +155,13 @@ def check_repo_relative(line_no: int, doc: str, token: str,
         candidates.add(f"{doc_dir}/{target}")
     if any(c in tracked for c in candidates):
         return
-    # A deliberately unversioned path is still a real path.
-    if any(c in ignored for c in candidates):
+    # A deliberately unversioned path is still a real path. Ignore rules for
+    # a directory also apply to any documented child, even when absent locally.
+    if any(
+        candidate == path or candidate.startswith(path + "/")
+        for candidate in candidates
+        for path in ignored
+    ):
         return
     findings.append(
         f"{doc}:{line_no}: {token!r} is not a path in this repository"
