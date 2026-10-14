@@ -57,12 +57,20 @@ v3.5.2 pause probe's Vulkan-ready state and frame counts are not performance
 metrics.
 
 The `vce-gameplay-performance` procedure was loaded and used to assess this
-archive. Current `an3ctl targets --json` has no local player, no Android device,
-and an unreachable Windows target; no new gameplay baseline was collected. The
-Linux/native cross-platform performance rows therefore remain `UNVERIFIED`.
-The next discriminating action is a bounded sustained run on an authorized
-supported Linux Vulkan device with a lawful fixture, pinned core and exact
-artifact/source identity, collecting the fields required by that procedure.
+archive. The target inventory was checked at source SHA
+`df4c4ec116157f1b0be564823a41041bbbc885e4` on 2026-10-14. Refreshed
+`an3ctl targets --json` reports: Web available without
+`playwright-cli`; Android unavailable with no devices; the emulator adapter
+available but no local player path (remote Linux/Windows targets are listed, but
+no local player artifact is present); Switch unavailable without its bridge
+harness; macOS unavailable without an active UI-control bridge; Linux desktop
+unavailable without WebKitGTK WebDriver and a display; Windows builder
+`an3-win11-build` unreachable. No intended runtime met the procedure's
+preconditions, so no new gameplay baseline or performance metrics were collected.
+The Linux/native cross-platform performance rows remain `UNVERIFIED`. The next
+discriminating action is a bounded sustained run on an authorized supported
+Linux Vulkan device with a lawful fixture, pinned core and exact artifact/source
+identity, collecting the fields required by that procedure.
 
 See `docs/archive/checkpoint-home-scratch-cleanup.md` for how this archive
 was produced and how to restore from it.

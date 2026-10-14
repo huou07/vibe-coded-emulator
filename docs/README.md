@@ -74,10 +74,14 @@ and [`../native-offline/THIRD_PARTY_NOTICES.md`](../native-offline/THIRD_PARTY_N
 
 [`evidence/`](evidence/) holds retained acceptance evidence that is small enough
 to keep in Git. See [`ci-2026-10-14.md`](evidence/ci-2026-10-14.md) for the
-inspected CI failure causes and corresponding repairs. Large per-run captures
-are **not** committed: a machine-specific path under `reports/` is not a durable
-reference, and nothing in `docs/` points at one. `tools/verify-project.sh` fails
-if such a reference reappears.
+inspected CI failure causes and corresponding repairs,
+[`ui-library-2026-10-14.md`](evidence/ui-library-2026-10-14.md) for the
+server-rendered library semantics and compact-card action review, and
+[`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md) for
+retained Linux probes and the current gameplay-performance target audit. Large
+per-run captures are **not** committed: a machine-specific path under `reports/` is not
+a durable reference, and nothing in `docs/` points at one.
+`tools/verify-project.sh` fails if such a reference reappears.
 
 ## Archive
 
