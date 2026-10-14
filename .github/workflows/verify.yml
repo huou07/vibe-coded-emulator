@@ -70,6 +70,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_CONFIG: tools/publication/.gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: 'false'
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
       - name: Build the public snapshot
