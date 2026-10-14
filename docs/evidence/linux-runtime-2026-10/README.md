@@ -20,7 +20,7 @@ GBA input path plus the automation summaries and app logs.
 | `summary.json` | Overall pass/fail for the run |
 | `input-summary.json` | Input-path probe result |
 | `x-summary.json` / `isolated-x-summary.json` | Per-probe results |
-| `ui-control*.json` | Control-harness invocations that produced the probes |
+| `ui-control*.json` | Redacted control-harness invocation metadata for the probes |
 | `*-app.log` | Emulator process logs for each probe |
 
 ## v352-runtime-probes — v3.5.2 Linux runtime
@@ -45,6 +45,24 @@ paused-control probes from that soak run.
   available in the full tarball.
 - The only files tar could not read were root-owned Mesa shader caches, which
   carry no evidentiary value.
+
+## Gameplay performance acceptance audit (2026-10-14)
+
+The retained v3.4.2 and v3.5.2 files are useful UI, input-transition, paused
+control, and package-integrity probes. They do not establish sustained gameplay
+performance: they lack a matched hardware/OS/GPU/driver/core identity and do not
+record game-speed accuracy, frame-time distribution/tail spikes, measured input
+latency, audio glitches, sustained CPU/GPU/memory use, or thermals/power. The
+v3.5.2 pause probe's Vulkan-ready state and frame counts are not performance
+metrics.
+
+The `vce-gameplay-performance` procedure was loaded and used to assess this
+archive. Current `an3ctl targets --json` has no local player, no Android device,
+and an unreachable Windows target; no new gameplay baseline was collected. The
+Linux/native cross-platform performance rows therefore remain `UNVERIFIED`.
+The next discriminating action is a bounded sustained run on an authorized
+supported Linux Vulkan device with a lawful fixture, pinned core and exact
+artifact/source identity, collecting the fields required by that procedure.
 
 See `docs/archive/checkpoint-home-scratch-cleanup.md` for how this archive
 was produced and how to restore from it.
