@@ -6,18 +6,21 @@ description: Use when deploying or smoke-testing the AN3 Arcade / Vibe Coded Emu
 # Deploy and verify AN3 staging
 
 Staging is `http://192.168.1.8:8092` (host `huou07@192.168.1.8`). Production is
-`192.168.1.8:8091` and **must never be touched without explicit owner
-approval**.
+`192.168.1.8:8091`. The active owner mandate dated 2026-10-14 authorizes deploying
+accepted VCE versions through the existing production path after its checks pass;
+other production changes still require explicit owner authorization.
 
 ## Preconditions and authority
 
 Skip ordinary source edits and local status questions. A deployment request
-permits only the named staging scope within host/tool permissions; production and
-public release need explicit owner authority. First read the deployment scripts
-and current endpoint/rollback configuration. Do not run a root helper with
-model-controlled arguments or access protected owner keys. If the available
-identity cannot use the approved operator path, prepare the candidate and report
-the exact boundary for the operator. Never improvise sudo or a credential helper.
+permits only the named scope within host/tool permissions. The active owner mandate
+authorizes accepted VCE production promotion through the existing path; it does
+not grant protected owner keys, sudo, DNS/router changes or unrelated host control.
+First read the deployment scripts and current endpoint/rollback configuration. Do
+not run a root helper with model-controlled arguments or access protected owner
+keys. If the available identity cannot use the approved operator path, prepare the
+candidate and report the exact boundary for the operator. Never improvise sudo or
+a credential helper.
 For health-only requests, use read-only health checks; do not redeploy.
 
 ## Deploy (from any worktree that has `tools/ssh/staging-env.sh`)

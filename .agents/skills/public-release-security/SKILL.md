@@ -13,9 +13,11 @@ a failure, never as a clean result — see "Fail-open history" below.
 
 Resolve the exact publication candidate, source identity and requested operation.
 Skip routine internal edits and non-public status requests. Review and snapshot
-preparation do not authorize a push or release; preserve the owner publication
-gate. Read snapshot/gate scripts before running them and inspect the candidate's
-licence contract rather than changing licence text to obtain a pass.
+preparation do not by themselves authorize a push or release: check the active
+session mandate and `AGENTS.md`, then stay within its scope, gates and effective
+tool/OS permissions. Read snapshot/gate scripts before running them and inspect
+the candidate's licence contract rather than changing licence text to obtain a
+pass.
 
 ## Run
 

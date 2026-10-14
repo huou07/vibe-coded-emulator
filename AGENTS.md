@@ -89,8 +89,14 @@ interaction contracts in `docs/player-layering.md`.
 
 ## Safety and release boundary
 
-- Work staging-first. Production, releases and publication to a public
-  repository require **explicit human approval** — never automatic.
+- Work staging-first. The owner mandate in the active 2026-10-14 conversation
+  explicitly authorizes commits, pushes, public source publication, suitable
+  GitHub releases, CI/CD build/test/release and deployment of accepted versions
+  through the existing production path. This authorization persists within its
+  stated scope and checks. It does not grant protected credentials, override
+  OS/tool permissions or branch protection, or authorize DNS/router changes,
+  privileged host administration or unrelated services. For actions outside an
+  explicit active authorization, obtain human approval first.
 - Never rewrite published history and never force-push.
 - Keep third-party notices and license texts intact; see `docs/licensing/`.
 - Use only lawful fixtures.

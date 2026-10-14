@@ -53,8 +53,10 @@ PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m unittest discover -s tests
 
 ## Before editing, read
 
-- `docs/REGRESSION_GUARDS.md` and `reports/handoff/SYSTEM_INSPECTION_HANDOFF.md`.
+- `docs/REGRESSION_GUARDS.md` for the current guard ledger.
 - `docs/player-layering.md` for any player-shell change.
+- The active checkpoint in `docs/checkpoints/` when the player change belongs to
+  unfinished work. Do not depend on a machine-specific `reports/` handoff.
 
 ## Stop and output
 

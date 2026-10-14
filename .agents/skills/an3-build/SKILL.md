@@ -9,18 +9,22 @@ Repo root for source, edits and builds: this repository — resolve it with
 `git rev-parse --show-toplevel`, never a hardcoded path. `native-offline/`
 holds the packages.
 
-**This host cannot build them.** Packaging needs the pinned core artifacts and a
-per-platform toolchain on the dedicated builders. Locally you may only edit
-version fields, `native-offline/releases/catalog.json`, and the packaging
-scripts; `bash tools/verify-project.sh` and GitHub Actions do the rest.
+**This host cannot build packages.** Packaging needs pinned core artifacts and
+per-platform toolchains on the dedicated builders. You may make authorized
+source changes and run the local verification gate here, but do not start native
+builds, VMs or release installers on this worker. Version/catalog changes belong
+in `native-offline/releases/catalog.json` and the package's actual version fields.
 
 ## Preconditions and authority
 
 Inspect source identity, the affected package and its current version/catalog.
 Read packaging scripts before execution. This procedure prepares source and
-artifact evidence; release/publication requires explicit owner authorization.
-Builder commands below are references for authorized dedicated builders, not
-permission to start local VMs, install toolchains or access protected credentials.
+artifact evidence. The active owner mandate dated 2026-10-14 authorizes suitable
+GitHub releases and promotion of accepted versions through the existing production
+path after the required gates pass. That authorization does not override platform
+builder limits or grant protected credentials. Builder commands below are
+references for authorized dedicated builders, not permission to start local VMs,
+install toolchains or access protected credentials.
 
 ## Version-bump rule (owner-mandated)
 
@@ -99,8 +103,9 @@ packaged runtime acceptance must be independently recorded.
 
 ## Rules
 
-- Staging first. Production requires explicit owner approval and is never
-  automatic.
+- Staging first. Use the active owner mandate for accepted production releases
+  within its stated scope and gates; otherwise require explicit owner approval.
+  A green build does not establish gameplay acceptance.
 - No UX/audio/input "fixed" claim from compilation alone; exercise the
   packaged runtime.
 - Version bumps and release records must match the bytes actually published.
