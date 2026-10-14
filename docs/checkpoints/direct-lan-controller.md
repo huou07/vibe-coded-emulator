@@ -139,6 +139,23 @@ packaged and two-device acceptance.
    artifact identity and observed outcomes. Do not mark two-device acceptance
    GOOD from source tests.
 
+## Current-session target refresh (source `7dbe80e906da30e9b8fd4233158e02922a06f9c7`)
+
+- The `vce-product-journeys` procedure and `an3-control-plane` target-first
+  check were used on 2026-10-14. `tools/an3ctl/bin/an3ctl targets --json`
+  exited 0: Web exists but `playwright-cli` is missing; no Android device is
+  connected; no local player or Switch harness is installed; the macOS UI bridge
+  and Linux WebKitGTK/WebDriver display path are absent; Windows is unreachable.
+- No app, emulator, native build, or test peer was started. Consequently the
+  packaged join/reconnect, release-all, and real LAN behavior remain
+  **UNVERIFIED**. This refresh confirms the existing dependency; it does not
+  replace the prior source-gate result or claim a runtime regression.
+- Next discriminating action remains a native Android build on an authorized
+  builder followed by two real peers on the same LAN with internet disconnected.
+  Required evidence: artifact hash, discovery and pairing, each advertised host
+  platform, input release on focus/network loss, reconnect, and stop/token
+  lifecycle. No such builder/device is available in this worker snapshot.
+
 ## Gotchas already learned
 
 - Accepted TCP sockets inherit the listener's non-blocking mode on Unix — call
