@@ -279,5 +279,33 @@ class GateOrderTests(unittest.TestCase):
         )
 
 
+class SnapshotSparseCheckoutTests(unittest.TestCase):
+    """The public snapshot builder must tolerate inherited sparse worktrees."""
+
+    def test_license_fallback_is_limited_to_tracked_skip_worktree_paths(self):
+        script = BUILD_SNAPSHOT.read_text(encoding="utf-8")
+
+        self.assertIn(
+            'git -C "$ROOT" ls-files -t -- "$license_path"',
+            script,
+            "sparse fallback must confirm Git marks this exact path skip-worktree",
+        )
+        self.assertIn(
+            '[[ "$index_tag" == "S" ]] || die',
+            script,
+            "a genuinely missing or deleted license must still fail closed",
+        )
+        self.assertIn(
+            'git -C "$ROOT" show "HEAD:$license_path"',
+            script,
+            "a sparse-only omission must recover from the recorded source revision",
+        )
+        self.assertNotIn(
+            'cp -R "$ROOT/native-offline/vendor"',
+            script,
+            "the fallback must not copy the vendored core binaries",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
