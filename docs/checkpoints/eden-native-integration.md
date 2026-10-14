@@ -1,35 +1,64 @@
-# Checkpoint — Eden native integration (continuing)
+# Checkpoint — Eden native integration
 
-Updated after each completed phase. Recovery: nothing here rewrites history; all
-work is additive commits on `apps-web`. To undo a phase, revert its commit.
+Updated 2026-10-14. This checkpoint separates implemented source from packaged
+and device acceptance. Recovery remains additive commits; do not rewrite
+published history.
 
-## Resume state (verified 2026-09-17)
+## Current status (verified 2026-10-14)
 
-- Branch `apps-web`; Eden pinned at `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`.
-- Version **2.3.0** source (2.2.0 remains the last packaged/staging release);
-  GPL-3.0-or-later.
-- Test suite: **299 tests, OK** (`python3 -m unittest discover -s tests`); Rust
-  `cargo test --lib` 22 passed.
-- Existing GBA/NDS/3DS libretro path untouched; per-platform renderers unchanged.
-- Staging: asset version unchanged. **Nothing Switch-related is deployed** and
-  no Switch feature is advertised.
-- The Eden bridge is its own out-of-tree build; nothing under `native-offline/`
-  or the web player changed, so no packaged artifact was rebuilt.
+- Scope: the existing Switch companion is a separate macOS process that embeds
+  the pinned Eden bridge. The Rust host resolves a `macos-arm64` companion and
+  MoltenVK resource; this is not a Switch libretro core and does not establish
+  Linux, Windows, Android, or browser support.
+- Implemented in source: companion discovery, launch, status, focus, button and
+  analog input, audio diagnostics, graceful stop, and the macOS app resource
+  layout. See `native-offline/src-tauri/src/switch_companion.rs`.
+- Implemented test coverage: source/IPC checks, a packaged macOS UI journey,
+  service-level save-store persistence, and audio-sink diagnostics. Game-level
+  save round-trip, captured audible output, and physical gamepad play remain
+  `UNVERIFIED`; the service persistence test explicitly does not claim a game
+  save. Relevant files: `tests/test_switch_ui_e2e.py`,
+  `tests/test_switch_saves.py`, and `tests/test_switch_audio.py`.
+- Runtime target discovery on this worker reports no Switch harness, no macOS UI
+  bridge, no Android device, no Playwright UI target, no local player, and an
+  unreachable Windows target. The current local control-plane result is
+  `an3ctl targets --json`; source tests are not runtime acceptance.
+- The full local project gate passed with base source HEAD
+  `08c944bbc913fe5dec5f872689815f914815dc11` and the current Switch test and
+  checkpoint edits present in the worktree. Platform-specific Switch process
+  tests skip here because no compatible companion and lawful homebrew fixture
+  are installed. These skips are `UNVERIFIED`, not passes.
+- Historical frame counts, benchmark runs, and app versions below are archived
+  snapshots from 2026-09-17. They do not identify or accept the current source
+  or a current packaged artifact. No current packaged Switch artifact or
+  production deployment was verified in this session.
 
-## Status overview
+### Remaining acceptance
 
-| Item | Status |
-| --- | --- |
-| Phase 0 — checkpoint/state verification | Implemented and tested |
-| Phase 1 — C ABI bridge + smoke test (null backend) | Implemented and tested |
-| Milestone A — Eden configured + `core` built at the pinned commit | Implemented and tested |
-| Milestone B — Eden-backed bridge links + runs the smoke test | **Implemented, built, and runtime-verified** |
-| Milestone B+ — a real legal homebrew NRO (nx-hbmenu v3.6.1) loads and starts | **Implemented and runtime-verified (macOS, MoltenVK)** |
-| Milestone C — Rust/AN3 integration | **Done (macOS)**: `CompanionSystem` in the app, `.nro` library/import, in-app launch, Focus/Stop UI, bundled companion + packaged E2E. Linux/Windows UNAVAILABLE; Android not supported |
-| Milestone D — frame readback / presentation to the AN3 surface | **Done (companion presents its own window)**: RG-115 fixed, sustained render verified; AN3 does not receive pixels (the separate-process design does not require it) |
-| Milestone E — input, audio, saves, app UI | **Done (macOS)**: input read-back verified; audio is Eden-native (sink verified, audible UNVERIFIED); service-level save persistence verified (game-level UNVERIFIED); Switch UI wired. Physical gamepad UNVERIFIED |
+1. On the authorized macOS builder/device, build the current app and run the
+   packaged import, launch, focus, stop, relaunch, and shutdown UI journey with
+   a lawful fixture. Record source SHA, artifact hash, macOS/hardware/GPU,
+   renderer, Eden/MoltenVK hashes, and test duration.
+2. Verify actual gameplay input with keyboard and a real gamepad; synthetic IPC
+   input tests do not establish either user journey.
+3. Capture audible output with a suitable loopback or recording method. Sink
+   availability and backend diagnostics alone do not establish audible gameplay.
+4. Run game-level save and resume using a lawful homebrew fixture that actually
+   writes a save. The existing nx-hbmenu service-store checks cannot satisfy it.
+5. Measure sustained gameplay on that same supported macOS artifact and device;
+   archived bridge frame counts are not a current performance profile.
 
-## Phase 6 — Switch completion: sustained render, input, saves, companion (2026-09-17)
+The exact local dependency is access to the authorized macOS build/runtime target
+and suitable lawful test fixtures, including a save-capable title and real
+controller/audio capture. No privileged host change is needed. Until that
+target supplies evidence, these acceptance rows remain `UNVERIFIED`.
+
+## Historical implementation record (2026-09-17; archival, superseded)
+
+Everything below preserves dated engineering notes and results from 2026-09-17.
+Use the current status above for present capability and acceptance. Historical
+builds, measurements, blockers, and next-step text below are not current
+instructions.
 
 - **RG-115 fixed.** The bare `CAMetalLayer` had zero bounds, so MoltenVK created
   `3 swapchain images with size (0, 0)`; `vkAcquireNextImageKHR` failed with
@@ -56,14 +85,14 @@ work is additive commits on `apps-web`. To undo a phase, revert its commit.
 - **Tests.** `tests/test_eden_switch_bridge.py` (source contracts + runtime
   guards, opt-in sustained). Full suite **296 tests OK**.
 
-### Still open (not claimed)
+### Items marked open in the 2026-09-17 snapshot (historical)
 
 - **Tauri `CompanionSystem`**: implemented as `native-offline/src-tauri/src/switch_companion.rs`
   (detect/launch/status/stop/focus/input/analog/audio) with the commands wired,
   the companion bundled into the macOS app, `.nro` library integration and a
-  Switch card UI. App version **2.3.0**. See
-  `reports/handoff/SWITCH_INTEGRATION_20260917.md` for the full evidence and the
-  remaining UNVERIFIED items (audible audio, game-level saves, physical pad).
+  Switch card UI. App version **2.3.0**. The former machine-specific handoff
+  report is unavailable in this checkout; current acceptance gaps are recorded
+  at the top of this checkpoint.
 - **Frame readback into AN3**: the companion presents its own window; AN3 does
   not receive Eden frames (the documented architecture does not require it).
 - **Gamepad/keyboard play**: the companion's keyboard map exists but a real
@@ -134,7 +163,7 @@ Build integration changes are in `integration/CMakeLists.txt`; the fragile
   v3.6.1 (legal homebrew, ISC) loads, the GPU initialises, the process starts,
   pause/resume/stop/shutdown all succeed. Frame callbacks = 0 (no readback yet).
 
-## Blockers
+## Blockers listed in the 2026-09-17 snapshot (historical)
 
 ### Requires the owner
 
@@ -167,7 +196,7 @@ and pinned by commit, not vendored. If Eden is ever shipped in a binary, the
 release must include Eden's corresponding source at the pinned commit and
 preserve its notices.
 
-## Next step
+## Next step proposed in the 2026-09-17 snapshot (historical)
 
 Milestone D: frame delivery (now also the fix for the RG-115 crash). Decide
 between (a) a swapchain image copy/readback into a callback-owned buffer
