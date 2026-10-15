@@ -1,3 +1,7 @@
+> Status: archival. Retired workstation/session snapshot; historical paths and
+> operational authority are not current. Original body retained below. Use the
+> current repository guide and documentation index for new work.
+
 # Historical handoff — superseded
 
 > This file was imported from the legacy source tree for provenance only. It contains historical runtime descriptions that are no longer authoritative, including earlier DeSmuME/manual-start behavior. Use `HANDOFF-AN3-ARCADE-2026-08-11.md` and `.codex/` for the current session state and invariants.

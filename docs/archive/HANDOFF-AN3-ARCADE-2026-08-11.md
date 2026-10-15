@@ -1,3 +1,7 @@
+> Status: archival. Retired workstation/session snapshot; historical paths and
+> operational authority are not current. Original body retained below. Use the
+> current repository guide and documentation index for new work.
+
 # AN3 Arcade handoff — 2026-08-11
 
 ## Workspace and provenance

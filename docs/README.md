@@ -97,6 +97,7 @@ reason at the top of the file.
 
 | Archived | Why |
 | --- | --- |
+| `AN3-ARCADE-FULL-SYSTEM-HANDOFF-2026-08-13.md`, `HANDOFF-AN3-ARCADE-2026-08-11.md`, `SESSION-HANDOFF-2026-08-09.md` | Retired workstation/session snapshots; historical paths and authority are not current. Original bodies retained in archive. |
 | `CODEX_PROGRESS.md` | Append-only session log of the 2026-09 release train, frozen at 1.0.x. Superseded by the release catalog and by Git history. |
 | `checkpoint-google-sync-removal.md` | Completed. Google sync was removed in `d858e36`; the decision now lives in `AGENTS.md` scope. |
 | `checkpoint-gplv3-eden-integration.md` | Completed pre-GPLv3 recovery point. |

@@ -4,13 +4,19 @@
 [extend]
 useDefault = true
 
-[[allowlists]]
+[[rules]]
+id = "generic-api-key"
+
+# Rule-scoped AND keeps other secrets in these files detectable.
+[[rules.allowlists]]
+condition = "AND"
 description = "localStorage key-name assignment, not a secret"
 paths = ['static/player-runtime\.js$']
 regexTarget = "match"
 regexes = ['an3-presentation-renderer-v1']
 
-[[allowlists]]
+[[rules.allowlists]]
+condition = "AND"
 description = "Vendored Vulkan extension identifier, not a credential"
 paths = ['native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection\.hpp$']
 regexTarget = "match"

@@ -183,6 +183,36 @@ class ProjectPatternScanTests(unittest.TestCase):
         self.assertNotEqual(without_git.returncode, 0)
 
 
+@unittest.skipUnless(has_gitleaks(), "gitleaks is not installed")
+class AllowlistScopeTests(unittest.TestCase):
+    def test_identifier_allowlists_do_not_hide_other_secrets_in_the_same_file(self):
+        paths = (
+            ("static/player-runtime.js", "an3-presentation-renderer-v1"),
+            ("native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection.hpp",
+             "VK_NV_win32_keyed_mutex"),
+        )
+        # Synthetic, deterministic scanner fixture; never a service credential.
+        synthetic = "q7N2" + "mP9xR4vT8zK3cF6sL1hD5wB0jG2aY9eU"
+        for relative, identifier in paths:
+            with self.subTest(path=relative), tempfile.TemporaryDirectory(prefix="an3-scan-scope-") as temporary:
+                root = Path(temporary)
+                target = root / relative
+                target.parent.mkdir(parents=True)
+                for contains_secret in (False, True):
+                    text = 'const api_key = "' + identifier + '";\n'
+                    if contains_secret:
+                        text += 'const access_token = "' + synthetic + '";\n'
+                    target.write_text(text, encoding="utf-8")
+                    result = subprocess.run(
+                        ["gitleaks", "dir", str(root), "--redact", "--no-banner",
+                         "--config", str(ROOT / "tools/publication/.gitleaks.toml")],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertEqual(result.returncode, 1 if contains_secret else 0,
+                                     "allow only the known identifier; scan other secrets")
+                    self.assertNotIn(synthetic, result.stdout + result.stderr)
+
+
 class ForbiddenPathTests(unittest.TestCase):
     """Non-secret forbidden content must still be rejected."""
 
