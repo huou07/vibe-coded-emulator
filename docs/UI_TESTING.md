@@ -35,7 +35,16 @@ keyboard clear, detail navigation and 360/390/1440px geometry, retains three
 screenshots plus source identity, and saves a trace on failure. Browser/profile
 and server are closed; generated script files and fixture data are removed.
 Artifacts are bounded to the selected states under ignored work/ui-runtime.
-GitHub's browser job is the independent execution lane.
+GitHub's browser job is the independent execution lane. Exact product source
+`a8a26e711b3b38a8d322220e95e852d1efa0ff7a` passed all three jobs in
+[run 38680843043](https://github.com/huou07/vibe-coded-emulator/actions/runs/38680843043):
+project verification, actual Chromium journey and fail-closed publication gate.
+The earlier exact f11567c local worktree passed 478 Python tests (20 explicit
+skips), 92 JavaScript tests (four explicit skips), source checks and a separate
+Chromium journey. Legacy Web CLI compatibility also passed with a private
+Chromium configuration. The original WIP working tree's disk-preflight assertion
+still fails against its pre-existing packaging wrapper; that WIP was preserved
+and is outside the clean-commit result. No skipped platform became a PASS.
 
 The confirmed dynamic accessible-name defect (Search games became Search games
 Clear while typing) is guarded in the runtime test. The label now references
@@ -59,6 +68,13 @@ it is not a second Web semantics authority. No Android behavior was removed
 without replacement evidence. Unavailable targets and skipped tests stay UNVERIFIED.
 AN3_PLAYWRIGHT_CONFIG selects a native CLI JSON configuration; when supplied it
 controls the browser instead of the default system Chrome channel.
+
+CI also exposed two source-evidence defects hidden by the local sparse checkout:
+retired root handoffs are now labelled archives, with original bodies preserved;
+and the scanner CLI is pinned to 8.30.1. The old global path allowlists skipped
+entire files. Rule-scoped AND conditions now allow only the two known identifiers,
+with positive/negative regressions proving adjacent synthetic secrets still fail.
+No real credential or live permission fixture was used.
 
 ## Actual Tauri desktop lane: BLOCKED locally
 
