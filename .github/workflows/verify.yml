@@ -62,9 +62,9 @@ jobs:
           text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
           print(text)
           if sys.argv[2] != "0":
-              blocks = re.findall(r"(?m)^(?:FAIL:|ERROR:|Documentation reference check FAILED:)[\\s\\S]*?(?=\\n={10}|\\n-{10}|\\nRESULT:|\\Z)", text)
+              blocks = re.findall(r"(?m)^(?:FAIL:|ERROR:|Documentation reference check FAILED:)[\s\S]*?(?=\n={10}|\n-{10}|\nRESULT:|\Z)", text)
               for block in blocks[:12] or [text[-5000:]]:
-                  message = block[:5000].replace("%", "%25").replace("\\r", "%0D").replace("\\n", "%0A")
+                  message = block[:5000].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
                   print("::error title=Project verification::" + message)
           PY
           exit "$result"
@@ -133,7 +133,7 @@ jobs:
           text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
           print(text)
           if sys.argv[2] != "0":
-              message = text[-5000:].replace("%", "%25").replace("\\r", "%0D").replace("\\n", "%0A")
+              message = text[-5000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
               print("::error title=Publication gate::" + message)
           PY
           exit "$result"
