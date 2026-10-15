@@ -92,7 +92,7 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
 
   const query = parse(await cli(["ui", "query", "--target", "web", "--path", "/games", "--id", "gameSearch", "--json"]));
   assert.equal(query.data.found, true);
-  assert.equal(query.data.node.role, "textbox");
+  assert.equal(query.data.node.role, "searchbox");
 
   const fill = parse(await cli(["ui", "fill", "--target", "web", "--path", "/games", "--id", "gameSearch", "--value", "emerald", "--json"]));
   assert.equal(fill.data.performed, true);

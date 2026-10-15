@@ -57,6 +57,35 @@ jobs:
       - name: Confirm the gate left the tree clean
         run: git diff --exit-code
 
+  browser-runtime:
+    name: Browser semantics and representative journey
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the pinned browser CLI on the disposable runner
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser" --ignore-scripts --no-audit --no-fund @playwright/cli@0.1.22
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install --with-deps chromium
+          echo "$RUNNER_TEMP/browser/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Exercise actual browser semantics, recovery and responsive layout
+        env:
+          AN3_WEB_RUNTIME: '1'
+        run: timeout --kill-after=5s 210s node --test tests/web-runtime.test.mjs
+      - name: Preserve representative states and failure trace
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: web-ui-evidence
+          path: work/ui-runtime/
+          retention-days: 7
+
   publication-gate:
     name: Publication gate (fail closed)
     runs-on: ubuntu-24.04

@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Print the accessible structure of a rendered page as text.
+"""Static rendered-markup semantic preflight (not a browser accessibility tree).
 
-This exists so an agent can review this web UI without a browser, without a
-screenshot and without a vision model. It parses the same server-rendered HTML
-the browser receives and reports the accessibility tree the user agent would
-build: the role of each element, its accessible name, its states, its value and
-its position in the focus order.
+This stdlib parser approximates roles, names, states and source focus order
+from one server-rendered HTML document. It does not implement browser accessible
+name computation, CSS visibility, JavaScript, focus navigation or assistive
+technology behavior. Use Playwright for actual Web semantics and interaction.
 
-It is deliberately a reporter, not a linter. ``--check`` turns the one defect
-that means a control is unreachable or silent into a non-zero exit so the
-existing gate can hold it; without it the output is for reading.
+``--check`` detects unnamed controls under this parser's rules only. Exit zero
+does not establish runtime accessibility, visual quality or user acceptance.
 
 Scope, stated honestly:
 
@@ -462,7 +460,7 @@ def check(nodes: list[Node]) -> tuple[int, int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Print the accessible structure of a rendered page.",
+        description="Static rendered-markup semantic preflight; not browser accessibility or runtime acceptance.",
     )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--url", help="fetch this URL and inspect the response")
@@ -482,6 +480,7 @@ def main(argv: list[str] | None = None) -> int:
     nodes = walk(tree.root)
     focusable = [node for node in nodes if node.focusable]
 
+    print("# VERIFIED_SOURCE only: static markup approximation; browser/runtime/visual UNVERIFIED")
     print(f"# {origin}")
     print(
         f"# {len(nodes)} nodes with an accessibility role, "

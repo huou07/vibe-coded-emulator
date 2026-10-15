@@ -1,13 +1,15 @@
 ---
 name: an3-control-plane
-description: Use for any AN3/Vibe Coded Emulator app interaction, UI automation, runtime control, or rendering/regression verification. Drives the project-local an3ctl CLI first — structured JSON over screenshots/coordinates — across web, Android, and the native emulator. Triggers on "click the UI", "check the screen", "start the app", "load a ROM", "run frames", "renderer regression", "capture a frame", "is the app running".
+description: Use for VCE target discovery, process control, emulator input/save-state or deterministic runtime capture. The Web compatibility adapter delegates to Playwright; use platform-native mechanisms for native UI claims. Do not load for ordinary browser testing already grounded in Playwright.
 ---
 
 # an3-control-plane
 
-`an3ctl` is the project-local, agent-native control plane. Use it **first** for
-any app interaction. Never begin with screenshot, coordinate, xdotool, CGEvent,
-`PostMessage`, OCR, or native file-dialog automation.
+`an3ctl` retains project-specific target/process control and deterministic
+emulator evidence. Read `docs/UI_TESTING.md` and choose evidence for the claim:
+Playwright for browser semantics/interactions, screenshots for appearance,
+native tooling for the actual desktop/Android app, and emulator probes for
+gameplay. Do not route every UI question through an3ctl.
 
 Launcher: `tools/an3ctl/bin/an3ctl` (repo root). All commands accept `--json`.
 
@@ -16,13 +18,16 @@ Launcher: `tools/an3ctl/bin/an3ctl` (repo root). All commands accept `--json`.
 Do not load for documentation, packaging-only work or ordinary backend edits.
 Read project guidance and the CLI contract; inspect `targets --json` before
 choosing a target. Availability and bridges are current runtime observations,
-not promises from this document. Run only authorized targets; this workstation
-must not start native toolchains, VMs or emulators. Missing targets are UNVERIFIED.
+not promises from this document. Bounded Web/Linux checks are authorized under
+AGENTS.md resource limits; no AVD, VM or heavy release build. Missing targets
+are BLOCKED/UNVERIFIED, never a simulated native pass.
 Track any process started by this task and stop only processes this task owns.
 
 ## The loop
 
-1. **Read state** — `an3ctl ui tree --target <t> --json` (compact semantic tree).
+1. **Read state** — `an3ctl ui tree --target <t> --json`. Web `ariaSnapshot`
+   is Playwright browser evidence; legacy compact `nodes` is only a compatibility
+   approximation. Android WebView CDP is not the native Android accessibility tree.
 2. **Act** — `ui click|fill|press|select|check --target <t> --testid <id>`.
 3. **Assert** — `ui value|text|query`, `app state`, `emulator status`; check the
    process exit code (0 ok, 2 usage, 3 unavailable, 4 not found, 5 timeout,
@@ -37,8 +42,8 @@ an3ctl targets --json                       # availability + reasons per target
 ```
 
 - `web` — the Python server. `app start --target web` boots it and records state.
-- `android` — adb + WebView CDP (emulator now; physical device when a test build
-  exposes the devtools socket).
+- `android` — adb + WebView CDP for exposed Web content. Use Android-native
+  accessibility/instrumentation for native controls; do not launch a local AVD.
 - `emulator` — the native player's deterministic test mode.
 - `macos` / `linux` / `windows` — desktop Tauri shells; structured bridge not
   enabled yet, so `ui` returns `E_TARGET_UNAVAILABLE` with the exact requirement.
@@ -109,11 +114,14 @@ node --test tests/an3ctl.test.mjs
 
 ## Rules
 
-- Structured selectors only: `--testid` > `--id` > `--role`+`--name` > `--name` >
-  `--text` > `--css`. Never use layout paths or coordinates.
+- Prefer user-facing role/name or label locators for browser semantics; stable
+  test IDs support controls without a useful user-facing locator. CSS/IDs are
+  structural fallbacks, not accessibility evidence. Never use layout paths.
 - Use structured assertions for machine PASS/FAIL. Screenshots support rendering
   diagnosis and manual UX evidence; they do not prove semantic state by themselves.
-- Never automate Finder/Open dialogs. Use `an3ctl rom load` / the emulator CLI.
+- Use `an3ctl rom load` / the emulator CLI for deterministic gameplay setup.
+  This bypass cannot accept the native file picker; test that separately when
+  the claim requires it.
 - Debug bridges are test-only and loopback/SSH-forwarded; never expose them.
 - Report `UNVERIFIED` rather than `GOOD` when a runtime was not actually run.
 

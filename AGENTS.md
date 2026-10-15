@@ -53,16 +53,18 @@ node --test --test-concurrency=1 tests/*.test.mjs tests/*.test.js
 npm --prefix native-offline run check
 ```
 
-**GitHub Actions is the build and test authority.** `.github/workflows/verify.yml`
-runs the local gate on every push and PR. Anything that needs a real toolchain —
-Rust/C++ compilation, Tauri bundles, APK/DEB/Flatpak/DMG/EXE packaging,
-Android instrumentation, per-platform runtime acceptance — belongs to
-`tools/release-train.sh` on its dedicated builders, not to a Debian workstation.
+**GitHub Actions is the authoritative remote gate.** Read
+[UI/runtime testing](docs/UI_TESTING.md) for the canonical Playwright lane,
+static-inspector limits, evidence classes and actual Tauri prerequisites.
+Browser evidence never establishes packaged/native or gameplay acceptance.
 
-**This host cannot do heavy work.** No VMs, no Android emulators or AVDs, no GPU
-or emulator compilation, no release installers. Tests that need absent tooling
-(the Playwright leg of `tests/an3ctl.test.mjs`) skip rather than fail; a skip is
-`UNVERIFIED`, not a pass. Never weaken an assertion to make a gate go green.
+The owner permits bounded Web/Linux native preflights on Debian: inspect memory
+first, one resource-intensive UI/native job at a time, one compilation worker,
+bounded timeout and cleanup. Share the native lock with OR and the optional
+H07P security guest. No VMs for VCE, AVDs, release matrix or long GPU/emulator
+workload. Missing tools and skips remain UNVERIFIED. Cross-platform packaging
+and platform acceptance keep their existing CI/dedicated builders and release
+guards; never weaken an assertion to make a gate green.
 
 ## Invariants
 

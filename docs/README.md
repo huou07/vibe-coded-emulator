@@ -34,6 +34,7 @@ literally.
 
 | Document | What it is for |
 | --- | --- |
+| [`UI_TESTING.md`](UI_TESTING.md) | Evidence classes, canonical browser lane, adapter compatibility and concrete native prerequisites. |
 | [`development-workflows.md`](development-workflows.md) | The two products, their exact checks, and their platform limits. |
 | [`native-offline.md`](native-offline.md) | Tauri native app: build commands, per-platform release commands, performance boundary. |
 | [`WINDOWS_BUILD_VM.md`](WINDOWS_BUILD_VM.md) | The persistent `an3-win11-build` guest used by the release train for Windows packaging. |

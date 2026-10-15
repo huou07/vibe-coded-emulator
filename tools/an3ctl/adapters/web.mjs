@@ -10,9 +10,11 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { An3Error, run, stateDir, httpJson } from "../lib/core.mjs";
-import { domTreeExpression, locateExpression } from "../lib/domtree.mjs";
+import { domTreeExpression } from "../lib/domtree.mjs";
+import { locatorExpression, queryScript, actionScript } from "../lib/playwright.mjs";
 
 const SESSION = "an3-web";
+const BROWSER_CONFIG = process.env.AN3_PLAYWRIGHT_CONFIG;
 const DEFAULT_PORT = Number(process.env.AN3_WEB_PORT ?? 8099);
 const DEFAULT_ENV = process.env.AN3_WEB_ENVIRONMENT ?? "development";
 
@@ -47,7 +49,7 @@ export class WebAdapter {
   }
 
   async available() {
-    const playwright = await run("bash", ["-lc", "command -v playwright-cli"]).catch(() => null);
+    const playwright = await run("playwright-cli", ["--version"]).catch(() => null);
     const hasPlaywright = playwright?.code === 0;
     const state = this.readState();
     return {
@@ -73,7 +75,12 @@ export class WebAdapter {
     mkdirSync(dir, { recursive: true });
     const file = `${dir}/an3ctl-${Date.now()}.mjs`;
     writeFileSync(file, script);
-    const result = await this.playwright(["run-code", `--filename=${file}`]);
+    let result;
+    try {
+      result = await this.playwright(["run-code", `--filename=${file}`]);
+    } finally {
+      unlinkSync(file);
+    }
     const output = stripAnsi(result.stdout + result.stderr);
     const marker = "### Result";
     const index = output.indexOf(marker);
@@ -117,7 +124,8 @@ export class WebAdapter {
       const goto = await this.playwright(["goto", target], { timeoutMs });
       if (goto.code === 0 && !/### Error/.test(goto.stdout)) return;
     }
-    const open = await this.playwright(["open", "--browser=chrome", target], { timeoutMs });
+    const browserOptions = BROWSER_CONFIG ? [`--config=${BROWSER_CONFIG}`] : ["--browser=chrome"];
+    const open = await this.playwright(["open", ...browserOptions, target], { timeoutMs });
     if (open.code !== 0 || /### Error/.test(open.stdout)) {
       throw new An3Error("E_TARGET_UNAVAILABLE", `Could not open the web target: ${(open.stderr || open.stdout).trim().slice(0, 300)}`);
     }
@@ -164,7 +172,7 @@ export class WebAdapter {
   async appStop() {
     const state = this.readState();
     if (!state) return { stopped: false, reason: "no recorded web target" };
-    this.playwright(["close"]).catch(() => {});
+    await this.playwright(["close"]).catch(() => {});
     if (isAlive(state.pid)) {
       try {
         process.kill(state.pid, "SIGTERM");
@@ -205,16 +213,14 @@ export class WebAdapter {
     await this.ensureOpen(url);
     const limit = Number(opts.limit ?? 120);
     const tree = await this.runCode(`async (page) => {\n  return await page.evaluate(() => ${domTreeExpression(limit)});\n}`);
-    return { ...tree, limit };
+    const ariaSnapshot = await this.runCode("async (page) => page.locator(\"body\").ariaSnapshot()");
+    return { ...tree, limit, ariaSnapshot, legacyNodes: true, semanticsAuthority: "Playwright ariaSnapshot" };
   }
 
   async locate(opts) {
     const url = this.ensureUrlPath(opts);
     await this.ensureOpen(url);
-    const selector = opts.selector;
-    return this.runCode(
-      `async (page) => {\n  return await page.evaluate(() => ${locateExpression(selector, { nth: opts.nth ?? 0 })});\n}`,
-    );
+    return this.runCode(queryScript(opts.selector, opts.nth ?? 0));
   }
 
   async uiQuery(opts) {
@@ -230,9 +236,7 @@ export class WebAdapter {
     if (!located?.found) {
       throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`, { selector: opts.selector });
     }
-    const body = actionBody(action, opts);
-    const script = `async (page) => {\n  const located = JSON.parse(await page.evaluate(() => ${locateExpression(opts.selector, { nth: opts.nth ?? 0 })}));\n  if (!located.found) return JSON.stringify({ performed: false, reason: 'not-found' });\n  return await (async () => { ${body} })();\n}`;
-    const result = await this.runCode(script);
+    const result = await this.runCode(actionScript(opts.selector, action, opts));
     if (!result?.performed) {
       throw new An3Error("E_ACTION_FAILED", `Action ${action} did not run on ${describeSelector(opts.selector)}`, { selector: opts.selector, result });
     }
@@ -274,7 +278,11 @@ export class WebAdapter {
     if (!located?.found) {
       throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`, { selector: opts.selector });
     }
-    const script = `async (page) => {\n  const located = JSON.parse(await page.evaluate(() => ${locateExpression(opts.selector, { nth: opts.nth ?? 0 })}));\n  if (!located.found) return JSON.stringify({ found: false });\n  return await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll(${JSON.stringify("a,button,input,select,textarea,[role],[data-testid]")}));\n    const el = all[idx];\n    return JSON.stringify({ found: !!el, value: el ? (el.value !== undefined ? String(el.value) : (el.innerText || '').trim()) : null });\n  }, located.index);\n}`;
+    const { one } = locatorExpression(opts.selector, opts.nth ?? 0);
+    const script = `async (page) => {
+      const locator = ${one};
+      return { found: true, value: await locator.evaluate(el => "value" in el ? String(el.value) : (el.innerText || "").trim()) };
+    }`;
     const result = await this.runCode(script);
     if (!result?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`);
     return result;
@@ -300,24 +308,6 @@ export class WebAdapter {
     }
     const content = readFileSync(state.logPath, "utf8").split("\n");
     return { lines: content.slice(-Number(tail)).filter(Boolean), logPath: state.logPath };
-  }
-}
-
-function actionBody(action, opts) {
-  const common = `const idx = located.index;\n  `;
-  switch (action) {
-    case "click":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.scrollIntoView({block:'center'});\n    el.click();\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'click' });`;
-    case "fill":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.focus();\n    el.value = ${JSON.stringify(String(opts.value ?? ""))};\n    el.dispatchEvent(new Event('input', { bubbles: true }));\n    el.dispatchEvent(new Event('change', { bubbles: true }));\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'fill', value: ${JSON.stringify(String(opts.value ?? ""))} });`;
-    case "press":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.focus();\n  }, idx);\n  await page.keyboard.press(${JSON.stringify(String(opts.key ?? "Enter"))});\n  return JSON.stringify({ performed: true, action: 'press', key: ${JSON.stringify(String(opts.key ?? "Enter"))} });`;
-    case "select":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    el.value = ${JSON.stringify(String(opts.value ?? ""))};\n    el.dispatchEvent(new Event('change', { bubbles: true }));\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'select', value: ${JSON.stringify(String(opts.value ?? ""))} });`;
-    case "check":
-      return `${common}await page.evaluate((idx) => {\n    const all = Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid]'));\n    const el = all[idx]; if (!el) throw new Error('element vanished');\n    const want = ${opts.checked === false ? "false" : "true"};\n    if (el.checked !== want) { el.click(); }\n  }, idx);\n  return JSON.stringify({ performed: true, action: 'check' });`;
-    default:
-      return `${common}return JSON.stringify({ performed: false, reason: 'unknown-action' });`;
   }
 }
 
