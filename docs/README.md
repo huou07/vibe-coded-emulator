@@ -36,6 +36,7 @@ literally.
 | --- | --- |
 | [`UI_TESTING.md`](UI_TESTING.md) | Evidence classes, canonical browser lane, adapter compatibility and concrete native prerequisites. |
 | [`development-workflows.md`](development-workflows.md) | The two products, their exact checks, and their platform limits. |
+| [Continuation prompt](prompts/CONTINUE-VCE.md) | Agent handoff for the next actual native journey and existing product checkpoints. |
 | [`native-offline.md`](native-offline.md) | Tauri native app: build commands, per-platform release commands, performance boundary. |
 | [`WINDOWS_BUILD_VM.md`](WINDOWS_BUILD_VM.md) | The persistent `an3-win11-build` guest used by the release train for Windows packaging. |
 | [`agent-control-plane.md`](agent-control-plane.md) | `an3ctl` design contract: JSON envelope, exit codes, adapters. |
