@@ -53,7 +53,21 @@ jobs:
         working-directory: native-offline
         run: npm ci
       - name: Run tools/verify-project.sh
-        run: bash tools/verify-project.sh
+        run: |
+          set +e
+          bash tools/verify-project.sh > "$RUNNER_TEMP/project-verify.log" 2>&1
+          result=$?
+          python3 - "$RUNNER_TEMP/project-verify.log" "$result" <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          print(text)
+          if sys.argv[2] != "0":
+              blocks = re.findall(r"(?m)^(?:FAIL:|ERROR:|Documentation reference check FAILED:)[\\s\\S]*?(?=\\n={10}|\\n-{10}|\\nRESULT:|\\Z)", text)
+              for block in blocks[:12] or [text[-5000:]]:
+                  message = block[:5000].replace("%", "%25").replace("\\r", "%0D").replace("\\n", "%0A")
+                  print("::error title=Project verification::" + message)
+          PY
+          exit "$result"
       - name: Confirm the gate left the tree clean
         run: git diff --exit-code
 
@@ -110,6 +124,18 @@ jobs:
       - name: Scan the snapshot
         # This is the same gate tools/publish-github.sh runs before it can push.
         # It must fail closed: a scanner that cannot run blocks publication.
-        run: bash tools/publication-check.sh work/public-snapshot
+        run: |
+          set +e
+          bash tools/publication-check.sh work/public-snapshot > "$RUNNER_TEMP/publication.log" 2>&1
+          result=$?
+          python3 - "$RUNNER_TEMP/publication.log" "$result" <<'PY'
+          import pathlib, sys
+          text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
+          print(text)
+          if sys.argv[2] != "0":
+              message = text[-5000:].replace("%", "%25").replace("\\r", "%0D").replace("\\n", "%0A")
+              print("::error title=Publication gate::" + message)
+          PY
+          exit "$result"
       - name: Publication gate regression tests
         run: python3 -m unittest tests.test_publication_gate -v
