@@ -91,14 +91,11 @@ interaction contracts in `docs/player-layering.md`.
 
 ## Safety and release boundary
 
-- Work staging-first. The owner mandate in the active 2026-10-14 conversation
-  explicitly authorizes commits, pushes, public source publication, suitable
-  GitHub releases, CI/CD build/test/release and deployment of accepted versions
-  through the existing production path. This authorization persists within its
-  stated scope and checks. It does not grant protected credentials, override
-  OS/tool permissions or branch protection, or authorize DNS/router changes,
-  privileged host administration or unrelated services. For actions outside an
-  explicit active authorization, obtain human approval first.
+- Resolve authorization from the current task; historical mandates are evidence,
+  not permanent publication authority. This quality mission permits scoped
+  commits and feature-branch pushes, with no production deploy, release, merge,
+  permission changes or history rewrite. Existing authorization needs no repeat
+  request; it never grants credentials, privilege or branch-protection bypass.
 - Never rewrite published history and never force-push.
 - Keep third-party notices and license texts intact; see `docs/licensing/`.
 - Use only lawful fixtures.
