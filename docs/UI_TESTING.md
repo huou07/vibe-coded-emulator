@@ -85,10 +85,22 @@ external mode uses tauri-driver and the platform driver on Linux/Windows.
 Renderer/browser mode does not establish native execution. Do not add embedded
 automation to distribution builds or mock IPC to claim native bridge acceptance.
 
-Inspected on 2026-10-15: Tauri CLI 2.11.4 is installed. WebdriverIO/service,
-tauri-driver, WebKitWebDriver, the Linux shell binary and prepared Linux emulator
-player are absent. The locked CLI is a build tool, not an installed app.
-These are concrete missing prerequisites; no native shell or package ran.
+Inspected on 2026-10-15: Tauri CLI 2.11.4 is installed. The official tauri-driver
+2.1.0 was then prepared locally with its packaged lockfile and Rust 1.98.0,
+one compiler worker, the shared native lock and a 240s/3-GiB headroom stop guard.
+Its crates.io source SHA-256 is
+`2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953`;
+source/licences and absence of a build hook were inspected before compilation.
+The 32.97s build and help check passed. The ignored executable is
+work/native-tools/bin/tauri-driver (about 2.4 MiB); reproducible install input is
+`cargo install tauri-driver --version 2.1.0 --locked --root work/native-tools --jobs 1`.
+This is tool preparation, not a native app run.
+
+WebdriverIO/service, WebKitWebDriver, the Linux shell binary and prepared Linux
+emulator player remain absent. The host has WebKitGTK/GTK development libraries;
+webkit2gtk-driver, clang and libclang-dev are the specific missing Debian package
+prerequisites now prepared for owner installation. The locked Tauri CLI is a
+build tool, not an installed app. No native shell or package ran.
 No core downloads, cross-platform builds, VM or Android emulator were launched.
 
 Small unblock path, without replacing the existing native control plane:
