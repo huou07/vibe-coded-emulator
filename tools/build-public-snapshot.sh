@@ -168,9 +168,15 @@ cp "$TEMPLATES/CONTRIBUTING.md" "$TEMPLATES/SECURITY.md" \
 cp "$TEMPLATES/env.example.template" "$OUT/.env.example"
 mkdir -p "$OUT/.github/workflows"
 cp "$TEMPLATES/.github/workflows/ci.yml" "$OUT/.github/workflows/ci.yml"
-native_workflow="$ROOT/.github/workflows/native-build.yml"
-[[ -f "$native_workflow" ]] || native_workflow="$TEMPLATES/.github/workflows/native-build.yml"
-[[ -f "$native_workflow" ]] && cp "$native_workflow" "$OUT/.github/workflows/native-build.yml"
+# No native package workflow is published. The former native-build.yml invoked
+# tools/release-train.sh, which is a private staging entrypoint that needs
+# dedicated SSH builders and pinned core artifacts; the snapshot carries neither,
+# so the published jobs could only fail. Cross-platform packaging stays with the
+# private release train and its builders, and publication-check.sh now asserts
+# that any workflow it does publish only calls scripts the candidate contains.
+if [[ -e "$TEMPLATES/.github/workflows/native-build.yml" ]]; then
+  die "tools/publication/.github/workflows/native-build.yml reappeared; either make it runnable from the candidate or leave it out"
+fi
 
 # --- 6. Sanitize personal data and private infrastructure --------------------
 python3 - "$OUT" "$ROOT" <<'PY'

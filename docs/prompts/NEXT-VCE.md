@@ -29,7 +29,8 @@ duplicate mandate in `.agents/skills.md` are superseded by `AGENT-AUTHORITY.md`.
 ## Do these, in order
 
 1. **Make the published workflow real or delete it.**
-   `tools/publication/.github/workflows/native-build.yml` calls
+   The published `native-build.yml` (under `tools/publication/.github/workflows/`)
+   called
    `tools/release-train.sh` five times, but `tools/build-public-snapshot.sh` never
    copies that script into the candidate, and its `paths:` filters reference a
    `tools/testrom/**` that does not exist. Either copy the release train and a real

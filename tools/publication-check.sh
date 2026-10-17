@@ -65,6 +65,13 @@ for forbidden in .opencode .codex .agents .parallelism AGENTS.md opencode.json \
   fi
 done
 
+# --- 2b. Published workflows may only call scripts the candidate contains -----
+# A published job that runs a script the snapshot never copies is a workflow that
+# can only fail (the removed native-build.yml did exactly that with
+# tools/release-train.sh). Fail closed rather than advertise it.
+python3 "$ROOT/tools/publication/check-workflow-scripts.py" "$CANDIDATE" \
+  || fail "published workflow references a script the candidate does not contain"
+
 # --- 3. Prohibited binary/content types ---------------------------------------
 # A find error must not read as "nothing prohibited was found".
 prohibited_error=""

@@ -13,7 +13,7 @@ Last reviewed: 2026-10-17.
 |---|---|---|---|
 | Web (browser) | GBA/NDS/3DS via EmulatorJS on the surfaces it supports | VERIFIED_BEHAVIORAL (node --test, rendered-tree checks) | `tools/verify-project.sh` |
 | Linux native (Tauri) | deterministic runtime evidence is `GOOD`; packaged shell is `UNVERIFIED` | VERIFIED_SOURCE / partial native | `docs/checkpoints/native-linux-journey.md` |
-| Windows / macOS / Android | built and packaged on dedicated builders | VERIFIED_NATIVE only when the hosted job passes | `release-train.sh` + hosted CI |
+| Windows / macOS / Android | built and packaged on dedicated builders | VERIFIED_NATIVE only when the private release-train job passes | `native-offline/scripts/build-*.sh` on those builders; the public snapshot publishes source, not packages |
 | Switch (Eden) companion | macOS-verified bridge in a separate process | VERIFIED_NATIVE (macOS only) | licensing + checkpoint docs |
 
 Not claimed: cloud-hosted multiplayer rooms, the `rust-gateway` relay (cutover
@@ -35,18 +35,28 @@ pixel-identical parity across platforms.
 
 ## Known gaps, in priority order
 
-1. The public workflow `tools/publication/.github/workflows/native-build.yml`
-   calls `tools/release-train.sh`, which `build-public-snapshot.sh` does not copy
-   into the candidate: the published CI cannot run as shipped.
-2. The sanitizer patterns omit absolute home-directory paths and `~/`, and the forbidden-path list
+1. The sanitizer patterns omit absolute home-directory paths and `~/`, and the forbidden-path list
    misses `docs/prompts/`, `docs/AGENT-AUTHORITY.md`,
    `AGENT_INTERACTION_CAPABILITY_AUDIT.md` and `.codegraph`.
-3. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
+2. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
    entries and `deploy/shadow/` (mode 700) hide tracked content from `git status`.
-4. Fixture-dependent tests skip instead of failing, so an emulator lane can
+3. Fixture-dependent tests skip instead of failing, so an emulator lane can
    report success while measuring nothing.
-5. No automated frame-time or audio budget exists; gameplay performance is
+4. No automated frame-time or audio budget exists; gameplay performance is
    skill-driven evidence only.
+
+Closed since the 2026-10-17 review:
+
+- The published `native-build.yml` was removed. Its jobs ran
+  `bash tools/release-train.sh` five times while the snapshot copied neither that
+  script nor its builders, and its `paths:` filters named a `tools/testrom/**`
+  directory that does not exist, so no published native job could ever pass.
+  Cross-platform packaging stays with the private release train on its dedicated
+  builders, and `tools/publication-check.sh` now refuses a candidate whose
+  workflows call a script the candidate does not contain
+  (`tools/publication/check-workflow-scripts.py`). The portable published
+  workflow's whitespace step no longer assumes a parent commit, so it runs in the
+  single-commit public repository.
 
 ## Evidence rules
 
