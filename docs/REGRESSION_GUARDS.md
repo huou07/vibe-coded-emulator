@@ -75,6 +75,18 @@ checks pass.
   falls back to the Playwright-bundled Chromium only when Chrome is genuinely not
   installed; an explicit `AN3_PLAYWRIGHT_BROWSER`/`AN3_PLAYWRIGHT_CONFIG` stays
   authoritative, and `ui tree` reports the browser actually used.
+- RG-151a: **`an3ctl` must own the Playwright daemon/browser-profile cache the
+  same way it owns its state dir and port.** `playwright-cli` resolves its daemon
+  directory from `XDG_CACHE_HOME` (or `~/.cache`), which is shared and read-only
+  for a worker; the resulting `EACCES: permission denied, mkdir
+  '<cache>/ms-playwright/daemon'` was reported as `E_TARGET_UNAVAILABLE: Could
+  not open the web target`, i.e. a browser-cache permission error disguised as a
+  page failure. `WebAdapter.playwright` now passes `XDG_CACHE_HOME` pointing at
+  `<stateDir>/playwright-cache`, and honours an explicit caller `XDG_CACHE_HOME`.
+  The companion assertion checks the daemon directory really is under the run's
+  own state dir. This is an environment defect, not a page defect: the identical
+  manual `app start` / `app state` / `ui tree` sequence failed with the same
+  message before the fix. No assertion was weakened to accommodate it.
 - Automated: `node --test tests/an3ctl.test.mjs` runs the web journey against an
   isolated temp state dir and an ephemeral port; `targets.web.browser` records
   the resolved channel. On this Debian host the default path resolves to

@@ -74,7 +74,20 @@ export class WebAdapter {
     // (.playwright-cli/*) never appear in the repository root.
     mkdirSync(this.dir, { recursive: true });
     const full = ["-s=" + SESSION, ...args];
-    return run("playwright-cli", full, { timeoutMs, cwd: this.dir });
+    // playwright-cli keeps its per-session daemon, browser profile and launch
+    // logs under $XDG_CACHE_HOME/ms-playwright/daemon (or ~/.cache when unset).
+    // On a worker host that shared cache is read-only, and an unwritable daemon
+    // directory surfaced as "Could not open the web target: EACCES ... mkdir
+    // '~/.cache/ms-playwright/daemon'" — a browser-cache permission error
+    // reported as if the page had failed. Own the cache the same way the state
+    // dir and the port are owned: default it to a private directory beside this
+    // run's state, and honour an explicit XDG_CACHE_HOME as the caller's choice.
+    const xdgCache = daemonCacheDir(this.dir);
+    return run("playwright-cli", full, {
+      timeoutMs,
+      cwd: this.dir,
+      env: xdgCache ? { XDG_CACHE_HOME: xdgCache } : undefined,
+    });
   }
 
   async runCode(script) {
@@ -333,6 +346,14 @@ export class WebAdapter {
     const content = readFileSync(state.logPath, "utf8").split("\n");
     return { lines: content.slice(-Number(tail)).filter(Boolean), logPath: state.logPath };
   }
+}
+
+// The private XDG cache root for playwright-cli's daemon, or null when the
+// caller already selected one. Kept separate from the state dir so `app stop`
+// and a later run resolve the same daemon without exposing it as an3ctl state.
+function daemonCacheDir(dir) {
+  if (process.env.XDG_CACHE_HOME) return null;
+  return `${dir}/playwright-cache`;
 }
 
 function sameDocument(a, b) {

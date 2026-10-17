@@ -110,6 +110,19 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
   assert.ok(Array.isArray(tree.data.nodes) && tree.data.nodes.length > 0);
   assert.ok(tree.data.nodes.every((node) => typeof node.role === "string" && typeof node.name === "string"));
 
+  // playwright-cli keeps its daemon and browser profile under
+  // $XDG_CACHE_HOME/ms-playwright. Opening the page must use this run's own
+  // cache, never the shared (worker read-only) browser cache: an unwritable
+  // daemon directory otherwise surfaced here as an EACCES browser-cache error
+  // reported as if the page had failed. An explicit XDG_CACHE_HOME is the
+  // caller's choice and is honoured instead.
+  if (!process.env.XDG_CACHE_HOME) {
+    assert.ok(
+      existsSync(`${STATE}/playwright-cache/ms-playwright/daemon`),
+      "the Playwright daemon must live under the run's private state dir",
+    );
+  }
+
   const query = parse(await cli(["ui", "query", "--target", "web", "--path", "/games", "--id", "gameSearch", "--json"]));
   assert.equal(query.data.found, true);
   assert.equal(query.data.node.role, "searchbox");

@@ -113,6 +113,15 @@ server. With no explicit selection it tries Chrome and then the bundled Chromium
 when Chrome is absent; `ui tree` reports the browser used. Pass
 `AN3_PLAYWRIGHT_BROWSER=chromium` to force the bundled build on this host.
 
+`an3ctl` also owns the Playwright daemon cache (RG-151a): `WebAdapter` points
+`XDG_CACHE_HOME` at `<stateDir>/playwright-cache` unless the caller set one, so
+the daemon and browser profile never need the shared, worker-read-only
+`~/.cache/ms-playwright`. Without that ownership the CLI's
+`mkdir '<cache>/ms-playwright/daemon'` failed with `EACCES` and was reported as
+`E_TARGET_UNAVAILABLE: Could not open the web target` — a cache permission error
+presented as a page failure. The canonical web-runtime command above still sets
+`XDG_CACHE_HOME` explicitly because it drives `playwright-cli` directly.
+
 CI also exposed two source-evidence defects hidden by the local sparse checkout:
 retired root handoffs are now labelled archives, with original bodies preserved;
 and the scanner CLI is pinned to 8.30.1. The old global path allowlists skipped
