@@ -25,7 +25,7 @@ here at all. A source-tree runtime result is never packaged acceptance.
 | Reproducible lawful fixture with no bundled ROM | `GOOD` — `tools/make-synthetic-gba-fixture.py`, idempotent |
 | Bundled web runtime (GBA/NDS/3DS EmulatorJS payload) | `GOOD` — all 22 locked assets resolve; the 9 repaired-Azahar `latest/data-v2` files are **tracked in-tree** and match `shared/web-runtime-lock.json` byte for byte (`tools/verify-project.sh`, `tests/test_linux_native_runtime.py`) |
 | Linux DEB build inputs (disk preflight, core pins, native player compile, runtime bundle) | `GOOD` — the build now reaches the Rust/Tauri stage and finishes |
-| **Linux DEB package (Tauri shell)** | `GOOD` — built from clean HEAD `2f27cbd`; `native-offline/releases/vibecodedemulator-3.2.5-linux-amd64.deb`, 46,115,818 bytes, SHA-256 `9cde017b…f4b4` |
+| **Linux DEB package (Tauri shell)** | `GOOD` — built from clean HEAD `2f27cbd`; staging artifact `vibecodedemulator-3.2.5-linux-amd64.deb` (git-ignored staging output of `native-offline/releases/`), 46,115,818 bytes, SHA-256 `9cde017b…f4b4` |
 | Interactive packaged journey: library, import, player launch | `GOOD` for the automation E2E build (same shell + test-only `ui-control` bridge); the distribution binary launches and renders the library |
 | Packaged quick save (slot 1) | `GOOD` — 528448-byte `…slot1.state` written by the packaged player, byte-deterministic while paused |
 | Packaged quick load (slot 1) | `GOOD` — a save→advance→load→re-save round trip reproduces the saved bytes exactly |
@@ -87,7 +87,7 @@ Artifact identity (the sha256 sidecar verifies):
 
 | Field | Value |
 | --- | --- |
-| Path | `native-offline/releases/vibecodedemulator-3.2.5-linux-amd64.deb` |
+| Path | staging output `native-offline/releases/` + `vibecodedemulator-3.2.5-linux-amd64.deb` (never committed; `.gitignore` excludes it) |
 | Size | 46,115,818 bytes |
 | SHA-256 | `9cde017b1cc323033e53cfb9035a635ac45693010bfc9027387f14cb8201f4b4` |
 | Control | `Package: vibe-coded-emulator`, `Version: 3.2.5`, `Architecture: amd64`, `Installed-Size: 95772`, `Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libsdl2-2.0-0, libvulkan1, libgl1, libasound2` |
@@ -203,6 +203,13 @@ here.
 - **`AN3_UI_TEST_ROM` pre-answers the picker.** The real GTK file dialog was
   never driven; the import *path* is real, the *dialog* is not.
 - **Only GBA.** No NDS or 3DS fixture exists, so nothing is generalised.
+- **It was extracted, not installed.** `dpkg -i` needs root, which this worker
+  does not have, so the package was unpacked with `dpkg-deb -x` and run from the
+  layout it installs (`usr/bin` binary, `usr/lib/VibeCodedEmulator` runtime). The
+  packaged binary and the bundled player both resolve every shared library
+  (`ldd … | grep -c 'not found'` is 0 for each), but `dpkg -i`, the `Depends:`
+  resolution against a real package database, and the desktop-entry launch are
+  `UNVERIFIED`.
 
 ## 3. Android: the recorded premise did not hold
 
@@ -301,6 +308,15 @@ this HEAD, and no device or emulator runs in this lane.
 5. Every staging builder writes `<artifact>.sha256` next to an installer that
    `.gitignore` already excludes, so a documented build left the tree dirty.
    `native-offline/releases/*.sha256` is now ignored (`cfe6a6c`).
+6. `tools/check-docs-refs.py` treats an ignored build-output path differently
+   depending on whether the file is materialized: a backticked
+   `native-offline/releases/<artifact>.deb` passes on a workstation that has
+   built it (`git status --ignored` sees it) and fails on a clean checkout, which
+   is how revision `7a83c6c` passed the local gate and failed hosted
+   `project-verify` (`run 39066265462`, two findings, same artifact path). The
+   tracker now names the staging file without treating it as a repository path.
+   Anyone editing this file should validate with a clean clone, not the working
+   tree.
 
 ## Next discriminating actions
 
