@@ -17,6 +17,16 @@ handoff preparation repaired the disk-guard test to follow its real delegates.
 Recheck the actual tree and preserve unrelated changes. The public Actions API
 returned no runs for that inspected HEAD. Historical passes do not accept WIP.
 
+Dated update, 2026-10-17: the an3ctl web self-test failure is resolved (RG-151 —
+isolated `AN3_STATE_DIR`/ephemeral port, no orphaned server, Chrome→bundled
+Chromium fallback when no browser is selected). `bash tools/verify-project.sh`
+is `PROJECT_VERIFY=PASS` (479 Python tests/20 skipped, 96 JS tests/3 skipped).
+The canonical browser lane now also covers admin comment moderation (RG-152).
+Native Linux remains parked (no vendored player, `vce-linux` disabled); Android,
+macOS and Windows remain hosted-CI/device only; the direct-LAN two-peer journey
+still needs two real peers and an Android build. None of those platform legs were
+run here.
+
 ## Product outcome
 
 First retain a passing existing source gate. Then establish the actual Linux

@@ -123,3 +123,31 @@ procedure; configured SSH target names alone do not establish reachability.
   target and a lawful compatible fixture outside the repository; performance
   acceptance additionally needs physical hardware or an authorized capable
   builder with intended renderer and telemetry.
+
+## Admin comment-moderation browser journey (2026-10-17)
+
+Source `68ca5c5f0065bdca424fb3281ab02aa304dfd880`, updated by the RG-152 change
+to `tests/web-runtime.test.mjs` (the run below also carried that uncommitted test
+edit). The `vce-product-journeys` procedure was used with the canonical
+Chromium lane:
+
+```sh
+AN3_WEB_RUNTIME=1 AN3_PLAYWRIGHT_BROWSER=chromium XDG_CACHE_HOME=<tmp> \
+  node --test tests/web-runtime.test.mjs
+```
+
+Observed: the seeded anonymous library journey still passes; after signing in as
+the seeded admin on `/login`, `/game/fixture-gba` renders exactly one
+`Delete comment` control. The app calls `window.confirm("Delete this comment?")`;
+a dismissed prompt leaves the comment row in place, and an accepted prompt
+detaches it and the reloaded page no longer contains it (server deletion
+reached). Result: **1 test passed**, `work/ui-runtime/evidence.json` carries
+`commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists"`
+with zero page errors.
+
+Acceptance limits: admin comment deletion is now **GOOD** in an actual browser on
+this host. Native dialog chrome is not asserted (the lane spies on
+`window.confirm`); compact-card appearance, ROM import, core readiness, gameplay,
+and offline relaunch remain **UNVERIFIED**, and this does not establish native
+packaged moderation. The native lane is shared because `static/site.js` is copied
+into the Tauri bundle.

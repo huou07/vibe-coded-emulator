@@ -64,11 +64,12 @@ gameplay, native execution or credential detection.
 The browser test uses a private browser configuration, loopback server,
 temporary SQLite data, a test-only local admin password and a synthetic catalog
 with no game ROM. It verifies search/no-results recovery, keyboard clear, detail
-navigation and 360/390/1440px geometry, retains three screenshots plus source
-identity, and saves a trace on failure. It does not inspect real credentials or
-verify credential detection. Browser/profile and server are closed; generated
-script files and fixture data are removed. Artifacts are bounded to the selected
-states under ignored work/ui-runtime.
+navigation, admin comment moderation (confirm prompt, dismiss keeps, accept
+deletes and persists — RG-152) and 360/390/1440px geometry, retains three
+screenshots plus source identity, and saves a trace on failure. It does not
+inspect real credentials or verify credential detection. Browser/profile and
+server are closed; generated script files and fixture data are removed. Artifacts
+are bounded to the selected states under ignored work/ui-runtime.
 GitHub's browser job is the independent execution lane. Exact product source
 `a8a26e711b3b38a8d322220e95e852d1efa0ff7a` passed all three jobs in
 [run 38680843043](https://github.com/huou07/vibe-coded-emulator/actions/runs/38680843043):

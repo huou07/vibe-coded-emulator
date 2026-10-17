@@ -65,9 +65,13 @@ test("Playwright actions, actual library search/recovery, narrow and desktop evi
     const seeded = spawnSync("python3", ["-c", `
 import app
 app.init_db()
+app.bootstrap_admin()
 with app.db() as conn:
     for slug, title in [("fixture-gba", "Fixture GBA"), ("fixture-nds", "Fixture NDS")]:
         conn.execute("INSERT INTO games (slug,title_vi,title_en,system,published,created_at,updated_at) VALUES (?,?,?,?,1,0,0)", (slug,title,title,"gba" if "gba" in slug else "nds"))
+    admin = conn.execute("SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1").fetchone()
+    game = conn.execute("SELECT id FROM games WHERE slug='fixture-gba'").fetchone()
+    conn.execute("INSERT INTO comments(user_id,game_id,body,created_at) VALUES(?,?,?,?)", (admin["id"], game["id"], "Synthetic comment to moderate.", 0))
 `], { cwd: ROOT, env, encoding: "utf8" });
     assert.equal(seeded.status, 0, seeded.stderr);
     server = spawn("python3", ["app.py"], { cwd: ROOT, env, stdio: "ignore" });
@@ -107,8 +111,44 @@ with app.db() as conn:
       const ariaSnapshot = await page.locator("main").ariaSnapshot();
       await page.getByRole("link", { name: "Details: Fixture GBA", exact: true }).first().click();
       await page.getByRole("heading", { name: "Fixture GBA", exact: true }).waitFor();
+      // Admin comment moderation: the seeded comment is deletable from the real
+      // admin detail page, dismissing the confirm keeps it, and accepting the
+      // delete reaches the server.
+      const origin = new URL(${JSON.stringify(url)}).origin;
+      const commentBody = "Synthetic comment to moderate.";
+      await page.goto(origin + "/login");
+      await page.locator('#authForm input[name="name"]').fill("fixture-admin");
+      await page.locator('#authForm input[name="password"]').fill("synthetic-fixture-only");
+      await Promise.all([
+        page.waitForURL(target => !target.pathname.startsWith("/login")),
+        page.locator('#authForm button[type="submit"]').click(),
+      ]);
+      await page.goto(origin + "/game/fixture-gba");
+      const deleteComment = page.getByRole("button", { name: "Delete comment", exact: true });
+      if (await deleteComment.count() !== 1) throw new Error("expected one comment delete control");
+      if (await page.getByText(commentBody, { exact: true }).count() !== 1) throw new Error("seeded comment not visible to admin");
+      // playwright-cli surfaces native dialogs as modal state instead of firing
+      // page listeners, so spy on window.confirm to assert the app's own
+      // moderation control flow: it must ask, honour a dismiss, and delete on
+      // accept. Native dialog chrome is the browser's, not the app's.
+      await page.evaluate(() => {
+        window.__an3Confirm = { calls: [], result: false };
+        window.confirm = message => { window.__an3Confirm.calls.push(message); return window.__an3Confirm.result; };
+      });
+      await deleteComment.click();
+      await page.waitForTimeout(250);
+      const confirmState = await page.evaluate(() => window.__an3Confirm);
+      if (JSON.stringify(confirmState.calls) !== JSON.stringify(["Delete this comment?"])) {
+        throw new Error("unexpected confirm calls: " + JSON.stringify(confirmState.calls));
+      }
+      if (await page.getByText(commentBody, { exact: true }).count() !== 1) throw new Error("dismissing the confirm deleted the comment");
+      await page.evaluate(() => { window.__an3Confirm.result = true; });
+      await deleteComment.click();
+      await page.locator("article.comment", { hasText: commentBody }).waitFor({ state: "detached" });
+      await page.goto(origin + "/game/fixture-gba");
+      if (await page.getByText(commentBody, { exact: true }).count() !== 0) throw new Error("comment persisted after delete");
       if (errors.length) throw new Error(errors.join("\\n"));
-      return { geometry, ariaSnapshot, errors, outcome: "search, no-results recovery, keyboard clear, detail navigation" };
+      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", outcome: "search, no-results recovery, keyboard clear, detail navigation, admin comment moderation" };
     }`);
     writeFileSync(resolve(artifacts, "evidence.json"), JSON.stringify({
       source: spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim(),

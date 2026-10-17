@@ -29,6 +29,25 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Admin comment moderation — RG-152, 2026-10-17
+
+- RG-152: **An administrator must be able to delete a game comment from the
+  rendered game page, and dismissing the confirmation must keep it.** The
+  browser lane signs in as the seeded admin, sees exactly one
+  `Delete comment` control, records the `window.confirm` prompt
+  (`Delete this comment?`), confirms that a dismissed prompt leaves the comment,
+  accepts the prompt, sees the comment row detach, and reloads the page to prove
+  the delete reached the server. This exercises `static/site.js`'s
+  `[data-comment-delete]` handler and `/admin/api/comments/<id>/delete`, which is
+  shared with the native UI through `static/`.
+- Automated: the `web-runtime` lane
+  (`AN3_WEB_RUNTIME=1 AN3_PLAYWRIGHT_BROWSER=chromium node --test tests/web-runtime.test.mjs`)
+  retains `commentModeration` in `work/ui-runtime/evidence.json`. Native dialog
+  chrome is browser behavior and is deliberately not asserted; the app's call to
+  `confirm` and its handling of the answer are. Browser evidence does not
+  establish packaged/native moderation.
+- Owners: `static/site.js`, `app.py` (`/admin/api/comments/<id>/delete`).
+
 ## an3ctl web control plane — RG-151, 2026-10-17
 
 - RG-151: **`an3ctl` web sessions must not share pid/browser state between
