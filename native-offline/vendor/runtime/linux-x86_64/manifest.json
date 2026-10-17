@@ -1,0 +1,170 @@
+{
+  "platform": "Linux x86_64",
+  "entry": "an3-offline-native",
+  "files": [
+    {
+      "name": "an3-offline-native",
+      "size": 487480,
+      "sha256": "94a5e701bf97a5363c27736221ca48f7e7c6a9a6c13e9275cf7503195b076e6c"
+    }
+  ],
+  "cores": [
+    {
+      "system": "gba",
+      "engine": "mGBA libretro",
+      "version": "nightly-20260911",
+      "archiveName": "mgba_libretro.so.zip",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip",
+      "archiveSha256": "983a23879249bb7727a4a0665e28a3a8e98c1ba4da8ff1fa83ff35722cd4e466",
+      "coreName": "mgba_libretro.so",
+      "coreSha256": "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
+      "licenseName": "mGBA-MPL-2.0.txt",
+      "license": "MPL-2.0",
+      "sourceUrl": "https://github.com/mgba-emu/mgba"
+    },
+    {
+      "system": "nds",
+      "engine": "melonDS DS libretro",
+      "version": "nightly-20260911",
+      "archiveName": "melondsds_libretro.so.zip",
+      "archiveUrl": "https://buildbot.libretro.com/nightly/linux/x86_64/latest/melondsds_libretro.so.zip",
+      "archiveSha256": "db02d78068ef72e797468136471763892f3cf954ea216ef349a0eb092e4c48b3",
+      "coreName": "melondsds_libretro.so",
+      "coreSha256": "a217ebd98a68745591cf68bdf35342d73b9044f2a3e6a6071c165dc632ae7cf9",
+      "licenseName": "melonDS-DS-GPL-3.0-or-later.txt",
+      "license": "GPL-3.0-or-later",
+      "sourceUrl": "https://github.com/JesseTG/melonds-ds"
+    },
+    {
+      "system": "3ds",
+      "engine": "Azahar libretro",
+      "version": "2126.1.1",
+      "platform": "Linux x86_64",
+      "archiveName": "azahar-libretro-linux-x86_64-2126.1.1.zip",
+      "archiveSha256": "d4bfb269246d143d322514b12838c9247cfc4a32bc642756c279198dcf31205e",
+      "coreName": "azahar_libretro.so",
+      "coreSha256": "9e00fb4249a9eacad5ade873e6bb6ae7ece22508e0ec0a841c758f4a53f87903",
+      "size": 47141600,
+      "archiveUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-libretro-linux-x86_64-2126.1.1.zip",
+      "sourceUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-unified-source-2126.1.1.tar.xz",
+      "sourceSha256": "023b4b37fe8cbc6b59a7be5270a8c93d9c58f90cd8c6d8e00705b43f4c9ebee1",
+      "license": "GPL-2.0-or-later",
+      "licenseName": "Azahar-GPL-2.0-or-later.txt",
+      "licenseSha256": "a77e81713ddfe05f9f7f3a3c46de4147f82b5fe9d6e5e24af96e36a6de53f613"
+    }
+  ],
+  "sources": [
+    {
+      "path": "native-runtime/core/auto_save_mode.h",
+      "sha256": "e8f230c667cd4fbe9ffd9e4f1705c854d63fdd64c40aaad45a11a2cfae3d4112"
+    },
+    {
+      "path": "native-runtime/core/core_options.h",
+      "sha256": "8021a8ba16ba18b697d5f6986d68cf25df8769a13f31a12cbdda4186d4b77513"
+    },
+    {
+      "path": "native-runtime/core/libretro_host.cpp",
+      "sha256": "987aa9fce6108ca932a1818c902beb2ef25a6aec3d3d38e9a6daaf9a42614ba3"
+    },
+    {
+      "path": "native-runtime/core/libretro_host.h",
+      "sha256": "a854a4c80187d8a4342eb2ae2bf40e7ea3e075725e1c58f4ab57313061596453"
+    },
+    {
+      "path": "native-runtime/core/melonds_netplay.cpp",
+      "sha256": "5c96bccdad34a45e0cff592116f3cb610d0cb55b8b27f0c79b803c746a6d077c"
+    },
+    {
+      "path": "native-runtime/core/melonds_netplay.h",
+      "sha256": "1e0bd5b013224813b4a77d40caeb0fdaa553141368afacd7a1b716e42ec6888a"
+    },
+    {
+      "path": "native-runtime/core/png_writer.h",
+      "sha256": "2938882af810a29c8a06db15b89f051ff77ecc404f0154705a95ce8f050d97d8"
+    },
+    {
+      "path": "native-runtime/core/renderer_contract.h",
+      "sha256": "33f8a62fe7bc4810e0dd245a989fe0003a829da77b5ee653f7b9b287a5118548"
+    },
+    {
+      "path": "native-runtime/core/vendor/libretro.h",
+      "sha256": "5875414c47d8af4facf118c184b40b0e311285333a46bbfe8221a853efe5ba7a"
+    },
+    {
+      "path": "native-runtime/core/video_backend.h",
+      "sha256": "ac6d8d7b18d3ab0ea5b158bc761610d8a352f209f1b8f6f9b9974bf45a97b621"
+    },
+    {
+      "path": "native-runtime/core/window_surface.h",
+      "sha256": "0af97775f77b4cc451bd95b9e926ba8a08725323d67e6b53c2f713b20962c433"
+    },
+    {
+      "path": "native-runtime/video/capture/capture_backend.h",
+      "sha256": "9f4708e11e437ae1c7ce7c3eec2d392b3c6876f992b0340f9737da7404afa243"
+    },
+    {
+      "path": "native-runtime/video/opengl/gles3_backend.cpp",
+      "sha256": "ac0911824f978b27285e42d8bc65dc1da02add83f2a5607c7a14958740e28625"
+    },
+    {
+      "path": "native-runtime/video/opengl/gles3_backend.h",
+      "sha256": "bc1ad56f2d687a012651495a727c12225f807fe5e1242a61e6bb20b07b9a7777"
+    },
+    {
+      "path": "native-runtime/video/vulkan/hardware_backend.h",
+      "sha256": "1bb4793d536b22f3305b7a01cc9a04bd49e6ad49680009c7540166eaca1b9e61"
+    },
+    {
+      "path": "native-runtime/video/vulkan/software_backend.h",
+      "sha256": "f4040bb2b98b30c540f087fabc7f30329e3d356e3a35f20d3feacee39e5db3ad"
+    },
+    {
+      "path": "native-runtime/video/vulkan/vulkan_backend.cpp",
+      "sha256": "f914430b06c8db935c3b1a4c2100edb2870af33eff42564d983d2d15b9824d30"
+    },
+    {
+      "path": "native-runtime/video/vulkan/vulkan_backend.h",
+      "sha256": "248223b9f6fb3da381dae4c5eb28c14c0bdebb28727f2f2b6f55cf28bdb04e18"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_controls.cpp",
+      "sha256": "97f9ab331a7b2b425a13d7b4c32c03d6f5794c1d13ec243a7466c9ae6c1082e4"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_controls.h",
+      "sha256": "2ae48b1e58048a5dd54a42c754b75d4706f7386c57cd82437cec07e9cad31c7f"
+    },
+    {
+      "path": "native-runtime/platform/linux/linux_runtime.cpp",
+      "sha256": "af2ff78471788586b7d4ea62b8ab1798a8d60149d6398b643225c897c5b57e1c"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_audio_backend.cpp",
+      "sha256": "25cc547b20d49a2cac506036cec1ee54a9e432e3d789bd23dc2b1cfe30103868"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_audio_backend.h",
+      "sha256": "da9f9ad4d07d6cac73e4af9e88b102087b5399df1878bce92414d052d49999c0"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_gl_backend.cpp",
+      "sha256": "eede1946607bb5edec7964a7f57fc11e8acbf1323c0c4bdaa277342144a679bc"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_gl_backend.h",
+      "sha256": "20a38883c22e10bd8a8491aaa31da70b221304412214370a44540fd57acdad90"
+    },
+    {
+      "path": "native-runtime/platform/linux/sdl_window_surface.h",
+      "sha256": "f1648037deab212be35cf8979becaf93ac1e9f3865c83bbe8f4ce6454fb552a8"
+    },
+    {
+      "path": "shared/generated/native_layouts.h",
+      "sha256": "7ccdf8cf9961b23cd6366a56a723f3403bf71ac2e496c48f08e0c0fcafb7380b"
+    },
+    {
+      "path": "shared/generated/player_ui.h",
+      "sha256": "2bf6063650cbe2c838a40ff402d47b3288743c0e33543795fc3e1a9a5c87a7e8"
+    }
+  ]
+}
