@@ -14,10 +14,8 @@ PACKAGE = json.loads((ROOT / "native-offline/package.json").read_text(encoding="
 ANDROID_BUILD = (ROOT / "native-offline/scripts/build-android-staging.sh").read_text(encoding="utf-8")
 LINUX_BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encoding="utf-8")
 WINDOWS_BUILD = (ROOT / "native-offline/scripts/build-windows-staging.ps1").read_text(encoding="utf-8")
-MACOS_EDEN_BUILD = (ROOT / "native-offline/scripts/build-macos-eden-companion.sh").read_text(encoding="utf-8")
-MACOS_AUTOMATION_BUILD = (ROOT / "native-offline/scripts/build-macos-automation.sh").read_text(encoding="utf-8")
-WINDOWS_EDEN_BUILD = (ROOT / "native-offline/scripts/build-windows-eden-companion.ps1").read_text(encoding="utf-8")
 WINDOWS_PREFLIGHT = ROOT / "tools/disk-preflight.ps1"
+DESKTOP_COMMAND = (ROOT / "native-offline/scripts/desktop-command.mjs").read_text(encoding="utf-8")
 
 
 class DiskPreflightTests(unittest.TestCase):
@@ -67,16 +65,21 @@ class DiskPreflightTests(unittest.TestCase):
 
     def test_local_heavy_package_entrypoints_check_space_before_build_work(self):
         scripts = PACKAGE["scripts"]
-        for name in ("build", "build:deb", "android:build"):
+        # Generic desktop builds dispatch to the matching platform script. Check
+        # every route and retain the preflight-before-work assertions below.
+        self.assertEqual(scripts["build"], "node scripts/desktop-command.mjs build")
+        self.assertEqual(scripts["build:deb"], "bash scripts/build-linux-staging.sh deb")
+        self.assertIn("darwin: 'build:macos:app'", DESKTOP_COMMAND)
+        self.assertIn("linux: 'build:deb'", DESKTOP_COMMAND)
+        self.assertIn("win32: 'build:windows'", DESKTOP_COMMAND)
+        self.assertIn("scripts/build-windows-staging.ps1", scripts["build:windows"])
+        for name in ("build:macos:app", "android:build"):
             self.assertIn("disk-preflight.sh", scripts[name])
             self.assertLess(scripts[name].index("disk-preflight.sh"), scripts[name].index("prepare-"))
         self.assertLess(ANDROID_BUILD.index("disk-preflight.sh"), ANDROID_BUILD.index("build-android-runtime.sh"))
         self.assertLess(LINUX_BUILD.index("disk-preflight.sh"), LINUX_BUILD.index("fetch-linux-gba-nds-libretro.mjs"))
         self.assertTrue(WINDOWS_PREFLIGHT.is_file())
         self.assertLess(WINDOWS_BUILD.index("disk-preflight.ps1"), WINDOWS_BUILD.index("prepare-web"))
-        self.assertLess(MACOS_EDEN_BUILD.index("disk-preflight.sh"), MACOS_EDEN_BUILD.index("prepare-eden-source.sh"))
-        self.assertLess(MACOS_AUTOMATION_BUILD.index("disk-preflight.sh"), MACOS_AUTOMATION_BUILD.index("cargo build"))
-        self.assertLess(WINDOWS_EDEN_BUILD.index("disk-preflight.ps1"), WINDOWS_EDEN_BUILD.index("remote add origin"))
 
 
 if __name__ == "__main__":

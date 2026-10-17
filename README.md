@@ -7,8 +7,9 @@ Windows, Linux and Android and a browser player served by a small Python server.
 ## Highlights
 
 - **Web app** (`app.py`): bilingual library, per-game pages, web player
-  (EmulatorJS), local save slots and autosave, controller pairing, multiplayer
-  rooms on a LAN relay, phone-as-controller, LAN save transfer.
+  (EmulatorJS), local save slots and autosave, direct-LAN phone-as-controller
+  and LAN save transfer. The server is not a multiplayer relay: peers find and
+  talk to each other directly on the LAN.
 - **Native desktop/Android apps** (`native-offline/`): Tauri shell plus a
   portable libretro player for GBA/NDS/3DS with per-platform renderers
   (Metal/Vulkan on macOS, Vulkan/OpenGL on Linux/Windows, Vulkan/OpenGL ES on
@@ -18,9 +19,11 @@ Windows, Linux and Android and a browser player served by a small Python server.
 
 ## Building
 
-See `native-offline/scripts/` for the per-platform build scripts and
-`deploy/` for staging packaging. The web app runs with the Python standard
-library only:
+The browser app and installed native application have separate runtime and
+verification paths. See [`docs/development-workflows.md`](docs/development-workflows.md)
+for the project map, exact checks, and platform limits. See
+`native-offline/scripts/` for per-platform build scripts and `deploy/` for
+staging packaging. The web app runs with the Python standard library only:
 
 ```bash
 python3 app.py            # serve the web app
@@ -57,6 +60,7 @@ The full license text is in [`LICENSE`](LICENSE).
 ### Source
 
 - Source repository: `https://github.com/YOUR_GITHUB_USER/vibe-coded-emulator`
+  <!-- TODO(owner): replace with the real public repository URL. -->
 - The exact source revision for a released binary is the tagged commit listed in
   the release notes and `native-offline/releases/catalog.json`.
 

@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -20,13 +21,23 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPANION_CANDIDATES = [
     os.environ.get("AN3_SWITCH_COMPANION", ""),
-    str(ROOT / "native-offline/vendor/switch/macos-arm64/an3_switch_companion"),
-    "/tmp/eden-build/bin/an3_switch_companion",
+    *(
+        [
+            str(ROOT / "native-offline/vendor/switch/macos-arm64/an3_switch_companion"),
+            "/tmp/eden-build/bin/an3_switch_companion",
+        ]
+        if sys.platform == "darwin" else []
+    ),
 ]
 MOLTENVK_CANDIDATES = [
     os.environ.get("LIBVULKAN_PATH", ""),
-    str(ROOT / "native-offline/vendor/moltenvk/macos-arm64/libMoltenVK.dylib"),
-    "/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
+    *(
+        [
+            str(ROOT / "native-offline/vendor/moltenvk/macos-arm64/libMoltenVK.dylib"),
+            "/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
+        ]
+        if sys.platform == "darwin" else []
+    ),
 ]
 HOMEBREW_CANDIDATES = [os.environ.get("AN3_SWITCH_HOMEBREW", ""), "/tmp/an3-switch/hbmenu.nro", "/tmp/hbmenu.nro"]
 SIGABRT = {-6, 134}
@@ -37,23 +48,6 @@ def _first(candidates):
         if raw and Path(raw).exists():
             return Path(raw)
     return None
-
-
-def _running_companions(path):
-    """Return only processes for this checkout's companion executable.
-
-    Multiple AN3 checkouts can legitimately have an Eden companion running at
-    once. A broad name-only pgrep makes one checkout's lifecycle test fail on
-    another checkout's process.
-    """
-
-    command_path = str(path)
-    resolved_path = str(path.resolve())
-    result = subprocess.run(["pgrep", "-af", "an3_switch_companion"], capture_output=True, text=True)
-    return [
-        line for line in result.stdout.splitlines()
-        if command_path in line or resolved_path in line
-    ]
 
 
 class SwitchFailurePathTests(unittest.TestCase):
@@ -126,7 +120,8 @@ class SwitchFailurePathTests(unittest.TestCase):
         bad.write_bytes(b"\x00" * 4096)
         self._run(bad)
         # No leftover companion process from the failed attempt.
-        self.assertEqual(_running_companions(self.companion), [])
+        result = subprocess.run(["pgrep", "-f", "an3_switch_companion"], capture_output=True, text=True)
+        self.assertEqual([line for line in result.stdout.split() if line.strip()], [])
 
 
 if __name__ == "__main__":

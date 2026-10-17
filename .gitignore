@@ -11,13 +11,29 @@ __pycache__/
 
 # Local scratch and inspection files
 work/
+# playwright-cli session artifacts when it is invoked from the repo root
+.playwright-cli/
 
 # Local secrets and environment files
 .env
 .env.*
-!.env.example
 *.secret
 *.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# OS-generated metadata (never source)
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
 
 # Temporary release archives
 *.tgz
@@ -36,9 +52,22 @@ native-offline/src-tauri/gen/android/local.properties
 
 # Release installer binaries (published via the catalog, not source commits)
 native-offline/releases/*.apk
-native-offline/releases/*.aab
 native-offline/releases/*.deb
 native-offline/releases/*.dmg
 native-offline/releases/*.flatpak
 native-offline/releases/*.exe
 native-offline/releases/*.idsig
+
+# Cloud credential directories must never be committed from a workstation
+.aws/
+**/.aws/
+.azure/
+.gcloud/
+
+# Editor and merge residue
+*.orig
+*.rej
+*.bak
+*~
+.idea/
+.vscode/

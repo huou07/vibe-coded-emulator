@@ -32,5 +32,8 @@
           android:process=":game"
           android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode" />
 
+        <!-- Runs in the main process; bridges the library Settings controller
+             host to the isolated :game process. Never exported. -->
+        <service android:name=".ControllerHostService" android:exported="false" />
     </application>
 </manifest>

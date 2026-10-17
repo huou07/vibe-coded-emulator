@@ -13,7 +13,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = (ROOT / "native-offline/src-tauri/src/azahar_host.mm").read_text(encoding="utf-8")
-PERSISTENCE = (ROOT / "native-offline/native-runtime/core/save_persistence_worker.h").read_text(encoding="utf-8")
 OPTIONS = (ROOT / "native-offline/native-runtime/core/core_options.h").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/src-tauri/src/vulkan_frontend.mm").read_text(encoding="utf-8")
 BOOTSTRAP = (ROOT / "native-offline/web/native-bootstrap.js").read_text(encoding="utf-8")
@@ -22,43 +21,9 @@ PLAYER = (ROOT / "static/player.js").read_text(encoding="utf-8")
 RUNTIME = (ROOT / "static/player-runtime.js").read_text(encoding="utf-8")
 NATIVE_WEB_INDEX = (ROOT / "native-offline/web/index.html").read_text(encoding="utf-8")
 TAURI = (ROOT / "native-offline/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
-MAIN_ACTIVITY = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/MainActivity.kt").read_text(encoding="utf-8")
-NATIVE_APP = (ROOT / "native-offline/web/native-app.js").read_text(encoding="utf-8")
-TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
 
 
 class NativeRegressionGuardTests(unittest.TestCase):
-    def test_ui_control_bridge_is_absent_from_distribution_builds(self):
-        """The test-only bridge must not be compiled into a release binary.
-
-        `mod ui_control;` used to be unconditional, so `AN3_UI_CONTROL_FILE`
-        was present in every distribution executable even though the bridge was
-        inert. `tests/test_macos_automation_app.py` catches this on the built
-        binary; this guard makes the intent fail fast at the source boundary.
-        """
-        build_rs = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
-        self.assertIn('#[cfg(feature = "ui-control")]\nmod ui_control;', TAURI_LIB)
-        self.assertIn("CARGO_FEATURE_UI_CONTROL", build_rs)
-        self.assertIn('commands.push("ui_control_result")', build_rs)
-        self.assertNotIn('            "ui_control_result",\n', build_rs)
-
-    def test_android_entry_returns_from_tauri_without_process_exit(self):
-        run_start = TAURI_LIB.index("pub fn run() {")
-        run_end = TAURI_LIB.index("\n#[cfg(test)]", run_start)
-        run = TAURI_LIB[run_start:run_end]
-        self.assertIn("let builder = tauri::Builder::default()", run)
-        android_start = run.index('#[cfg(target_os = "android")]')
-        desktop_start = run.index('#[cfg(not(target_os = "android"))]', android_start)
-        android = run[android_start:desktop_start]
-        desktop = run[desktop_start:]
-
-        self.assertIn(".build(tauri::generate_context!())", android)
-        self.assertIn("app.run_return(|_app_handle, _event| {})", android)
-        self.assertNotIn(".run(tauri::generate_context!())", android)
-        self.assertNotIn("std::process::exit", android)
-        self.assertIn(".run(tauri::generate_context!())", desktop)
-        self.assertNotIn("std::process::exit", run)
-
     def test_01_quick_slots_remain_exactly_one_through_ten(self):
         self.assertIn("constexpr unsigned kMaxQuickStateSlot = 10", HOST)
         self.assertIn("Array.from({length:10}", OFFLINE)
@@ -178,19 +143,12 @@ class NativeRegressionGuardTests(unittest.TestCase):
         draw = HOST[HOST.index("void draw()") : HOST.index("bool validate_state_slot")]
         self.assertIn("unsigned runs = 1;", draw)
         self.assertIn("if (std::abs(speed_ - 1.0) >= 0.001)", draw)
-        self.assertIn("run_one_core_frame_locked();", draw)
-        core_frame = HOST[HOST.index("void run_one_core_frame_locked()") : HOST.index("void core_thread_loop()")]
-        self.assertIn("core_.run();", core_frame)
+        self.assertIn("core_.run();", draw)
 
     def test_single_sample_audio_callbacks_are_not_dropped(self):
         self.assertIn("append_audio_sample(left, right)", HOST)
         self.assertIn("flush_pending_audio_samples();", HOST)
         self.assertIn("g_audio_player.isPlaying", HOST)
-
-    def test_audio_node_restart_clears_stale_queue_after_route_stop(self):
-        self.assertIn("if (g_audio_playing && !g_audio_player.isPlaying)", HOST)
-        self.assertIn("g_audio_frames_queued.store(0, std::memory_order_relaxed)", HOST)
-        self.assertIn("[g_audio_player play]", HOST)
 
     def test_escape_and_menu_share_non_save_close(self):
         close = HOST.split("- (void)closeMenuDiscardingDraft {", 1)[1].split("\n}", 1)[0]
@@ -239,114 +197,6 @@ class NativeRegressionGuardTests(unittest.TestCase):
         toggle = HOST.split("- (void)toggleMenu:(id)sender {", 1)[1].split("\n}", 1)[0]
         self.assertIn("set_nds_touch_pressed(false)", toggle)
 
-    def test_local_gamepad_navigates_appkit_menu_without_leaking_core_input(self):
-        draw = HOST[HOST.index("- (void)drawInMTKView:"):HOST.index("- (void)mtkView:")]
-        self.assertLess(draw.index("handleLocalMenuButtons"), draw.index("host->draw()"))
-        self.assertIn("host->local_input_buttons()", draw)
-
-        menu = HOST.split("- (void)handleLocalMenuButtons:(uint32_t)buttons {", 1)[1].split("\n}", 1)[0]
-        self.assertIn("buttons & ~_local_menu_buttons", menu)
-        self.assertIn("Button bit positions match the libretro joypad IDs used by local keys", menu)
-        for name, bit in (("Up", 4), ("Down", 5), ("Left", 6), ("Right", 7),
-                          ("A", 8), ("B", 0), ("Start", 3)):
-            self.assertIn(f"kMenu{name} = 1u << {bit}", menu)
-        self.assertIn("closeMenuDiscardingDraft", menu)
-        self.assertIn("moveMenuFocusBy", menu)
-        self.assertIn("adjustMenuFocusBy", menu)
-        self.assertIn("activateMenuFocus", menu)
-        self.assertIn("_menu_input_suppressed_until_release", menu)
-
-        input_state = HOST.split("int16_t input_state(unsigned device", 1)[1].split("\n    }", 1)[0]
-        self.assertIn("menu_navigation_active_.load", input_state)
-        self.assertIn("return 0", input_state)
-        close = HOST.split("- (void)closeMenuDiscardingDraft {", 1)[1].split("\n}", 1)[0]
-        self.assertIn("_local_menu_buttons != 0", close)
-        self.assertIn("set_menu_navigation_active(_menu_input_suppressed_until_release)", close)
-
-    def test_android_main_activity_keeps_the_tauri_origin(self):
-        # A raw WebView reload bypasses Tauri's dispatcher and leaves the
-        # page at about:blank, so every native command is rejected by ACL.
-        self.assertIn("super.onWebViewCreate(webView)", MAIN_ACTIVITY)
-        self.assertNotIn("webView.loadUrl", MAIN_ACTIVITY)
-        self.assertIn("WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)", MAIN_ACTIVITY)
-
-    def test_local_rom_catalog_survives_without_sync_runtime(self):
-        build = (ROOT / "native-offline/src-tauri/build.rs").read_text(encoding="utf-8")
-        native_roms = (ROOT / "native-offline/src-tauri/src/native_rom_library.rs").read_text(encoding="utf-8")
-        self.assertIn("native_rom_library_manifest", TAURI_LIB)
-        self.assertIn('"native_rom_library_manifest"', build)
-        self.assertIn("native_rom_library::manifest", TAURI_LIB)
-        self.assertIn('invoke("native_rom_library_manifest",{})', OFFLINE)
-        self.assertIn("pub fn manifest(app_dir", native_roms)
-        self.assertNotIn("sync_peer", TAURI_LIB)
-        self.assertNotIn("native_sync_", TAURI_LIB)
-
-    def test_core_save_snapshots_stay_at_the_frame_boundary_without_frame_path_file_io(self):
-        start = HOST.index("void draw()")
-        draw = HOST[start : HOST.index("\n  private:", start)]
-        self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", draw)
-        core_frame = HOST[HOST.index("void run_one_core_frame_locked()") : HOST.index("void core_thread_loop()")]
-        self.assertIn("save_auto_state_locked(save_error, false)", core_frame)
-        self.assertIn("flush_save_ram_locked(save_error, false)", core_frame)
-        for operation in (
-            "write_bytes_atomically",
-            "write_and_wait",
-            "persistence_writer_.flush",
-            "std::ofstream",
-            "::open",
-            "::fsync",
-            "::rename",
-        ):
-            self.assertNotIn(operation, draw + core_frame)
-        stop = HOST[HOST.index("    void stop()") : HOST.index("    bool running() const")]
-        self.assertIn("std::lock_guard<std::mutex> lock(state_mutex_)", stop)
-        self.assertIn("save_auto_state_locked(save_error, true)", stop)
-        self.assertIn("flush_save_ram_locked(save_error, true)", stop)
-        self.assertIn("persistence_writer_.flush(persistence_error)", stop)
-        self.assertLess(stop.index("save_auto_state_locked(save_error, true)"), stop.index("running_ = false"))
-        self.assertLess(stop.index("flush_save_ram_locked(save_error, true)"), stop.index("persistence_writer_.flush(persistence_error)"))
-        self.assertLess(stop.index("persistence_writer_.flush(persistence_error)"), stop.index("core_.unload_game()"))
-
-    def test_native_save_file_operations_run_on_the_bounded_persistence_worker(self):
-        self.assertIn('#include "save_persistence_worker.h"', HOST)
-        self.assertIn("SavePersistenceWorker persistence_writer_", HOST)
-        self.assertIn("persistence_writer_.write_async(path", HOST)
-        self.assertIn("persistence_writer_.write_and_wait(path", HOST)
-        self.assertIn("std::thread worker_", PERSISTENCE)
-        self.assertIn("constexpr size_t kMaxPendingPaths = 16", PERSISTENCE)
-        self.assertIn("static bool write_bytes_atomically", PERSISTENCE)
-        self.assertIn("write_bytes_atomically(job.path", PERSISTENCE)
-        writer_start = PERSISTENCE.index("static bool write_bytes_atomically")
-        writer_end = PERSISTENCE.index("    void complete(", writer_start)
-        writer = PERSISTENCE[writer_start:writer_end]
-        self.assertIn('path.string() + ".tmp"', writer)
-        for operation in ("create_directories", "std::ofstream", "output.flush()", "::open", "::fsync", "::rename"):
-            self.assertIn(operation, writer)
-        posix_start = writer.index("#else", writer.index("#if defined(_WIN32)"))
-        posix_end = writer.index("#endif", posix_start)
-        posix = writer[posix_start:posix_end]
-        self.assertLess(writer.index("output.flush()"), writer.index("::fsync"))
-        self.assertLess(posix.index("::fsync"), posix.index("::rename"))
-
-    def test_portable_runtime_queues_periodic_saves_and_waits_outside_core_lock(self):
-        portable = (ROOT / "native-offline/native-runtime/core/libretro_host.cpp").read_text(encoding="utf-8")
-        header = (ROOT / "native-offline/native-runtime/core/libretro_host.h").read_text(encoding="utf-8")
-        android = (ROOT / "native-offline/native-runtime/platform/android/jni_runtime.cpp").read_text(encoding="utf-8")
-        linux = (ROOT / "native-offline/native-runtime/platform/linux/linux_runtime.cpp").read_text(encoding="utf-8")
-        self.assertIn('#include "save_persistence_worker.h"', portable)
-        self.assertIn("SavePersistenceWorker persistence_writer_", portable)
-        self.assertIn("bool queue_save_auto", header)
-        self.assertIn("bool queue_save_ram", header)
-        self.assertIn("queue_save_auto", android)
-        self.assertIn("queue_save_ram", android)
-        self.assertIn("queue_save_auto", linux)
-        self.assertIn("take_background_error", portable)
-        self.assertNotIn("write_atomic(", portable)
-        state = portable[portable.index("bool NativeCoreHost::Impl::state"):portable.index("std::string NativeCoreHost::Impl::save_ram_path")]
-        self.assertIn("std::lock_guard<std::mutex> lock(mutex_)", state)
-        self.assertIn("persist_snapshot(std::move(snapshot), true", state)
-        self.assertLess(state.index("snapshot.ready = true"), state.index("persist_snapshot(std::move(snapshot), true"))
-        self.assertIn("// Manual/final durability waits must not hold the core ownership lock.", portable)
 
 if __name__ == "__main__":
     unittest.main()

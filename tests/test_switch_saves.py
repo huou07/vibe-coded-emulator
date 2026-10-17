@@ -25,13 +25,23 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMPANION_CANDIDATES = [
     os.environ.get("AN3_SWITCH_COMPANION", ""),
-    str(ROOT / "native-offline/vendor/switch/macos-arm64/an3_switch_companion"),
-    "/tmp/eden-build/bin/an3_switch_companion",
+    *(
+        [
+            str(ROOT / "native-offline/vendor/switch/macos-arm64/an3_switch_companion"),
+            "/tmp/eden-build/bin/an3_switch_companion",
+        ]
+        if sys.platform == "darwin" else []
+    ),
 ]
 MOLTENVK_CANDIDATES = [
     os.environ.get("LIBVULKAN_PATH", ""),
-    str(ROOT / "native-offline/vendor/moltenvk/macos-arm64/libMoltenVK.dylib"),
-    "/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
+    *(
+        [
+            str(ROOT / "native-offline/vendor/moltenvk/macos-arm64/libMoltenVK.dylib"),
+            "/tmp/eden/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib",
+        ]
+        if sys.platform == "darwin" else []
+    ),
 ]
 HOMEBREW_CANDIDATES = [
     os.environ.get("AN3_SWITCH_HOMEBREW", ""),

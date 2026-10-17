@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The vendored QR encoder and the multiplayer room QR renderer.
+"""The vendored QR encoder and the controller pairing-SVG renderer.
 
-The room QR is rendered server-side as a standalone SVG so it stays inside
+The pairing QR is rendered server-side as a standalone SVG so it stays inside
 the strict Content-Security-Policy (``img-src 'self'``) with no external
-scripts, fonts, or CDNs. These tests pin the vendored encoder and SVG shape.
+scripts, fonts, or CDNs. These tests pin the vendored encoder, the host-header
+validation, and the SVG shape.
 """
 
 import hashlib
@@ -33,12 +34,29 @@ class VendoredEncoderTests(unittest.TestCase):
         self.assertIn("Project Nayuki", source)
 
 
-class QrSvgTests(unittest.TestCase):
+class ControllerJoinUrlTests(unittest.TestCase):
+    def test_builds_an_absolute_join_url(self):
+        self.assertEqual(
+            app.controller_join_url("http", "192.0.2.8:8092", "AB12CD"),
+            "http://192.0.2.8:8092/controller/join?code=AB12CD",
+        )
+        self.assertEqual(
+            app.controller_join_url("https", "vibe.example", "AB12CD"),
+            "https://vibe.example/controller/join?code=AB12CD",
+        )
+
+    def test_rejects_hosts_that_are_not_a_plain_host_or_host_port(self):
+        for host in ("", " ", "http://evil.example", "evil.example/path", "evil.example;rm", "a b", "host:99 9"):
+            with self.subTest(host=host):
+                self.assertEqual(app.controller_join_url("http", host, "AB12CD"), "")
+
+
+class ControllerQrSvgTests(unittest.TestCase):
     def _render(self, text):
-        return app.qr_svg(text)
+        return app.controller_qr_svg(text)
 
     def test_viewbox_matches_the_encoder_size_plus_border(self):
-        text = "https://vibe.example/multiplayer?room=AB12CD"
+        text = "http://192.0.2.8:8092/controller/join?code=AB12CD"
         qr = qrcodegen.QrCode.encode_text(text, qrcodegen.QrCode.Ecc.MEDIUM)
         span = qr.get_size() + 4 * 2
         svg = self._render(text)
@@ -48,7 +66,7 @@ class QrSvgTests(unittest.TestCase):
         self.assertIn(f'width="{span}" height="{span}"', svg)
 
     def test_svg_is_self_contained_and_script_free(self):
-        svg = self._render("https://vibe.example/multiplayer?room=AB12CD")
+        svg = self._render("http://192.0.2.8:8092/controller/join?code=AB12CD")
         self.assertTrue(svg.startswith("<svg "))
         self.assertIn("<path d=\"", svg)
         self.assertNotIn("<script", svg)
@@ -59,20 +77,20 @@ class QrSvgTests(unittest.TestCase):
         self.assertEqual(re.findall(r"https?://[^\"']+", svg), ["http://www.w3.org/2000/svg"])
 
     def test_path_uses_only_valid_command_characters(self):
-        svg = self._render("https://vibe.example/multiplayer?room=AB12CD")
+        svg = self._render("http://192.0.2.8:8092/controller/join?code=AB12CD")
         path = re.search(r'<path d="([^"]*)"', svg).group(1)
         self.assertTrue(path)
         self.assertRegex(path, r"^[Mh vz0-9\-]+$")
 
     def test_rendering_is_deterministic(self):
-        text = "https://vibe.example/multiplayer?room=AB12CD"
+        text = "http://192.0.2.8:8092/controller/join?code=AB12CD"
         self.assertEqual(self._render(text), self._render(text))
 
     def test_rejects_empty_and_oversized_payloads(self):
         with self.assertRaises(ValueError):
             self._render("")
         with self.assertRaises(ValueError):
-            self._render("x" * (app.QR_MAX_TEXT + 1))
+            self._render("x" * (app.CONTROLLER_QR_MAX_TEXT + 1))
 
 
 if __name__ == "__main__":

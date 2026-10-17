@@ -37,24 +37,5 @@ class WebNdsTouchBehaviorTests(unittest.TestCase):
         self.assertIn('.an3-render-canvas{pointer-events:none!important', stylesheet)
 
 
-    def test_player_layout_keeps_virtual_controls_clear_of_the_touch_screen(self):
-        player = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
-        bridge = (ROOT / "static" / "nds-touch.js").read_text(encoding="utf-8")
-        # The shared resolver is the single source of the safe layout, and the
-        # player must wire it into both placement and the resize/geometry poll.
-        self.assertIn("const resolveTouchSafeControls =", bridge)
-        self.assertIn("let resolvedPadPositions=null;", player)
-        self.assertIn("const renderPadPositions = () => {", player)
-        self.assertIn("resolvedPadPositions=padRoot.classList.contains(\"edit\") ? null : resolveTouchSafePositions(positions);", player)
-        self.assertIn("applyControlSizes();renderPadPositions();", player)
-        self.assertIn("refreshPadForTouchZone();", player)
-        # The saved (custom) layout must survive; only the rendered slot moves.
-        self.assertIn("resolvedPadPositions || positions", player)
-        # The verified coordinate transform is untouched: the safe layout reuses
-        # the shared bridge resolver instead of re-deriving the touch-screen map.
-        self.assertIn("globalThis.AN3NdsTouchBridge?.resolveTouchSafeControls", player)
-        self.assertIn("const viewport=resolveNdsVideoViewport(canvas,rect);", player)
-
-
 if __name__ == "__main__":
     unittest.main()

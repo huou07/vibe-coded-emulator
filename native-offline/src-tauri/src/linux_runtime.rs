@@ -4,7 +4,7 @@
 //! library and import UI; gameplay runs in the bundled native SDL/GTK player.
 //! No shell, external emulator lookup, or browser frame transport participates
 //! in native gameplay.
-use super::{NativeCapabilities, NativeStart};
+use super::{NativeCapabilities, NativeInput, NativeMultiplayerConfig, NativeStart};
 use crate::{native_rom_path, validate_rom_id};
 use std::{
     fs,
@@ -17,6 +17,7 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 static SESSION: Mutex<Option<Child>> = Mutex::new(None);
+static ACTIVE_SYSTEM: Mutex<Option<String>> = Mutex::new(None);
 
 fn runtime_relative() -> &'static str {
     "runtime/linux-x86_64/an3-offline-native"
@@ -78,6 +79,7 @@ pub(super) fn capabilities(app: &AppHandle) -> Result<NativeCapabilities, String
 }
 
 pub(super) fn stop() -> Result<(), String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = None; }
     let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
     if let Some(mut child) = session.take() {
         if let Some(mut input) = child.stdin.take() {
@@ -99,7 +101,8 @@ pub(super) fn stop() -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>) -> Result<NativeStart, String> {
+pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>, netplay: Option<NativeMultiplayerConfig>) -> Result<NativeStart, String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = Some(system.to_string()); }
     validate_rom_id(rom_id)?;
     let core = super::native_core(system)?;
     let runtime = runtime_path(app)?;
@@ -124,9 +127,15 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
         .args(["--rom"]).arg(&rom).args(["--system", system, "--layout", layout, "--storage"])
         .arg(&storage).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
+        .env("AN3_OFFLINE_LIBDIR", runtime.parent().unwrap())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(errors);
+    if let Some(config) = netplay {
+        command.args(["--multiplayer", config.role.as_str()]);
+        if config.role == "join" { command.args(["--multiplayer-address", config.address.as_str()]); }
+        command.args(["--multiplayer-port", &config.port.to_string()]);
+    }
     if let Some(schemas) = schemas_directory(&runtime) {
         command.env("GSETTINGS_SCHEMA_DIR", schemas);
     }
@@ -162,11 +171,79 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     }
 }
 
+pub(super) fn input(value: NativeInput) -> Result<(), String> {
+    let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
+    if let Some(pipe) = session.as_mut().and_then(|child| child.stdin.as_mut()) {
+        writeln!(
+            pipe,
+            "INPUT {} {} {} {} {} {}",
+            value.buttons, value.circle_x, value.circle_y, value.touch_x, value.touch_y,
+            u8::from(value.touch_pressed)
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// True while the native player child process is still alive.
+/// The system the active native game is running, if any.
+pub(super) fn active_system() -> Option<String> {
+    ACTIVE_SYSTEM.lock().ok().and_then(|value| value.clone())
+}
+
 pub(super) fn running() -> bool {
     let Ok(mut session) = SESSION.lock() else { return false };
     match session.as_mut() {
         Some(child) => matches!(child.try_wait(), Ok(None)),
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shell must deliver controller input to the bundled player over the
+    /// documented `--control-stdin` protocol. A fake child (`cat`) stands in for
+    /// the native player so this runs without a GPU or a real game.
+    #[test]
+    fn input_writes_the_control_stdin_protocol() {
+        let mut child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn cat");
+        let stdout = child.stdout.take().expect("cat stdout");
+        *SESSION.lock().expect("session lock") = Some(child);
+
+        let frame = NativeInput {
+            buttons: 8, // GBA "start", the bit the phone controller sends
+            circle_x: 1234,
+            circle_y: -1234,
+            cstick_x: 0,
+            cstick_y: 0,
+            touch_x: 7,
+            touch_y: 9,
+            touch_pressed: true,
+        };
+        input(frame).expect("input");
+        // Close stdin so cat flushes and exits.
+        if let Ok(mut guard) = SESSION.lock() {
+            if let Some(child) = guard.as_mut() {
+                drop(child.stdin.take());
+            }
+        }
+
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("read echo");
+        assert_eq!(line.trim(), "INPUT 8 1234 -1234 7 9 1");
+
+        if let Ok(mut guard) = SESSION.lock() {
+            if let Some(mut child) = guard.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
     }
 }

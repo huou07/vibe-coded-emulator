@@ -5,6 +5,7 @@ use std::{
     ffi::{CStr, CString},
     fs,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 use tauri::{AppHandle, Manager};
 
@@ -75,6 +76,88 @@ pub struct NativeStart {
     pub detail: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMultiplayerConfig {
+    pub role: String,
+    #[serde(default)]
+    pub address: String,
+    #[serde(default = "default_multiplayer_port")]
+    pub port: u16,
+}
+
+fn default_multiplayer_port() -> u16 { 47834 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeMultiplayerStatus {
+    pub available: bool,
+    pub configured: bool,
+    pub role: Option<String>,
+    pub address: Option<String>,
+    pub port: u16,
+    pub detail: String,
+}
+
+static PENDING_MULTIPLAYER: Mutex<Option<NativeMultiplayerConfig>> = Mutex::new(None);
+
+pub fn configure_multiplayer(config: NativeMultiplayerConfig) -> Result<NativeMultiplayerStatus, String> {
+    if config.role != "host" && config.role != "join" {
+        return Err("Choose Host or Join for LAN multiplayer.".into());
+    }
+    if config.role == "join" && config.address.trim().is_empty() {
+        return Err("Enter the host's current LAN address.".into());
+    }
+    if config.port == 0 { return Err("LAN multiplayer needs a non-zero port.".into()); }
+    let mut pending = PENDING_MULTIPLAYER.lock().map_err(|_| "LAN multiplayer state is unavailable.")?;
+    *pending = Some(config.clone());
+    Ok(NativeMultiplayerStatus {
+        available: true,
+        configured: true,
+        role: Some(config.role),
+        address: (!config.address.is_empty()).then_some(config.address),
+        port: config.port,
+        detail: "melonDS DS LAN multiplayer will attach to the next NDS launch.".into(),
+    })
+}
+
+pub fn multiplayer_status() -> NativeMultiplayerStatus {
+    let pending = PENDING_MULTIPLAYER.lock().ok().and_then(|value| value.clone());
+    NativeMultiplayerStatus {
+        available: true,
+        configured: pending.is_some(),
+        role: pending.as_ref().map(|value| value.role.clone()),
+        address: pending.as_ref().and_then(|value| (!value.address.is_empty()).then_some(value.address.clone())),
+        port: pending.as_ref().map(|value| value.port).unwrap_or(47834),
+        detail: if pending.is_some() {
+            "Direct melonDS LAN multiplayer is configured; launch an NDS game to start it.".into()
+        } else {
+            "Only the integrated melonDS DS libretro netpacket API is currently available.".into()
+        },
+    }
+}
+
+pub fn clear_multiplayer() {
+    if let Ok(mut pending) = PENDING_MULTIPLAYER.lock() { *pending = None; }
+}
+
+fn configured_multiplayer() -> Option<NativeMultiplayerConfig> {
+    PENDING_MULTIPLAYER.lock().ok().and_then(|value| value.clone())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeInput {
+    pub buttons: u32,
+    pub circle_x: i16,
+    pub circle_y: i16,
+    pub cstick_x: i16,
+    pub cstick_y: i16,
+    pub touch_x: i16,
+    pub touch_y: i16,
+    pub touch_pressed: bool,
+}
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn an3_native_probe(
@@ -92,15 +175,30 @@ unsafe extern "C" {
         system_directory: *const std::ffi::c_char,
         system: *const std::ffi::c_char,
         layout: *const std::ffi::c_char,
+        netplay_role: *const std::ffi::c_char,
+        netplay_address: *const std::ffi::c_char,
+        netplay_port: u16,
         details: *mut std::ffi::c_char,
         details_length: usize,
     ) -> i32;
     fn an3_native_stop();
     fn an3_native_is_running() -> i32;
-    // Debug-only latency instrumentation (Track B1) and the test-only
-    // ui-control bridge both read the presented-frame counter; the counter
-    // itself is harmless and inert unless something reads it.
-    fn an3_native_presented_frames() -> u64;
+    fn an3_native_active_system() -> i32;
+    fn an3_native_set_input(
+        buttons: u32,
+        circle_x: i16,
+        circle_y: i16,
+        cstick_x: i16,
+        cstick_y: i16,
+        touch_x: i16,
+        touch_y: i16,
+        touch_pressed: i32,
+    );
+    /// Phone-controller utility entry points. They reuse the Cocoa panel's own
+    /// speed/quick-save/menu actions; each returns 1 only if it ran.
+    fn an3_native_controller_speed(direction: i32) -> i32;
+    fn an3_native_controller_quick_save(slot: u32) -> i32;
+    fn an3_native_controller_open_menu() -> i32;
 }
 
 fn native_moltenvk_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -286,10 +384,11 @@ pub fn start_native_game(
     system: String,
     layout: Option<String>,
 ) -> Result<NativeStart, String> {
+    let netplay = configured_multiplayer();
     #[cfg(target_os = "windows")]
-    { return windows_runtime::start(&app, &rom_id, &system, layout.as_deref()); }
+    { return windows_runtime::start(&app, &rom_id, &system, layout.as_deref(), netplay); }
     #[cfg(target_os = "linux")]
-    { return linux_runtime::start(&app, &rom_id, &system, layout.as_deref()); }
+    { return linux_runtime::start(&app, &rom_id, &system, layout.as_deref(), netplay); }
     #[cfg(target_os = "macos")]
     {
         validate_rom_id(&rom_id)?;
@@ -325,6 +424,9 @@ pub fn start_native_game(
             Some("top-bottom") | Some("top_bottom") => "top-bottom",
             _ => "preserve",
         };
+        if netplay.is_some() && core_spec.system != "nds" {
+            return Err("Only the integrated melonDS DS core supports LAN multiplayer.".into());
+        }
         let core = c_string(&core, "native core path")?;
         let moltenvk = c_string(&moltenvk, "MoltenVK runtime path")?;
         let rom = c_string(&rom, "native ROM path")?;
@@ -333,6 +435,9 @@ pub fn start_native_game(
         let system_directory = c_string(&system_directory, "native system path")?;
         let system_text = c_text(core_spec.system, "native system")?;
         let layout = c_text(layout, "native screen layout")?;
+        let netplay_role = c_text(netplay.as_ref().map(|value| value.role.as_str()).unwrap_or("disabled"), "LAN multiplayer role")?;
+        let netplay_address = c_text(netplay.as_ref().map(|value| value.address.as_str()).unwrap_or_default(), "LAN multiplayer address")?;
+        let netplay_port = netplay.as_ref().map(|value| value.port).unwrap_or(47834);
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "VibeCodedEmulator main window is unavailable.".to_string())?;
@@ -354,6 +459,9 @@ pub fn start_native_game(
                     system_directory.as_ptr(),
                     system_text.as_ptr(),
                     layout.as_ptr(),
+                    netplay_role.as_ptr(),
+                    netplay_address.as_ptr(),
+                    netplay_port,
                     details.as_mut_ptr(),
                     details.len(),
                 ) != 0
@@ -411,8 +519,9 @@ pub fn stop_native_game(app: AppHandle) -> Result<(), String> {
     }
 }
 
-#[cfg(feature = "ui-control")]
-fn native_game_running() -> bool {
+/// True while a native game is actually running, so the phone controller only
+/// acknowledges frames that the emulator could really apply.
+pub fn native_input_ready() -> bool {
     #[cfg(target_os = "windows")]
     { return windows_runtime::running(); }
     #[cfg(target_os = "linux")]
@@ -423,35 +532,74 @@ fn native_game_running() -> bool {
     { false }
 }
 
-/// Test-only diagnostics for the ui-control bridge: whether a native core is
-/// running and how many frames its renderer has actually presented. The
-/// distribution build never compiles the bridge, so this can never become a
-/// product dependency.
-#[cfg(feature = "ui-control")]
-pub fn native_bridge_diagnostics() -> (bool, u64) {
+/// Execute one canonical Phone Controller utility action on the running native
+/// game. Returns true only when the host actually performed the action, so the
+/// controller never reports an unsupported action as successful.
+///
+/// The macOS Cocoa host owns Speed, Quick Save, and the in-game Menu, so those
+/// are wired there. The Windows/Linux portable runtime has no stdin command for
+/// them yet and reports the action as unavailable rather than pretending.
+pub fn apply_controller_utility(action: &str) -> bool {
+    if !native_input_ready() {
+        return false;
+    }
     #[cfg(target_os = "macos")]
-    {
-        return (native_game_running(), native_presented_frames());
+    unsafe {
+        return match action {
+            // Canonical ids from native-offline/shared/input-actions-schema.json.
+            "SPEED_UP" => an3_native_controller_speed(1) != 0,
+            "SPEED_DOWN" => an3_native_controller_speed(-1) != 0,
+            "QUICK_SAVE" => an3_native_controller_quick_save(1) != 0,
+            "OPEN_MENU" => an3_native_controller_open_menu() != 0,
+            _ => false,
+        };
     }
     #[cfg(not(target_os = "macos"))]
     {
-        (native_game_running(), 0)
+        eprintln!("AN3 controller utility '{action}' is unavailable on this host build");
+        false
     }
 }
 
-/// Track B1: the number of frames the native player has presented, on the host
-/// clock. Used only by the debug-only latency instrumentation to close the
-/// input-to-produced-frame interval. Returns `None` on platforms that do not
-/// expose a counter, so a measurement is never fabricated.
-pub fn native_presented_frames() -> u64 {
+/// The system the active native game is running, for the phone pad layout.
+pub fn native_active_system() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    { return windows_runtime::active_system(); }
+    #[cfg(target_os = "linux")]
+    { return linux_runtime::active_system(); }
     #[cfg(target_os = "macos")]
     {
-        return unsafe { an3_native_presented_frames() };
+        return match unsafe { an3_native_active_system() } {
+            1 => Some("gba".to_string()),
+            2 => Some("nds".to_string()),
+            3 => Some("3ds".to_string()),
+            _ => None,
+        };
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        0
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    { None }
+}
+
+#[tauri::command]
+pub fn set_native_input(input: NativeInput) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    { return windows_runtime::input(input); }
+    #[cfg(target_os = "linux")]
+    { return linux_runtime::input(input); }
+    #[cfg(target_os = "macos")]
+    unsafe {
+        an3_native_set_input(
+            input.buttons,
+            input.circle_x,
+            input.circle_y,
+            input.cstick_x,
+            input.cstick_y,
+            input.touch_x,
+            input.touch_y,
+            i32::from(input.touch_pressed),
+        );
     }
+    Ok(())
 }
 
 #[cfg(all(test, target_os = "macos"))]

@@ -208,6 +208,7 @@ object NativeSettingsSchema {
     // system -> platform -> reason. A missing entry means the system is available.
     val unavailable: Map<String, Map<String, String>> = mapOf(
         "switch" to mapOf(
+            "android" to "Nintendo Switch is not supported on Android. Settings are stored but cannot launch here.",
             "ios" to "Nintendo Switch is not supported on iOS.",
         ),
     )

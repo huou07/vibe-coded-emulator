@@ -11,7 +11,7 @@ the native apps. They share no GPU code; keeping them separate is deliberate.
 - Presentation is drawn to a separate canvas owned by the renderer worker; the
   EmulatorJS **source** canvas stays the authoritative input target. Touch and
   pointer input always resolve to the source canvas, never the presentation
-  layer. See `docs/architecture/player-layering.md`.
+  layer. See `docs/player-layering.md`.
 - The service worker precaches cores; the same-origin cache is versioned by the
   asset hash so an update cannot alias stale files.
 

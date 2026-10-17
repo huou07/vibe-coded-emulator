@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-sync-mark-account-verified"
+description = "Enables the native_sync_mark_account_verified command without any pre-configured scope."
+commands.allow = ["native_sync_mark_account_verified"]
+
+[[permission]]
+identifier = "deny-native-sync-mark-account-verified"
+description = "Denies the native_sync_mark_account_verified command without any pre-configured scope."
+commands.deny = ["native_sync_mark_account_verified"]

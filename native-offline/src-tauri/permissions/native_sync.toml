@@ -1,0 +1,43 @@
+# Direct-LAN save synchronization commands.  This permission is intentionally
+# one capability bundle: the renderer can only reach the native peer layer,
+# never the retired HTTP sync/controller endpoints.
+
+[[permission]]
+identifier = "allow-native-sync"
+description = "Enables the direct-LAN native sync peer commands."
+commands.allow = [
+  "native_sync_start",
+  "native_sync_join",
+  "native_sync_status",
+  "native_sync_stop",
+  "native_sync_discover",
+  "native_sync_forget",
+  "native_sync_request",
+  "native_sync_identity",
+  "native_sync_account_context",
+  "native_sync_set_account_proof",
+  "native_sync_mark_account_verified",
+  "native_sync_game_identity",
+  "native_sync_storage_read",
+  "native_sync_storage_write",
+]
+
+[[permission]]
+identifier = "deny-native-sync"
+description = "Denies the direct-LAN native sync peer commands."
+commands.deny = [
+  "native_sync_start",
+  "native_sync_join",
+  "native_sync_status",
+  "native_sync_stop",
+  "native_sync_discover",
+  "native_sync_forget",
+  "native_sync_request",
+  "native_sync_identity",
+  "native_sync_account_context",
+  "native_sync_set_account_proof",
+  "native_sync_mark_account_verified",
+  "native_sync_game_identity",
+  "native_sync_storage_read",
+  "native_sync_storage_write",
+]

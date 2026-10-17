@@ -7,7 +7,7 @@ window.AN3NativeOfflineApp = true;
 // in-app portable host supports.
 const an3MobileNativeShell = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 window.AN3NativeRomStreaming = !an3MobileNativeShell;
-// Shared by the installed shell and the native bridge. Keeping the
+// Shared by the account/sync shell and by the controller bridge. Keeping the
 // lookup lazy matters on Android, where Tauri injects its bridge after the
 // bundled document starts evaluating.
 window.AN3NativeInvoke = () => {
@@ -19,10 +19,11 @@ window.AN3NativeInvoke = () => {
 // injected bridge. The launcher itself still resolves the bridge at click
 // time, so the library cannot briefly advertise an external native player on
 // macOS while WebKit finishes injection.
-// Installed Android release candidates carry the same four-core surface as
-// desktop. Switch remains a native Eden launch (not the browser EmulatorJS
-// path); the Android bridge performs a final runtime-availability check.
-window.AN3NativeIntegratedSystems = /Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds", "switch"] : (an3MobileNativeShell ? [] : ["gba", "nds", "3ds"]);
+// Android now advertises 3DS only after the frozen release candidate passed
+// the required native Vulkan video, input, audio-delivery, save, and stable-play
+// device run. The capability declaration still describes the bundled host, not
+// a speculative device feature.
+window.AN3NativeIntegratedSystems = /Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds"] : (an3MobileNativeShell ? [] : ["gba", "nds", "3ds"]);
 // Compatibility signal for pre-generic library assets. New code reads the
 // systems list above so GBA and NDS can use the same in-process launch path.
 window.AN3NativeIntegratedThreeDs = !an3MobileNativeShell;
@@ -37,18 +38,6 @@ window.AN3OfflineEmulatorOrigin = "";
     const internals = window.__TAURI_INTERNALS__;
     return tauri?.core?.invoke || internals?.invoke;
   };
-  // Prefer hosted presentation when the shell supports it (macOS): the
-  // companion runs hidden and AN3 overlays its frames in the player. Older
-  // shells without the probe, or other platforms, keep the companion window.
-  const hostedPresenting = invoke =>
-    Promise.resolve()
-      .then(() => invoke("switch_companion_hosted_frame_supported", {}))
-      .catch(() => false);
-  const launchSwitch = (invoke, romId) => {
-    if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
-    return hostedPresenting(invoke).then(hosted =>
-      invoke("switch_companion_launch_rom", { romId, visible: !hosted, hosted: !!hosted }));
-  };
   // The desktop command starts our bundled native player: the existing Mac
   // view or the owned portable Windows runtime. It never searches for an
   // external emulator app. Resolve the bridge at click time for async injection.
@@ -58,7 +47,7 @@ window.AN3OfflineEmulatorOrigin = "";
       const invoke = nativeInvoke();
       if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
       // Switch runs in the separate companion process, not the libretro host.
-      if (nativeSystem === "switch") return launchSwitch(invoke, romId);
+      if (nativeSystem === "switch") return invoke("switch_companion_launch_rom", {romId, visible: true});
       if (!desktopSystems.has(nativeSystem)) return Promise.reject(new Error("Unsupported native system."));
       return invoke("start_native_game", {romId, system: nativeSystem, layout: layout || "preserve"});
     };
@@ -73,7 +62,7 @@ window.AN3OfflineEmulatorOrigin = "";
     };
     window.AN3NativeSwitch = {
       detect: () => switchInvoke("switch_companion_detect", {}),
-      launch: romId => launchSwitch(nativeInvoke(), romId),
+      launch: romId => switchInvoke("switch_companion_launch_rom", {romId}),
       status: () => switchInvoke("switch_companion_status", {}),
       stop: () => switchInvoke("switch_companion_stop", {}),
       focus: () => switchInvoke("switch_companion_focus", {}),
@@ -109,16 +98,64 @@ window.AN3OfflineEmulatorOrigin = "";
       });
     };
     advertiseSwitch();
-
+    // Installed desktop clients use the common direct-LAN peer host. The
+    // legacy HTTP controller is deliberately not reachable from this bridge.
+    const controllerInvoke = name => payload => {
+      const invoke = nativeInvoke();
+      if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      return invoke(name, payload);
+    };
+    window.AN3NativeController = {
+      direct: true,
+      start: () => controllerInvoke("native_controller_lan_start")({}),
+      join: code => controllerInvoke("native_controller_lan_join")({code}),
+      send: state => controllerInvoke("native_controller_lan_send")({state}),
+      stop: () => controllerInvoke("native_controller_lan_stop")({}),
+      status: () => controllerInvoke("native_controller_lan_status")({}),
+      refreshCode: () => controllerInvoke("native_controller_lan_refresh")({}),
+    };
+    const multiplayerInvoke = name => payload => {
+      const invoke = nativeInvoke();
+      if (typeof invoke !== "function") return Promise.reject(new Error("The native VibeCodedEmulator bridge is unavailable."));
+      return invoke(name, payload);
+    };
+    window.AN3NativeMultiplayer = {
+      direct: true,
+      configure: (role, address, port) => multiplayerInvoke("native_multiplayer_configure")({config: {role, address, port}}),
+      status: () => multiplayerInvoke("native_multiplayer_status")({}),
+      stop: () => multiplayerInvoke("native_multiplayer_stop")({}),
+    };
   }
   if (/Android/i.test(navigator.userAgent)) {
+    // Library Settings -> Phone Controller uses the same app-scoped host the
+    // in-game menu uses, so a session started before a game keeps working.
+    const androidController = window.AN3AndroidNativeController;
+    if (androidController?.start && androidController?.status) {
+      const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
+      window.AN3NativeController = {
+        direct: true,
+        start: () => Promise.resolve(parse(androidController.start())),
+        join: code => androidController.join ? Promise.resolve(parse(androidController.join(code))) : Promise.reject(new Error("Direct LAN joining is unavailable in this Android build.")),
+        reconnect: () => androidController.reconnect ? Promise.resolve(parse(androidController.reconnect())) : Promise.reject(new Error("Direct LAN reconnect is unavailable in this Android build.")),
+        send: state => androidController.send ? Promise.resolve(parse(androidController.send(JSON.stringify(state)))) : Promise.reject(new Error("Direct controller input is unavailable on this Android build.")),
+        stop: () => { const result = parse(androidController.stop()); return Promise.resolve(result); },
+        status: () => Promise.resolve(parse(androidController.status()))
+      };
+    }
+    const androidMultiplayer = window.AN3AndroidNative;
+    if (androidMultiplayer?.configureMultiplayer && androidMultiplayer?.multiplayerStatus) {
+      const parse = value => { try { return JSON.parse(value || "{}"); } catch (_) { return {}; } };
+      window.AN3NativeMultiplayer = {
+        direct: true,
+        configure: (role, address, port) => Promise.resolve(parse(androidMultiplayer.configureMultiplayer(role, address || "", Number(port) || 47834))),
+        status: () => Promise.resolve(parse(androidMultiplayer.multiplayerStatus())),
+        stop: () => Promise.resolve(parse(androidMultiplayer.stopMultiplayer?.() || "{}")),
+      };
+    }
     window.AN3NativeLaunchGame = async (romId, system, _layout, size) => {
-      if (!["gba", "nds", "3ds", "switch"].includes(system)) throw new Error("Native hardware core unavailable.");
+      if (!["gba", "nds", "3ds"].includes(system)) throw new Error("Native hardware core unavailable.");
       const bridge = window.AN3AndroidNative;
       if (!bridge?.launchNative && !bridge?.launchNativeSized) throw new Error("Native Android runtime unavailable.");
-      if (system === "switch" && typeof bridge.switchAvailable === "function" && !bridge.switchAvailable()) {
-        throw new Error("Nintendo Switch runtime unavailable in this Android build.");
-      }
       const expectedSize = Number.isFinite(Number(size)) && Number(size) > 0 ? Number(size) : -1;
       // Prefer the size-aware bridge so a record whose stored id changed (for
       // example after an app data restore) can still find its ROM by the exact

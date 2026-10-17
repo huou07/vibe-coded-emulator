@@ -3,14 +3,18 @@
 #[cfg(not(mobile))]
 use include_dir::{include_dir, Dir};
 mod azahar;
-mod hosted_frame;
-mod native_rom_library;
+mod controller_host;
+mod connection_limit;
+mod lan_peer;
+mod lan_host;
+mod sync_peer;
 mod switch_companion;
-// Test-only structured UI bridge. The whole module is behind the feature so a
-// distribution binary contains neither the bridge nor its env-var marker.
-#[cfg(feature = "ui-control")]
+// Test-only structured UI bridge; inert unless the `ui-control` feature is on.
 mod ui_control;
-use azahar::{native_capabilities, start_native_game, stop_native_game};
+use azahar::{
+    clear_multiplayer, configure_multiplayer, multiplayer_status, native_capabilities,
+    set_native_input, start_native_game, stop_native_game, NativeMultiplayerConfig,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -641,17 +645,11 @@ fn import_native_rom(
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "The selected ROM has no usable filename".to_string())?
         .to_string();
-    let rom_hash = file_sha256(&destination)?;
-    // Seed the local library identity cache with the import-time hash so the
-    // next library refresh does not re-hash the whole file.
-    if let Some(app_dir) = directory.parent() {
-        native_rom_library::prime_content_hash(app_dir, &destination, &rom_hash);
-    }
     Ok(ImportedNativeRom {
         url: format!("/_an3/rom/{rom_id}.{extension}"),
         name,
         size: playable_size,
-        rom_hash,
+        rom_hash: file_sha256(&destination)?,
         system: Some(system.to_owned()),
     })
 }
@@ -701,16 +699,166 @@ async fn pick_and_import_native_rom(
     Ok(Some(imported?))
 }
 
-fn native_app_data_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|error| format!("Cannot find native app storage: {error}"))
+#[tauri::command]
+async fn native_controller_start(base_url: Option<String>) -> Result<controller_host::ControllerSession, String> {
+    tauri::async_runtime::spawn_blocking(move || controller_host::start(base_url.unwrap_or_default()))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-async fn native_rom_library_manifest(app: AppHandle) -> Result<serde_json::Value, String> {
-    let directory = native_app_data_directory(&app)?;
-    tauri::async_runtime::spawn_blocking(move || native_rom_library::manifest(&directory))
+fn native_controller_stop() {
+    controller_host::stop();
+}
+
+#[tauri::command]
+fn native_controller_status() -> controller_host::ControllerStatus {
+    controller_host::status()
+}
+
+#[tauri::command]
+async fn native_controller_lan_start() -> Result<lan_host::LanStatus, String> {
+    tauri::async_runtime::spawn_blocking(lan_host::start)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_controller_lan_join(code: String) -> Result<lan_host::LanStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || lan_host::join(code))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_controller_lan_send(state: serde_json::Value) -> Result<lan_host::LanStatus, String> {
+    lan_host::send_state(state)
+}
+
+#[tauri::command]
+fn native_controller_lan_stop() {
+    lan_host::stop();
+}
+
+#[tauri::command]
+fn native_controller_lan_status() -> lan_host::LanStatus {
+    lan_host::status()
+}
+
+#[tauri::command]
+fn native_controller_lan_refresh() -> lan_host::LanStatus {
+    lan_host::refresh_code()
+}
+
+#[tauri::command]
+fn native_multiplayer_configure(config: NativeMultiplayerConfig) -> Result<azahar::NativeMultiplayerStatus, String> {
+    configure_multiplayer(config)
+}
+
+#[tauri::command]
+fn native_multiplayer_status() -> azahar::NativeMultiplayerStatus {
+    multiplayer_status()
+}
+
+#[tauri::command]
+fn native_multiplayer_stop() {
+    clear_multiplayer();
+}
+
+fn sync_app_directory(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|error| format!("Cannot find native sync storage: {error}"))
+}
+
+#[tauri::command]
+async fn native_sync_start(app: AppHandle, mode: String) -> Result<sync_peer::SyncStatus, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::start(directory, mode))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_join(app: AppHandle, code: String, mode: String, peer_id: Option<String>) -> Result<sync_peer::SyncStatus, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        sync_peer::start(directory, mode.clone())?;
+        sync_peer::join(code, mode, peer_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_sync_status() -> sync_peer::SyncStatus {
+    sync_peer::status()
+}
+
+#[tauri::command]
+fn native_sync_stop() {
+    sync_peer::stop();
+}
+
+#[tauri::command]
+async fn native_sync_discover() -> Result<Vec<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(sync_peer::discover_peers)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_sync_forget(peer_id: String) -> Result<sync_peer::SyncStatus, String> {
+    sync_peer::forget(peer_id)
+}
+
+#[tauri::command]
+async fn native_sync_request(method: String, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || sync_peer::request(method, payload))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn native_sync_identity() -> Result<serde_json::Value, String> {
+    sync_peer::identity()
+}
+
+#[tauri::command]
+fn native_sync_account_context() -> serde_json::Value {
+    sync_peer::account_context()
+}
+
+#[tauri::command]
+fn native_sync_set_account_proof(proof: String) -> Result<(), String> {
+    sync_peer::set_local_proof(proof)
+}
+
+#[tauri::command]
+fn native_sync_mark_account_verified(peer_id: String, verified: bool) -> Result<sync_peer::SyncStatus, String> {
+    sync_peer::mark_account_verified(peer_id, verified)
+}
+
+#[tauri::command]
+async fn native_sync_game_identity(app: AppHandle, system: String, rom_id: String) -> Result<serde_json::Value, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::game_identity(&directory, system, rom_id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_storage_read(app: AppHandle, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_read(&directory, payload))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn native_sync_storage_write(app: AppHandle, payload: serde_json::Value) -> Result<(), String> {
+    let directory = sync_app_directory(&app)?;
+    tauri::async_runtime::spawn_blocking(move || sync_peer::storage_write(&directory, payload))
         .await
         .map_err(|error| error.to_string())?
 }
@@ -728,23 +876,8 @@ fn switch_companion_launch(
     app: AppHandle,
     content: String,
     visible: Option<bool>,
-    hosted: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
-    let hosted = hosted.unwrap_or(false);
-    // Hosted presentation replaces the companion's own window: launch hidden and
-    // let AN3's pointer-inert overlay show the frames.
-    let visible = if hosted { false } else { visible.unwrap_or(true) };
-    let status = switch_companion::launch(&app, &content, visible)?;
-    if hosted {
-        hosted_frame::start_when_ready(&app);
-    }
-    Ok(status)
-}
-
-/// Whether this build can present the companion's frames itself (macOS today).
-#[tauri::command]
-fn switch_companion_hosted_frame_supported() -> bool {
-    cfg!(target_os = "macos")
+    switch_companion::launch(&app, &content, visible.unwrap_or(true))
 }
 
 #[tauri::command]
@@ -752,25 +885,16 @@ fn switch_companion_launch_rom(
     app: AppHandle,
     rom_id: String,
     visible: Option<bool>,
-    hosted: Option<bool>,
 ) -> Result<switch_companion::CompanionStatus, String> {
     #[cfg(not(mobile))]
-    {
-        let hosted = hosted.unwrap_or(false);
-        let visible = if hosted { false } else { visible.unwrap_or(true) };
-        let status = switch_companion::launch_rom(&app, &rom_id, visible)?;
-        if hosted {
-            hosted_frame::start_when_ready(&app);
-        }
-        return Ok(status);
-    }
+    return switch_companion::launch_rom(&app, &rom_id, visible.unwrap_or(true));
 
     // Android/iOS never ship the Switch companion. Keep the single command name
     // (one #[tauri::command] definition) so the shared frontend contract and the
     // build.rs AppManifest stay identical across platforms, and fail honestly.
     #[cfg(mobile)]
     {
-        let _ = (app, rom_id, visible, hosted);
+        let _ = (app, rom_id, visible);
         return Err("Nintendo Switch is not supported on this platform.".to_string());
     }
 }
@@ -782,7 +906,6 @@ fn switch_companion_status() -> switch_companion::CompanionStatus {
 
 #[tauri::command]
 fn switch_companion_stop() -> switch_companion::CompanionStatus {
-    hosted_frame::stop();
     switch_companion::stop();
     switch_companion::status()
 }
@@ -805,39 +928,6 @@ fn switch_companion_analog(stick: String, x: f64, y: f64) -> Result<String, Stri
 #[tauri::command]
 fn switch_companion_audio() -> Result<switch_companion::CompanionAudio, String> {
     switch_companion::audio()
-}
-
-/// The cross-process hosted-frame ring the running companion published, if any.
-/// The native consumer uses this handle to attach; no pixels cross this command.
-#[tauri::command]
-fn switch_companion_hosted_frame() -> Option<switch_companion::HostedFrameInfo> {
-    switch_companion::hosted_frame()
-}
-
-/// Attach the native consumer to the companion's ring and present the newest
-/// frame in a pointer-inert overlay over the player.
-#[tauri::command]
-fn switch_companion_hosted_frame_start(
-    app: AppHandle,
-) -> Result<hosted_frame::HostedConsumerStats, String> {
-    hosted_frame::start(&app)
-}
-
-#[tauri::command]
-fn switch_companion_hosted_frame_stop() -> Option<hosted_frame::HostedConsumerStats> {
-    hosted_frame::stop();
-    hosted_frame::stats()
-}
-
-#[tauri::command]
-fn switch_companion_hosted_frame_stats() -> Option<hosted_frame::HostedConsumerStats> {
-    hosted_frame::stats()
-}
-
-/// Diagnostic only: reads the latest imported texture back on the CPU.
-#[tauri::command]
-fn switch_companion_hosted_frame_verify() -> Option<hosted_frame::HostedConsumerStats> {
-    hosted_frame::verify_latest()
 }
 
 #[tauri::command]
@@ -877,12 +967,12 @@ async fn remove_native_rom(app: AppHandle, rom_id: String) -> Result<(), String>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    tauri::Builder::default()
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                let _ = tauri::async_runtime::spawn_blocking(|| {
-                    switch_companion::stop();
-                });
+                lan_host::stop();
+                sync_peer::stop();
+                switch_companion::stop();
             }
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             if matches!(event, tauri::WindowEvent::Destroyed) && window.label() == "main" {
@@ -898,23 +988,39 @@ pub fn run() {
             native_capabilities,
             start_native_game,
             stop_native_game,
-            native_rom_library_manifest,
+            set_native_input,
+            native_controller_lan_start,
+            native_controller_lan_join,
+            native_controller_lan_send,
+            native_controller_lan_stop,
+            native_controller_lan_status,
+            native_controller_lan_refresh,
+            native_multiplayer_configure,
+            native_multiplayer_status,
+            native_multiplayer_stop,
+            native_sync_start,
+            native_sync_join,
+            native_sync_status,
+            native_sync_stop,
+            native_sync_discover,
+            native_sync_forget,
+            native_sync_request,
+            native_sync_identity,
+            native_sync_account_context,
+            native_sync_set_account_proof,
+            native_sync_mark_account_verified,
+            native_sync_game_identity,
+            native_sync_storage_read,
+            native_sync_storage_write,
             switch_companion_detect,
             switch_companion_launch,
             switch_companion_launch_rom,
-            switch_companion_hosted_frame_supported,
             switch_companion_status,
             switch_companion_stop,
             switch_companion_focus,
             switch_companion_input,
             switch_companion_analog,
             switch_companion_audio,
-            switch_companion_hosted_frame,
-            switch_companion_hosted_frame_start,
-            switch_companion_hosted_frame_stop,
-            switch_companion_hosted_frame_stats,
-            switch_companion_hosted_frame_verify,
-            #[cfg(feature = "ui-control")]
             ui_control::ui_control_result
         ])
         .setup(|_app| {
@@ -952,25 +1058,9 @@ pub fn run() {
                 // created on mobile. The Activity owns the initial navigation.
             }
             Ok(())
-        });
-
-    #[cfg(target_os = "android")]
-    {
-        // tao's Android EventLoop::run calls run_return and then performs a
-        // process-level exit. Use Tauri's returning API so its Exit cleanup
-        // completes before the mobile entry point returns naturally.
-        let app = builder
-            .build(tauri::generate_context!())
-            .expect("error while building VibeCodedEmulator");
-        let _exit_code = app.run_return(|_app_handle, _event| {});
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        builder
-            .run(tauri::generate_context!())
-            .expect("error while running VibeCodedEmulator");
-    }
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running VibeCodedEmulator");
 }
 
 #[cfg(test)]

@@ -5987,6 +5987,7 @@
   },
   "availability": {
     "switch": {
+      "android": "Nintendo Switch is not supported on Android. Settings are stored but cannot launch here.",
       "ios": "Nintendo Switch is not supported on iOS."
     }
   },

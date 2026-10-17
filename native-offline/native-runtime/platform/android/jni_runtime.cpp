@@ -32,7 +32,6 @@ struct Session {
     NativeCoreHost host;
     std::deque<std::pair<std::string,std::string>> commands;
     std::string diagnostics = "Initializing native runtime";
-    std::string options_json = "[]";
 };
 std::shared_ptr<Session> session;
 std::mutex runtime_serial;
@@ -65,14 +64,12 @@ struct FinishGuard {
     std::atomic<bool>& flag;
     ~FinishGuard() { flag.store(true,std::memory_order_release); }
 };
-void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume) {
+void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::string saves,std::string requested,std::string layout,std::string system,std::string auto_save_mode,bool resume,std::string netplay_role,std::string netplay_address,uint16_t netplay_port) {
     FinishGuard finish_guard{s.finished};
     std::lock_guard runtime_lock(runtime_serial);
-    // Resume from the in-process snapshot when this process performed the
-    // suspend; otherwise fall back to a successful on-disk snapshot left by a
-    // previous process (process-death recovery). A failed export deletes the
-    // file, so a present `<saves>/.suspend.state` is always a successful
-    // snapshot and never a stale half-written one.
+    // A recreated Activity may run in a new process, where the in-memory
+    // marker is gone. A present snapshot is safe to import: suspend export is
+    // atomic and its failure path removes any older snapshot.
     const bool can_resume=resume && (resumable_save_path==saves || std::filesystem::exists(saves+"/.suspend.state"));
     resumable_save_path.clear();
     AndroidWindowSurface surface(window);
@@ -107,17 +104,19 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         if (is_three_ds && error.empty()) error="Native 3DS could not initialize an OpenGL ES or Vulkan renderer.";
         report("Native renderer failed: "+error+"\nVulkan: "+fallback);return;
     }
-    if (!s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api)) {
+    MelonDsNetplayConfig netplay;
+    if (netplay_role == "host" || netplay_role == "join") {
+        netplay.role = netplay_role == "host" ? MelonDsNetplayRole::Host : MelonDsNetplayRole::Join;
+        netplay.address = netplay_address;
+        netplay.port = netplay_port ? netplay_port : 47834;
+    }
+    if (!s.host.initialize(core,rom,saves,*video,audio,error,layout,graphics_api,netplay)) {
         report("Native core failed: "+error);s.host.shutdown();video->shutdown();return;
     }
     if (resume) {
         if (!can_resume) message="Resume state unavailable; game restarted";
         else if (!s.host.import_state(saves+"/.suspend.state",error)) message="Resume state unavailable: "+error;
         else message="Native session resumed";
-    }
-    {
-        std::lock_guard lock(s.mutex);
-        s.options_json=s.host.core_options_json();
     }
     uint64_t core_frames=0;
     std::array<int64_t,240> frame_intervals{};
@@ -159,13 +158,7 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
             else if(cmd=="option") {
                 const auto split=value.find('\t');
                 if(split==std::string::npos){ok=false;error="Invalid core option";}
-                else {
-                    ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
-                    if (ok) {
-                        std::lock_guard lock(s.mutex);
-                        s.options_json=s.host.core_options_json();
-                    }
-                }
+                else ok=s.host.set_core_option(value.substr(0,split),value.substr(split+1),error);
             }
             else if (cmd=="layout") ok=s.host.set_screen_layout(value,error);
             else if (cmd=="save") ok=value=="auto"?s.host.save_auto(error):s.host.save_state((value=="10"?10u:(value.size()==1 && value[0]>='1' && value[0]<='9'?unsigned(value[0]-'0'):0u)),error);
@@ -196,10 +189,7 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
         } else { deadline=Clock::now()+std::chrono::milliseconds(20);previous_frame={}; }
         auto now=Clock::now();
         if (auto_save.enabled && now-last_auto>=std::chrono::seconds(auto_save.interval)) {
-            message=s.host.queue_save_auto(error)?"Auto Save queued":"Auto Save failed: "+error;
-            // Battery save is frontend-owned; flush it on the same cadence so an
-            // abrupt process kill cannot lose in-game progress between snapshots.
-            std::string save_error; (void)s.host.queue_save_ram(save_error);
+            message=s.host.save_auto(error)?"Auto Save completed":"Auto Save failed: "+error;
             last_auto=now;
         }
         if (now-last_report>=std::chrono::seconds(1)) {
@@ -225,9 +215,6 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
                 <<"us speed="<<speed<<" audio="<<a.rendered_frames<<" nonzero="<<a.rendered_nonzero_samples<<" underrun="<<a.underrun_frames
                 <<"\nFrame interval p95/p99="<<interval_percentile(95)<<"/"<<interval_percentile(99)<<"us samples="<<interval_count
                 <<"\nAudio rate="<<a.core_sample_rate<<"→"<<a.sample_rate<<" volume="<<a.volume<<" mute="<<a.muted<<" latency="<<a.latency_ms<<"ms quality="<<int(a.resampler_quality)
-                <<" sharing="<<int(a.sharing_mode)<<" performance="<<int(a.performance_mode)
-                <<" burst="<<a.frames_per_burst<<" buffer="<<a.buffer_size_frames<<"/"<<a.buffer_capacity_frames
-                <<" xruns="<<a.xrun_count
                 <<"\n"<<v.device_details<<"\n"<<message;
             if (!fallback.empty()) text<<" Vulkan initialization: "<<fallback;
             report(text.str());last_report=now;
@@ -245,22 +232,21 @@ void run(Session& s,ANativeWindow* window,std::string core,std::string rom,std::
     // A save-on-exit mode writes one final atomic snapshot as the session
     // stops. Periodic modes already saved on their own timer.
     if (auto_save.on_exit) s.host.save_auto(error);
-    std::string save_error; (void)s.host.flush_save_ram(save_error);
     s.host.shutdown();audio.shutdown();video->shutdown();
 }
 }
 
-extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jstring autoSaveMode,jboolean resume) {
+extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStart(JNIEnv* e,jobject activity,jobject surface,jstring core,jstring rom,jstring saves,jstring backend,jstring layout,jstring system,jstring autoSaveMode,jboolean resume,jstring netplayRole,jstring netplayAddress,jint netplayPort) {
     std::lock_guard lock(lifecycle);stop_session();
     if (activity_owner) e->DeleteWeakGlobalRef(activity_owner);
     activity_owner=e->NewWeakGlobalRef(activity);
     ANativeWindow* window=ANativeWindow_fromSurface(e,surface);
     session=std::make_shared<Session>();
     if (!window) { session->diagnostics="Native surface unavailable";return; }
-    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume));
+    session->worker=std::thread(run,std::ref(*session),window,string(e,core),string(e,rom),string(e,saves),string(e,backend),string(e,layout),string(e,system),string(e,autoSaveMode),bool(resume),string(e,netplayRole),string(e,netplayAddress),static_cast<uint16_t>(std::clamp(jint(netplayPort),jint(0),jint(65535))));
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeStop(JNIEnv* e,jobject activity,jboolean suspend) { std::lock_guard lock(lifecycle);if(owns(e,activity)) {if(session) session->suspend=bool(suspend);stop_session();e->DeleteWeakGlobalRef(activity_owner);activity_owner=nullptr;} }
-extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeLibretroButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {
+extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeButton(JNIEnv* e,jobject activity,jint button,jboolean pressed) {
     std::lock_guard lock(lifecycle);if (owns(e,activity) && session && button>=0 && button<16) session->host.input().set_button(button,pressed);
 }
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativePointer(JNIEnv* e,jobject activity,jint x,jint y,jboolean pressed) {
@@ -283,8 +269,7 @@ extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActiv
 extern "C" JNIEXPORT jstring JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeOptions(JNIEnv* e,jobject activity) {
     std::lock_guard lock(lifecycle);
     if(!owns(e,activity) || !session)return e->NewStringUTF("[]");
-    std::lock_guard data_lock(session->mutex);
-    return e->NewStringUTF(session->options_json.c_str());
+    return e->NewStringUTF(session->host.core_options_json().c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL Java_space_an3tocom_offline_NativeGameActivity_nativeCancelPointer(JNIEnv* e,jobject activity) {

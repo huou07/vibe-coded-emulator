@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #import <AppKit/AppKit.h>
 #import <AVFoundation/AVFoundation.h>
-#import <dispatch/dispatch.h>
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include "../../shared/generated/player_ui.h"
 #include "../../shared/generated/native_layouts.h"
 #include "../../native-runtime/core/auto_save_mode.h"
-#include "../../native-runtime/core/perf_telemetry.h"
+#include "../../native-runtime/core/melonds_netplay.h"
 
 #include <array>
 #include <atomic>
@@ -20,7 +19,6 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
-#include <condition_variable>
 #include <dlfcn.h>
 #include <filesystem>
 #include <fstream>
@@ -30,7 +28,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
+#include <sstream>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -38,20 +36,12 @@
 #include "azahar_host.h"
 #include "core_options.h"
 #include "native_input_transform.h"
-#include "save_persistence_worker.h"
 #include "vulkan_frontend.h"
 
 // The public libretro ABI is deliberately reproduced in this small host rather
 // than pulling in a whole RetroArch frontend. Azahar exposes this ABI as its
 // supported native integration seam on macOS.
 namespace an3 {
-
-// These counters are sampled by the host frame path before the audio graph
-// implementation is declared below. Keep their definitions at namespace
-// scope so the telemetry code does not depend on declaration order.
-static std::atomic<size_t> g_audio_frames_queued{0};
-static std::atomic<uint64_t> g_audio_underruns{0};
-static std::atomic<uint64_t> g_audio_overruns{0};
 
 constexpr unsigned RETRO_DEVICE_JOYPAD = 1;
 constexpr unsigned RETRO_DEVICE_MOUSE = 2;
@@ -68,7 +58,6 @@ constexpr unsigned RETRO_DEVICE_ID_POINTER_PRESSED = 2;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_X = 0;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_Y = 1;
 constexpr unsigned RETRO_DEVICE_ID_MOUSE_LEFT = 2;
-constexpr unsigned RETRO_MEMORY_SAVE_RAM = 0;
 
 constexpr int RETRO_PIXEL_FORMAT_0RGB1555 = 0;
 constexpr int RETRO_PIXEL_FORMAT_XRGB8888 = 1;
@@ -97,6 +86,7 @@ constexpr unsigned RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER = 56;
 constexpr unsigned RETRO_ENVIRONMENT_SET_MESSAGE_EXT = 60;
 constexpr unsigned RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2 = 67;
 constexpr unsigned RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL = 68;
+constexpr unsigned RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE = 78;
 constexpr unsigned RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE = 41 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 constexpr unsigned RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE = 43 | RETRO_ENVIRONMENT_EXPERIMENTAL;
 constexpr unsigned RETRO_ENVIRONMENT_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT = 73 | RETRO_ENVIRONMENT_EXPERIMENTAL;
@@ -105,7 +95,6 @@ constexpr uintptr_t RETRO_HW_FRAME_BUFFER_VALID = static_cast<uintptr_t>(-1);
 constexpr unsigned RETRO_MEMORY_ACCESS_WRITE = 1u << 0;
 constexpr unsigned RETRO_MEMORY_TYPE_CACHED = 1u << 0;
 constexpr size_t kMaxQuickStateBytes = 512u * 1024u * 1024u;
-constexpr size_t kMaxSaveRamBytes = 16u * 1024u * 1024u;
 constexpr unsigned kMaxQuickStateSlot = 10;
 constexpr size_t kHostTimingSamples = 256;
 constexpr double kNominalCoreFps = 60.0;
@@ -168,6 +157,24 @@ struct retro_variable {
 struct retro_message {
     const char* msg;
     unsigned frames;
+};
+
+using retro_netpacket_send_t = void (*)(int, const void*, size_t, uint16_t);
+using retro_netpacket_poll_receive_t = void (*)();
+using retro_netpacket_start_t = void (*)(uint16_t, retro_netpacket_send_t, retro_netpacket_poll_receive_t);
+using retro_netpacket_receive_t = void (*)(const void*, size_t, uint16_t);
+using retro_netpacket_stop_t = void (*)();
+using retro_netpacket_connected_t = bool (*)(uint16_t);
+using retro_netpacket_disconnected_t = void (*)(uint16_t);
+
+struct retro_netpacket_callback {
+    retro_netpacket_start_t start;
+    retro_netpacket_receive_t receive;
+    retro_netpacket_stop_t stop;
+    retro_netpacket_poll_receive_t poll;
+    retro_netpacket_connected_t connected;
+    retro_netpacket_disconnected_t disconnected;
+    const char* protocol_version;
 };
 
 // ABI layout from libretro.h. A core can request this experimental writable
@@ -238,9 +245,6 @@ AzaharHost* active_host();
     NSStackView* _settings_stack;
     NSTabView* _settings_tabs;
     NSMutableDictionary<NSString*, NSStackView*>* _settings_tab_stacks;
-    NSControl* _menu_focus_control;
-    uint32_t _local_menu_buttons;
-    BOOL _menu_input_suppressed_until_release;
     NSButton* _save_settings_button;
     NSTextField* _settings_save_status;
     BOOL _settings_dirty;
@@ -309,12 +313,11 @@ AzaharHost* active_host();
 - (void)saveSettings:(id)sender;
 - (void)discardSettingsDraft;
 - (void)closeMenuDiscardingDraft;
-- (void)focusMenuControl:(NSControl*)control;
-- (NSArray<NSControl*>*)menuFocusableControls;
-- (void)moveMenuFocusBy:(NSInteger)delta;
-- (void)adjustMenuFocusBy:(NSInteger)delta;
-- (void)activateMenuFocus;
-- (void)handleLocalMenuButtons:(uint32_t)buttons;
+// Phone-controller utility entry points. They reuse the toolbar's own host
+// actions so a remote controller cannot diverge from the in-app UI.
+- (BOOL)applyControllerSpeedStep:(int)direction;
+- (BOOL)performControllerQuickSave:(unsigned)slot;
+- (BOOL)openControllerMenu;
 @end
 
 @interface AN3InputButton : NSButton
@@ -339,10 +342,6 @@ AzaharHost* active_host();
 @end
 
 namespace an3 {
-static AN3AzaharView* g_view = nil;
-}
-
-namespace an3 {
 
 struct CoreApi {
     void* handle = nullptr;
@@ -364,8 +363,6 @@ struct CoreApi {
     size_t (*serialize_size)() = nullptr;
     bool (*serialize)(void*, size_t) = nullptr;
     bool (*unserialize)(const void*, size_t) = nullptr;
-    void* (*get_memory_data)(unsigned) = nullptr;
-    size_t (*get_memory_size)(unsigned) = nullptr;
 
     template <typename T>
     bool load_symbol(const char* name, T& target, std::string& error) {
@@ -409,12 +406,6 @@ struct CoreApi {
         load_optional_symbol("retro_serialize_size", serialize_size);
         load_optional_symbol("retro_serialize", serialize);
         load_optional_symbol("retro_unserialize", unserialize);
-        load_optional_symbol("retro_get_memory_data", get_memory_data);
-        load_optional_symbol("retro_get_memory_size", get_memory_size);
-        if (!get_memory_data || !get_memory_size) {
-            get_memory_data = nullptr;
-            get_memory_size = nullptr;
-        }
         return true;
     }
 
@@ -524,23 +515,25 @@ static std::string core_option_namespace_for_system(const std::string& system) {
 // Resolve the persisted Auto Save token from the shared model/parser below.
 static NSString* native_stored_auto_save_mode();
 
+static std::string native_rom_game_identity(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return {};
+    uint64_t hash = 1469598103934665603ull;
+    std::array<char, 1024 * 1024> buffer{};
+    while (input) {
+        input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const auto count = input.gcount();
+        for (std::streamsize index = 0; index < count; ++index) {
+            hash ^= static_cast<uint8_t>(buffer[static_cast<size_t>(index)]);
+            hash *= 1099511628211ull;
+        }
+    }
+    std::ostringstream output;
+    output << std::hex << hash;
+    return output.str();
+}
+
 class AzaharHost {
-    static constexpr size_t kSoftwareFrameQueueCapacity = 3;
-    static constexpr size_t kNoSoftwareFrameSlot = std::numeric_limits<size_t>::max();
-
-    enum class SoftwareFrameState : uint8_t { Free, Writing, Ready, Presenting };
-
-    struct SoftwareFrameSlot {
-        std::vector<uint8_t> pixels;
-        unsigned width = 0;
-        unsigned height = 0;
-        size_t pitch = 0;
-        int pixel_format = RETRO_PIXEL_FORMAT_RGB565;
-        bool duplicate = false;
-        SoftwareFrameState state = SoftwareFrameState::Free;
-        perf::FrameSample trace_sample{};
-    };
-
   public:
     bool start(const char* core_path,
                const char* moltenvk_path,
@@ -550,6 +543,9 @@ class AzaharHost {
                const char* system_path,
                const char* system,
                const char* layout_path,
+               const char* netplay_role,
+               const char* netplay_address,
+               uint16_t netplay_port,
                CAMetalLayer* metal_layer,
                std::string& error) {
         core_path_ = core_path ?: "";
@@ -560,7 +556,16 @@ class AzaharHost {
         system_path_ = system_path ?: "";
         system_ = system ?: "";
         layout_ = layout_path ?: "preserve";
-        async_software_presentation_ = system_ != "3ds";
+        netplay_config_ = {};
+        const std::string requested_netplay_role = netplay_role ?: "disabled";
+        if (requested_netplay_role == "host") netplay_config_.role = MelonDsNetplayRole::Host;
+        else if (requested_netplay_role == "join") netplay_config_.role = MelonDsNetplayRole::Join;
+        else if (requested_netplay_role != "disabled" && !requested_netplay_role.empty()) {
+            error = "Unsupported melonDS LAN multiplayer role.";
+            return false;
+        }
+        netplay_config_.address = netplay_address ?: "";
+        netplay_config_.port = netplay_port ? netplay_port : 47834;
         if (core_path_.empty() || moltenvk_path_.empty() || rom_path_.empty() || rom_id_.empty() || save_path_.empty() ||
             system_path_.empty() || system_.empty() || !metal_layer) {
             error = "The native player did not receive a valid core, Vulkan runtime, ROM identity, save path, system path, and native view.";
@@ -577,31 +582,18 @@ class AzaharHost {
             error = "Unsupported native system requested.";
             return false;
         }
+        if (netplay_config_.role != MelonDsNetplayRole::Disabled && system_ != "nds") {
+            error = "Only the integrated melonDS DS core supports LAN multiplayer.";
+            return false;
+        }
         layout_ = native_layout_preference(system_, layout_path);
         emulate_timings_.reset();
-        emulate_detail_timings_.reset();
-        frame_interval_timings_.reset();
-        save_snapshot_timings_.reset();
-        trace_.configure_from_env();
-        trace_epoch_ = std::chrono::steady_clock::now();
-        frame_id_ = 0;
-        current_frame_id_ = 0;
-        last_frame_begin_ns_ = 0;
-        last_presented_ns_ = 0;
-        last_presented_trace_sample_ = {};
-        has_presented_software_frame_ = false;
-        duplicate_frames_.store(0, std::memory_order_relaxed);
-        software_dropped_frames_.store(0, std::memory_order_relaxed);
-        software_queue_depth_max_.store(0, std::memory_order_relaxed);
         if (!core_.open(core_path_.c_str(), error)) return false;
 
         core_options_.reset(core_option_namespace_for_system(system_));
         speed_ = 1.0;
         speed_budget_ = 0.0;
         active_game_seconds_ = 0.0;
-        last_save_ram_game_seconds_ = 0.0;
-        save_ram_writable_ = true;
-        pending_save_ram_restore_size_ = 0;
         last_autosave_game_seconds_ = 0.0;
         // One shared Auto Save token, resolved through the same
         // native-runtime/core/auto_save_mode.h parser Android and Linux use.
@@ -664,6 +656,7 @@ class AzaharHost {
 
         retro_system_info info{};
         core_.get_system_info(&info);
+        core_version_ = info.library_version ? info.library_version : "";
         retro_game_info game{rom_path_.c_str(), nullptr, 0, nullptr};
         if (!info.need_fullpath) {
             std::ifstream input(rom_path_, std::ios::binary | std::ios::ate);
@@ -691,13 +684,29 @@ class AzaharHost {
             return false;
         }
         game_loaded_ = true;
-        restore_save_ram();
+
+        if (netplay_config_.role != MelonDsNetplayRole::Disabled) {
+            if (!netpacket_interface_ || !netpacket_callbacks_.start || !netpacket_callbacks_.receive) {
+                error = "The integrated melonDS DS core did not expose libretro LAN netpacket support.";
+                stop();
+                return false;
+            }
+            netplay_config_.core_id = "melonds-ds";
+            netplay_config_.protocol_version = netpacket_protocol_.empty() ? core_version_ : netpacket_protocol_;
+            netplay_config_.game_identity = native_rom_game_identity(rom_path_);
+            if (netplay_config_.game_identity.empty() || !netplay_.open(netplay_config_, error)) {
+                if (error.empty()) error = "The selected ROM could not be identified for LAN multiplayer.";
+                stop();
+                return false;
+            }
+            if (netplay_config_.role == MelonDsNetplayRole::Host && !start_netplay_callbacks(error, 0)) {
+                stop();
+                return false;
+            }
+        }
 
         retro_system_av_info av_info{};
         core_.get_system_av_info(&av_info);
-        core_fps_ = (std::isfinite(av_info.timing.fps) && av_info.timing.fps > 1.0)
-            ? av_info.timing.fps : kNominalCoreFps;
-        core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / core_fps_));
         if (!start_audio(av_info.timing.sample_rate)) {
             error = "The native core reported an invalid audio sample rate or the output audio graph could not start.";
             stop();
@@ -726,307 +735,14 @@ class AzaharHost {
             return false;
         }
         renderer_initialized_ = true;
-        {
-            std::lock_guard<std::mutex> lock(state_mutex_);
-            running_ = true;
-            running_snapshot_.store(true, std::memory_order_release);
-        }
-        if (async_software_presentation_) start_core_thread();
-        return true;
-    }
-
-    void start_core_thread() {
-        if (!async_software_presentation_ || software_core_thread_.joinable()) return;
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            software_present_stop_ = false;
-            active_capture_slot_ = kNoSoftwareFrameSlot;
-            software_drop_pending_ = false;
-            for (auto& slot : software_frame_slots_) {
-                slot.state = SoftwareFrameState::Free;
-                slot.trace_sample = {};
-            }
-        }
-        software_core_thread_ = std::thread([this] { core_thread_loop(); });
-    }
-
-    void stop_core_thread() {
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            software_present_stop_ = true;
-        }
-        software_frame_condition_.notify_all();
-        if (software_core_thread_.joinable()) software_core_thread_.join();
-        std::lock_guard<std::mutex> lock(software_frame_mutex_);
-        software_present_stop_ = false;
-        active_capture_slot_ = kNoSoftwareFrameSlot;
-        software_drop_pending_ = false;
-        for (auto& slot : software_frame_slots_) slot.state = SoftwareFrameState::Free;
-    }
-
-    void run_one_core_frame_locked() {
-        const auto began = std::chrono::steady_clock::now();
-        active_trace_sample_ = {};
-        active_trace_sample_.frame_id = ++frame_id_;
-        active_trace_sample_.core_deadline_ns = trace_now_ns() + core_budget_ns_;
-        active_trace_sample_.input_sample_ns = trace_now_ns();
-        if (last_frame_begin_ns_) {
-            active_trace_sample_.frame_interval_ns = trace_now_ns() - last_frame_begin_ns_;
-            frame_interval_timings_.add(active_trace_sample_.frame_interval_ns, core_budget_ns_);
-        }
-        last_frame_begin_ns_ = trace_now_ns();
-        current_frame_id_ = active_trace_sample_.frame_id;
-        trace_frame_active_ = trace_.enabled();
-        core_.run();
-        resolve_pending_save_ram_restore();
-        flush_pending_audio_samples();
-        const auto ended = std::chrono::steady_clock::now();
-        const auto elapsed_ns = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(ended - began).count());
-        active_trace_sample_.emu_begin_ns = trace_now_ns() - elapsed_ns;
-        active_trace_sample_.emu_end_ns = trace_now_ns();
-        emulate_timings_.add(ended - began);
-        emulate_detail_timings_.add(elapsed_ns, core_budget_ns_);
-        active_game_seconds_ += 1.0 / core_fps_;
-        if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
-            std::string save_error;
-            if (save_auto_state_locked(save_error, false)) last_autosave_game_seconds_ = active_game_seconds_;
-            else if (!save_error.empty()) message_ = save_error;
-        }
-        if (active_game_seconds_ - last_save_ram_game_seconds_ >= 5.0) {
-            std::string save_error;
-            if (!flush_save_ram_locked(save_error, false) && !save_error.empty()) message_ = save_error;
-            const std::string background_error = persistence_writer_.take_background_error();
-            if (!background_error.empty()) message_ = background_error;
-            last_save_ram_game_seconds_ = active_game_seconds_;
-        }
-        active_trace_sample_.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
-            g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
-        active_trace_sample_.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
-                                           g_audio_overruns.load(std::memory_order_relaxed);
-        active_trace_sample_.rss_bytes = current_rss_bytes();
-        const bool queued_for_present = publish_software_frame();
-        if (trace_frame_active_ && !queued_for_present) trace_.add(active_trace_sample_);
-        trace_frame_active_ = false;
-    }
-
-    void core_thread_loop() {
-        auto next_deadline = std::chrono::steady_clock::now();
-        for (;;) {
-            double speed = 1.0;
-            {
-                std::lock_guard<std::mutex> lock(state_mutex_);
-                if (software_present_stop_ || !running_) return;
-                run_one_core_frame_locked();
-                speed = speed_;
-            }
-            const double rate = std::max(1.0, core_fps_ * std::clamp(speed, 0.25, 8.0));
-            const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                std::chrono::duration<double>(1.0 / rate));
-            next_deadline += period;
-            const auto now = std::chrono::steady_clock::now();
-            if (next_deadline + period * 4 < now) next_deadline = now;
-            std::unique_lock<std::mutex> lock(software_frame_mutex_);
-            software_frame_condition_.wait_until(lock, next_deadline, [this] {
-                return software_present_stop_.load(std::memory_order_acquire);
-            });
-            if (software_present_stop_) return;
-        }
-    }
-
-    void present_pending_software_frame() {
-        if (!async_software_presentation_) return;
-        size_t selected = kNoSoftwareFrameSlot;
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            // Keep close cadence FIFO. Selecting the oldest ready frame avoids
-            // throwing away otherwise renderable frames during normal display
-            // jitter; only a genuinely full bounded ring overwrites a frame.
-            uint64_t oldest_frame = std::numeric_limits<uint64_t>::max();
-            for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
-                auto& slot = software_frame_slots_[index];
-                if (slot.state != SoftwareFrameState::Ready) continue;
-                if (selected == kNoSoftwareFrameSlot || slot.trace_sample.frame_id < oldest_frame) {
-                    selected = index;
-                    oldest_frame = slot.trace_sample.frame_id;
-                }
-            }
-            if (selected == kNoSoftwareFrameSlot) {
-                // Leave the lock before touching the renderer. The producer
-                // must be able to publish the next core frame while a
-                // duplicate is being submitted to Vulkan.
-            } else {
-                software_frame_slots_[selected].state = SoftwareFrameState::Presenting;
-            }
-        }
-
-        if (selected == kNoSoftwareFrameSlot) {
-            if (!has_presented_software_frame_) return;
-            // The last drawable remains visible until a newer submission is
-            // available. Record the display opportunity as a duplicate without
-            // submitting another Vulkan frame, which would add a needless GPU
-            // synchronization bubble on the main thread.
-            const uint64_t displayed = trace_now_ns();
-            auto duplicate = last_presented_trace_sample_;
-            duplicate.video_ready_ns = 0;
-            duplicate.gpu_submit_ns = 0;
-            duplicate.emu_begin_ns = 0;
-            duplicate.emu_end_ns = 0;
-            duplicate.frame_interval_ns = 0;
-            duplicate.frame_queue_depth = 0;
-            duplicate.present_call_ns = 0;
-            duplicate.present_duration_ns = 0;
-            duplicate.presentation_interval_ns = last_presented_ns_
-                ? displayed - last_presented_ns_ : 0;
-            duplicate.displayed_ns = displayed;
-            duplicate.dropped = false;
-            duplicate.duplicated = true;
-            duplicate.audio_fill_frames = static_cast<uint32_t>(std::min<size_t>(
-                g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
-            duplicate.audio_xruns = g_audio_underruns.load(std::memory_order_relaxed) +
-                                    g_audio_overruns.load(std::memory_order_relaxed);
-            duplicate.rss_bytes = current_rss_bytes();
-            duplicate_frames_.fetch_add(1, std::memory_order_relaxed);
-            trace_.add(duplicate);
-            last_presented_trace_sample_ = duplicate;
-            last_presented_ns_ = displayed;
-            return;
-        }
-
-        auto& slot = software_frame_slots_[selected];
-        const uint64_t present_began = trace_now_ns();
-        if (slot.duplicate) {
-            vulkan_.present_software(nullptr, slot.width, slot.height, 0, slot.pixel_format);
-        } else if (!slot.pixels.empty()) {
-            vulkan_.present_software(slot.pixels.data(), slot.width, slot.height,
-                                     slot.pitch, slot.pixel_format);
-        }
-        const uint64_t displayed = trace_now_ns();
-        slot.trace_sample.present_call_ns = present_began;
-        slot.trace_sample.present_duration_ns = displayed >= present_began ? displayed - present_began : 0;
-        slot.trace_sample.presentation_interval_ns = last_presented_ns_
-            ? displayed - last_presented_ns_ : 0;
-        slot.trace_sample.displayed_ns = displayed;
-        last_presented_ns_ = displayed;
-        last_presented_trace_sample_ = slot.trace_sample;
-        has_presented_software_frame_ = true;
-        trace_.add(slot.trace_sample);
-
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            slot.state = SoftwareFrameState::Free;
-        }
-        software_frame_condition_.notify_one();
-    }
-
-    bool begin_software_frame(const void* data, unsigned width, unsigned height,
-                              size_t pitch, int pixel_format, bool duplicate) {
-        if (!async_software_presentation_ || !width || !height) return false;
-        const size_t bytes_per_pixel = pixel_format == RETRO_PIXEL_FORMAT_XRGB8888 ? 4u : 2u;
-        if (!duplicate && (!data || (pixel_format != RETRO_PIXEL_FORMAT_0RGB1555 &&
-                                     pixel_format != RETRO_PIXEL_FORMAT_XRGB8888 &&
-                                     pixel_format != RETRO_PIXEL_FORMAT_RGB565) ||
-                             pitch < static_cast<size_t>(width) * bytes_per_pixel)) {
-            active_trace_sample_.dropped = true;
-            software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
-            return false;
-        }
-
-        size_t selected = kNoSoftwareFrameSlot;
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            if (active_capture_slot_ != kNoSoftwareFrameSlot) {
-                selected = active_capture_slot_;
-            } else {
-                for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
-                    if (software_frame_slots_[index].state == SoftwareFrameState::Free) {
-                        selected = index;
-                        break;
-                    }
-                }
-                if (selected == kNoSoftwareFrameSlot) {
-                    uint64_t oldest_frame = std::numeric_limits<uint64_t>::max();
-                    for (size_t index = 0; index < software_frame_slots_.size(); ++index) {
-                        if (software_frame_slots_[index].state == SoftwareFrameState::Ready) {
-                            const uint64_t frame = software_frame_slots_[index].trace_sample.frame_id;
-                            if (selected == kNoSoftwareFrameSlot || frame < oldest_frame) {
-                                selected = index;
-                                oldest_frame = frame;
-                            }
-                        }
-                    }
-                    if (selected != kNoSoftwareFrameSlot) {
-                        software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
-                        software_drop_pending_ = true;
-                    }
-                }
-                if (selected == kNoSoftwareFrameSlot) {
-                    active_trace_sample_.dropped = true;
-                    software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
-                    return false;
-                }
-                software_frame_slots_[selected].state = SoftwareFrameState::Writing;
-                active_capture_slot_ = selected;
-            }
-        }
-
-        auto& slot = software_frame_slots_[selected];
-        slot.width = width;
-        slot.height = height;
-        slot.pitch = static_cast<size_t>(width) * bytes_per_pixel;
-        slot.pixel_format = pixel_format;
-        slot.duplicate = duplicate;
-        if (!duplicate) {
-            slot.pixels.resize(slot.pitch * static_cast<size_t>(height));
-            const auto* source = static_cast<const uint8_t*>(data);
-            for (unsigned row = 0; row < height; ++row) {
-                std::memcpy(slot.pixels.data() + static_cast<size_t>(row) * slot.pitch,
-                            source + static_cast<size_t>(row) * pitch, slot.pitch);
-            }
-        } else {
-            slot.pixels.clear();
-        }
-        if (trace_frame_active_) active_trace_sample_.video_ready_ns = trace_now_ns();
-        return true;
-    }
-
-    bool publish_software_frame() {
-        if (!async_software_presentation_) return false;
-        size_t selected = kNoSoftwareFrameSlot;
-        {
-            std::lock_guard<std::mutex> lock(software_frame_mutex_);
-            selected = active_capture_slot_;
-            if (selected == kNoSoftwareFrameSlot) return false;
-            auto& slot = software_frame_slots_[selected];
-            slot.trace_sample = active_trace_sample_;
-            slot.trace_sample.dropped = slot.trace_sample.dropped || software_drop_pending_;
-            software_drop_pending_ = false;
-            uint32_t depth = 1;
-            for (const auto& candidate : software_frame_slots_) {
-                if (candidate.state == SoftwareFrameState::Ready ||
-                    candidate.state == SoftwareFrameState::Presenting) {
-                    ++depth;
-                }
-            }
-            slot.trace_sample.frame_queue_depth = depth;
-            software_queue_depth_max_.store(
-                std::max(software_queue_depth_max_.load(std::memory_order_relaxed), depth),
-                std::memory_order_relaxed);
-            slot.state = SoftwareFrameState::Ready;
-            active_capture_slot_ = kNoSoftwareFrameSlot;
-        }
-        software_frame_condition_.notify_one();
+        running_ = true;
         return true;
     }
 
     void stop() {
-        running_snapshot_.store(false, std::memory_order_release);
-        menu_navigation_active_.store(false, std::memory_order_relaxed);
-        stop_core_thread();
-        std::lock_guard<std::mutex> lock(state_mutex_);
         if (running_ && auto_save_enabled_) {
-            std::string save_error;
-            if (!save_auto_state_locked(save_error, true) && !save_error.empty()) message_ = save_error;
+            std::string ignored;
+            (void)save_auto_state(ignored);
         }
         running_ = false;
         // The libretro Vulkan contract keeps image/semaphore ownership with
@@ -1037,53 +753,41 @@ class AzaharHost {
             hardware_callbacks_.context_destroy();
         }
         renderer_initialized_ = false;
-        const bool unload_game = game_loaded_ && static_cast<bool>(core_.unload_game);
-        if (unload_game) {
-            std::string save_error;
-            if (!flush_save_ram_locked(save_error, true) && !save_error.empty()) message_ = save_error;
-        }
-        std::string persistence_error;
-        if (!persistence_writer_.flush(persistence_error) && !persistence_error.empty()) message_ = persistence_error;
-        if (unload_game) core_.unload_game();
-        const std::string background_error = persistence_writer_.take_background_error();
-        if (!background_error.empty()) message_ = background_error;
+        if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+        netpacket_started_ = false;
+        netplay_.close();
+        if (game_loaded_ && core_.unload_game) core_.unload_game();
         game_loaded_ = false;
         if (initialized_ && core_.deinit) core_.deinit();
         initialized_ = false;
         stop_audio();
         vulkan_.shutdown();
         core_.close();
-        (void)trace_.write_jsonl(system_, core_budget_ns_);
         hardware_callbacks_ = {};
         has_hardware_callbacks_ = false;
         negotiation_interface_ = nullptr;
         rom_data_.clear();
         rom_id_.clear();
         system_.clear();
-        async_software_presentation_ = false;
+        core_version_.clear();
+        netpacket_callbacks_ = {};
+        netpacket_protocol_.clear();
+        netpacket_interface_ = false;
+        netpacket_client_id_ = 0;
         last_video_width_ = 0;
         last_video_height_ = 0;
         last_draw_time_ = {};
-        core_fps_ = kNominalCoreFps;
-        core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / kNominalCoreFps));
-        active_trace_sample_ = {};
-        trace_frame_active_ = false;
         speed_budget_ = 0.0;
         pixel_format_ = RETRO_PIXEL_FORMAT_RGB565;
         mouse_delta_x_.store(0, std::memory_order_relaxed);
         mouse_delta_y_.store(0, std::memory_order_relaxed);
     }
 
-    bool running() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return running_;
-    }
-    bool active_snapshot() const { return running_snapshot_.load(std::memory_order_acquire); }
+    bool running() const { return running_; }
     bool is_nds() const { return system_ == "nds"; }
     const std::string& system_name() const { return system_; }
     const std::string& layout() const { return layout_; }
     bool set_screen_layout(const std::string& requested, std::string& error) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
         if (!running_ || (system_ != "nds" && system_ != "3ds")) {
             error = "Screen layout is available only while an NDS or 3DS game is running.";
             return false;
@@ -1105,47 +809,18 @@ class AzaharHost {
     }
     uint64_t presented_frames() const { return vulkan_.presented_frames(); }
     NativeRendererMetrics renderer_metrics() const;
-    bool supports_quick_states() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return running_ && core_.supports_states();
-    }
+    bool supports_quick_states() const { return running_ && core_.supports_states(); }
     const std::vector<CoreOption>& core_options() const { return core_options_.options(); }
     bool set_core_option(const std::string& key, const std::string& value, std::string& error);
-    double speed() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return speed_;
-    }
+    double speed() const { return speed_; }
     void set_speed(double multiplier);
-    bool auto_save_enabled() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return auto_save_enabled_;
-    }
-    bool auto_save_on_exit() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return auto_save_on_exit_;
-    }
-    unsigned auto_save_interval_seconds() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return auto_save_interval_seconds_;
-    }
-    bool flush_save_ram(std::string& error) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        return flush_save_ram_locked(error, true);
-    }
-    void set_auto_save_enabled(bool enabled) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        auto_save_enabled_ = enabled;
-    }
-    void set_auto_save_on_exit(bool enabled) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        auto_save_on_exit_ = enabled;
-    }
-    void set_auto_save_interval_seconds(unsigned seconds) {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        auto_save_interval_seconds_ = std::clamp(seconds, 1u, 3600u);
-    }
+    bool auto_save_enabled() const { return auto_save_enabled_; }
+    bool auto_save_on_exit() const { return auto_save_on_exit_; }
+    unsigned auto_save_interval_seconds() const { return auto_save_interval_seconds_; }
+    void set_auto_save_enabled(bool enabled) { auto_save_enabled_ = enabled; }
+    void set_auto_save_on_exit(bool enabled) { auto_save_on_exit_ = enabled; }
+    void set_auto_save_interval_seconds(unsigned seconds) { auto_save_interval_seconds_ = std::clamp(seconds, 1u, 3600u); }
     std::filesystem::path auto_save_file_path() const {
-        std::lock_guard<std::mutex> lock(state_mutex_);
         return std::filesystem::path(save_path_) / "states" / (rom_id_ + ".autosave.state");
     }
     bool save_auto_state(std::string& error);
@@ -1159,7 +834,7 @@ class AzaharHost {
             error = "Choose a valid .state export filename.";
             return false;
         }
-        return persistence_writer_.write_and_wait(path, std::move(bytes), "save state", error);
+        return write_state_atomically(path, bytes, error);
     }
 
     bool import_state(const std::filesystem::path& path, std::string& error) {
@@ -1197,27 +872,15 @@ class AzaharHost {
 
     bool save_state(unsigned slot, std::string& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return save_state_locked(slot, error, true);
-    }
-
-    bool save_state_locked(unsigned slot,
-                           std::string& error,
-                           bool wait_for_write,
-                           SavePersistenceWorker::AsyncCompletion async_completion = {}) {
         if (!validate_state_slot(slot, error)) return false;
         std::vector<uint8_t> bytes;
         if (!serialize_state(bytes, error)) return false;
         const std::filesystem::path path = quick_state_path(slot);
-        return persist_bytes_locked(path, std::move(bytes), "save state", wait_for_write, error,
-                                    std::move(async_completion));
+        return write_state_atomically(path, bytes, error);
     }
 
     bool load_state(unsigned slot, std::string& error) {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        return load_state_locked(slot, error);
-    }
-
-    bool load_state_locked(unsigned slot, std::string& error) {
         if (!validate_state_slot(slot, error)) return false;
         const std::filesystem::path path = quick_state_path(slot);
         std::ifstream input(path, std::ios::binary | std::ios::ate);
@@ -1239,12 +902,22 @@ class AzaharHost {
         return true;
     }
 
-    uint32_t local_input_buttons() const {
-        return buttons_.load(std::memory_order_relaxed);
-    }
-
-    void set_menu_navigation_active(bool active) {
-        menu_navigation_active_.store(active, std::memory_order_relaxed);
+    void set_input(uint32_t buttons,
+                   int16_t circle_x,
+                   int16_t circle_y,
+                   int16_t cstick_x,
+                   int16_t cstick_y,
+                   int16_t touch_x,
+                   int16_t touch_y,
+                   bool touch_pressed) {
+        buttons_.store(buttons, std::memory_order_relaxed);
+        circle_x_.store(circle_x, std::memory_order_relaxed);
+        circle_y_.store(circle_y, std::memory_order_relaxed);
+        cstick_x_.store(cstick_x, std::memory_order_relaxed);
+        cstick_y_.store(cstick_y, std::memory_order_relaxed);
+        touch_x_.store(touch_x, std::memory_order_relaxed);
+        touch_y_.store(touch_y, std::memory_order_relaxed);
+        touch_pressed_.store(touch_pressed, std::memory_order_relaxed);
     }
 
     void move_nds_cursor(float delta_x, float delta_y) {
@@ -1356,13 +1029,61 @@ class AzaharHost {
         touch_pressed_.store(pressed, std::memory_order_relaxed);
     }
 
-    void draw() {
-        if (async_software_presentation_) {
-            present_pending_software_frame();
-            note_audio_underrun();
-            return;
+    bool start_netplay_callbacks(std::string& error, uint16_t client_id) {
+        if (!netpacket_callbacks_.start) {
+            error = "The melonDS core did not provide a LAN multiplayer start callback.";
+            return false;
         }
-        std::lock_guard<std::mutex> lock(state_mutex_);
+        netpacket_client_id_ = client_id;
+        netpacket_callbacks_.start(client_id, &AzaharHost::netpacket_send_callback,
+                                   &AzaharHost::netpacket_poll_callback);
+        netpacket_started_ = true;
+        return true;
+    }
+
+    bool pump_netplay(std::string& error) {
+        if (netplay_config_.role == MelonDsNetplayRole::Disabled) return true;
+        std::vector<MelonDsNetplayEvent> events;
+        if (!netplay_.pump(events, error)) return false;
+        for (const auto& event : events) {
+            switch (event.kind) {
+            case MelonDsNetplayEvent::Kind::Connected:
+                if (netplay_config_.role == MelonDsNetplayRole::Host) {
+                    if (netpacket_callbacks_.connected && !netpacket_callbacks_.connected(event.client_id)) {
+                        error = "The melonDS core rejected the LAN multiplayer peer.";
+                        netplay_.close();
+                        return false;
+                    }
+                } else if (!netpacket_started_ && !start_netplay_callbacks(error, 1)) {
+                    return false;
+                }
+                message_ = event.detail;
+                break;
+            case MelonDsNetplayEvent::Kind::Packet:
+                if (!netpacket_callbacks_.receive) {
+                    error = "The melonDS core no longer accepts LAN multiplayer packets.";
+                    return false;
+                }
+                netpacket_callbacks_.receive(event.payload.data(), event.payload.size(), event.client_id);
+                break;
+            case MelonDsNetplayEvent::Kind::Disconnected:
+                if (netplay_config_.role == MelonDsNetplayRole::Host &&
+                    netpacket_callbacks_.disconnected) {
+                    netpacket_callbacks_.disconnected(event.client_id);
+                }
+                if (netpacket_started_ && netpacket_callbacks_.stop) netpacket_callbacks_.stop();
+                netpacket_started_ = false;
+                message_ = event.detail;
+                break;
+            case MelonDsNetplayEvent::Kind::Rejected:
+                error = event.detail.empty() ? "The melonDS LAN multiplayer peer rejected this game." : event.detail;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void draw() {
         if (!running_ || !core_.run || !vulkan_.ready()) return;
         // At normal speed preserve the historical scheduler: one core frame
         // per MTKView callback. Fractional wall-clock budgeting at 1x causes
@@ -1374,7 +1095,7 @@ class AzaharHost {
             if (last_draw_time_.time_since_epoch().count() == 0) last_draw_time_ = now;
             const double elapsed = std::clamp(std::chrono::duration<double>(now - last_draw_time_).count(), 0.0, 0.25);
             last_draw_time_ = now;
-            speed_budget_ = std::min(8.0, speed_budget_ + elapsed * core_fps_ * speed_);
+            speed_budget_ = std::min(8.0, speed_budget_ + elapsed * kNominalCoreFps * speed_);
             runs = static_cast<unsigned>(std::floor(speed_budget_));
             speed_budget_ -= static_cast<double>(runs);
         } else {
@@ -1382,141 +1103,24 @@ class AzaharHost {
             speed_budget_ = 0.0;
         }
         for (unsigned index = 0; index < std::min(runs, 8u); ++index) {
-            run_one_core_frame_locked();
+            const auto began = std::chrono::steady_clock::now();
+            std::string netplay_error;
+            if (!pump_netplay(netplay_error)) { message_ = netplay_error; running_ = false; break; }
+            if (netpacket_started_ && netpacket_callbacks_.poll) netpacket_callbacks_.poll();
+            core_.run();
+            if (!pump_netplay(netplay_error)) { message_ = netplay_error; running_ = false; break; }
+            flush_pending_audio_samples();
+            emulate_timings_.add(std::chrono::steady_clock::now() - began);
+            active_game_seconds_ += 1.0 / kNominalCoreFps;
+            if (auto_save_enabled_ && active_game_seconds_ - last_autosave_game_seconds_ >= auto_save_interval_seconds_) {
+                std::string ignored;
+                if (save_auto_state(ignored)) last_autosave_game_seconds_ = active_game_seconds_;
+            }
         }
         note_audio_underrun();
     }
 
   private:
-    uint64_t trace_now_ns() const {
-        if (trace_epoch_.time_since_epoch().count() == 0) return 0;
-        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - trace_epoch_).count());
-    }
-
-    static uint64_t current_rss_bytes() {
-        mach_task_basic_info task{};
-        mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-        if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&task), &count) != KERN_SUCCESS) return 0;
-        return static_cast<uint64_t>(task.resident_size);
-    }
-
-    void set_speed_locked(double multiplier) {
-        constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
-        double selected = 1.0;
-        for (const double candidate : kSpeeds) {
-            if (std::abs(candidate - multiplier) < 0.001) selected = candidate;
-        }
-        if (std::abs(selected - speed_) < 0.001) return;
-        speed_ = selected;
-        speed_budget_ = 0.0;
-        set_audio_speed(speed_);
-    }
-
-    bool persist_bytes_locked(const std::filesystem::path& path,
-                              std::vector<uint8_t> bytes,
-                              const std::string& description,
-                              bool wait_for_write,
-                              std::string& error,
-                              SavePersistenceWorker::AsyncCompletion async_completion = {}) {
-        if (wait_for_write) {
-            return persistence_writer_.write_and_wait(path, std::move(bytes), description, error);
-        }
-        if (async_completion) {
-            return persistence_writer_.write_async_with_completion(
-                path, std::move(bytes), description, std::move(async_completion), error);
-        }
-        return persistence_writer_.write_async(path, std::move(bytes), description, error);
-    }
-
-    bool flush_save_ram_locked(std::string& error, bool wait_for_write) {
-        if (!game_loaded_ || !core_.get_memory_data || !core_.get_memory_size) return true;
-        if (pending_save_ram_restore_size_ != 0) {
-            error = "The existing cartridge save is waiting for the core to identify its memory size; it was preserved.";
-            return false;
-        }
-        if (!save_ram_writable_) {
-            error = "An existing battery save was invalid and has been preserved; saving is disabled for this session.";
-            return false;
-        }
-        const auto size = core_.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-        void* data = core_.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-        if (!data || size == 0) return true;
-        if (size > kMaxSaveRamBytes) {
-            error = "The core reported an invalid battery-save size.";
-            return false;
-        }
-        const auto snapshot_began = std::chrono::steady_clock::now();
-        const auto* begin = static_cast<const uint8_t*>(data);
-        std::vector<uint8_t> bytes(begin, begin + size);
-        const auto snapshot_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now() - snapshot_began).count());
-        save_snapshot_timings_.add(snapshot_ns);
-        if (trace_frame_active_) active_trace_sample_.save_snapshot_us = snapshot_ns / 1000u;
-        return persist_bytes_locked(std::filesystem::path(save_path_) / (rom_id_ + ".srm"),
-                                    std::move(bytes), "cartridge save", wait_for_write, error);
-    }
-
-    bool save_auto_state_locked(std::string& error, bool wait_for_write);
-    bool load_auto_state_locked(std::string& error);
-
-    void restore_save_ram() {
-        if (!core_.get_memory_data || !core_.get_memory_size) return;
-        void* data = core_.get_memory_data(RETRO_MEMORY_SAVE_RAM);
-        const auto size = core_.get_memory_size(RETRO_MEMORY_SAVE_RAM);
-        if (!data || size == 0 || size > kMaxSaveRamBytes) return;
-        const auto path = std::filesystem::path(save_path_) / (rom_id_ + ".srm");
-        std::error_code filesystem_error;
-        const auto file_status = std::filesystem::symlink_status(path, filesystem_error);
-        if (filesystem_error == std::errc::no_such_file_or_directory) {
-            return;
-        }
-        if (filesystem_error || !std::filesystem::is_regular_file(file_status)) {
-            save_ram_writable_ = false;
-            message_ = "The existing cartridge save is not a regular file; it was left untouched.";
-            return;
-        }
-        const auto saved_size = std::filesystem::file_size(path, filesystem_error);
-        if (filesystem_error || saved_size == 0 || saved_size > kMaxSaveRamBytes) {
-            save_ram_writable_ = false;
-            message_ = "The existing cartridge save has an invalid size; it was left untouched.";
-            return;
-        }
-        const bool provisional_gba_buffer = saved_size != size && system_ == "gba" && saved_size < size;
-        if (saved_size != size && !provisional_gba_buffer) {
-            save_ram_writable_ = false;
-            message_ = "The existing cartridge save does not match this core's save memory size; it was left untouched.";
-            return;
-        }
-        std::ifstream input(path, std::ios::binary);
-        std::vector<uint8_t> bytes(static_cast<size_t>(saved_size));
-        if (!input || !input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
-            save_ram_writable_ = false;
-            message_ = "The existing cartridge save could not be read and was left untouched.";
-            return;
-        }
-        std::copy(bytes.begin(), bytes.end(), static_cast<uint8_t*>(data));
-        if (provisional_gba_buffer) {
-            pending_save_ram_restore_size_ = bytes.size();
-            return;
-        }
-    }
-
-    void resolve_pending_save_ram_restore() {
-        if (pending_save_ram_restore_size_ == 0) return;
-        void* data = core_.get_memory_data ? core_.get_memory_data(RETRO_MEMORY_SAVE_RAM) : nullptr;
-        const auto size = core_.get_memory_size ? core_.get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0;
-        const auto expected_size = pending_save_ram_restore_size_;
-        if (data && size == expected_size) {
-            pending_save_ram_restore_size_ = 0;
-            save_ram_writable_ = true;
-            return;
-        }
-        pending_save_ram_restore_size_ = 0;
-        save_ram_writable_ = false;
-        message_ = "The core's detected cartridge-save size did not match the existing save; it was left untouched.";
-    }
-
     bool validate_state_slot(unsigned slot, std::string& error) const {
         if (!running_ || !core_.supports_states()) {
             error = "This native core does not provide save states.";
@@ -1543,6 +1147,40 @@ class AzaharHost {
         if (!core_.serialize(bytes.data(), bytes.size())) {
             error = "The native core could not create a save state.";
             bytes.clear();
+            return false;
+        }
+        return true;
+    }
+
+    static bool write_state_atomically(const std::filesystem::path& path,
+                                       const std::vector<uint8_t>& bytes,
+                                       std::string& error) {
+        std::error_code filesystem_error;
+        if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), filesystem_error);
+        if (filesystem_error) {
+            error = "VibeCodedEmulator could not prepare local save-state storage.";
+            return false;
+        }
+        const std::filesystem::path temporary = path.string() + ".tmp";
+        {
+            std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+            output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            output.flush();
+            if (!output) {
+                output.close();
+                std::filesystem::remove(temporary, filesystem_error);
+                error = "VibeCodedEmulator could not write this save state.";
+                return false;
+            }
+        }
+        const int descriptor = ::open(temporary.c_str(), O_RDONLY);
+        if (descriptor >= 0) {
+            (void)::fsync(descriptor);
+            (void)::close(descriptor);
+        }
+        if (std::rename(temporary.c_str(), path.c_str()) != 0) {
+            std::filesystem::remove(temporary, filesystem_error);
+            error = "VibeCodedEmulator could not atomically finish this save state.";
             return false;
         }
         return true;
@@ -1578,20 +1216,28 @@ class AzaharHost {
         return frames;
     }
 
-    static void input_poll_callback() {
-        if (auto* host = active_host()) host->note_input_poll();
-    }
+    static void input_poll_callback() {}
 
     static int16_t input_state_callback(unsigned, unsigned device, unsigned index, unsigned id) {
         auto* host = active_host();
         return host ? host->input_state(device, index, id) : 0;
     }
 
-    static void quiet_log(int, const char*, ...) {}
-
-    void note_input_poll() {
-        if (trace_frame_active_) active_trace_sample_.input_sample_ns = trace_now_ns();
+    static void netpacket_send_callback(int flags, const void* data, size_t length, uint16_t client_id) {
+        auto* host = active_host();
+        if (!host) return;
+        std::string error;
+        if (!host->netplay_.send(flags, data, length, client_id, error)) host->message_ = error;
     }
+
+    static void netpacket_poll_callback() {
+        auto* host = active_host();
+        if (!host) return;
+        std::string error;
+        if (!host->pump_netplay(error)) host->message_ = error;
+    }
+
+    static void quiet_log(int, const char*, ...) {}
 
     bool environment(unsigned command, void* data) {
         switch (command) {
@@ -1607,6 +1253,15 @@ class AzaharHost {
         case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH:
             *static_cast<const char**>(data) = core_path_.c_str();
             return true;
+        case RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE: {
+            if (system_ != "nds" || !data) return false;
+            const auto* callbacks = static_cast<const retro_netpacket_callback*>(data);
+            if (!callbacks->start || !callbacks->receive) return false;
+            netpacket_callbacks_ = *callbacks;
+            netpacket_protocol_ = callbacks->protocol_version ? callbacks->protocol_version : "";
+            netpacket_interface_ = true;
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             auto* variable = static_cast<retro_variable*>(data);
             if (!variable || !variable->key) return false;
@@ -1705,11 +1360,7 @@ class AzaharHost {
             // subset rather than probing a partially implemented v2 path.
             return false;
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
-            // Software frames are copied into the bounded presenter queue at
-            // the callback boundary. Returning false here keeps cores from
-            // borrowing a Vulkan staging slot whose ownership would outlive
-            // the emulation callback.
-            if (system_ == "3ds" || async_software_presentation_ || !data) return false;
+            if (system_ == "3ds" || !data) return false;
             auto* framebuffer = static_cast<retro_framebuffer*>(data);
             if (!framebuffer->width || !framebuffer->height ||
                 !(framebuffer->access_flags & RETRO_MEMORY_ACCESS_WRITE)) {
@@ -1747,44 +1398,21 @@ class AzaharHost {
     void on_video(const void* data, unsigned width, unsigned height, size_t pitch) {
         if (!vulkan_.ready()) return;
         if (system_ == "3ds" && width && height && reinterpret_cast<uintptr_t>(data) == RETRO_HW_FRAME_BUFFER_VALID) {
-            const uint64_t present_began = trace_now_ns();
-            if (trace_frame_active_) {
-                active_trace_sample_.video_ready_ns = present_began;
-                active_trace_sample_.present_call_ns = present_began;
-            }
             last_video_width_ = width;
             last_video_height_ = height;
             vulkan_.present(width, height);
         } else if (system_ != "3ds" && data && width && height) {
             last_video_width_ = width;
             last_video_height_ = height;
-            (void)begin_software_frame(data, width, height, pitch, pixel_format_, false);
+            vulkan_.present_software(data, width, height, pitch, pixel_format_);
         } else if (!data && last_video_width_ && last_video_height_) {
             // Libretro permits a null frame to duplicate the last image.
-            duplicate_frames_.fetch_add(1, std::memory_order_relaxed);
-            if (trace_frame_active_) active_trace_sample_.duplicated = true;
-            if (system_ == "3ds") {
-                const uint64_t present_began = trace_now_ns();
-                if (trace_frame_active_) {
-                    active_trace_sample_.video_ready_ns = present_began;
-                    active_trace_sample_.present_call_ns = present_began;
-                }
-                vulkan_.present(last_video_width_, last_video_height_);
-                if (trace_frame_active_) {
-                    active_trace_sample_.present_duration_ns = trace_now_ns() - present_began;
-                    active_trace_sample_.displayed_ns = trace_now_ns();
-                }
-            } else {
-                (void)begin_software_frame(nullptr, last_video_width_, last_video_height_, 0, pixel_format_, true);
-            }
-        } else if (system_ != "3ds" && async_software_presentation_) {
-            active_trace_sample_.dropped = true;
-            software_dropped_frames_.fetch_add(1, std::memory_order_relaxed);
+            if (system_ == "3ds") vulkan_.present(last_video_width_, last_video_height_);
+            else vulkan_.present_software(nullptr, last_video_width_, last_video_height_, 0, pixel_format_);
         }
     }
 
     int16_t input_state(unsigned device, unsigned index, unsigned id) {
-        if (menu_navigation_active_.load(std::memory_order_relaxed)) return 0;
         if (device == RETRO_DEVICE_JOYPAD) {
             const uint32_t buttons = buttons_.load(std::memory_order_relaxed);
             if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return static_cast<int16_t>(buttons & 0xffffu);
@@ -1825,14 +1453,21 @@ class AzaharHost {
     std::string system_;
     std::string layout_;
     std::string message_;
+    std::string core_version_;
     std::vector<uint8_t> rom_data_;
     VulkanFrontend vulkan_;
+    MelonDsNetplayConfig netplay_config_;
+    MelonDsNetplayTransport netplay_;
+    retro_netpacket_callback netpacket_callbacks_{};
+    std::string netpacket_protocol_;
+    bool netpacket_interface_ = false;
+    bool netpacket_started_ = false;
+    uint16_t netpacket_client_id_ = 0;
     RetroHwRenderCallback hardware_callbacks_{};
     const void* negotiation_interface_ = nullptr;
     unsigned last_video_width_ = 0;
     unsigned last_video_height_ = 0;
     std::atomic<uint32_t> buttons_{0};
-    std::atomic<bool> menu_navigation_active_{false};
     std::atomic<int16_t> circle_x_{0};
     std::atomic<int16_t> circle_y_{0};
     std::atomic<int16_t> cstick_x_{0};
@@ -1843,61 +1478,36 @@ class AzaharHost {
     std::atomic<int16_t> mouse_delta_x_{0};
     std::atomic<int16_t> mouse_delta_y_{0};
     HostTimingSeries emulate_timings_;
-    perf::TimingSeries emulate_detail_timings_;
-    perf::TimingSeries frame_interval_timings_;
-    perf::TimingSeries save_snapshot_timings_;
-    perf::TraceBuffer trace_;
-    perf::FrameSample active_trace_sample_{};
-    perf::FrameSample last_presented_trace_sample_{};
-    std::chrono::steady_clock::time_point trace_epoch_{};
-    uint64_t frame_id_ = 0;
-    uint64_t current_frame_id_ = 0;
-    uint64_t last_frame_begin_ns_ = 0;
-    uint64_t core_budget_ns_ = static_cast<uint64_t>(std::llround(1'000'000'000.0 / kNominalCoreFps));
-    double core_fps_ = kNominalCoreFps;
-    bool trace_frame_active_ = false;
-    std::atomic<uint64_t> duplicate_frames_{0};
     std::chrono::steady_clock::time_point last_draw_time_{};
     double speed_ = 1.0;
     double speed_budget_ = 0.0;
     double active_game_seconds_ = 0.0;
-    double last_save_ram_game_seconds_ = 0.0;
-    bool save_ram_writable_ = true;
-    size_t pending_save_ram_restore_size_ = 0;
     double last_autosave_game_seconds_ = 0.0;
     bool auto_save_enabled_ = false;
     bool auto_save_on_exit_ = false;
     unsigned auto_save_interval_seconds_ = 60;
     mutable std::mutex state_mutex_;
-    std::array<SoftwareFrameSlot, kSoftwareFrameQueueCapacity> software_frame_slots_{};
-    std::mutex software_frame_mutex_;
-    std::condition_variable software_frame_condition_;
-    std::thread software_core_thread_;
-    std::atomic<bool> software_present_stop_{false};
-    size_t active_capture_slot_ = kNoSoftwareFrameSlot;
-    bool software_drop_pending_ = false;
-    std::atomic<uint64_t> software_dropped_frames_{0};
-    std::atomic<uint32_t> software_queue_depth_max_{0};
-    uint64_t last_presented_ns_ = 0;
-    bool has_presented_software_frame_ = false;
-    bool async_software_presentation_ = false;
-    SavePersistenceWorker persistence_writer_;
     int pixel_format_ = RETRO_PIXEL_FORMAT_RGB565;
     bool initialized_ = false;
     bool game_loaded_ = false;
     bool has_hardware_callbacks_ = false;
     bool renderer_initialized_ = false;
     bool running_ = false;
-    std::atomic<bool> running_snapshot_{false};
 };
 
 void AzaharHost::set_speed(double multiplier) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    set_speed_locked(multiplier);
+    constexpr double kSpeeds[] = {0.5, 1.0, 2.0, 4.0, 8.0};
+    double selected = 1.0;
+    for (const double candidate : kSpeeds) {
+        if (std::abs(candidate - multiplier) < 0.001) selected = candidate;
+    }
+    if (std::abs(selected - speed_) < 0.001) return;
+    speed_ = selected;
+    speed_budget_ = 0.0;
+    set_audio_speed(speed_);
 }
 
 bool AzaharHost::set_core_option(const std::string& key, const std::string& value, std::string& error) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
     if (!core_options_.set(key, value)) {
         error = "The selected value is not announced by the running core.";
         return false;
@@ -1912,27 +1522,18 @@ bool AzaharHost::set_core_option(const std::string& key, const std::string& valu
 
 bool AzaharHost::save_auto_state(std::string& error) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    return save_auto_state_locked(error, true);
-}
-
-bool AzaharHost::save_auto_state_locked(std::string& error, bool wait_for_write) {
     if (!running_ || !core_.supports_states()) {
         error = "This native core does not provide automatic save states.";
         return false;
     }
     std::vector<uint8_t> bytes;
     if (!serialize_state(bytes, error)) return false;
-    return persist_bytes_locked(std::filesystem::path(save_path_) / "states" /
-                                    (rom_id_ + ".autosave.state"),
-                                std::move(bytes), "save state", wait_for_write, error);
+    return write_state_atomically(std::filesystem::path(save_path_) / "states" /
+                                      (rom_id_ + ".autosave.state"), bytes, error);
 }
 
 bool AzaharHost::load_auto_state(std::string& error) {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    return load_auto_state_locked(error);
-}
-
-bool AzaharHost::load_auto_state_locked(std::string& error) {
     if (!running_ || !core_.supports_states()) {
         error = "This native core does not provide automatic save states.";
         return false;
@@ -1953,6 +1554,7 @@ bool AzaharHost::load_auto_state_locked(std::string& error) {
     return true;
 }
 
+static AN3AzaharView* g_view = nil;
 static AVAudioEngine* g_audio_engine = nil;
 static AVAudioPlayerNode* g_audio_player = nil;
 static AVAudioFormat* g_audio_format = nil; // output/mixer format
@@ -1966,7 +1568,10 @@ static double g_audio_hardware_sample_rate = 0.0;
 static unsigned g_audio_latency_ms = 64;
 static unsigned g_audio_resampler_quality = 2;
 static bool g_audio_playing = false;
+static std::atomic<size_t> g_audio_frames_queued{0};
 static std::atomic<size_t> g_audio_frames_max{0};
+static std::atomic<uint64_t> g_audio_underruns{0};
+static std::atomic<uint64_t> g_audio_overruns{0};
 static std::atomic<uint64_t> g_audio_last_submit_ns{0};
 static std::atomic<bool> g_audio_underrun_latched{false};
 // A bounded PCM snapshot distinguishes a silent core/converter from a
@@ -2344,20 +1949,6 @@ static void submit_audio(const int16_t* data, size_t frames) {
     std::lock_guard<std::mutex> lock(g_audio_mutex);
     if (!data || !frames || !g_audio_player || !g_audio_format || !g_audio_core_format || !g_audio_converter) return;
     record_input_pcm(data, frames);
-    // AVAudioPlayerNode can stop after a route interruption or a long-lived
-    // output glitch while the native core keeps producing audio. Do not let
-    // the stale scheduled-buffer count permanently reject every later batch:
-    // discard the node's flushed queue, restart it once, and resume through
-    // the normal bounded priming path.
-    if (g_audio_playing && !g_audio_player.isPlaying) {
-        [g_audio_player stop];
-        g_audio_frames_queued.store(0, std::memory_order_relaxed);
-        g_audio_playing = false;
-        g_audio_underruns.fetch_add(1, std::memory_order_relaxed);
-        g_audio_underrun_latched.store(true, std::memory_order_relaxed);
-        [g_audio_player play];
-        g_audio_playing = g_audio_player.isPlaying;
-    }
     const size_t queued = g_audio_frames_queued.load(std::memory_order_relaxed);
     const size_t output_capacity = static_cast<size_t>(std::ceil(frames * g_audio_output_sample_rate /
                                                                   g_audio_effective_input_rate)) + 8u;
@@ -2471,37 +2062,8 @@ static void populate_process_metrics(NativeRendererMetrics& snapshot) {
 
 NativeRendererMetrics AzaharHost::renderer_metrics() const {
     NativeRendererMetrics snapshot = vulkan_.renderer_metrics();
-    const auto to_us = [](uint64_t nanos) -> uint32_t {
-        return static_cast<uint32_t>(std::min<uint64_t>(nanos / 1000u, std::numeric_limits<uint32_t>::max()));
-    };
-    const auto frame = frame_interval_timings_.summary();
-    const auto emulate = emulate_detail_timings_.summary();
-    const auto save_snapshot = save_snapshot_timings_.summary();
-    const auto save_io = persistence_writer_.write_metrics();
-    snapshot.frame_interval_p50_us = to_us(frame.p50_ns);
-    snapshot.frame_interval_p95_us = to_us(frame.p95_ns);
-    snapshot.frame_interval_p99_us = to_us(frame.p99_ns);
-    snapshot.frame_interval_max_us = to_us(frame.max_ns);
-    snapshot.frame_deadline_misses = frame.deadline_misses;
-    snapshot.frame_over_150x = frame.over_150x;
-    snapshot.frame_over_2x = frame.over_2x;
-    snapshot.frame_over_3x = frame.over_3x;
-    snapshot.dropped_frames += software_dropped_frames_.load(std::memory_order_relaxed);
-    snapshot.duplicated_frames = duplicate_frames_.load(std::memory_order_relaxed);
-    snapshot.emulate_p50_us = to_us(emulate.p50_ns);
-    snapshot.emulate_p95_us = to_us(emulate.p95_ns);
-    snapshot.emulate_p99_us = to_us(emulate.p99_ns);
-    snapshot.emulate_max_us = to_us(emulate.max_ns);
-    snapshot.save_snapshot_p95_us = to_us(save_snapshot.p95_ns);
-    snapshot.save_snapshot_p99_us = to_us(save_snapshot.p99_ns);
-    snapshot.save_snapshot_count = save_snapshot.count;
-    snapshot.save_io_p95_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p95_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
-    snapshot.save_io_p99_ms = static_cast<uint32_t>(std::min<uint64_t>(save_io.p99_ns / 1'000'000u, std::numeric_limits<uint32_t>::max()));
-    snapshot.save_io_count = save_io.count;
-    snapshot.queue_depth_max = std::max(snapshot.queue_depth_max,
-                                        software_queue_depth_max_.load(std::memory_order_relaxed));
-    snapshot.perf_trace_enabled = trace_.enabled();
-    snapshot.perf_trace_samples = trace_.sample_count();
+    snapshot.emulate_p95_us = emulate_timings_.percentile(95);
+    snapshot.emulate_p99_us = emulate_timings_.percentile(99);
     snapshot.audio_queue_depth_frames = static_cast<uint32_t>(std::min<size_t>(
         g_audio_frames_queued.load(std::memory_order_relaxed), std::numeric_limits<uint32_t>::max()));
     snapshot.audio_queue_max_frames = static_cast<uint32_t>(std::min<size_t>(
@@ -2550,17 +2112,6 @@ static NSTextField* native_settings_header(NSString* title) {
 static NSString* native_player_ui_text(std::string_view value) {
     // Generated labels originate from string literals, so their data is NUL-terminated.
     return [NSString stringWithUTF8String:value.data()];
-}
-
-static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSControl*>* controls) {
-    if (view.hidden) return;
-    if ([view isKindOfClass:NSButton.class] || [view isKindOfClass:NSPopUpButton.class] ||
-        [view isKindOfClass:NSSlider.class]) {
-        NSControl* control = (NSControl*)view;
-        if (control.enabled) [controls addObject:control];
-        return;
-    }
-    for (NSView* child in view.subviews) collect_menu_focusable_controls(child, controls);
 }
 
 @implementation AN3AzaharView
@@ -3010,14 +2561,7 @@ static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSContr
 
 - (void)closeMenuDiscardingDraft {
     if (_settings_dirty) [self discardSettingsDraft];
-    _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
-    _menu_focus_control = nil;
     _menu_panel.hidden = YES;
-    _local_menu_buttons = an3::active_host() ? an3::active_host()->local_input_buttons() : _local_menu_buttons;
-    _menu_input_suppressed_until_release = _local_menu_buttons != 0;
-    if (auto* host = an3::active_host()) {
-        host->set_menu_navigation_active(_menu_input_suppressed_until_release);
-    }
     [self.window makeFirstResponder:self];
 }
 
@@ -3027,117 +2571,10 @@ static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSContr
         return;
     }
     _menu_panel.hidden = NO;
-    _menu_input_suppressed_until_release = NO;
-    if (auto* host = an3::active_host()) {
-        _local_menu_buttons = host->local_input_buttons();
-        host->set_menu_navigation_active(true);
-    }
     // Opening the menu releases any held NDS/3DS touch so a tap on a menu row
     // can never leak into the emulated touchscreen.
     if (auto* host = an3::active_host()) host->set_nds_touch_pressed(false);
     [self.window makeFirstResponder:self];
-    [self moveMenuFocusBy:1];
-}
-
-- (NSArray<NSControl*>*)menuFocusableControls {
-    NSMutableArray<NSControl*>* controls = [NSMutableArray array];
-    if (_settings_tabs.selectedTabViewItem.view) {
-        collect_menu_focusable_controls(_settings_tabs.selectedTabViewItem.view, controls);
-    }
-    if (_save_settings_button.enabled) [controls addObject:_save_settings_button];
-    return controls;
-}
-
-- (void)focusMenuControl:(NSControl*)control {
-    if (_menu_focus_control != control) _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
-    _menu_focus_control = control;
-    if (!_menu_focus_control) return;
-    _menu_focus_control.focusRingType = NSFocusRingTypeExterior;
-    [self.window makeFirstResponder:_menu_focus_control];
-    [_menu_focus_control setNeedsDisplay:YES];
-}
-
-- (void)moveMenuFocusBy:(NSInteger)delta {
-    NSArray<NSControl*>* controls = [self menuFocusableControls];
-    if (!controls.count) return;
-    const NSUInteger current = [controls indexOfObjectIdenticalTo:_menu_focus_control];
-    const NSUInteger next = current == NSNotFound
-        ? (delta < 0 ? controls.count - 1 : 0)
-        : (delta < 0 ? (current + controls.count - 1) % controls.count
-                     : (current + 1) % controls.count);
-    [self focusMenuControl:controls[next]];
-}
-
-- (void)adjustMenuFocusBy:(NSInteger)delta {
-    if ([_menu_focus_control isKindOfClass:NSPopUpButton.class]) {
-        NSPopUpButton* popup = (NSPopUpButton*)_menu_focus_control;
-        const NSInteger count = static_cast<NSInteger>(popup.numberOfItems);
-        if (count < 1) return;
-        const NSInteger current = std::max<NSInteger>(0, popup.indexOfSelectedItem);
-        [popup selectItemAtIndex:std::clamp(current + delta, NSInteger{0}, count - 1)];
-        [popup sendAction:popup.action to:popup.target];
-        return;
-    }
-    if ([_menu_focus_control isKindOfClass:NSSlider.class]) {
-        NSSlider* slider = (NSSlider*)_menu_focus_control;
-        const double step = std::max(0.01, (slider.maxValue - slider.minValue) / 20.0);
-        slider.doubleValue = std::clamp(slider.doubleValue + step * delta, slider.minValue, slider.maxValue);
-        [slider sendAction:slider.action to:slider.target];
-        return;
-    }
-    const NSInteger count = static_cast<NSInteger>(_settings_tabs.numberOfTabViewItems);
-    if (count < 1) return;
-    const NSInteger current = std::max<NSInteger>(0, [_settings_tabs indexOfTabViewItem:_settings_tabs.selectedTabViewItem]);
-    const NSInteger next = (current + delta + count) % count;
-    _menu_focus_control.focusRingType = NSFocusRingTypeDefault;
-    _menu_focus_control = nil;
-    [_settings_tabs selectTabViewItemAtIndex:next];
-    [self moveMenuFocusBy:1];
-}
-
-- (void)activateMenuFocus {
-    if ([_menu_focus_control isKindOfClass:NSButton.class]) {
-        [(NSButton*)_menu_focus_control performClick:self];
-    } else if ([_menu_focus_control isKindOfClass:NSPopUpButton.class] ||
-               [_menu_focus_control isKindOfClass:NSSlider.class]) {
-        [self adjustMenuFocusBy:1];
-    } else {
-        [self moveMenuFocusBy:1];
-    }
-}
-
-- (void)handleLocalMenuButtons:(uint32_t)buttons {
-    if (_menu_panel.hidden) {
-        _local_menu_buttons = buttons;
-        if (_menu_input_suppressed_until_release && buttons == 0) {
-            _menu_input_suppressed_until_release = NO;
-            if (auto* host = an3::active_host()) host->set_menu_navigation_active(false);
-        }
-        return;
-    }
-    const uint32_t rising = buttons & ~_local_menu_buttons;
-    _local_menu_buttons = buttons;
-    // Button bit positions match the libretro joypad IDs used by local keys.
-    static constexpr uint32_t kMenuUp = 1u << 4;
-    static constexpr uint32_t kMenuDown = 1u << 5;
-    static constexpr uint32_t kMenuLeft = 1u << 6;
-    static constexpr uint32_t kMenuRight = 1u << 7;
-    static constexpr uint32_t kMenuA = 1u << 8;
-    static constexpr uint32_t kMenuB = 1u << 0;
-    static constexpr uint32_t kMenuStart = 1u << 3;
-    if (rising & kMenuB) {
-        [self closeMenuDiscardingDraft];
-    } else if (rising & kMenuUp) {
-        [self moveMenuFocusBy:-1];
-    } else if (rising & kMenuDown) {
-        [self moveMenuFocusBy:1];
-    } else if (rising & kMenuLeft) {
-        [self adjustMenuFocusBy:-1];
-    } else if (rising & kMenuRight) {
-        [self adjustMenuFocusBy:1];
-    } else if (rising & (kMenuA | kMenuStart)) {
-        [self activateMenuFocus];
-    }
 }
 
 - (void)applyNativeSpeed:(double)speed {
@@ -3162,6 +2599,36 @@ static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSContr
     for (NSButton* button in @[_slow_speed_button, _normal_speed_button, _fast_speed_button]) {
         button.contentTintColor = button.state == NSControlStateValueOn ? NSColor.controlAccentColor : NSColor.labelColor;
     }
+}
+
+// Phone-controller utility hooks. Each returns YES only when the running host
+// actually performed the action; the Rust sink maps that to a truthful ack.
+- (BOOL)applyControllerSpeedStep:(int)direction {
+    auto* host = an3::active_host();
+    if (!host) return NO;
+    const double speed = host->speed();
+    double next;
+    if (direction > 0) {
+        next = speed < 1.0 ? 1.0 : speed < 2.0 ? 2.0 : speed < 4.0 ? 4.0 : 8.0;
+    } else {
+        next = speed > 4.0 ? 4.0 : speed > 2.0 ? 2.0 : speed > 1.0 ? 1.0 : 0.5;
+    }
+    [self applyNativeSpeed:next];
+    return YES;
+}
+
+- (BOOL)performControllerQuickSave:(unsigned)slot {
+    if (!an3::active_host()) return NO;
+    char details[256]{};
+    const int saved = an3_native_save_state(slot, details, sizeof(details));
+    [self updateQuickStateStatus:details success:saved != 0];
+    return saved != 0;
+}
+
+- (BOOL)openControllerMenu {
+    if (!an3::active_host()) return NO;
+    if (_menu_panel.hidden) [self toggleMenu:nil];
+    return YES;
 }
 
 - (void)toggleStartFullscreen:(NSButton*)sender {
@@ -3687,12 +3154,10 @@ static void collect_menu_focusable_controls(NSView* view, NSMutableArray<NSContr
 }
 
 - (void)drawInMTKView:(MTKView*)view {
-    if (auto* host = an3::active_host()) {
-        [self handleLocalMenuButtons:host->local_input_buttons()];
-        host->draw();
-    }
+    if (auto* host = an3::active_host()) host->draw();
     [self updateFpsOverlay];
     [self updateAudioDiagnostics];
+    [self syncSpeedControls];
 }
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size {
@@ -3939,6 +3404,9 @@ extern "C" int an3_native_start(void* content_view,
                                   const char* system_directory,
                                   const char* system,
                                   const char* layout,
+                                  const char* netplay_role,
+                                  const char* netplay_address,
+                                  uint16_t netplay_port,
                                   char* details,
                                   size_t details_length) {
     an3_native_stop();
@@ -3972,6 +3440,7 @@ extern "C" int an3_native_start(void* content_view,
                                       : nil;
     std::string error;
     if (!an3::g_host->start(core_path, moltenvk_path, rom_path, rom_id, save_directory, system_directory, system, layout,
+                             netplay_role, netplay_address, netplay_port,
                              metal_layer, error)) {
         an3_native_stop();
         if (details && details_length) std::snprintf(details, details_length, "%s", error.c_str());
@@ -4002,7 +3471,18 @@ extern "C" void an3_native_stop(void) {
 }
 
 extern "C" int an3_native_is_running(void) {
-    return an3::g_host && an3::g_host->active_snapshot() ? 1 : 0;
+    return an3::g_host && an3::g_host->running() ? 1 : 0;
+}
+
+// 0 = none, 1 = gba, 2 = nds, 3 = 3ds. Used only so the phone controller can
+// tell the phone which pad layout to show.
+extern "C" int an3_native_active_system(void) {
+    if (!an3::g_host) return 0;
+    const std::string& system = an3::g_host->system_name();
+    if (system == "gba" || system == "gb" || system == "gbc") return 1;
+    if (system == "nds") return 2;
+    if (system == "3ds") return 3;
+    return 0;
 }
 
 extern "C" uint64_t an3_native_presented_frames(void) {
@@ -4055,39 +3535,6 @@ extern "C" int an3_native_get_renderer_metrics(an3_native_renderer_metrics* metr
     metrics->resident_memory_bytes = snapshot.resident_memory_bytes;
     metrics->cpu_user_time_us = snapshot.cpu_user_time_us;
     metrics->cpu_system_time_us = snapshot.cpu_system_time_us;
-    metrics->frame_interval_p50_us = snapshot.frame_interval_p50_us;
-    metrics->frame_interval_p95_us = snapshot.frame_interval_p95_us;
-    metrics->frame_interval_p99_us = snapshot.frame_interval_p99_us;
-    metrics->frame_interval_max_us = snapshot.frame_interval_max_us;
-    metrics->frame_deadline_misses = snapshot.frame_deadline_misses;
-    metrics->frame_over_150x = snapshot.frame_over_150x;
-    metrics->frame_over_2x = snapshot.frame_over_2x;
-    metrics->frame_over_3x = snapshot.frame_over_3x;
-    metrics->duplicated_frames = snapshot.duplicated_frames;
-    metrics->acquire_wait_p50_us = snapshot.acquire_wait_p50_us;
-    metrics->acquire_wait_p95_us = snapshot.acquire_wait_p95_us;
-    metrics->acquire_wait_p99_us = snapshot.acquire_wait_p99_us;
-    metrics->acquire_wait_max_us = snapshot.acquire_wait_max_us;
-    metrics->fence_wait_p50_us = snapshot.fence_wait_p50_us;
-    metrics->fence_wait_p95_us = snapshot.fence_wait_p95_us;
-    metrics->fence_wait_p99_us = snapshot.fence_wait_p99_us;
-    metrics->fence_wait_max_us = snapshot.fence_wait_max_us;
-    metrics->upload_p50_us = snapshot.upload_p50_us;
-    metrics->upload_max_us = snapshot.upload_max_us;
-    metrics->present_p50_us = snapshot.present_p50_us;
-    metrics->present_max_us = snapshot.present_max_us;
-    metrics->emulate_p50_us = snapshot.emulate_p50_us;
-    metrics->emulate_max_us = snapshot.emulate_max_us;
-    metrics->queue_depth_p95 = snapshot.queue_depth_p95;
-    metrics->queue_depth_max = snapshot.queue_depth_max;
-    metrics->save_snapshot_p95_us = snapshot.save_snapshot_p95_us;
-    metrics->save_snapshot_p99_us = snapshot.save_snapshot_p99_us;
-    metrics->save_io_p95_ms = snapshot.save_io_p95_ms;
-    metrics->save_io_p99_ms = snapshot.save_io_p99_ms;
-    metrics->save_snapshot_count = snapshot.save_snapshot_count;
-    metrics->save_io_count = snapshot.save_io_count;
-    metrics->perf_trace_samples = snapshot.perf_trace_samples;
-    metrics->perf_trace_enabled = snapshot.perf_trace_enabled ? 1 : 0;
     return 1;
 }
 
@@ -4129,4 +3576,34 @@ extern "C" int an3_native_import_state(const char* path, char* details, size_t d
         std::snprintf(details, details_length, "%s", imported ? "Save state imported." : error.c_str());
     }
     return imported ? 1 : 0;
+}
+
+extern "C" void an3_native_set_input(uint32_t buttons,
+                                       int16_t circle_x,
+                                       int16_t circle_y,
+                                       int16_t cstick_x,
+                                       int16_t cstick_y,
+                                       int16_t touch_x,
+                                       int16_t touch_y,
+                                       int touch_pressed) {
+    if (an3::g_host) {
+        an3::g_host->set_input(buttons, circle_x, circle_y, cstick_x, cstick_y, touch_x, touch_y, touch_pressed != 0);
+    }
+}
+
+// Phone-controller utilities execute through the same Cocoa host actions the
+// toolbar uses. Return 1 only when the running game actually performed them.
+extern "C" int an3_native_controller_speed(int direction) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view applyControllerSpeedStep:direction] ? 1 : 0;
+}
+
+extern "C" int an3_native_controller_quick_save(unsigned slot) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view performControllerQuickSave:slot] ? 1 : 0;
+}
+
+extern "C" int an3_native_controller_open_menu(void) {
+    if (!an3::g_view) return 0;
+    return [an3::g_view openControllerMenu] ? 1 : 0;
 }

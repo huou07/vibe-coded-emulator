@@ -31,57 +31,6 @@ deb_path="$release/$deb_name"
 flatpak_deb_path="$root/releases/$deb_name"
 flatpak_name="an3-offline-${version}-linux-amd64-staging.flatpak"
 
-build_flatpak() {
-  [[ -f "$deb_path" ]] || {
-    echo "Flatpak requires the DEB produced by the Linux build job: $deb_path" >&2
-    exit 3
-  }
-  mkdir -p "$build" "$release" "$(dirname "$flatpak_deb_path")"
-  if [[ "$deb_path" != "$flatpak_deb_path" ]]; then
-    install -m 0644 "$deb_path" "$flatpak_deb_path"
-  fi
-  cmp -s "$deb_path" "$flatpak_deb_path" || {
-    echo 'The Flatpak source DEB differs from the downloaded native-build artifact.' >&2
-    exit 3
-  }
-  flatpak-builder --force-clean --disable-cache --repo="$build/flatpak-repo" \
-    "$build/flatpak-build" "$root/flatpak/space.an3tocom.offline.yml"
-  # Flatpak-builder can strip the companion binary; refresh its manifest to
-  # describe the exact bytes included in this Flatpak bundle.
-  flatpak_companion="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
-  flatpak_manifest="$build/flatpak-build/files/lib/VibeCodedEmulator/switch/linux-x86_64/manifest.json"
-  [[ -f "$flatpak_companion" && -f "$flatpak_manifest" ]] || {
-    echo 'Flatpak Eden companion or manifest is missing after assembly.' >&2
-    exit 3
-  }
-  node --input-type=module - "$flatpak_manifest" "$flatpak_companion" <<'NODE'
-import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-const [manifestPath, companionPath] = process.argv.slice(2);
-const bytes = readFileSync(companionPath);
-const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-manifest.sha256 = createHash("sha256").update(bytes).digest("hex");
-manifest.size = bytes.length;
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-NODE
-  flatpak build-export "$build/flatpak-repo" "$build/flatpak-build" \
-    master --no-update-summary --no-summary-index
-  flatpak build-bundle "$build/flatpak-repo" \
-    "$release/$flatpak_name" \
-    space.an3tocom.offline master \
-    --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
-  (cd "$release" && sha256sum "$flatpak_name" > "$flatpak_name.sha256")
-  echo "LINUX_FLATPAK=$release/$flatpak_name"
-}
-
-if [[ "$target" == flatpak ]]; then
-  for command in node flatpak-builder flatpak; do
-    command -v "$command" >/dev/null || { echo "Missing required Flatpak build command: $command" >&2; exit 3; }
-  done
-  build_flatpak
-  exit 0
-fi
-
 compiler="${CXX:-}"
 if [[ -z "$compiler" ]]; then
   for candidate in c++ g++ clang++; do
@@ -108,13 +57,6 @@ node "$root/scripts/generate-player-ui.mjs" --check
   echo 'Verified Linux GBA/NDS/3DS libretro cores are unavailable.' >&2
   exit 3
 }
-# Build and stage the pinned Eden companion before Tauri packaging so Linux
-# DEB and Flatpak resources contain the same four-core release surface.
-bash "$root/scripts/build-linux-eden-companion.sh"
-[[ -f "$root/vendor/switch/linux-x86_64/an3_switch_companion" && -f "$root/vendor/switch/linux-x86_64/manifest.json" ]] || {
-  echo 'Verified Linux Eden companion is unavailable.' >&2
-  exit 3
-}
 
 rm -rf "$build"
 mkdir -p "$build" "$release"
@@ -122,8 +64,7 @@ mkdir -p "$build" "$release"
 "$compiler" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
   -I"$root/native-runtime" \
   "$root/native-runtime/core/libretro_host.cpp" \
-  "$root/native-runtime/core/native_core_session.cpp" \
-  "$root/native-runtime/video/software_frame_queue.cpp" \
+  "$root/native-runtime/core/melonds_netplay.cpp" \
   "$root/native-runtime/video/vulkan/vulkan_backend.cpp" \
   "$root/native-runtime/platform/linux/linux_runtime.cpp" \
   "$root/native-runtime/platform/linux/linux_controls.cpp" \
@@ -152,7 +93,7 @@ if [[ "$target" == "deb" ]]; then
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
   install -m 0644 "$tauri_deb" "$deb_path"
-  sha256sum "$deb_path" > "$deb_path.sha256"
+  (cd "$release" && sha256sum "$deb_name" > "$deb_name.sha256")
   if [[ "$deb_path" != "$flatpak_deb_path" ]]; then
     mkdir -p "$(dirname "$flatpak_deb_path")"
     install -m 0644 "$deb_path" "$flatpak_deb_path"
@@ -164,3 +105,20 @@ if [[ "$target" == "deb" ]]; then
   echo "LINUX_DEB=$deb_path"
   exit 0
 fi
+
+[[ -f "$deb_path" && -f "$flatpak_deb_path" ]] || {
+  echo 'Build the verified DEB first: build-linux-staging.sh deb' >&2
+  exit 3
+}
+cmp -s "$deb_path" "$flatpak_deb_path" || {
+  echo 'The Flatpak source DEB is stale or differs from the selected staged DEB.' >&2
+  exit 3
+}
+flatpak-builder --force-clean --disable-cache --repo="$build/flatpak-repo" \
+  "$build/flatpak-build" "$root/flatpak/space.an3tocom.offline.yml"
+flatpak build-bundle "$build/flatpak-repo" \
+  "$release/$flatpak_name" \
+  space.an3tocom.offline master \
+  --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+(cd "$release" && sha256sum "$flatpak_name" > "$flatpak_name.sha256")
+echo "LINUX_FLATPAK=$release/$flatpak_name"

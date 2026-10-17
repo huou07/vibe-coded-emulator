@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Own the bundled portable player. No shell, external emulator lookup, or
 //! browser frame transport participates in native Windows gameplay.
-use super::{NativeCapabilities, NativeStart};
+use super::{NativeCapabilities, NativeInput, NativeMultiplayerConfig, NativeStart};
 use crate::{native_rom_path, validate_rom_id};
 use std::{fs, io::{BufRead, BufReader, Write}, os::windows::process::CommandExt,
     path::PathBuf, process::{Child, Command, Stdio}, sync::Mutex, time::{Duration, Instant}};
 use tauri::{AppHandle, Manager};
 
 static SESSION: Mutex<Option<Child>> = Mutex::new(None);
+static ACTIVE_SYSTEM: Mutex<Option<String>> = Mutex::new(None);
 
 fn runtime_path(app: &AppHandle) -> Result<PathBuf, String> {
     let bundled = app.path().resource_dir().map_err(|e| e.to_string())?
@@ -39,6 +40,7 @@ pub(super) fn capabilities(app: &AppHandle) -> Result<NativeCapabilities, String
 }
 
 pub(super) fn stop() -> Result<(), String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = None; }
     let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
     if let Some(mut child) = session.take() {
         if let Some(mut input) = child.stdin.take() { let _ = writeln!(input, "QUIT"); }
@@ -55,7 +57,8 @@ pub(super) fn stop() -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>) -> Result<NativeStart, String> {
+pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<&str>, netplay: Option<NativeMultiplayerConfig>) -> Result<NativeStart, String> {
+    if let Ok(mut slot) = ACTIVE_SYSTEM.lock() { *slot = Some(system.to_string()); }
     validate_rom_id(rom_id)?;
     let core = super::native_core(system)?;
     let runtime = runtime_path(app)?;
@@ -69,14 +72,19 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     let log = storage.join("runtime.log");
     let errors = fs::File::create(&log).map_err(|e| e.to_string())?;
     let layout = match layout { Some("left-right" | "side_by_side") => "left-right", Some("top-bottom" | "top_bottom") => "top-bottom", _ => "preserve" };
-    let mut child = Command::new(&runtime)
+    let mut command = Command::new(&runtime)
         .args(["--rom"]).arg(&rom).args(["--system",system,"--layout",layout,"--storage"])
         .arg(&storage).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
         .env("GSETTINGS_SCHEMA_DIR", runtime.parent().unwrap().join("share/glib-2.0/schemas"))
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(errors)
-        .creation_flags(0x08000000) // Hide the console; SDL and GTK create the native GUI.
-        .spawn().map_err(|e| format!("Cannot start the bundled Windows player: {e}"))?;
+        .creation_flags(0x08000000); // Hide the console; SDL and GTK create the native GUI.
+    if let Some(config) = netplay {
+        command.args(["--multiplayer", config.role.as_str()]);
+        if config.role == "join" { command.args(["--multiplayer-address", config.address.as_str()]); }
+        command.args(["--multiplayer-port", &config.port.to_string()]);
+    }
+    let mut child = command.spawn().map_err(|e| format!("Cannot start the bundled Windows player: {e}"))?;
     let output = child.stdout.take().ok_or("Native startup channel unavailable")?;
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
@@ -100,7 +108,21 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     }
 }
 
+pub(super) fn input(value: NativeInput) -> Result<(), String> {
+    let mut session = SESSION.lock().map_err(|_| "Native session lock unavailable")?;
+    if let Some(pipe) = session.as_mut().and_then(|child| child.stdin.as_mut()) {
+        writeln!(pipe,"INPUT {} {} {} {} {} {}", value.buttons, value.circle_x, value.circle_y,
+            value.touch_x, value.touch_y, u8::from(value.touch_pressed)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// True while the native player child process is still alive.
+/// The system the active native game is running, if any.
+pub(super) fn active_system() -> Option<String> {
+    ACTIVE_SYSTEM.lock().ok().and_then(|value| value.clone())
+}
+
 pub(super) fn running() -> bool {
     let Ok(mut session) = SESSION.lock() else { return false };
     match session.as_mut() {

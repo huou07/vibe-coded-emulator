@@ -31,9 +31,6 @@
 
 #if defined(__APPLE__)
 #include "cocoa_surface.h"
-#elif !defined(__ANDROID__)
-#include "desktop_surface.h"
-#include <SDL3/SDL_scancode.h>
 #endif
 
 namespace {
@@ -62,21 +59,12 @@ void on_signal(int) {
     g_quit.store(true);
 }
 
-void request_visible_window(void) {
-#if defined(_WIN32)
-    (void)_putenv_s("AN3_EDEN_WINDOW_VISIBLE", "1");
-#else
-    (void)setenv("AN3_EDEN_WINDOW_VISIBLE", "1", 1);
-#endif
-}
-
 int should_stop(void) {
     return g_quit.load() ? 1 : 0;
 }
 
-/* Platform key codes -> AN3 button ids (or -1). */
+/* macOS virtual key codes -> AN3 button ids (or -1). */
 int key_to_button(int key_code) {
-#if defined(__APPLE__)
     switch (key_code) {
         case 0: return AN3_EDEN_BUTTON_Y;      /* A */
         case 1: return AN3_EDEN_BUTTON_X;      /* S */
@@ -95,26 +83,6 @@ int key_to_button(int key_code) {
         case 126: return AN3_EDEN_BUTTON_UP;
         default: return -1;
     }
-#else
-    switch (key_code) {
-        case SDL_SCANCODE_A: return AN3_EDEN_BUTTON_Y;
-        case SDL_SCANCODE_S: return AN3_EDEN_BUTTON_X;
-        case SDL_SCANCODE_Z: return AN3_EDEN_BUTTON_B;
-        case SDL_SCANCODE_X: return AN3_EDEN_BUTTON_A;
-        case SDL_SCANCODE_Q: return AN3_EDEN_BUTTON_L;
-        case SDL_SCANCODE_W: return AN3_EDEN_BUTTON_R;
-        case SDL_SCANCODE_E: return AN3_EDEN_BUTTON_L2;
-        case SDL_SCANCODE_R: return AN3_EDEN_BUTTON_R2;
-        case SDL_SCANCODE_RETURN: return AN3_EDEN_BUTTON_START;
-        case SDL_SCANCODE_SPACE: return AN3_EDEN_BUTTON_A;
-        case SDL_SCANCODE_DELETE: return AN3_EDEN_BUTTON_SELECT;
-        case SDL_SCANCODE_LEFT: return AN3_EDEN_BUTTON_LEFT;
-        case SDL_SCANCODE_RIGHT: return AN3_EDEN_BUTTON_RIGHT;
-        case SDL_SCANCODE_DOWN: return AN3_EDEN_BUTTON_DOWN;
-        case SDL_SCANCODE_UP: return AN3_EDEN_BUTTON_UP;
-        default: return -1;
-    }
-#endif
 }
 
 void key_handler(int key_code, int is_down) {
@@ -213,8 +181,6 @@ void command_loop(void) {
         if (std::strcmp(verb, "focus") == 0) {
 #if defined(__APPLE__)
             an3_eden_cocoa_focus();
-#elif !defined(__ANDROID__)
-            an3_eden_desktop_focus();
 #endif
             std::printf("\nAN3CTL_ACK {\"focus\":true}\n");
             std::fflush(stdout);
@@ -278,7 +244,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     if (visible) {
-        request_visible_window();
+        setenv("AN3_EDEN_WINDOW_VISIBLE", "1", 1);
     }
 
     an3_eden_core* core = nullptr;
@@ -314,8 +280,6 @@ int main(int argc, char** argv) {
 
 #if defined(__APPLE__)
     an3_eden_cocoa_set_key_handler(key_handler);
-#elif !defined(__ANDROID__)
-    an3_eden_desktop_set_key_handler(key_handler);
 #endif
 
     g_running.store(true);
@@ -348,9 +312,6 @@ int main(int argc, char** argv) {
     if (visible) {
 #if defined(__APPLE__)
         an3_eden_cocoa_run(should_stop);
-#elif !defined(__ANDROID__)
-        an3_eden_desktop_run(should_stop);
-        g_quit.store(true);
 #else
         while (!g_quit.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));

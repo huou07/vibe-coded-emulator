@@ -188,24 +188,7 @@
     if (nativeRomId && typeof globalThis.AN3AndroidRemoveRom==="function") try { globalThis.AN3AndroidRemoveRom(nativeRomId); } catch(_) {}
     else if (nativeRomId && nativeRomPickerAvailable()) try { await nativeBridge().invoke("remove_native_rom",{romId:nativeRomId}); } catch(_) {}
   };
-  const reconcileNativeLibrary = async () => {
-    if (!nativeOfflineApp) return;
-    const invoke=nativeBridge().invoke;
-    if (typeof invoke !== "function") return;
-    let manifest;
-    try { manifest=await invoke("native_rom_library_manifest",{}); } catch (_) { return; }
-    const existing=new Map((await all()).map(game=>[String(game?.id||""),game]));
-    for (const item of Array.isArray(manifest?.items)?manifest.items:[]) {
-      const id=String(item?.romId||""),name=String(item?.name||"");
-      if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)||!name) continue;
-      const previous=existing.get(id),nativeRecord=/Android/i.test(navigator.userAgent)?{nativePath:`/native-rom/${name}`}:{nativeUrl:`/_an3/rom/${name}`};
-      if (previous?.romHash===item.contentHash&&Number(previous?.size)===Number(item.size)&&nativeRecord.nativePath===previous?.nativePath&&nativeRecord.nativeUrl===previous?.nativeUrl) continue;
-      await put({...previous,id,title:previous?.title||name,name:previous?.name||name,system:item.system||previous?.system||"gba",size:Number(item.size)||0,romHash:String(item.contentHash||""),addedAt:previous?.addedAt||Date.now(),nativeRomId:id,...nativeRecord});
-    }
-  };
-  // Reconcile the on-device ROM catalog with the same IndexedDB records used
-  // by the normal import flow. The browser app keeps its ordinary form/OPFS.
-  window.AN3OfflineLibrary = {get,getFile,list:all,put,reconcileNative:reconcileNativeLibrary};
+  window.AN3OfflineLibrary = {get,getFile};
 
   const inferName = name => {
     const lower = normalized(name);
@@ -283,7 +266,7 @@
   const controlsSettingsMarkup = system => virtualPadSettingsMarkup(system).replace(/<section class="player-pad-settings"><header><strong>.*?<\/strong><\/header>/,`<section class="player-settings-group player-controls-settings player-pad-settings"><header><strong>${text("Điều khiển","Controls")}</strong><small>${text("Phím ảo","Virtual controls")}</small></header><div class="player-controls-visibility"><span>${text("Phím ảo","Virtual controls")}</span><button id="togglePad" type="button" aria-pressed="false">${text("Hiện phím ảo","Show virtual controls")}</button></div>`);
   const touchToggleMarkup = system => ["gb","gba","nds","3ds"].includes(system) ? `<button id="toggleTouch" class="touch-toggle" type="button" aria-pressed="true" title="${text("Ẩn phím ảo","Hide virtual controls")}" aria-label="${text("Bật hoặc tắt phím ảo","Toggle virtual controls")}">Touch</button>` : "";
   const gameSettingsMarkup = () => `<section class="player-settings-group player-game-settings"><header><strong>${text("Trò chơi & save","Game & saves")}</strong><small>${text("Trên thiết bị này","On this device")}</small></header><div class="player-panel-actions"><button id="saveState" type="button">${text("Tải save state","Download save state")}</button><button id="loadState" type="button">${text("Nạp save state","Load save state")}</button><input id="stateFile" type="file" accept=".state,.savestate,application/octet-stream" hidden></div></section>`;
-  const advancedSettingsMarkup = () => `<section class="player-settings-group player-advanced-settings"><header><strong>${text("Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">${text("Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions"><button id="emulatorMenu" type="button">${text("Mở menu giả lập","Open emulator menu")}</button></div></section>`;
+  const advancedSettingsMarkup = () => `<section class="player-settings-group player-advanced-settings"><header><strong>${text("Nâng cao","Advanced")}</strong></header><p class="player-setting-copy">${text("Mở menu EmulatorJS để dùng các cài đặt core đã được hỗ trợ.","Open the EmulatorJS menu for its supported core settings.")}</p><div class="player-panel-actions"><button id="castScreen" type="button">${text("Dò TV & phát màn hình","Find TV & cast game")}</button><button id="emulatorMenu" type="button">${text("Mở menu giả lập","Open emulator menu")}</button></div></section>`;
   const playerMarkup = system => `<div class="player-toolbar" role="toolbar" aria-label="${text("Điều khiển trình phát","Player controls")}">
     <a class="player-back" href="${offlineLocation("")}" title="${text("Quay lại","Back")}" aria-label="${text("Quay lại thư viện ngoại tuyến","Back to offline library")}"><img src="/static/ui-arrow-left.svg" alt="" width="24" height="24"></a><span class="player-title"></span>
     <div class="player-toolbar-actions"><button id="fullscreen" type="button" title="${text("Toàn màn hình","Fullscreen")}" aria-label="${text("Toàn màn hình","Fullscreen")}"><img src="/static/ui-maximize.svg" alt="" width="24" height="24"></button>
@@ -504,24 +487,10 @@
     });
   };
 
-  // A newer render must win. Rapid navigation, return-from-game, the native
-  // capability re-render and an import/remove can all start overlapping async
-  // reads; without a generation token a slow older read can commit after a
-  // newer one and drop whole system sections (the intermittent "only NDS"
-  // library). Each render advances the token and discards its snapshot if a
-  // newer render has started.
-  const libraryRenderState = {generation: 0};
-  const beginLibraryRender = () => (libraryRenderState.generation += 1);
-  const isCurrentLibraryRender = generation => generation === libraryRenderState.generation;
-
   const renderLibrary = async () => {
     const grid=document.getElementById("offlineGameGrid");if(!grid)return;
-    const generation=beginLibraryRender();
     try {
-      await reconcileNativeLibrary();
-      const games=await all();
-      if(!isCurrentLibraryRender(generation))return;
-      grid.replaceChildren();updateReadiness(games.length);
+      const games=await all();grid.replaceChildren();updateReadiness(games.length);
       if(!games.length){const empty=document.createElement("div");empty.className="empty-state";empty.innerHTML=`<strong>${text("Chưa có game trên máy này.","No games on this device.")}</strong><span>${text("Dùng biểu mẫu bên dưới để lưu ROM riêng trong trình duyệt này.","Use Add ROM to store one on this device.")}</span>`;grid.appendChild(empty);return;}
       const groups=new Map();
       games.forEach(game=>{if(!groups.has(game.system))groups.set(game.system,[]);groups.get(game.system).push(game);});

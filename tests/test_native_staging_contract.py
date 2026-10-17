@@ -121,6 +121,30 @@ class NativeStagingContractTests(unittest.TestCase):
         self.assertIn('SOURCE_FROZEN_MANIFEST', RELEASE_TRAIN)
         self.assertIn('AN3_REQUIRE_DEPENDENCY_CACHE=1', RELEASE_TRAIN)
 
+    def test_release_train_preflights_space_and_discards_successful_local_build_copy(self):
+        freeze = RELEASE_TRAIN[
+            RELEASE_TRAIN.index("create_frozen_source()"):
+            RELEASE_TRAIN.index("read_frozen_source()")
+        ]
+        freeze_check = freeze.index("tools/disk-preflight.sh")
+        self.assertLess(freeze_check, freeze.index('mkdir -p "$freeze_dir"'))
+
+        coordinated = RELEASE_TRAIN[RELEASE_TRAIN.index("coordinated_build_all()") :]
+        self.assertLess(
+            coordinated.index("tools/disk-preflight.sh"),
+            coordinated.index('mkdir -p "$artifacts"'),
+        )
+        self.assertIn(
+            '[[ '
+            '"$mac_source" == "$run_root/macos-source" && -d "$mac_source" '
+            '&& ! -L "$mac_source" ]]',
+            coordinated,
+        )
+        self.assertLess(
+            coordinated.index('cp "$frozen_source" "$run_root/SOURCE_FROZEN.json"'),
+            coordinated.index('rm -rf -- "$mac_source"'),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

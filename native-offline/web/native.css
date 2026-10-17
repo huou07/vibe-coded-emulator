@@ -162,6 +162,8 @@ body.native-app-shell{
   color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;min-height:44px;
 }
 .native-field input:focus,.native-field select:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+/* The Phone Controller pad reuses the shared web pad classes (.ctrl-*) from
+   static/site.css so the packaged app and the web player cannot drift. */
 .native-native-picker{justify-content:center;min-height:48px}
 .native-status{margin:0;padding:0 18px 16px;color:var(--v-muted,#a5a0b6);font-size:12px}
 .native-status:empty{display:none}
@@ -237,16 +239,6 @@ body.native-app-shell{
 .native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
 .native-settings-group{display:grid;gap:12px;margin-top:6px}
 .native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-.native-field textarea{
-  border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);
-  color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;font-family:inherit;resize:vertical;
-}
-.native-field textarea:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
-.native-bug-preview{
-  max-height:260px;overflow:auto;margin:12px 0;border:1px solid var(--v-line,#282238);border-radius:10px;
-  background:var(--v-bg-soft,#0b0912);color:var(--v-muted,#a5a0b6);padding:12px;font-size:12px;
-  white-space:pre-wrap;overflow-wrap:anywhere;
-}
 .native-sync-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
 .native-sync-mode label,.native-sync-background{display:flex;align-items:center;gap:8px;color:var(--v-text,#f3f1fa);font-size:13px}
 .native-sync-mode input,.native-sync-background input{width:18px;height:18px}

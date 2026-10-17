@@ -15,7 +15,7 @@ import kotlin.math.min
  * Circular digital directional control. A single finger selects one of eight
  * angular regions; the four diagonals emit two simultaneous cardinal buttons,
  * never a synthetic one. Geometry comes from the canonical
- * [NativeInputActions.circularDirections] generated from the local input schema.
+ * [NativeInputActions.circularDirections] shared with the Phone Controller.
  */
 class NativeCircularDpad(
     context: Context,

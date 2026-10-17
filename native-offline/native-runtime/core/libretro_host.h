@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "melonds_netplay.h"
 #include "video_backend.h"
 
 #include <atomic>
@@ -23,6 +24,10 @@ struct NativeCoreStatus {
     double core_fps = 0.0;
     uint64_t core_frames = 0;
     bool hardware_render_rejected = false;
+    bool netplay_available = false;
+    bool netplay_connected = false;
+    bool netplay_listening = false;
+    std::string netplay_detail;
 };
 
 // Adapters render these copies in their own native controls. Keeping the
@@ -80,7 +85,8 @@ public:
                     NativeAudioBackend& audio,
                     std::string& error,
                     const std::string& nds_layout = "top-bottom",
-                    const std::string& graphics_api = "Vulkan");
+                    const std::string& graphics_api = "Vulkan",
+                    const MelonDsNetplayConfig& netplay = {});
 
     // Call from one adapter-owned emulation thread. Commands and callbacks are
     // serialized at this boundary; presentation/vsync never controls core speed.
@@ -96,18 +102,7 @@ public:
     bool save_state(unsigned slot, std::string& error); // slots 1..10
     bool load_state(unsigned slot, std::string& error);
     bool save_auto(std::string& error);
-    // Queue an immutable state snapshot without waiting for filesystem
-    // durability. Core-owned serialization remains synchronous; only the
-    // write/fsync/rename work is deferred to the save worker.
-    bool queue_save_auto(std::string& error);
     bool load_auto(std::string& error);
-    // Persist the core's battery save (SRAM/Flash/EEPROM) to the frontend save
-    // directory. Called automatically on shutdown; adapters may also call it on
-    // a timer or before suspension so a save survives an abrupt process kill.
-    bool flush_save_ram(std::string& error);
-    // Capture the core-owned battery buffer and queue its durable write. This
-    // periodic path never waits for storage from the emulation cadence.
-    bool queue_save_ram(std::string& error);
     bool export_state(const std::string& path, std::string& error);
     bool import_state(const std::string& path, std::string& error);
 

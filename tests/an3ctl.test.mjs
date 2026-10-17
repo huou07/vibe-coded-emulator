@@ -9,16 +9,43 @@
 // player (set AN3_PLAYER / AN3_PLAYER_TARGET) and a legal fixture; they skip
 // cleanly when that is absent so the suite never reports a false failure.
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
+import { createServer } from "node:net";
+import { canCreateUnder, daemonCacheOverride } from "../tools/an3ctl/adapters/web.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
-const FIXTURE = process.env.AN3_FIXTURE ?? "/home/YOUR_GITHUB_USER/an3-verify/legal-gba.gba";
+const GENERATOR = `${ROOT}/tools/make-synthetic-gba-fixture.py`;
+// A caller-supplied lawful fixture wins. Otherwise use the synthetic GBA ROM the
+// repository can build from its own source (tools/make-synthetic-gba-fixture.py,
+// git-ignored, never bundled), so the emulator lane is reproducible on any host
+// instead of depending on a machine-specific owner-home path.
+const SYNTHETIC_FIXTURE = `${ROOT}/work/fixtures/an3-synthetic-gba.gba`;
+const FIXTURE = process.env.AN3_FIXTURE ?? SYNTHETIC_FIXTURE;
+
+// Keep every pid file, log and Playwright session this test creates out of the
+// shared work/an3ctl directory, so a concurrent agent lane or a leftover manual
+// session can never make this self-test observe foreign state.
+const STATE = mkdtempSync(resolve(tmpdir(), "an3ctl-self-test-"));
+process.env.AN3_STATE_DIR = STATE;
+after(() => rmSync(STATE, { recursive: true, force: true }));
+
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const listener = createServer();
+    listener.on("error", reject);
+    listener.listen(0, "127.0.0.1", () => {
+      const { port } = listener.address();
+      listener.close(() => resolvePort(String(port)));
+    });
+  });
+}
 
 function cli(args, { timeoutMs = 180000 } = {}) {
   return new Promise((resolvePromise) => {
@@ -31,6 +58,10 @@ function cli(args, { timeoutMs = 180000 } = {}) {
     }, timeoutMs);
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolvePromise({ code: 127, stdout, stderr: stderr + error.message });
+    });
     child.on("close", (code) => {
       clearTimeout(timer);
       resolvePromise({ code, stdout, stderr });
@@ -52,7 +83,7 @@ test("targets: discovery returns an envelope with every target", async () => {
   for (const name of ["web", "android", "emulator", "macos", "linux", "windows"]) {
     assert.ok(name in envelope.data.targets, `missing target ${name}`);
   }
-  assert.equal(envelope.data.targets.web.hasPlaywright, true);
+  assert.equal(typeof envelope.data.targets.web.hasPlaywright, "boolean");
 });
 
 test("usage: an unknown command is a usage error (exit 2)", async () => {
@@ -62,8 +93,42 @@ test("usage: an unknown command is a usage error (exit 2)", async () => {
   assert.equal(envelope.error.code, "E_USAGE");
 });
 
+test("web: the Playwright daemon cache moves only when the shared one cannot host it", () => {
+  const base = { dir: "/state", platform: "linux", env: {}, home: "/home/u", creatable: () => true };
+
+  // Hosted runner: the default cache base is writable, so playwright-cli is left
+  // exactly as it was. This is the case that must not regress: overriding
+  // XDG_CACHE_HOME unconditionally also moved the installed-browser registry and
+  // hid a Chromium that CI had installed in the default location.
+  assert.equal(daemonCacheOverride(base), undefined);
+
+  // Worker: the shared cache cannot host the daemon, so the daemon moves beside
+  // this run's state and the browser registry is pinned so it is still found.
+  assert.deepEqual(daemonCacheOverride({ ...base, creatable: () => false }), {
+    XDG_CACHE_HOME: "/state/playwright-cache",
+    PLAYWRIGHT_BROWSERS_PATH: "/home/u/.cache/ms-playwright",
+  });
+
+  // An explicit caller choice always wins.
+  assert.equal(daemonCacheOverride({ ...base, env: { XDG_CACHE_HOME: "/custom" }, creatable: () => false }), undefined);
+  assert.equal(daemonCacheOverride({ ...base, env: { PWTEST_DAEMON_SESSION_DIR: "/sessions" }, creatable: () => false }), undefined);
+  assert.equal(
+    daemonCacheOverride({ ...base, env: { PLAYWRIGHT_BROWSERS_PATH: "/opt/browsers" }, creatable: () => false }).PLAYWRIGHT_BROWSERS_PATH,
+    "/opt/browsers",
+  );
+
+  // Other platforms resolve the daemon base somewhere else, so they are untouched.
+  assert.equal(daemonCacheOverride({ ...base, platform: "darwin", creatable: () => false }), undefined);
+  assert.equal(daemonCacheOverride({ ...base, platform: "win32", creatable: () => false }), undefined);
+});
+
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
-  const port = process.env.AN3_TEST_PORT ?? "8097";
+  const targets = parse(await cli(["targets", "--json"]));
+  if (!targets.data.targets.web.hasPlaywright) {
+    t.skip("playwright-cli is not installed");
+    return;
+  }
+  const port = process.env.AN3_TEST_PORT ?? (await freePort());
   const started = parse(await cli(["app", "start", "--target", "web", "--port", port, "--json"]));
   if (!started.ok) {
     t.skip(`web target unavailable: ${started.error.message}`);
@@ -81,9 +146,23 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
   assert.ok(Array.isArray(tree.data.nodes) && tree.data.nodes.length > 0);
   assert.ok(tree.data.nodes.every((node) => typeof node.role === "string" && typeof node.name === "string"));
 
+  // playwright-cli keeps its daemon and browser profile under
+  // $XDG_CACHE_HOME/ms-playwright. Opening the page must have used a base this
+  // run could actually write: an unwritable daemon directory otherwise surfaced
+  // here as an EACCES browser-cache error reported as if the page had failed.
+  // The decision itself is pinned by the unit test below; here we assert its
+  // observable effect on this host.
+  const override = daemonCacheOverride({ dir: STATE, platform: process.platform, env: process.env, home: homedir(), creatable: canCreateUnder });
+  if (override) {
+    assert.ok(
+      existsSync(`${override.XDG_CACHE_HOME}/ms-playwright/daemon`),
+      "when the shared cache cannot host the daemon, the private base must be the one used",
+    );
+  }
+
   const query = parse(await cli(["ui", "query", "--target", "web", "--path", "/games", "--id", "gameSearch", "--json"]));
   assert.equal(query.data.found, true);
-  assert.equal(query.data.node.role, "textbox");
+  assert.equal(query.data.node.role, "searchbox");
 
   const fill = parse(await cli(["ui", "fill", "--target", "web", "--path", "/games", "--id", "gameSearch", "--value", "emerald", "--json"]));
   assert.equal(fill.data.performed, true);
@@ -117,14 +196,6 @@ test("android: structured tree and a semantic click", async (t) => {
   assert.equal(started.ok, true, `app start failed: ${JSON.stringify(started.error)}`);
 
   const tree = parse(await cli(["ui", "tree", "--target", "android", "--limit", "30", "--json"]));
-  // A release APK intentionally exposes no WebView devtools socket, so the
-  // structured DOM tree only exists on a debug/test build. Skip with a clear
-  // reason instead of leaving an unexplained red test; never enable WebView
-  // debugging in production just to satisfy automation.
-  if (!tree.ok && tree.error && tree.error.code === "E_TARGET_UNAVAILABLE") {
-    t.skip(`Android automation bridge unavailable: ${tree.error.message}`);
-    return;
-  }
   assert.equal(tree.ok, true);
   assert.ok(tree.data.nodes.length > 0);
 
@@ -144,6 +215,12 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
   }
   // A local player needs the fixture locally; a remote player resolves --rom on
   // its own host, so the local file need not exist.
+  if (!playerTarget && !process.env.AN3_FIXTURE && !existsSync(FIXTURE)) {
+    // Reproduce the synthetic fixture instead of skipping: it is pure source
+    // output, contains no bundled ROM or copyrighted data, and lands in the
+    // git-ignored work tree.
+    spawnSync("python3", [GENERATOR, "--output", FIXTURE], { cwd: ROOT, stdio: "ignore" });
+  }
   if (!playerTarget && !existsSync(FIXTURE)) {
     t.skip(`fixture not present locally: ${FIXTURE}`);
     return;

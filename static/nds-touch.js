@@ -27,25 +27,6 @@
 
   const isSideBySide = layout => String(layout || "").toLowerCase().replace(/[^a-z]/g, "") === "leftright";
 
-  const inflateRect = (rect, amount) => {
-    const left = finite(rect?.left), top = finite(rect?.top);
-    const right = finite(rect?.right, left + finite(rect?.width));
-    const bottom = finite(rect?.bottom, top + finite(rect?.height));
-    return {left: left - amount, top: top - amount, right: right + amount, bottom: bottom + amount};
-  };
-  const rectsIntersect = (first, second) => Boolean(first && second) &&
-    first.left < second.right && first.right > second.left &&
-    first.top < second.bottom && first.bottom > second.top;
-  const rectsConflict = (first, second, gap) => Boolean(first && second) &&
-    first.left < second.right + gap && first.right + gap > second.left &&
-    first.top < second.bottom + gap && first.bottom + gap > second.top;
-  const rectFromCenter = (center, width, height) => ({
-    left: center.x - width / 2,
-    top: center.y - height / 2,
-    right: center.x + width / 2,
-    bottom: center.y + height / 2
-  });
-
   const asElement = node => node?.nodeType === 1 ? node : node?.parentElement || null;
   const isProtectedUiTarget = (root, target, composedPath = []) => {
     const nodes = composedPath.length ? composedPath : [target];
@@ -177,68 +158,6 @@
     });
   };
 
-  // Virtual controls and the emulated touch screen share one glass. A control
-  // that sits over the touch half silently steals the taps meant for the DS
-  // game, so the pad must resolve the touch screen from runtime geometry and
-  // keep its controls clear of it. Controls already clear of the screen keep
-  // exactly the position the player chose; only a control that would cover the
-  // screen is moved, and only as far as the nearest free slot inside the play
-  // area allows. Positions are returned in the same coordinate space as the
-  // supplied viewport/bounds and never mutate the caller's saved layout.
-  const resolveTouchSafeControls = ({viewport, layout, controls, bounds, edgeGap = 4, controlGap = 4, step = 4} = {}) => {
-    const screen = touchScreenRect(viewport, layout);
-    if (!screen || !(screen.width > 0 && screen.height > 0)) return null;
-    const area = bounds || viewport;
-    if (!(area?.width > 0 && area?.height > 0) || !Array.isArray(controls)) return null;
-    const forbidden = inflateRect(screen, controlGap);
-    const placed = [];
-    const positions = {};
-    const insideBounds = rect =>
-      rect.left >= edgeGap && rect.top >= edgeGap &&
-      rect.right <= area.width - edgeGap && rect.bottom <= area.height - edgeGap;
-    const free = rect => insideBounds(rect) && !rectsIntersect(rect, forbidden) &&
-      !placed.some(other => rectsConflict(rect, other.rect, controlGap));
-    const entries = controls.map(control => {
-      const width = Math.max(0, finite(control?.width));
-      const height = Math.max(0, finite(control?.height));
-      const center = {x: finite(control?.center?.x), y: finite(control?.center?.y)};
-      return {id: control?.id, width, height, center, rect: rectFromCenter(center, width, height)};
-    }).filter(entry => entry.id && entry.width > 0 && entry.height > 0);
-    const blocked = entries.filter(entry => rectsIntersect(entry.rect, forbidden));
-    const settled = entries.filter(entry => !rectsIntersect(entry.rect, forbidden));
-    for (const entry of settled) {
-      positions[entry.id] = entry.center;
-      placed.push({id: entry.id, rect: entry.rect});
-    }
-    // Move the controls that only just touch the screen first, so the layout
-    // stays as close as possible to the player's arrangement.
-    const nearestEscape = rect => Math.min(
-      Math.abs(rect.bottom - forbidden.top),
-      Math.abs(forbidden.bottom - rect.top),
-      Math.abs(rect.right - forbidden.left),
-      Math.abs(forbidden.right - rect.left)
-    );
-    blocked.sort((first, second) => nearestEscape(first.rect) - nearestEscape(second.rect));
-    const searchStep = Math.max(2, finite(step, 4));
-    for (const entry of blocked) {
-      let best = null, bestDistance = Infinity;
-      for (let y = edgeGap + entry.height / 2; y <= area.height - edgeGap - entry.height / 2; y += searchStep) {
-        for (let x = edgeGap + entry.width / 2; x <= area.width - edgeGap - entry.width / 2; x += searchStep) {
-          const candidate = rectFromCenter({x, y}, entry.width, entry.height);
-          if (!free(candidate)) continue;
-          const distance = (x - entry.center.x) ** 2 + (y - entry.center.y) ** 2;
-          if (distance < bestDistance) { bestDistance = distance; best = {x, y}; }
-        }
-      }
-      // No free slot means the play area cannot fit every control outside the
-      // screen; keep the player's position rather than losing the control.
-      const chosen = best || entry.center;
-      positions[entry.id] = chosen;
-      placed.push({id: entry.id, rect: rectFromCenter(chosen, entry.width, entry.height)});
-    }
-    return {zone: screen, positions};
-  };
-
   globalThis.AN3NdsTouchBridge = Object.freeze({
     SOURCE_SELECTOR,
     SCREEN_WIDTH,
@@ -250,9 +169,6 @@
     touchScreenRect,
     mapPoint,
     createTouchGestureOwner,
-    createTapReleaseLatch,
-    rectsIntersect,
-    rectsConflict,
-    resolveTouchSafeControls
+    createTapReleaseLatch
   });
 })();

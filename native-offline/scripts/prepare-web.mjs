@@ -18,30 +18,6 @@ await mkdir(destination, { recursive: true });
 await cp(resolve(repositoryRoot, "static"), resolve(destination, "static"), { recursive: true });
 await cp(resolve(nativeRoot, "web"), destination, { recursive: true });
 
-// Inject the canonical app version into the packaged shell so the About panel
-// can never drift from the real build. Android passes its own version field
-// (AN3_APP_VERSION) because tauri.android.conf.json overrides it; desktop
-// builds fall back to package.json. Only the generated copy is rewritten — the
-// tracked source keeps the __AN3_VERSION__ token.
-const packageVersion = JSON.parse(await readFile(resolve(nativeRoot, "package.json"), "utf8")).version;
-const appVersion = String(process.env.AN3_APP_VERSION || packageVersion || "").trim();
-if (!/^\d+\.\d+\.\d+$/.test(appVersion)) {
-  throw new Error(`prepare-web requires a valid injected app version, received: ${JSON.stringify(appVersion)}`);
-}
-const generatedIndex = resolve(destination, "index.html");
-// Anonymous support origin: plain configuration, never a secret. An empty or
-// invalid value disables the anonymous path and leaves the copy fallback.
-const supportOrigin = String(process.env.AN3_SUPPORT_ORIGIN || "").trim().replace(/\/+$/, "");
-if (supportOrigin && !/^https?:\/\/[^\s/]+$/i.test(supportOrigin)) {
-  throw new Error(`AN3_SUPPORT_ORIGIN must be a scheme and authority, received: ${JSON.stringify(supportOrigin)}`);
-}
-await writeFile(
-  generatedIndex,
-  (await readFile(generatedIndex, "utf8"))
-    .replaceAll("__AN3_VERSION__", appVersion)
-    .replaceAll("__AN3_SUPPORT_ORIGIN__", supportOrigin),
-);
-
 // The installed app cannot rely on a browser tab's origin to deliver cores.
 // Package only the reviewed GBA, NDS and 3DS runtime files from staging, then
 // let the Rust loopback server deliver them with COOP/COEP.  `data-v2` is the
@@ -83,8 +59,27 @@ for (const relativePath of runtimeFiles) {
   } catch {}
   if (!payload) {
     if (requireDependencyCache) throw new Error(`Frozen dependency cache is missing or corrupt: ${relativePath}`);
-    const response = await fetch(`${origin}/${sourcePath}`);
-    if (!response.ok) throw new Error(`Native runtime asset ${relativePath} returned HTTP ${response.status}`);
+    // Fail with the boundary named. A bare `TypeError: fetch failed` here reads
+    // like a broken build host, but the real precondition is a configured
+    // runtime source: every latest/data-v2 asset (the repaired Azahar runtime)
+    // is published only by a seeded local AN3 runtime source, never by the
+    // public EmulatorJS CDN.
+    let response;
+    try {
+      response = await fetch(`${origin}/${sourcePath}`);
+    } catch (error) {
+      throw new Error(
+        `Native runtime asset ${relativePath} is neither in the frozen dependency cache (${dependencyCache}) nor fetchable from ${origin} (${error.message}). ` +
+        `The latest/data-v2 runtime (repaired Azahar) comes from a seeded local runtime source: set AN3_OFFLINE_RUNTIME_SOURCE to one (default ${patchedRuntimeOrigin}), ` +
+        `or pre-populate the dependency cache with the pinned downloaded files, then re-run.`,
+      );
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Native runtime asset ${relativePath} returned HTTP ${response.status} from ${origin}. ` +
+        `The standard assets come from ${standardRuntimeOrigin}; the latest/data-v2 assets come from AN3_OFFLINE_RUNTIME_SOURCE (currently ${patchedRuntimeOrigin}) or from the frozen dependency cache.`,
+      );
+    }
     payload = new Uint8Array(await response.arrayBuffer());
   }
   if (!payload.byteLength) throw new Error(`Native runtime asset ${relativePath} is empty`);
@@ -103,20 +98,6 @@ for (const relativePath of runtimeFiles) {
 // `tauri.conf.json` intact and only replace the prepared application entries.
 const androidAssets = resolve(nativeRoot, "src-tauri", "gen", "android", "app", "src", "main", "assets");
 await mkdir(androidAssets, { recursive: true });
-// These packaged browser bundles belonged to the removed LAN Sync and Phone
-// Controller clients.
-for (const obsolete of [
-  "static/lan-peer.js",
-  "static/sync-transfer.js",
-  "static/sync.js",
-  "native-sync.js",
-  "static/controller.js",
-  "static/controller-utility.js",
-  "static/input-actions.js",
-  "controller-sender.js",
-]) {
-  await rm(resolve(androidAssets, obsolete), { force: true });
-}
 // Remove only obsolete generated macOS resources from the Android build tree.
 // Android uses its bundled web cores; these dylibs cannot run on Android.
 for (const obsolete of ["azahar", "libretro"]) {

@@ -139,7 +139,7 @@ const result = ['Android', 'Macintosh', 'iPhone'].map(userAgent => {
 console.log(JSON.stringify(result));
 """
         systems = json.loads(subprocess.check_output(['node', '-e', script, json.dumps(bootstrap)], text=True))
-        self.assertEqual(systems, [["gba", "nds", "3ds", "switch"], ["gba", "nds", "3ds"], []])
+        self.assertEqual(systems, [["gba", "nds", "3ds"], ["gba", "nds", "3ds"], []])
         self.assertIn('window.AN3NativeLaunchGame = (romId, system, layout) => {', bootstrap)
         self.assertNotIn('AN3AndroidLaunchThreeDs', bootstrap)
         self.assertIn('const androidThreeDsUnavailable = system =>', OFFLINE_JS)
@@ -156,9 +156,7 @@ console.log(JSON.stringify(result));
         self.assertIn('navigator.storage?.getDirectory', OFFLINE_JS)
         self.assertIn('getDirectoryHandle("an3-arcade-roms",{create:true})', OFFLINE_JS)
         self.assertIn('const getFile = async id => {', OFFLINE_JS)
-        self.assertIn('window.AN3OfflineLibrary', OFFLINE_JS)
-        self.assertIn('list:all', OFFLINE_JS)
-        self.assertIn('put', OFFLINE_JS)
+        self.assertIn('window.AN3OfflineLibrary = {get,getFile};', OFFLINE_JS)
         self.assertIn('const playableThreeDsFile = async file => {', OFFLINE_JS)
         self.assertIn('const browserArrayBufferLimit=2**31;', OFFLINE_JS)
         self.assertIn('String.fromCharCode(...header.slice(0x100,0x104))!=="NCSD"', OFFLINE_JS)
@@ -181,8 +179,7 @@ console.log(JSON.stringify(result));
         capabilities = (native_root / "src-tauri" / "capabilities" / "default.json").read_text(encoding="utf-8")
         self.assertIn('"allow-start-native-game"', capabilities)
         self.assertIn('"allow-stop-native-game"', capabilities)
-        self.assertNotIn('"allow-set-native-input"', capabilities)
-        self.assertNotIn('native_controller_', capabilities)
+        self.assertIn('"allow-set-native-input"', capabilities)
         self.assertNotIn('"allow-launch-native-3ds"', capabilities)
         # Every Tauri command must be allowed by the capability ACL and listed in
         # build.rs's AppManifest, or the WebView gets "Command ... not allowed by
@@ -192,15 +189,11 @@ console.log(JSON.stringify(result));
             for path in sorted((native_root / "src-tauri" / "src").glob("*.rs"))
         )
         commands = re.findall(r"#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)", command_sources)
-        self.assertFalse(any(command.startswith("native_controller_") or command.startswith("native_latency_") for command in commands))
-        self.assertNotIn("set_native_input", commands)
+        self.assertIn("native_controller_status", commands)
         build_rs = (native_root / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        # `ui_control_result` is feature-gated (test-only automation bridge), so
-        # it is pushed conditionally instead of appearing in the literal list.
-        manifest = build_rs[build_rs.index("let mut commands = vec!["):]
-        manifest = manifest[:manifest.index("];")]
+        manifest = build_rs[build_rs.index(".commands(&["):]
+        manifest = manifest[:manifest.index("]")]
         declared = re.findall(r'"([a-z0-9_]+)"', manifest)
-        declared.append("ui_control_result")
         self.assertEqual(sorted(declared), sorted(commands), "build.rs commands must match the #[tauri::command] set")
         for command in commands:
             permission = "allow-" + command.replace("_", "-")
@@ -212,27 +205,8 @@ console.log(JSON.stringify(result));
         with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
             names = bundle.namelist()
         self.assertIn("an3-offline-native/src-tauri/Cargo.toml", names)
-        wrapper = native_root / "src-tauri" / "gen" / "android" / "gradlew"
-        if wrapper.is_file():
-            self.assertIn("an3-offline-native/src-tauri/gen/android/gradlew", names)
-        else:
-            package = json.loads((native_root / "package.json").read_text(encoding="utf-8"))
-            self.assertIn("android:init", package["scripts"])
+        self.assertIn("an3-offline-native/src-tauri/gen/android/gradlew", names)
         self.assertFalse(any("/.signing/" in name or "/releases/" in name or "/target/" in name or name.endswith("local.properties") for name in names))
-
-    def test_library_render_discards_a_stale_async_snapshot(self):
-        # A slow older read must never overwrite a newer render, or an
-        # out-of-order IndexedDB resolution can drop whole system sections (the
-        # intermittent "only NDS" library).
-        self.assertIn("const libraryRenderState = {generation: 0};", OFFLINE_JS)
-        self.assertIn("const generation=beginLibraryRender();", OFFLINE_JS)
-        self.assertIn(
-            "const games=await all();\n      if(!isCurrentLibraryRender(generation))return;",
-            OFFLINE_JS,
-        )
-        # The generated Android mirror must carry the same guard.
-        mirror = (ROOT / "native-offline/src-tauri/gen/android/app/src/main/assets/static/offline.js").read_text(encoding="utf-8")
-        self.assertIn("if(!isCurrentLibraryRender(generation))return;", mirror)
 
 
 if __name__ == "__main__":

@@ -7,36 +7,36 @@ The tools use the default ADB target and never print, write, or select by device
 ## First run
 
 ```bash
-<LEGACY_CHECKOUT> --report <LEGACY_CHECKOUT>
-<LEGACY_CHECKOUT>
+<legacy-checkout>/tools/android/check-device.sh --report <legacy-checkout>/reports/android-regression/YYYY-MM-DD-device.txt
+<legacy-checkout>/tools/android/open-staging.sh
 ```
 
-Every screenshot is captured only after the approved browser is foreground and is stored under `<LEGACY_CHECKOUT> Use labels that identify only the staging test state, never a person or device identifier.
+Every screenshot is captured only after the approved browser is foreground and is stored under `<legacy-checkout>/reports/android-regression/`. Use labels that identify only the staging test state, never a person or device identifier.
 
 ## Regression passes
 
 ```bash
 # Homepage intent, host response, and visual evidence.
-<LEGACY_CHECKOUT>
+<legacy-checkout>/tools/android/smoke-home.sh
 
 # Capture the current staging player layout first, then supply live coordinates.
-<LEGACY_CHECKOUT> gba-layout
-<LEGACY_CHECKOUT> --start X,Y
-<LEGACY_CHECKOUT> --game-box X,Y,WIDTH,HEIGHT --pad X,Y --native-menu X,Y
-<LEGACY_CHECKOUT> --enter-toggle X,Y --exit-toggle X,Y
+<legacy-checkout>/tools/android/capture-state.sh gba-layout
+<legacy-checkout>/tools/android/smoke-gba.sh --start X,Y
+<legacy-checkout>/tools/android/smoke-nds.sh --game-box X,Y,WIDTH,HEIGHT --pad X,Y --native-menu X,Y
+<legacy-checkout>/tools/android/smoke-fullscreen.sh --enter-toggle X,Y --exit-toggle X,Y
 ```
 
 The GBA/NDS/fullscreen tools intentionally require live coordinates rather than embedding old screenshot coordinates. ADB gesture injection plus host route status is runtime evidence of the device path; visual canvas/FPS, native-menu priority, save/load, and portrait/landscape remain explicit checks because a screenshot alone is not WebGL proof.
 
 ## Private PWA localhost preflight
 
-Start the verified key-only private local forward from `<LEGACY_CHECKOUT> then run the script. Do not disable browser security, expose staging publicly, change Cloudflare, or leave the reverse mapping behind.
+Start the verified key-only private local forward from `<legacy-checkout>/tools/ssh/`, then run the script. Do not disable browser security, expose staging publicly, change Cloudflare, or leave the reverse mapping behind.
 
 ```bash
-export AN3_STAGING_SSH_IDENTITY_FILE=~/<REDACTED_PATH>
-export AN3_STAGING_SSH_KNOWN_HOSTS=~/<REDACTED_PATH>
-<LEGACY_CHECKOUT> 18092
-<LEGACY_CHECKOUT> 18092
+export AN3_STAGING_SSH_IDENTITY_FILE=~/an3-codex-staging
+export AN3_STAGING_SSH_KNOWN_HOSTS=~/known_hosts
+<legacy-checkout>/tools/ssh/open-staging-pwa-tunnel.sh 18092
+<legacy-checkout>/tools/android/smoke-pwa.sh 18092
 ```
 
-`smoke-pwa.sh` removes only its own `adb reverse tcp:18092` mapping when it exits. The full PWA evidence record must be written under `<LEGACY_CHECKOUT> and must state `PWA_OFFLINE_E2E=DOCUMENTED_BLOCKER` if `isSecureContext`, Service Worker/install, or offline relaunch cannot be demonstrated truthfully.
+`smoke-pwa.sh` removes only its own `adb reverse tcp:18092` mapping when it exits. The full PWA evidence record must be written under `<legacy-checkout>/reports/android-regression/` and must state `PWA_OFFLINE_E2E=DOCUMENTED_BLOCKER` if `isSecureContext`, Service Worker/install, or offline relaunch cannot be demonstrated truthfully.

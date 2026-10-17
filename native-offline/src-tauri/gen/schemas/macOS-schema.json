@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the cancel_native_rom_import command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cancel-native-rom-import",
+          "markdownDescription": "Enables the cancel_native_rom_import command without any pre-configured scope."
+        },
+        {
           "description": "Enables the native_3ds_capabilities command without any pre-configured scope.",
           "type": "string",
           "const": "allow-native-3ds-capabilities",
@@ -187,6 +193,168 @@
           "type": "string",
           "const": "allow-native-capabilities",
           "markdownDescription": "Enables the native_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-join",
+          "markdownDescription": "Enables the native_controller_lan_join command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-refresh",
+          "markdownDescription": "Enables the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-send",
+          "markdownDescription": "Enables the native_controller_lan_send command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-start",
+          "markdownDescription": "Enables the native_controller_lan_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-status",
+          "markdownDescription": "Enables the native_controller_lan_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_lan_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-lan-stop",
+          "markdownDescription": "Enables the native_controller_lan_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-start",
+          "markdownDescription": "Enables the native_controller_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-status",
+          "markdownDescription": "Enables the native_controller_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_controller_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-controller-stop",
+          "markdownDescription": "Enables the native_controller_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_multiplayer_configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-configure",
+          "markdownDescription": "Enables the native_multiplayer_configure command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_multiplayer_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-status",
+          "markdownDescription": "Enables the native_multiplayer_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_multiplayer_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-multiplayer-stop",
+          "markdownDescription": "Enables the native_multiplayer_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the direct-LAN native sync peer commands.",
+          "type": "string",
+          "const": "allow-native-sync",
+          "markdownDescription": "Enables the direct-LAN native sync peer commands."
+        },
+        {
+          "description": "Enables the native_sync_account_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-account-context",
+          "markdownDescription": "Enables the native_sync_account_context command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_discover command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-discover",
+          "markdownDescription": "Enables the native_sync_discover command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_forget command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-forget",
+          "markdownDescription": "Enables the native_sync_forget command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_game_identity command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-game-identity",
+          "markdownDescription": "Enables the native_sync_game_identity command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_identity command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-identity",
+          "markdownDescription": "Enables the native_sync_identity command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-join",
+          "markdownDescription": "Enables the native_sync_join command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_mark_account_verified command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-mark-account-verified",
+          "markdownDescription": "Enables the native_sync_mark_account_verified command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_request command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-request",
+          "markdownDescription": "Enables the native_sync_request command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_set_account_proof command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-set-account-proof",
+          "markdownDescription": "Enables the native_sync_set_account_proof command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-start",
+          "markdownDescription": "Enables the native_sync_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-status",
+          "markdownDescription": "Enables the native_sync_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-stop",
+          "markdownDescription": "Enables the native_sync_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_storage_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-storage-read",
+          "markdownDescription": "Enables the native_sync_storage_read command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the native_sync_storage_write command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-native-sync-storage-write",
+          "markdownDescription": "Enables the native_sync_storage_write command without any pre-configured scope."
         },
         {
           "description": "Enables the pick_and_import_native_rom command without any pre-configured scope.",
@@ -205,6 +373,12 @@
           "type": "string",
           "const": "allow-set-native-3ds-input",
           "markdownDescription": "Enables the set_native_3ds_input command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_native_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-native-input",
+          "markdownDescription": "Enables the set_native_input command without any pre-configured scope."
         },
         {
           "description": "Enables the start_native_3ds command without any pre-configured scope.",
@@ -255,42 +429,6 @@
           "markdownDescription": "Enables the switch_companion_focus command without any pre-configured scope."
         },
         {
-          "description": "Enables the switch_companion_hosted_frame command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame",
-          "markdownDescription": "Enables the switch_companion_hosted_frame command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the switch_companion_hosted_frame_start command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame-start",
-          "markdownDescription": "Enables the switch_companion_hosted_frame_start command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the switch_companion_hosted_frame_stats command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame-stats",
-          "markdownDescription": "Enables the switch_companion_hosted_frame_stats command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the switch_companion_hosted_frame_stop command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame-stop",
-          "markdownDescription": "Enables the switch_companion_hosted_frame_stop command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the switch_companion_hosted_frame_supported command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame-supported",
-          "markdownDescription": "Enables the switch_companion_hosted_frame_supported command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the switch_companion_hosted_frame_verify command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-switch-companion-hosted-frame-verify",
-          "markdownDescription": "Enables the switch_companion_hosted_frame_verify command without any pre-configured scope."
-        },
-        {
           "description": "Enables the switch_companion_input command without any pre-configured scope.",
           "type": "string",
           "const": "allow-switch-companion-input",
@@ -327,6 +465,12 @@
           "markdownDescription": "Enables the ui_control_result command without any pre-configured scope."
         },
         {
+          "description": "Denies the cancel_native_rom_import command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cancel-native-rom-import",
+          "markdownDescription": "Denies the cancel_native_rom_import command without any pre-configured scope."
+        },
+        {
           "description": "Denies the native_3ds_capabilities command without any pre-configured scope.",
           "type": "string",
           "const": "deny-native-3ds-capabilities",
@@ -337,6 +481,168 @@
           "type": "string",
           "const": "deny-native-capabilities",
           "markdownDescription": "Denies the native_capabilities command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-join",
+          "markdownDescription": "Denies the native_controller_lan_join command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_refresh command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-refresh",
+          "markdownDescription": "Denies the native_controller_lan_refresh command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_send command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-send",
+          "markdownDescription": "Denies the native_controller_lan_send command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-start",
+          "markdownDescription": "Denies the native_controller_lan_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-status",
+          "markdownDescription": "Denies the native_controller_lan_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_lan_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-lan-stop",
+          "markdownDescription": "Denies the native_controller_lan_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-start",
+          "markdownDescription": "Denies the native_controller_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-status",
+          "markdownDescription": "Denies the native_controller_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_controller_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-controller-stop",
+          "markdownDescription": "Denies the native_controller_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_configure command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-configure",
+          "markdownDescription": "Denies the native_multiplayer_configure command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-status",
+          "markdownDescription": "Denies the native_multiplayer_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_multiplayer_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-multiplayer-stop",
+          "markdownDescription": "Denies the native_multiplayer_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the direct-LAN native sync peer commands.",
+          "type": "string",
+          "const": "deny-native-sync",
+          "markdownDescription": "Denies the direct-LAN native sync peer commands."
+        },
+        {
+          "description": "Denies the native_sync_account_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-account-context",
+          "markdownDescription": "Denies the native_sync_account_context command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_discover command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-discover",
+          "markdownDescription": "Denies the native_sync_discover command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_forget command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-forget",
+          "markdownDescription": "Denies the native_sync_forget command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_game_identity command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-game-identity",
+          "markdownDescription": "Denies the native_sync_game_identity command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_identity command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-identity",
+          "markdownDescription": "Denies the native_sync_identity command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_join command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-join",
+          "markdownDescription": "Denies the native_sync_join command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_mark_account_verified command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-mark-account-verified",
+          "markdownDescription": "Denies the native_sync_mark_account_verified command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_request command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-request",
+          "markdownDescription": "Denies the native_sync_request command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_set_account_proof command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-set-account-proof",
+          "markdownDescription": "Denies the native_sync_set_account_proof command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-start",
+          "markdownDescription": "Denies the native_sync_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-status",
+          "markdownDescription": "Denies the native_sync_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-stop",
+          "markdownDescription": "Denies the native_sync_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_storage_read command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-storage-read",
+          "markdownDescription": "Denies the native_sync_storage_read command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the native_sync_storage_write command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-native-sync-storage-write",
+          "markdownDescription": "Denies the native_sync_storage_write command without any pre-configured scope."
         },
         {
           "description": "Denies the pick_and_import_native_rom command without any pre-configured scope.",
@@ -355,6 +661,12 @@
           "type": "string",
           "const": "deny-set-native-3ds-input",
           "markdownDescription": "Denies the set_native_3ds_input command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_native_input command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-native-input",
+          "markdownDescription": "Denies the set_native_input command without any pre-configured scope."
         },
         {
           "description": "Denies the start_native_3ds command without any pre-configured scope.",
@@ -403,42 +715,6 @@
           "type": "string",
           "const": "deny-switch-companion-focus",
           "markdownDescription": "Denies the switch_companion_focus command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame",
-          "markdownDescription": "Denies the switch_companion_hosted_frame command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame_start command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame-start",
-          "markdownDescription": "Denies the switch_companion_hosted_frame_start command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame_stats command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame-stats",
-          "markdownDescription": "Denies the switch_companion_hosted_frame_stats command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame_stop command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame-stop",
-          "markdownDescription": "Denies the switch_companion_hosted_frame_stop command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame_supported command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame-supported",
-          "markdownDescription": "Denies the switch_companion_hosted_frame_supported command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the switch_companion_hosted_frame_verify command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-switch-companion-hosted-frame-verify",
-          "markdownDescription": "Denies the switch_companion_hosted_frame_verify command without any pre-configured scope."
         },
         {
           "description": "Denies the switch_companion_input command without any pre-configured scope.",

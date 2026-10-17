@@ -288,6 +288,7 @@
     debugMilestone("WASM_COMPILE_COMPLETE", {system:config.system});
     setProgress(100, config.lang === "en" ? "Ready" : "Sẵn sàng");
     coreBooted = true;
+    updateSaveSyncButton();
     updatePlaybackReadiness();
     debugMilestone("CORE_STARTED", {system:config.system, gameplayVerified:false});
     playerSession?.framePacing.start();
@@ -404,6 +405,110 @@
     if (document.fullscreenElement) document.exitFullscreen();
     else shell.requestFullscreen?.();
   });
+
+  const castButton=document.getElementById("castScreen");
+  let castPreview=null;
+  let castDiscoveryVideo=null;
+  let castAvailabilityWatch=null;
+  let castDiscoveryFrame=0;
+  let castConsoleAutoPad=false;
+  const castText = state => {
+    const vi={idle:"Dò TV & phát màn hình",searching:"Đang dò TV cùng mạng…",available:"TV cùng mạng sẵn sàng · Phát",connecting:"Đang kết nối TV…",connected:"Đang phát trên TV"};
+    const en={idle:"Find TV & cast game",searching:"Looking for TVs on this network…",available:"TV on this network · Cast",connecting:"Connecting to TV…",connected:"Casting to TV"};
+    return (config.lang === "en" ? en : vi)[state] || (config.lang === "en" ? en.idle : vi.idle);
+  };
+  const setCastState=(state,{disabled=false}={})=>{
+    if(!castButton) return;
+    const text=castText(state);
+    castButton.textContent=text;
+    castButton.disabled=disabled;
+    castButton.dataset.castState=state;
+    castButton.setAttribute("aria-label",text);
+  };
+  const releaseTvDiscovery=()=>{
+    if(castDiscoveryVideo?.remote && castAvailabilityWatch!==null) {
+      try { castDiscoveryVideo.remote.cancelWatchAvailability(castAvailabilityWatch); } catch (_) {}
+    }
+    castAvailabilityWatch=null;
+    const stream=castDiscoveryVideo?.srcObject;
+    if(stream?.getTracks) stream.getTracks().forEach(track=>track.stop());
+    castDiscoveryVideo?.remove();
+    castDiscoveryVideo=null;
+  };
+  const leaveTvConsoleMode=()=>{
+    stage?.classList.remove("tv-console-mode");
+    if(castConsoleAutoPad) padRoot?.classList.remove("cast-console-show");
+    castConsoleAutoPad=false;
+    if(gameStarted) updatePlaybackReadiness();
+  };
+  const enterTvConsoleMode=()=>{
+    stage?.classList.add("tv-console-mode");
+    if(customPad && padRoot && !padVisible()) {
+      padRoot.classList.add("cast-console-show");
+      castConsoleAutoPad=true;
+    }
+    updatePlaybackReadiness();
+    showNotice(config.lang === "en" ? "TV is showing the game. This device is now the console controller." : "TV đang hiển thị game. Thiết bị này hiện là tay cầm console.");
+  };
+  const stopCastPreview=()=>{
+    leaveTvConsoleMode();
+    const stream=castPreview?.srcObject;
+    if(stream?.getTracks) stream.getTracks().forEach(track=>track.stop());
+    castPreview?.remove();
+    castPreview=null;
+    releaseTvDiscovery();
+    queueTvDiscovery();
+  };
+  const queueTvDiscovery=()=>{
+    if(!castButton || castPreview || castDiscoveryVideo || castDiscoveryFrame) return;
+    if(!("remote" in HTMLVideoElement.prototype)) { setCastState("idle");return; }
+    castDiscoveryFrame=requestAnimationFrame(()=>{
+      castDiscoveryFrame=0;
+      if(castPreview || castDiscoveryVideo) return;
+      const canvas=document.querySelector("#game canvas");
+      if(!canvas?.captureStream) { setCastState("idle");return; }
+      const video=document.createElement("video");
+      video.muted=true;
+      video.playsInline=true;
+      video.className="an3-cast-preview";
+      video.srcObject=canvas.captureStream(1);
+      document.body.appendChild(video);
+      castDiscoveryVideo=video;
+      if(typeof video.remote?.watchAvailability !== "function") { setCastState("idle");return; }
+      setCastState("searching");
+      video.remote.watchAvailability(available=>setCastState(available ? "available" : "idle")).then(watchId=>{
+        if(castDiscoveryVideo===video) castAvailabilityWatch=watchId;
+        else try { video.remote.cancelWatchAvailability(watchId); } catch (_) {}
+      }).catch(()=>setCastState("idle"));
+    });
+  };
+  const castGameToTv=async()=>{
+    try {
+      const canvas=document.querySelector("#game canvas");
+      if(!canvas?.captureStream) throw new Error(config.lang === "en" ? "The current game canvas cannot be cast by this browser." : "Trình duyệt này không thể phát canvas game hiện tại.");
+      if(!("remote" in HTMLVideoElement.prototype)) throw new Error(config.lang === "en" ? "No TV receiver is available here. Use your browser's Cast tab command instead." : "Trình duyệt chưa có bộ nhận TV. Hãy dùng lệnh Phát tab (Cast tab) của trình duyệt.");
+      releaseTvDiscovery();
+      stopCastPreview();
+      const video=document.createElement("video");
+      video.className="an3-cast-preview";
+      video.muted=true;
+      video.playsInline=true;
+      video.srcObject=canvas.captureStream(60);
+      document.body.appendChild(video);
+      castPreview=video;
+      await video.play();
+      if(typeof video.remote?.prompt !== "function") throw new Error(config.lang === "en" ? "No TV receiver is available here. Use your browser's Cast tab command instead." : "Trình duyệt chưa có bộ nhận TV. Hãy dùng lệnh Phát tab (Cast tab) của trình duyệt.");
+      video.remote.addEventListener("connect",()=>{enterTvConsoleMode();setCastState("connected");},{once:true});
+      video.remote.addEventListener("disconnect",stopCastPreview,{once:true});
+      setCastState("connecting",{disabled:true});
+      await video.remote.prompt();
+      castButton && (castButton.disabled=false);
+      if(video.remote.state === "connected") { enterTvConsoleMode();setCastState("connected"); }
+      else { setCastState("idle");showNotice(config.lang === "en" ? "Choose a TV in your browser's receiver list." : "Hãy chọn TV trong danh sách bộ nhận của trình duyệt."); }
+    } catch(error) { stopCastPreview();showNotice(error.message || String(error),true); }
+  };
+  castButton?.addEventListener("click",castGameToTv);
+  addEventListener("pagehide",()=>{if(castDiscoveryFrame)cancelAnimationFrame(castDiscoveryFrame);stopCastPreview();},{once:true});
 
   if (config.mode === "html5") {
     document.querySelector(".custom-frame")?.addEventListener("load", finishLoading);
@@ -809,7 +914,6 @@
       shieldSyntheticNdsMouseFromMenu(canvas);
       bindNdsTouch(canvas);
     });
-    refreshPadForTouchZone();
   };
   const bindThreeDsTouch = canvas => {
     if (!threeDsPad || canvas.dataset.an3ThreeDsTouch === "1") return;
@@ -855,7 +959,6 @@
       canvas.style.setProperty("touch-action","none","important");
       bindThreeDsTouch(canvas);
     });
-    refreshPadForTouchZone();
   };
   let emulatorMenuFrame=0;
   let emulatorMenuTimer=0;
@@ -933,23 +1036,115 @@
   }
 
   let gameStarted = false;
+  const syncSaveFileButton = document.getElementById("syncSaveFile");
+  const syncSaveConflictBox = document.getElementById("syncSaveConflicts");
+  const syncSaveIdentity = () => ({
+    core: config.roomSignature?.core || emulatorSystem,
+    gameId: config.slug,
+    romHash: config.roomSignature?.romHash || "",
+  });
+  const syncSaveSettings = async () => {
+    const nativeSync = globalThis.AN3NativeSync;
+    if (nativeSync?.transport) {
+      return {mode: "lan", content: {save: true}, transport: nativeSync.transport, context: null};
+    }
+    const transport = globalThis.AN3LanPeerTransport;
+    if (!transport) throw new Error(config.lang === "en" ? "Direct LAN sync is available in the installed AN3 app." : "Đồng bộ LAN trực tiếp cần ứng dụng AN3 đã cài đặt.");
+    return {mode: "lan", content: {save: true}, transport, context: null};
+  };
+  const updateSaveSyncButton = () => {
+    const manager = window.EJS_emulator?.gameManager;
+    const romHash = syncSaveIdentity().romHash;
+    const hasFullRomIdentity = /^(?:sha256:)?[a-f0-9]{64}$/i.test(String(romHash || ""));
+    if (syncSaveFileButton) syncSaveFileButton.disabled = !gameStarted || !manager || typeof manager.getSaveFile !== "function" || !hasFullRomIdentity || !globalThis.AN3SyncTransfer?.syncSave || (!globalThis.AN3LanPeerTransport && !globalThis.AN3NativeSync?.transport);
+  };
+  const drawSaveSyncConflicts = conflicts => {
+    if (!syncSaveConflictBox) return;
+    syncSaveConflictBox.innerHTML = "";
+    if (!conflicts?.length) { syncSaveConflictBox.hidden = true; return; }
+    const title = document.createElement("h3");
+    title.textContent = config.lang === "en" ? "Save set conflict" : "Xung đột nhóm tệp save";
+    syncSaveConflictBox.appendChild(title);
+    conflicts.forEach(conflict => {
+      const card = document.createElement("div");
+      card.className = "sync-conflict";
+      const label = document.createElement("strong");
+      const set = conflict.local || conflict.remote || {};
+      const memberCount = Number(set.memberCount) || (Array.isArray(set.members) ? set.members.length : 1);
+      label.textContent = config.lang === "en"
+        ? `Save set · ${set.gameId || config.slug} · ${memberCount} file${memberCount === 1 ? "" : "s"}`
+        : `Nhóm save · ${set.gameId || config.slug} · ${memberCount} tệp`;
+      card.appendChild(label);
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      [["local", "Keep this device"], ["remote", "Use other device"], ["both", "Keep Both"]].forEach(choice => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button";
+        button.textContent = choice[1];
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await globalThis.AN3SyncTransfer.resolveConflict({
+              conflict: conflict,
+              kind: "save",
+              deviceId: globalThis.AN3SyncTransfer.deviceId(),
+              manager: window.EJS_emulator?.gameManager,
+              identity: syncSaveIdentity(),
+              resolution: choice[0],
+              transport: globalThis.AN3LanPeerTransport || globalThis.AN3NativeSync?.transport,
+              context: globalThis.AN3NativeSync?.context || null,
+            });
+            drawSaveSyncConflicts(conflicts.filter(item => item !== conflict));
+            showNotice(config.lang === "en" ? "Save set conflict resolved." : "Đã xử lý xung đột nhóm tệp save.");
+          } catch (error) {
+            showNotice(error.message || String(error), true);
+          } finally {
+            button.disabled = false;
+          }
+        });
+        actions.appendChild(button);
+      });
+      card.appendChild(actions);
+      syncSaveConflictBox.appendChild(card);
+    });
+    syncSaveConflictBox.hidden = false;
+  };
+  const syncGameSave = async () => {
+    const settings = await syncSaveSettings();
+    const result = await globalThis.AN3SyncTransfer.syncSave({
+      deviceId: globalThis.AN3SyncTransfer.deviceId(),
+      mode: settings.mode,
+      sameLan: true,
+      transport: settings.transport,
+      manager: window.EJS_emulator?.gameManager,
+      identity: syncSaveIdentity(),
+      context: settings.context,
+    });
+    drawSaveSyncConflicts(result.conflicts);
+    showNotice(config.lang === "en"
+      ? `Save set sync sent ${result.counts.uploaded}, received ${result.counts.downloaded}${result.counts.conflicts ? `, ${result.counts.conflicts} set conflict(s) need a choice` : ""}.`
+      : `Đồng bộ nhóm save: gửi ${result.counts.uploaded}, nhận ${result.counts.downloaded}${result.counts.conflicts ? `, cần chọn ${result.counts.conflicts} xung đột nhóm` : ""}.`);
+    return result;
+  };
   const restoreLocalGameSave = async () => {
     const manager = window.EJS_emulator?.gameManager;
-    if (!manager || !globalThis.AN3LocalSaveRecovery?.restore) return;
+    if (!manager || !globalThis.AN3SyncTransfer?.restoreGameSave) return;
     try {
-      const restored = await globalThis.AN3LocalSaveRecovery.restore({
+      const restored = await globalThis.AN3SyncTransfer.restoreGameSave({
         manager,
-        identity: {
-          core: config.roomSignature?.core || emulatorSystem,
-          gameId: config.slug,
-          romHash: config.roomSignature?.romHash || "",
-        },
+        identity: syncSaveIdentity(),
       });
       if (restored) showNotice(config.lang === "en" ? "Restored game save on this device." : "Đã khôi phục tệp save trên thiết bị.");
     } catch (error) {
       showNotice(error.message || String(error), true);
     }
   };
+  syncSaveFileButton?.addEventListener("click", () => {
+    syncSaveFileButton.disabled = true;
+    syncGameSave().catch(error => showNotice(error.message || String(error), true)).finally(updateSaveSyncButton);
+  });
+  updateSaveSyncButton();
   let threeDsGateStarted = false;
   const threeDsAudioContext = () => {
     const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
@@ -1117,7 +1312,7 @@
     try {
       const file = event.target.files[0];
       if (!file) return;
-      const bytes = playerRuntime.validateStateBytes(new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
       if (playerSession) playerSession.saveStateManager.importBytes(bytes);
       else {
         const manager = window.EJS_emulator?.gameManager;
@@ -1167,7 +1362,7 @@
   const loadSlot = async slot => {
     const saved = await slotGet(slot);
     if (!saved?.state) throw new Error(config.lang === "en" ? "Save slot is unavailable" : "Save slot chưa sẵn sàng");
-    const bytes = playerRuntime.validateStateBytes(new Uint8Array(await saved.state.arrayBuffer()));
+    const bytes = new Uint8Array(await saved.state.arrayBuffer());
     if (playerSession) playerSession.saveStateManager.importBytes(bytes);
     else window.EJS_emulator?.gameManager?.loadState?.(bytes);
     writeQuickSlot(slot);
@@ -1201,9 +1396,19 @@
     if(!state?.byteLength)return null;
     return state instanceof Uint8Array?state:new Uint8Array(state);
   };
-  // The digest algorithm lives with the storage manager so the bytes written
-  // and the bytes verified on load can never drift apart.
-  const digestBytes=bytes=>playerRuntime.stateDigest(bytes);
+  const digestBytes=async bytes=>{
+    try{
+      if(globalThis.crypto?.subtle?.digest){
+        const hash=await crypto.subtle.digest("SHA-256",bytes);
+        return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+      }
+    }catch(_){}
+    // Bounded fallback: length plus byte samples, never a full O(n) scan.
+    let hash=bytes.length>>>0;
+    const step=Math.max(1,Math.floor(bytes.length/256));
+    for(let index=0;index<bytes.length;index+=step)hash=(hash*31+bytes[index])>>>0;
+    return `s${bytes.length}:${hash.toString(16)}`;
+  };
   const runAutosave=async()=>{
     const bytes=readStateBytes();
     if(!bytes)return false;
@@ -1221,9 +1426,7 @@
     if(!gameStarted||!/^(30|10|5)$/.test(autosaveMode))return;
     autosaveTimer=setInterval(()=>{runAutosave().catch(()=>{});},Number(autosaveMode)*1000);
   }
-  let mpTeardown=null; // assigned by the multiplayer bridge below; closes any room.
   function exitGame(){
-    try{mpTeardown?.();}catch(_){}
     const back=document.querySelector(".player-back")?.getAttribute("href")||"/";
     const finish=()=>{window.location.href=back;};
     if(autosaveMode!=="off"){
@@ -1257,7 +1460,7 @@
     try{
       const saved=await requireQuickSaves().getAuto();
       if(!saved?.state)throw new Error(config.lang==="en"?"Autosave is unavailable":"Autosave chưa sẵn sàng");
-      const bytes=await playerRuntime.verifyAutoRecord(saved);
+      const bytes=new Uint8Array(await saved.state.arrayBuffer());
       if(playerSession)playerSession.saveStateManager.importBytes(bytes);
       else window.EJS_emulator?.gameManager?.loadState?.(bytes);
       showNotice(config.lang==="en"?"Autosave loaded":"Đã nạp autosave");
@@ -1487,54 +1690,8 @@
     return bounds ? {x:clamp(point.x,bounds.minX,bounds.maxX),y:clamp(point.y,bounds.minY,bounds.maxY)} : point;
   };
   const place = element => {
-    // While the player arranges controls the raw drag position is shown; once
-    // the layout is locked the rendered slot stays clear of the emulated
-    // touch screen. The saved position itself is never overwritten.
-    const source=padRoot.classList.contains("edit") ? positions : (resolvedPadPositions || positions);
-    const point=constrainedPosition(element,source[element.dataset.id] || positions[element.dataset.id]);
+    const point=constrainedPosition(element,positions[element.dataset.id]);
     element.style.left=`${point.x}%`;element.style.top=`${point.y}%`;
-  };
-  let resolvedPadPositions=null;
-  const padPlayArea = () => {
-    const rect=padRoot?.getBoundingClientRect();
-    return rect && rect.width>0 && rect.height>0 ? {left:rect.left,top:rect.top,width:rect.width,height:rect.height} : null;
-  };
-  // The composite dual-screen image in pad-relative coordinates. The shared
-  // bridge halves it into the emulated touch screen, so the safe layout follows
-  // the real letterboxed viewport instead of any hardcoded device coordinate.
-  const emulatedVideoViewport = area => {
-    if (!(ndsPad || threeDsPad) || !area) return null;
-    const root=document.getElementById("game");
-    const canvas=globalThis.AN3NdsTouchBridge?.resolveSourceCanvas?.(root,null,[]) || root?.querySelector?.("canvas:not(.an3-render-canvas)");
-    if (!canvas) return null;
-    const rect=canvas.getBoundingClientRect();
-    if (!(rect.width>0 && rect.height>0)) return null;
-    const viewport=resolveNdsVideoViewport(canvas,rect);
-    if (!(viewport.width>0 && viewport.height>0)) return null;
-    return {left:rect.left+viewport.left-area.left,top:rect.top+viewport.top-area.top,width:viewport.width,height:viewport.height};
-  };
-  const resolveTouchSafePositions = basePositions => {
-    const resolver=globalThis.AN3NdsTouchBridge?.resolveTouchSafeControls;
-    const area=padPlayArea();
-    if (typeof resolver!=="function" || !area) return null;
-    const viewport=emulatedVideoViewport(area);
-    if (!viewport) return null;
-    const source=basePositions || positions, controls=[];
-    padRoot.querySelectorAll(".tvCtrl").forEach(control=>{
-      const point=source[control.dataset.id], measured=control.getBoundingClientRect();
-      if (!point || !(measured.width>0 && measured.height>0)) return;
-      controls.push({id:control.dataset.id,width:measured.width,height:measured.height,center:{x:point.x/100*area.width,y:point.y/100*area.height}});
-    });
-    if (!controls.length) return null;
-    const solved=resolver({viewport,layout:threeDsPad ? appliedThreeDsScreenLayout : appliedNdsScreenLayout,controls,bounds:{width:area.width,height:area.height},edgeGap:PAD_EDGE_GAP,controlGap:PAD_CONTROL_GAP});
-    if (!solved) return null;
-    const mapped={};
-    for (const [id,center] of Object.entries(solved.positions)) mapped[id]={x:clamp(center.x/area.width*100,0,100),y:clamp(center.y/area.height*100,0,100)};
-    return mapped;
-  };
-  const renderPadPositions = () => {
-    resolvedPadPositions=padRoot.classList.contains("edit") ? null : resolveTouchSafePositions(positions);
-    padRoot.querySelectorAll(".tvCtrl").forEach(place);
   };
   const renderedControlScale = element => {
     const value=Number(element.style.getPropertyValue("--control-scale"));
@@ -1548,7 +1705,7 @@
     const width=measured.width/current*effective,height=measured.height/current*effective;
     const halfWidth=width/2+PAD_EDGE_GAP,halfHeight=height/2+PAD_EDGE_GAP;
     if (root.width<halfWidth*2 || root.height<halfHeight*2) return null;
-    const point=(options.positions || resolvedPadPositions || positions)[element.dataset.id];
+    const point=(options.positions || positions)[element.dataset.id];
     if (!point) return null;
     const x=clamp(point.x,halfWidth/root.width*100,100-halfWidth/root.width*100);
     const y=clamp(point.y,halfHeight/root.height*100,100-halfHeight/root.height*100);
@@ -1710,7 +1867,7 @@
     padRoot.style.setProperty("--pad-opacity",settings.opacity);
     const visible=padVisible();
     padRoot.classList.toggle("show",visible);
-    applyControlSizes();renderPadPositions();
+    applyControlSizes();padRoot.querySelectorAll(".tvCtrl").forEach(place);
     const safety=checkCurrentPadSafety();
     // Geometry checks remain the guard for enlarging or moving controls, but
     // must never remove the existing playable pad on a short mobile stage.
@@ -1724,20 +1881,6 @@
     if(touchToggle){touchToggle.setAttribute("aria-pressed",String(visible));touchToggle.classList.toggle("is-on",visible);touchToggle.title=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
     if(panelTouchToggle){panelTouchToggle.setAttribute("aria-pressed",String(visible));panelTouchToggle.textContent=visible?(config.lang==="en"?"Hide virtual controls":"Ẩn phím ảo"):(config.lang==="en"?"Show virtual controls":"Hiện phím ảo");}
     return safety;
-  };
-  // The dual-screen viewport appears only after the core boots and can change
-  // with fullscreen/letterboxing. Re-resolve the safe layout when that geometry
-  // actually changes, without re-running the layout on every touch poll.
-  let padTouchZoneKey=null;
-  const refreshPadForTouchZone = () => {
-    if (!(ndsPad || threeDsPad)) return;
-    const area=padPlayArea(),viewport=area ? emulatedVideoViewport(area) : null;
-    const key=viewport
-      ? [Math.round(viewport.left),Math.round(viewport.top),Math.round(viewport.width),Math.round(viewport.height),Math.round(area.width),Math.round(area.height),padVisible()?"1":"0"].join(":")
-      : "none";
-    if (key===padTouchZoneKey) return;
-    padTouchZoneKey=key;
-    const safety=applySettings();if(!safety.safe)reportPadSafety(safety);
   };
   if (customPad) {
     const controls=[makeDpad(),makeButton("a","A",8),makeButton("b","B",0),makeButton("start","Start",3),makeButton("select","Select",2)];
@@ -1769,7 +1912,6 @@
     if (button) {button.textContent=editing ? (config.lang==="en"?"Done":"Xong") : (config.lang==="en"?"Move":"Kéo thả");button.setAttribute("aria-pressed",String(editing));}
     if(editing) showNotice(config.lang==="en"?"Drag controls, then reopen the player menu and choose Done to lock their positions.":"Kéo các phím, rồi mở lại menu player và bấm Xong để cố định vị trí.");
     if (!editing) saveLayout();
-    renderPadPositions();
     return true;
   };
   const resetCurrentLayout = () => {
@@ -1832,28 +1974,180 @@
   document.getElementById("playerControls")?.addEventListener("click",event=>{showHints();if(!panel)return;if(stage?.classList.contains("emulator-menu-open")){showNotice(config.lang==="en"?"Close the EmulatorJS menu before opening player options." : "Hãy đóng menu EmulatorJS trước khi mở tùy chọn trình phát.",true);return;}closeSlotOptions();const open=panel.classList.toggle("open");event.currentTarget.setAttribute("aria-expanded",String(open));if(open)document.getElementById("closePad")?.focus();});
    document.getElementById("closePad")?.addEventListener("click",()=>{if(!setPadEditing(false))return;closePlayerOptions();document.getElementById("playerControls")?.focus()});
 
+  // ---- Remote phone controller --------------------------------------------
+  // The player page is the pairing host: it creates a session, shows a QR, and
+  // polls the host-state endpoint, applying the phone's latest frame through the
+  // same virtual-input path the on-screen pad uses. Input is applied only while
+  // gameplay is running and no EmulatorJS menu owns input, so a phone can never
+  // drive a stopped session or leak a touch past an open menu. After applying a
+  // frame the host acknowledges it, which is what lets the phone tell "paired"
+  // apart from "input actually reaching the game".
+  const controllerPanel = document.getElementById("ctrlPhonePanel");
+  const controllerButtonIndex = {b:0,y:1,select:2,start:3,up:4,down:5,left:6,right:7,a:8,x:9,l:10,r:11};
+  const controller = {code:"",hostToken:"",timer:0,applied:new Set(),axes:false,touch:null,direct:false};
+  // Phone Controller utility actions reuse this host's existing operations and
+  // the shared per-press dedup guard; no second save/speed/menu implementation.
+  const controllerUtility = (window.AN3ControllerUtility || {createDispatcher:()=>({dispatch:()=>[],reset(){},get lastSequence(){return 0;}})}).createDispatcher({
+    QUICK_SAVE: () => saveSlot(readQuickSlot()),
+    SPEED_UP: () => shiftSpeed(1),
+    SPEED_DOWN: () => shiftSpeed(-1),
+    OPEN_MENU: () => openPlayerOptions(),
+  });
+  const controllerRunning = () => Boolean(gameStarted) && !runtimeFailed && !stage?.classList.contains("emulator-menu-open");
+  const controllerTouchRelease = () => {
+    if (!controller.touch) return;
+    const target = controller.touch;
+    controller.touch = null;
+    try { dispatchNdsEvent(target.canvas,"mouseup",target.source,0); } catch (_) {}
+  };
+  const controllerTouchTarget = (nx,ny) => {
+    const root = document.getElementById("game");
+    if (!root) return null;
+    const canvas = globalThis.AN3NdsTouchBridge?.resolveSourceCanvas?.(root,null,[]) || root.querySelector("canvas:not(.an3-render-canvas)");
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const viewport = resolveNdsVideoViewport(canvas,rect);
+    const screen = globalThis.AN3NdsTouchBridge?.touchScreenRect?.({left:rect.left+viewport.left,top:rect.top+viewport.top,width:viewport.width,height:viewport.height},appliedNdsScreenLayout);
+    if (!screen || !(screen.width>0 && screen.height>0)) return null;
+    const x = Math.min(1,Math.max(0,Number(nx)||0)), y = Math.min(1,Math.max(0,Number(ny)||0));
+    const clientX = screen.left + x*screen.width, clientY = screen.top + y*screen.height;
+    return {canvas, source:{clientX,clientY,screenX:clientX,screenY:clientY,identifier:8741,pointerId:8741}};
+  };
+  const controllerTouchApply = (nx,ny) => {
+    if (!ndsPad && !threeDsPad) return;
+    const target = controllerTouchTarget(nx,ny);
+    if (!target) { controllerTouchRelease(); return; }
+    if (controller.touch && controller.touch.canvas === target.canvas) {
+      controller.touch = target;
+      dispatchNdsEvent(target.canvas,"mousemove",target.source,1);
+      return;
+    }
+    controllerTouchRelease();
+    // Geometry can change between gestures; never reuse a stale viewport.
+    ndsViewportCache.delete(target.canvas);
+    controller.touch = target;
+    dispatchNdsEvent(target.canvas,"mousedown",target.source,1);
+  };
+  const controllerRelease = () => {
+    for (const name of controller.applied) input(controllerButtonIndex[name],0);
+    controller.applied = new Set();
+    if (controller.axes) { analogInput(0,0); controller.axes = false; }
+    controllerTouchRelease();
+  };
+  const controllerApply = payload => {
+    const frame = payload?.state || {};
+    const pressed = new Set((frame.b || []).filter(name=>Object.prototype.hasOwnProperty.call(controllerButtonIndex,name)));
+    for (const name of controller.applied) if (!pressed.has(name)) input(controllerButtonIndex[name],0);
+    for (const name of pressed) if (!controller.applied.has(name)) input(controllerButtonIndex[name],1);
+    controller.applied = pressed;
+    const axes = frame.a || [0,0,0,0];
+    const leftX = Number(axes[0]) || 0, leftY = Number(axes[1]) || 0;
+    const engaged = Math.abs(leftX) > 0.35 || Math.abs(leftY) > 0.35;
+    if (engaged) { analogInput(leftX,leftY); controller.axes = true; }
+    else if (controller.axes) { analogInput(0,0); controller.axes = false; }
+    const touch = frame.t;
+    if (Array.isArray(touch) && touch.length === 2) controllerTouchApply(touch[0],touch[1]);
+    else controllerTouchRelease();
+  };
+  const controllerStatus = text => { const node=document.getElementById("ctrlPhoneStatus"); if(node)node.textContent=text; };
+  const controllerStatusText = payload => {
+    const en = config.lang==="en";
+    if (!payload.paired) return en?"Waiting for a phone…":"Đang chờ điện thoại…";
+    if (!payload.lastSequence) return en?"Connected — waiting for input":"Đã kết nối — chờ tín hiệu";
+    return payload.inputActive ? (en?"Connected":"Đã kết nối") : (en?"Connected — input unavailable":"Đã kết nối — chưa vào game");
+  };
+  const controllerDevRequest = (url, options) => {
+    const adapter = globalThis.AN3ControllerDevAdapter;
+    if (typeof adapter?.request === "function") return adapter.request(url, options);
+    if (typeof adapter?.fetch === "function") return adapter.fetch(url, options);
+    return Promise.reject(new Error("Direct LAN controller is available in the installed AN3 app."));
+  };
+  const controllerAck = (sequence, utilitySequence) => {
+    if (controller.direct) return;
+    if (!controller.code || !controller.hostToken || !sequence) return;
+    controllerDevRequest("/api/controller/ack",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:controller.code,hostToken:controller.hostToken,sequence,utilitySequence:utilitySequence||0})}).catch(()=>{});
+  };
+  const controllerStop = message => {
+    controllerRelease();
+    controllerUtility.reset();
+    if (controller.timer) clearInterval(controller.timer);
+    controller.timer = 0; controller.code = ""; controller.hostToken = ""; controller.direct = false;
+    if (globalThis.AN3NativeController?.direct) globalThis.AN3NativeController.stop?.().catch?.(() => {});
+    if (message) controllerStatus(message);
+  };
+  const controllerPoll = async () => {
+    if (globalThis.AN3NativeController?.direct) {
+      try {
+        const status = await globalThis.AN3NativeController.status();
+        controller.code = status.code || controller.code;
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = status.code || "—";
+        controllerStatus(status.error || (!status.running ? (config.lang === "en" ? "Off" : "Đã tắt") : status.paired ? (status.inputActive ? "Connected" : "Connected — input unavailable") : (config.lang === "en" ? "Waiting for a device…" : "Đang chờ thiết bị…")));
+      } catch (_) {}
+      return;
+    }
+    if (!controller.code || !controller.hostToken) return;
+    if (!globalThis.AN3ControllerDevAdapter) {
+      controllerStatus(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      return;
+    }
+    try {
+      const response = await controllerDevRequest("/api/controller/state?code=" + encodeURIComponent(controller.code) + "&hostToken=" + encodeURIComponent(controller.hostToken));
+      if (response.status === 403 || response.status === 404) { controllerStop(config.lang==="en"?"Disconnected":"Đã ngắt kết nối"); return; }
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (controllerRunning()) {
+        controllerApply(payload);
+        const results = controllerUtility.dispatch(payload.utilities);
+        for (const result of results) {
+          if (result.ok) continue;
+          showNotice(result.reason === "unsupported"
+            ? (config.lang === "en" ? `${result.action} is unavailable on this host` : `${result.action} không khả dụng trên thiết bị này`)
+            : result.reason, true);
+        }
+        controllerAck(payload.lastSequence, controllerUtility.lastSequence);
+      } else { controllerRelease(); }
+      controllerStatus(controllerStatusText(payload));
+    } catch (_) { /* transient; the next poll retries */ }
+  };
+  const controllerStart = async () => {
+    if (!config.controllerEnabled) return;
+    controllerStop();
+    controllerStatus(config.lang==="en"?"Starting…":"Đang bắt đầu…");
+    try {
+      if (globalThis.AN3NativeController?.direct) {
+        const data = await globalThis.AN3NativeController.start();
+        controller.direct = true;
+        controller.code = data.code || "";
+        const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = controller.code || "—";
+        controllerStatus(config.lang==="en"?"Waiting for a device…":"Đang chờ thiết bị…");
+        controller.timer = setInterval(controllerPoll, 700);
+        return;
+      }
+      if (!globalThis.AN3ControllerDevAdapter) throw new Error(config.lang === "en" ? "Direct LAN controller is available in the installed app." : "Tay cầm LAN trực tiếp chỉ có trong ứng dụng đã cài.");
+      const response = await controllerDevRequest("/api/controller/session", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({deviceId:"host-player",name:"Vibe Coded Emulator",system:config.system||"auto",ttlSeconds:3600})});
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      controller.code = data.code; controller.hostToken = data.hostToken;
+      const codeNode = document.getElementById("ctrlPhoneCode"); if (codeNode) codeNode.textContent = data.code;
+      const linkNode = document.getElementById("ctrlPhoneLink");
+      if (linkNode) { linkNode.href = data.joinPath; linkNode.textContent = location.origin + data.joinPath; }
+      const qrNode = document.getElementById("ctrlPhoneQr");
+      if (qrNode) { qrNode.src = "/api/controller/qr.svg?code=" + encodeURIComponent(data.code); qrNode.hidden = false; }
+      controllerStatus(config.lang==="en"?"Waiting for a phone…":"Đang chờ điện thoại…");
+      controller.timer = setInterval(controllerPoll, 250);
+    } catch (error) { controllerStatus(error.message || String(error)); }
+  };
+  const controllerOpen = () => { if (!controllerPanel) return; controllerPanel.hidden = false; controllerStart(); document.getElementById("closeCtrlPhone")?.focus(); };
+  document.getElementById("phoneController")?.addEventListener("click",()=>{showHints();closePlayerOptions();closeSlotOptions();controllerOpen();});
+  document.getElementById("closeCtrlPhone")?.addEventListener("click",()=>{if(controllerPanel)controllerPanel.hidden=true;controllerStop();document.getElementById("phoneController")?.focus();});
+  addEventListener("pagehide",()=>controllerStop(),{once:true});
+
   // ---- Multiplayer room -> EmulatorJS relay bridge (staging-only) ---------
   // The player creates the AN3 room (the server enforces the system+core+ROM
   // hash compatibility check) and then hands the invite code to the EmulatorJS
   // netplay client as the relay room name. Hosting and joining both go through
   // the official netplay object; nothing is re-implemented here.
   const mpPanel = document.getElementById("mpPlayerPanel");
-  // Stable per-browser identity so a room member can be re-admitted on resume
-  // and two browsers never share one device identity.
-  const mpDeviceId = (() => {
-    try {
-      const existing = localStorage.getItem("an3-mp-device");
-      if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
-      const fresh = "web-" + (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
-      localStorage.setItem("an3-mp-device", fresh);
-      return fresh;
-    } catch (_) { return "web-player"; }
-  })();
-  const MP_STORE = "an3-mp-player-room";
-  let mpRoom = {code: "", token: "", role: ""};
-  const mpStore = () => { try { sessionStorage.setItem(MP_STORE, JSON.stringify(Object.assign({}, mpRoom, {slug: config.slug}))); } catch (_) {} };
-  const mpReadStore = () => { try { return JSON.parse(sessionStorage.getItem(MP_STORE) || "null"); } catch (_) { return null; } };
-  const mpClearStore = () => { try { sessionStorage.removeItem(MP_STORE); } catch (_) {} };
   const mpPost = async (url, payload) => {
     const response = await fetch(url, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     let data = {}; try { data = await response.json(); } catch (_) {}
@@ -1877,16 +2171,14 @@
     return netplay;
   };
   const mpShowRoom = data => {
-    mpRoom = {code: data.code, token: data.token, role: data.role || mpRoom.role || "host"};
     const codeNode = document.getElementById("mpPlayerCode"); if (codeNode) codeNode.textContent = data.code;
     const linkNode = document.getElementById("mpPlayerLink");
     if (linkNode) { linkNode.href = `/play/${encodeURIComponent(config.slug)}?room=${encodeURIComponent(data.code)}`; linkNode.textContent = linkNode.href; }
     const joinInput = document.getElementById("mpPlayerJoinCode"); if (joinInput && !joinInput.value) joinInput.value = data.code;
     const qrNode = document.getElementById("mpPlayerQr");
     if (qrNode) { qrNode.src = `/api/multiplayer/qr.svg?slug=${encodeURIComponent(config.slug)}&code=${encodeURIComponent(data.code)}`; qrNode.hidden = false; }
-    mpStore();
   };
-  const mpSignature = () => Object.assign({}, config.roomSignature || {}, {deviceId: mpDeviceId});
+  const mpSignature = () => Object.assign({}, config.roomSignature || {}, {deviceId: "web-player"});
   const mpCreateRoom = async () => {
     if (!config.multiplayerEnabled) return "";
     mpStatus(config.lang==="en"?"Creating room…":"Đang tạo phòng…");
@@ -1923,46 +2215,13 @@
       netplay.joinRoom(key, data.code);
     } catch (error) { mpStatus(error.message || String(error)); }
   };
-  const mpRelayLeave = () => { try { mpNetplay()?.leaveRoom?.(); } catch (_) {} };
-  const mpAn3Leave = keepalive => {
-    const code = mpRoom.code, token = mpRoom.token;
-    mpRoom = {code: "", token: "", role: ""};
-    mpClearStore();
-    if (!code || !token) return;
-    try {
-      fetch("/api/multiplayer/leave", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({code, token}),
-        keepalive: !!keepalive
-      }).catch(() => {});
-    } catch (_) {}
-  };
-  const mpLeaveRelay = () => { mpRelayLeave(); mpAn3Leave(false); mpStatus(config.lang==="en"?"Left the room.":"Đã rời phòng."); };
-  // Re-admit a member after a back/forward-cache restore instead of losing the room.
-  const mpResume = async () => {
-    const saved = mpReadStore();
-    if (!saved || !saved.code || !saved.token) return;
-    try {
-      const response = await fetch("/api/multiplayer/reconnect", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({code: saved.code, token: saved.token})
-      });
-      let data = {}; try { data = await response.json(); } catch (_) {}
-      if (!response.ok) { mpClearStore(); return; }
-      mpShowRoom(data);
-      mpStatus((config.lang==="en"?"Reconnected to room: ":"Đã kết nối lại phòng: ") + data.code);
-    } catch (_) { /* transient */ }
-  };
-  mpTeardown = () => { mpRelayLeave(); mpAn3Leave(true); };
+  const mpLeaveRelay = () => { try { mpNetplay()?.leaveRoom?.(); mpStatus(config.lang==="en"?"Left the relay room.":"Đã rời phòng relay."); } catch (error) { mpStatus(error.message || String(error)); } };
   const mpOpen = () => {
     if (!mpPanel) return;
     mpPanel.hidden = false;
     const prefill = new URLSearchParams(location.search).get("room");
     const joinInput = document.getElementById("mpPlayerJoinCode");
     if (prefill && joinInput && !joinInput.value) joinInput.value = prefill.trim().toUpperCase();
-    mpResume().catch(() => {});
     document.getElementById("closeMpPanel")?.focus();
   };
   document.getElementById("playerMultiplayer")?.addEventListener("click",()=>{showHints();closePlayerOptions();closeSlotOptions();mpOpen();});
@@ -1971,12 +2230,10 @@
   document.getElementById("mpPlayerHost")?.addEventListener("click",()=>mpHostOnRelay());
   document.getElementById("mpPlayerJoin")?.addEventListener("click",()=>mpJoinRelay());
   document.getElementById("mpPlayerLeave")?.addEventListener("click",()=>mpLeaveRelay());
-  // A real unload closes the room; a bfcache pagehide keeps it for resume.
-  addEventListener("pagehide",event=>{mpRelayLeave();if(!event.persisted)mpAn3Leave(true);});
-  addEventListener("pageshow",event=>{if(event.persisted)mpResume().catch(()=>{});});
+  addEventListener("pagehide",()=>mpLeaveRelay(),{once:true});
 
   document.getElementById("editPad")?.addEventListener("click",()=>setPadEditing(!padRoot.classList.contains("edit")));
-  const togglePad=()=>{const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
+  const togglePad=()=>{if(castConsoleAutoPad){padRoot.classList.remove("cast-console-show");castConsoleAutoPad=false;}const wasVisible=padVisible();if(ndsPad)settings.visibilityMode=wasVisible?"hidden":"shown";else settings.visible=settings.visible===false;if(wasVisible)setPadEditing(false,{force:true});saveSettings();const safety=applySettings();if(!safety.safe)reportPadSafety(safety);if(padAdvanced?.open)syncPadSize(true);};
   touchToggle?.addEventListener("click",togglePad);
   document.getElementById("togglePad")?.addEventListener("click",togglePad);
   padAdvanced?.addEventListener("toggle",()=>syncPadSize(true));

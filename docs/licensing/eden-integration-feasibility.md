@@ -1,6 +1,9 @@
 # Eden (Nintendo Switch) direct integration — feasibility and blocker
 
-Status: **audited; direct integration NOT completed.** Pinned commit recorded.
+Status: **superseded by the process-isolated bridge.** Direct in-process
+integration was rejected and the licensing blocker was solved instead by
+launching Eden as a separate process; see `native/eden-bridge/README.md` and
+`docs/checkpoints/eden-native-integration.md`. Pinned commit recorded below.
 The blocker is technical, not licensing.
 
 ## Upstream facts (verified 2026-09-16)
@@ -9,7 +12,7 @@ The blocker is technical, not licensing.
   default branch `master`.
 - **Pinned commit for any integration:** `7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c`
   (2026-09-16). Do not integrate a moving branch.
-- License: **GPL-3.0-or-later** (`LICENSE.txt`, README: "GPLv3 (or any later
+- License: **GPL-3.0-or-later** (upstream `LICENSE`, README: "GPLv3 (or any later
   version)"). Files carry per-file SPDX tags; `src/core` files are dual-tagged
   `GPL-3.0-or-later` (Eden) and `GPL-2.0-or-later` (yuzu-derived). The `LICENSES/`
   directory holds Apache-2.0, BSD, MIT, MPL-2.0, LGPL-3.0-or-later, Unlicense,
@@ -72,7 +75,7 @@ and Eden's notices must be preserved. No new permission from Eden is required.
 
 ## Recommended incremental path (when resumed)
 
-1. Add `native-offline/native-runtime/companion/switch_core.h` — an AN3-owned
+1. Add a `switch_core.h` companion interface — an AN3-owned
    C++ interface (`initialize`, `load_nro`, `run_frame`, `render_target`,
    `push_input`, `save`, `shutdown`) with no `NativeSystem` coupling.
 2. Build Eden's `core` + deps for one platform only, as an out-of-tree CMake

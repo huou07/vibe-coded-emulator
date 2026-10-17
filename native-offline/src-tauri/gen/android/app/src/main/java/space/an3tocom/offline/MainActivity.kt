@@ -24,17 +24,20 @@ import org.json.JSONObject
 
 class MainActivity : TauriActivity() {
   private companion object {
+    const val OFFLINE_ORIGIN = "https://appassets.androidplatform.net/index.html"
     const val ROM_IMPORT_REQUEST = 0xA31
     const val STATE_EXPORT_REQUEST = 0xA32
     const val COPY_BUFFER_BYTES = 1024 * 1024
     const val MAX_NATIVE_ROM_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_BYTES = 512L * 1024 * 1024
     const val MAX_ARCHIVE_ENTRIES = 256
+    const val MULTIPLAYER_STORE = "an3-lan-multiplayer"
   }
 
   private var pendingRomId: String? = null
   private var contentWebView: WebView? = null
   private var pendingState: ByteArray? = null
+  private val multiplayerPreferences by lazy { getSharedPreferences(MULTIPLAYER_STORE, MODE_PRIVATE) }
 
   private class AndroidNativeRomBridge(private val activity: MainActivity) {
     @JavascriptInterface
@@ -53,16 +56,49 @@ class MainActivity : TauriActivity() {
       activity.launchNative(romId, system, expectedSize)
 
     @JavascriptInterface
-    fun switchAvailable(): Boolean {
-      // Probe packaging only; loading Eden is deferred to an actual Switch launch
-      // so GBA/NDS/3DS launches never initialize the Eden/SDL core.
-      val packaged = java.io.File(activity.applicationInfo.nativeLibraryDir, "liban3_eden_android.so").exists()
-      NativeGameActivity.noteEdenPackaged(packaged)
-      return packaged
-    }
+    fun configureMultiplayer(role: String, address: String, port: Int): String =
+      activity.configureMultiplayer(role, address, port)
+
+    @JavascriptInterface
+    fun multiplayerStatus(): String = activity.multiplayerStatus()
+
+    @JavascriptInterface
+    fun stopMultiplayer(): String = activity.stopMultiplayer()
 
     @JavascriptInterface
     fun exportState(encoded: String) = activity.exportState(encoded)
+  }
+
+  // Library Settings -> Phone Controller. It shares the one app-scoped host
+  // with in-game play, so a session started before a game keeps working when a
+  // game launches. Returns the current status as JSON; never the raw token.
+  private class AndroidNativeControllerBridge {
+    @JavascriptInterface
+    fun start(): String {
+      An3ControllerHost.start()
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun join(code: String): String {
+      An3ControllerHost.join(code)
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun reconnect(): String = An3ControllerHost.reconnect().toJson()
+
+    @JavascriptInterface
+    fun send(state: String): String = An3ControllerHost.send(state).toJson()
+
+    @JavascriptInterface
+    fun stop(): String {
+      An3ControllerHost.stop()
+      return An3ControllerHost.statusJson()
+    }
+
+    @JavascriptInterface
+    fun status(): String = An3ControllerHost.statusJson()
   }
 
   // Canonical settings surface for the offline shell. MainActivity is a
@@ -98,32 +134,66 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     super.onWebViewCreate(webView)
     contentWebView = webView
-    // The installed shell may access the account provider's HTTPS origin.
-    // Android treats the packaged app origin as a
+    // The installed shell keeps the optional AN3 session on the account
+    // provider's HTTPS origin.  Android treats the packaged app origin as a
     // separate site, so explicitly enable the WebView's persistent,
-    // HttpOnly/Secure third-party cookie path for that account session.
+    // HttpOnly/Secure third-party cookie path for that account session.  LAN
+    // sync never uses this cookie or sends it to a peer.
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
     webView.addJavascriptInterface(AndroidNativeRomBridge(this), "AN3AndroidNative")
+    webView.addJavascriptInterface(AndroidNativeControllerBridge(), "AN3AndroidNativeController")
     webView.addJavascriptInterface(AndroidNativeSettingsBridge(this), "AN3AndroidSettings")
-    // TauriActivity owns navigation to the packaged https://tauri.localhost
-    // document.  Keep that stock navigation and client intact: replacing it
-    // with a raw WebView.loadUrl leaves Tauri's dispatcher at about:blank,
-    // which correctly causes every native command to fail its ACL check.
+    // Tauri creates its WebView at `tauri.localhost`; Android does not make
+    // that origin cross-origin isolated. Tauri attaches its stock client
+    // immediately after this callback, so replace it on the next event-loop
+    // turn, then move to the packaged AssetLoader origin.
+    webView.postDelayed({
+      webView.webViewClient = An3SecureWebViewClient(webView as RustWebView)
+      webView.loadUrl(OFFLINE_ORIGIN)
+    }, 250)
   }
 
   private fun isValidRomId(romId: String): Boolean =
     Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").matches(romId)
 
   private fun launchNative(romId: String, system: String, expectedSize: Long): String {
-    if (!isValidRomId(romId) || system !in listOf("gba", "nds", "3ds", "switch")) return "Unsupported native game"
-    if (system == "switch" && !NativeGameActivity.ensureEdenLoaded()) return "Nintendo Switch runtime is unavailable"
+    if (!isValidRomId(romId) || system !in listOf("gba", "nds", "3ds")) return "Unsupported native game"
     val rom = nativeRomFile(romId, system, expectedSize) ?: return "Native ROM is unavailable"
     runOnUiThread {
       startActivity(Intent(this, NativeGameActivity::class.java)
-        .putExtra("romId", romId).putExtra("system", system).putExtra("romFilename", rom.name))
+        .putExtra("romId", romId).putExtra("system", system).putExtra("romFilename", rom.name)
+        .putExtra("netplayRole", multiplayerPreferences.getString("role", "disabled"))
+        .putExtra("netplayAddress", multiplayerPreferences.getString("address", ""))
+        .putExtra("netplayPort", multiplayerPreferences.getInt("port", 47834)))
     }
     return ""
+  }
+
+  private fun configureMultiplayer(role: String, address: String, port: Int): String = try {
+    if (role != "host" && role != "join") throw IllegalArgumentException("Choose Host or Join for LAN multiplayer.")
+    if (role == "join" && address.trim().isEmpty()) throw IllegalArgumentException("Enter the host's current LAN address.")
+    if (port !in 1..65535) throw IllegalArgumentException("LAN multiplayer port is invalid.")
+    multiplayerPreferences.edit().putString("role", role).putString("address", address.trim()).putInt("port", port).commit()
+    multiplayerStatus()
+  } catch (error: Exception) {
+    JSONObject().put("available", true).put("configured", false).put("error", error.message ?: "Invalid LAN multiplayer configuration").toString()
+  }
+
+  private fun multiplayerStatus(): String {
+    val role = multiplayerPreferences.getString("role", "disabled") ?: "disabled"
+    val configured = role == "host" || role == "join"
+    return JSONObject().put("available", true).put("configured", configured)
+      .put("role", if (configured) role else JSONObject.NULL)
+      .put("address", multiplayerPreferences.getString("address", "") ?: "")
+      .put("port", multiplayerPreferences.getInt("port", 47834))
+      .put("detail", if (configured) "Direct melonDS LAN multiplayer will attach to the next NDS launch." else "Only the integrated melonDS DS libretro netpacket API is currently available.")
+      .toString()
+  }
+
+  private fun stopMultiplayer(): String {
+    multiplayerPreferences.edit().clear().commit()
+    return multiplayerStatus()
   }
 
   // Keep a supported ROM's suffix: libretro cores use it to distinguish
@@ -293,7 +363,7 @@ class MainActivity : TauriActivity() {
       }
       val sourceSize = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }?.takeIf { it > 0 }
       val system = detectDirectSystem(uri, extension, sourceSize)
-        ?: throw IllegalArgumentException("Could not identify a supported GBA, NDS, 3DS, or Switch ROM.")
+        ?: throw IllegalArgumentException("Could not identify a supported GBA, NDS, or decrypted 3DS ROM.")
       val destinationName = "$romId.${storageExtension(name, system)}"
       val destination = File(destinationDirectory, destinationName)
       val playableSize = declaredNcsdLength(uri, sourceSize)
@@ -354,7 +424,6 @@ class MainActivity : TauriActivity() {
     "gba", "raw" -> "gba"
     "nds", "dsi" -> "nds"
     "3ds", "3dsx", "cci", "cxi", "app" -> "3ds"
-    "nsp", "xci", "nro", "nso", "nca" -> "switch"
     else -> null
   }
 

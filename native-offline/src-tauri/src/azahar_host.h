@@ -20,6 +20,9 @@ int an3_native_start(void* content_view,
                      const char* system_directory,
                      const char* system,
                      const char* layout,
+                     const char* netplay_role,
+                     const char* netplay_address,
+                     uint16_t netplay_port,
                      char* details,
                      size_t details_length);
 
@@ -71,39 +74,6 @@ typedef struct an3_native_renderer_metrics {
     uint64_t resident_memory_bytes;
     uint64_t cpu_user_time_us;
     uint64_t cpu_system_time_us;
-    uint32_t frame_interval_p50_us;
-    uint32_t frame_interval_p95_us;
-    uint32_t frame_interval_p99_us;
-    uint32_t frame_interval_max_us;
-    uint64_t frame_deadline_misses;
-    uint64_t frame_over_150x;
-    uint64_t frame_over_2x;
-    uint64_t frame_over_3x;
-    uint64_t duplicated_frames;
-    uint32_t acquire_wait_p50_us;
-    uint32_t acquire_wait_p95_us;
-    uint32_t acquire_wait_p99_us;
-    uint32_t acquire_wait_max_us;
-    uint32_t fence_wait_p50_us;
-    uint32_t fence_wait_p95_us;
-    uint32_t fence_wait_p99_us;
-    uint32_t fence_wait_max_us;
-    uint32_t upload_p50_us;
-    uint32_t upload_max_us;
-    uint32_t present_p50_us;
-    uint32_t present_max_us;
-    uint32_t emulate_p50_us;
-    uint32_t emulate_max_us;
-    uint32_t queue_depth_p95;
-    uint32_t queue_depth_max;
-    uint32_t save_snapshot_p95_us;
-    uint32_t save_snapshot_p99_us;
-    uint32_t save_io_p95_ms;
-    uint32_t save_io_p99_ms;
-    uint64_t save_snapshot_count;
-    uint64_t save_io_count;
-    uint64_t perf_trace_samples;
-    int perf_trace_enabled;
 } an3_native_renderer_metrics;
 
 // Returns zero unless a native core is currently running. This is an internal
@@ -117,6 +87,15 @@ int an3_native_save_state(unsigned slot, char* details, size_t details_length);
 int an3_native_load_state(unsigned slot, char* details, size_t details_length);
 int an3_native_export_state(const char* path, char* details, size_t details_length);
 int an3_native_import_state(const char* path, char* details, size_t details_length);
+
+void an3_native_set_input(uint32_t buttons,
+                          int16_t circle_x,
+                          int16_t circle_y,
+                          int16_t cstick_x,
+                          int16_t cstick_y,
+                          int16_t touch_x,
+                          int16_t touch_y,
+                          int touch_pressed);
 
 #ifdef __cplusplus
 }
