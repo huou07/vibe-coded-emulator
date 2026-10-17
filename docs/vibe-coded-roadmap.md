@@ -1,5 +1,10 @@
 # Vibe Coded Emulator — roadmap and status plan
 
+Status: current for feature scope and status; **section 1 is archival**. Listed in
+[`docs/README.md`](README.md) so it is not an unindexed document. Dated lines
+inside sections 2+ are evidence of what was run on that date, never a substitute
+for the source or for `docs/QUALITY.md`.
+
 Verified 2026-09-16 against the working tree, the release catalog and the git
 worktrees. Nothing here is claimed beyond what was run.
 

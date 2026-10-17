@@ -148,3 +148,66 @@ lane — start `an3-arcade-staging.service` on `:8092`, point
 `AN3_DEPENDENCY_CACHE` — then run `cd native-offline && npm run build:deb` and
 continue the packaged journey from the checkpoint's next actions. See
 `docs/AGENT-AUTHORITY.md` for the authority that pause does not revoke.
+
+## Pause record — 2026-10-17 (+07), second graceful stop (NEXT-VCE item 6 in flight)
+
+Owner pause during the NEXT-VCE bounded task. The goal was paused (not complete,
+not blocked). Nothing was running: no background job, CI waiter, sleep or poll
+loop was left behind, and no new work was started after the steer.
+
+- Branch: `feature/semantic-ui-inspection`
+- HEAD: `fc838062761cfddc0b5785cfae64a6bbf4749519`
+- `git status --short` (in flight, deliberately **not** committed and **not**
+  discarded — item 6 is incomplete and its gate has not been run):
+  - `R  AGENT_INTERACTION_CAPABILITY_AUDIT.md -> docs/archive/agent-interaction-capability-audit-2026-09-17.md`
+    (the dated 2026-09-17 one-session audit was tracked at the repo root but
+    hidden by the sparse checkout; it was materialized from HEAD, given an
+    archive reason line and moved into `docs/archive/`)
+  - `D  tools/home-scratch-audit.sh` (orphan host housekeeping tool; the only
+    live references were this task and an archived checkpoint)
+  - `M docs/README.md` (roadmap added to the product-status index; archived audit
+    added to the archive table)
+  - `M docs/vibe-coded-roadmap.md` (status line added: current for feature scope,
+    section 1 archival)
+- Last command: `git status --short` plus `tail docs/prompts/CONTINUE-VCE.md`
+  after `git rev-parse HEAD`; result: the four paths above, HEAD `fc83806`.
+- Last verified command before that: the canonical browser lane
+  (`AN3_WEB_RUNTIME=1 AN3_PLAYWRIGHT_BROWSER=chromium XDG_CACHE_HOME=<tmp> node
+  --test tests/web-runtime.test.mjs`) passed 1/1 with the new design-contract
+  assertions, and the an3ctl self-test passed 5/0 with
+  `AN3_EMULATOR_BUDGET frames=600 elapsedMs=280 budgetMs=20000 result=PASS`.
+
+NEXT-VCE items 1-5 are committed and each carries its gate result:
+
+- `ca3126d` published-workflow correctness (native-build.yml removed,
+  workflow↔script assertion, portable whitespace step fixed)
+- `d405b51` sanitizer hole closed (`/home/<user>/`, `~/`, forbidden paths,
+  source/test scan, Android operator README no longer copied)
+- `103fa3f` skip manifest + loud emulator lane
+- `9652584` stale build-script paths corrected; bare scripts/ tokens are now
+  validated instead of being ignored
+- `fc83806` browser design-contract gate + emulator-loop throughput budget
+
+Unfinished (item 6 remainder):
+1. Document the sparse checkout in `docs/development-workflows.md`: this checkout
+   tracks 1749 files, 768 are skip-worktree/hidden, 981 are present; `git status`
+   therefore hides them, `git add` needs `--sparse` for a hidden path, and
+   `check-docs-refs.py` deliberately uses `git ls-files` so hidden-but-tracked is
+   not reported missing.
+2. Close QUALITY.md's first known gap (the orphaned one-shot scratch audit plus
+   the hidden-path surprise) now that the script is removed and the sparse rules
+   are documented.
+3. Run `bash tools/verify-project.sh` (or the full `tools/acceptance.sh`) over the
+   combined item-6 change and commit it as one coherent unit with the gate result
+   in the message. Do not split the staged rename from the deletion; they are one
+   archive/cleanup change.
+4. Then the NEXT-VCE stop condition: report branch, HEAD, gate result, unverified
+   items and next action, and write the exact-SHA evidence record under
+   `docs/evidence/` (the prompt asks for it; it was not yet written).
+
+Single next action: finish the sparse-checkout paragraph in
+`docs/development-workflows.md`, close the QUALITY.md gap, then run
+`bash tools/verify-project.sh` and commit item 6 as one unit.
+
+Nothing was pushed in this session after `40a0a21` except the earlier session's
+commits; the five NEXT-VCE commits above are local to this branch and not pushed.

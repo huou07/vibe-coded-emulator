@@ -25,7 +25,7 @@ pixel-identical parity across platforms.
 | Attribute | Target | How it is measured | Gate that enforces it | Current status |
 |---|---|---|---|---|
 | Correctness | source gate passes | `bash tools/verify-project.sh` | verify | see recorded result |
-| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | emulator-loop throughput budget in `tests/an3ctl.test.mjs` (600 frames ≤ 20s, measured 280ms on the vendored Linux runtime); `vce-gameplay-performance` evidence for sustained runs | verify (throughput only) | throughput budget enforced; sustained gameplay `UNVERIFIED` |
+| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | emulator-loop throughput budget in `tests/an3ctl.test.mjs` (600 frames ≤ 20s, ≈0.3 s measured on the vendored Linux runtime), claimed by the verify gate; `vce-gameplay-performance` evidence for sustained runs | verify (emulator-loop throughput only) | the throughput budget is enforced whenever the gate runs; sustained frame pacing and audio `UNVERIFIED` |
 | Reliability | save states, 10 quick slots, autosave, Exit Game, recovery | Python + JS behaviour tests, guards in `REGRESSION_GUARDS.md` | verify | verified for covered paths |
 | Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, two-tier control height and 360px no-overflow assertions | verify + browser lane | tokens/overflow enforced; the compact control tier is a recorded gap |
 | Security | sanitized snapshot, pinned gitleaks, fail-closed publication gate | `tools/publication-check.sh` | acceptance (candidate) | enforced when a candidate exists |
@@ -35,14 +35,12 @@ pixel-identical parity across platforms.
 
 ## Known gaps, in priority order
 
-1. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
-   entries and `deploy/shadow/` (mode 700) hide tracked content from `git status`.
-2. No frame-time distribution and no audio-underrun counter exist in
+1. No frame-time distribution and no audio-underrun counter exist in
    `--status-json`, so the automated budget is emulator-loop throughput only.
    Adding them means changing the native runtime and re-vendoring the pinned
    artifact (with its recorded SHA-256), which is its own reviewed change; until
    then sustained frame pacing and audio stay `UNVERIFIED`.
-3. The shared shell's compact control tier (system filter chips, table row
+2. The shared shell's compact control tier (system filter chips, table row
    actions, admin range selector, small nav toggle) ships at 28–38px, below the
    42px guidance in `docs/design-system.md`. The browser lane now asserts the
    real two-tier contract (primary ≥42px, compact ≥28px) instead of a blanket
@@ -76,6 +74,10 @@ Closed since the 2026-10-17 review:
   compact tier instead of a stale lime table and a blanket 42px claim. The
   emulator lane carries a throughput budget (600 frames ≤ 20s) on the vendored
   Linux runtime and prints `AN3_EMULATOR_BUDGET ... result=PASS`.
+- The orphaned one-shot scratch-audit script is removed, closing this file's
+  first known gap. Two sparse-checkout entries and `deploy/shadow/` (mode 700)
+  still hide tracked content from `git status`; `docs/development-workflows.md`
+  records the reduced scope of a sparse checkout.
 - A green source gate can no longer hide what it did not run.
   `tools/verify-project.sh` captures each suite's output and ends with
   `VERIFY_SKIPS=<json>` from `tools/verify-skip-manifest.py`, listing every
@@ -83,7 +85,9 @@ Closed since the 2026-10-17 review:
   skips), and fails if the manifest cannot be produced. The fixture-dependent
   emulator lane in `tests/an3ctl.test.mjs` now fails when it is claimed
   (`AN3_PLAYER`/`AN3_PLAYER_TARGET` set) but its fixture is missing, instead of
-  reporting a skip; only the unclaimed lane skips, and it says so.
+  reporting a skip; `tools/verify-project.sh` and the hosted `project-verify` job
+  claim it with the tracked vendored player, so the unclaimed skip is no longer
+  the default in the registered gate.
 
 ## Evidence rules
 

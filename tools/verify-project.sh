@@ -23,6 +23,16 @@ cd "$ROOT" || exit 1
 CHECK_TIMEOUT=${VCE_CHECK_TIMEOUT:-600}
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-$ROOT/work/verify-pycache}"
 
+# --- Emulator-loop throughput budget ------------------------------------------
+# docs/QUALITY.md claims this gate enforces the emulator-loop throughput budget.
+# That claim only holds when the lane is claimed: tests/an3ctl.test.mjs skips the
+# budget assertion unless AN3_PLAYER or AN3_PLAYER_TARGET is set. The portable
+# player and its cores are vendored in-tree, so a host that can run this gate can
+# claim the lane. A player or fixture that is missing is a failure, never a
+# silent skip. Callers may still override both paths.
+export AN3_PLAYER="${AN3_PLAYER:-$ROOT/native-offline/vendor/runtime/linux-x86_64/an3-offline-native}"
+export AN3_FIXTURE="${AN3_FIXTURE:-$ROOT/work/fixtures/an3-synthetic-gba.gba}"
+
 LOG_DIR="${VCE_VERIFY_LOG_DIR:-$ROOT/work/verify-logs}"
 rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
@@ -54,6 +64,13 @@ run_check 'Documentation references' 'docs-refs' \
 # reads those lines. Verbosity changes what is printed, never what is asserted.
 run_check 'Web/backend Python tests' 'python' \
   python3 -m unittest discover -s tests -v
+# The fixture is git-ignored build output, so the gate regenerates it before the
+# lane runs; on a clean checkout the file does not exist. A caller-supplied
+# AN3_FIXTURE is left alone and the test fails loudly if it is absent.
+if [[ "$AN3_FIXTURE" == "$ROOT/work/fixtures/an3-synthetic-gba.gba" ]]; then
+  run_check 'Emulator fixture' 'emulator-fixture' \
+    python3 tools/make-synthetic-gba-fixture.py --output "$AN3_FIXTURE"
+fi
 run_check 'Web/native JavaScript behavior tests' 'node' \
   node --test --test-concurrency=1 tests/*.test.mjs tests/*.test.js
 run_check 'Native application source checks' 'native-source' \

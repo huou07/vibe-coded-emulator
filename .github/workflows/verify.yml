@@ -35,6 +35,14 @@ jobs:
     name: Project verify gate
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Claim the emulator-loop throughput budget instead of letting
+    # tests/an3ctl.test.mjs skip it. The portable player is vendored in-tree and
+    # verify-project.sh regenerates the git-ignored fixture on a clean checkout;
+    # docs/QUALITY.md records that this is emulator-loop throughput, not frame
+    # pacing or audio acceptance.
+    env:
+      AN3_PLAYER: ${{ github.workspace }}/native-offline/vendor/runtime/linux-x86_64/an3-offline-native
+      AN3_FIXTURE: ${{ github.workspace }}/work/fixtures/an3-synthetic-gba.gba
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

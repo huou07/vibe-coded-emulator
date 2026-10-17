@@ -60,8 +60,8 @@ duplicate mandate in `.agents/skills.md` are superseded by `AGENT-AUTHORITY.md`.
    `docs/design-system.md` and `docs/ui-page-contract.md` invariants (360 px
    no-overflow, control height, token values), or record in `../QUALITY.md` why
    neither exists yet.
-6. **Delete or archive what lies.** `tools/home-scratch-audit.sh` is referenced by
-   nothing; `docs/vibe-coded-roadmap.md` is absent from the index;
+6. **Delete or archive what lies.** The orphaned one-shot scratch-audit script is
+   referenced by nothing; `docs/vibe-coded-roadmap.md` is absent from the index;
    `AGENT_INTERACTION_CAPABILITY_AUDIT.md` exists only in the index. Move stale
    documents to `docs/archive/` with a one-line reason, and document the
    sparse-checkout in `docs/development-workflows.md` so `git status` hiding 768

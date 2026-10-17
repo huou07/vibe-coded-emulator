@@ -62,6 +62,7 @@ Finished work is archived, not left to rot in place.
 | [`eden-native-integration.md`](checkpoints/eden-native-integration.md) | Eden/Switch bridge integration, updated per completed phase. |
 | [`direct-lan-controller.md`](checkpoints/direct-lan-controller.md) | AN3 Controller LAN v1 protocol and milestone record. |
 | [`native-linux-journey.md`](checkpoints/native-linux-journey.md) | Native (Tauri + libretro) Linux journey: deterministic runtime evidence is `GOOD`; the packaged shell, NDS/3DS and the cross-platform legs are `UNVERIFIED`. |
+| [`vibe-coded-roadmap.md`](vibe-coded-roadmap.md) | Active roadmap and feature status. Section 1 is historical (macOS worktrees that no longer exist); the later sections carry dated status updates, so read dated lines as evidence and the source as authority. |
 
 ## Licensing
 
@@ -106,6 +107,7 @@ reason at the top of the file.
 | `checkpoint-gplv3-eden-integration.md` | Completed pre-GPLv3 recovery point. |
 | `checkpoint-home-scratch-cleanup.md` | Completed host housekeeping record. |
 | `checkpoint-mission-2026-10-13.md` | Completed mission report. |
+| `agent-interaction-capability-audit-2026-09-17.md` | Dated one-session agent capability audit, superseded by `AGENTS.md`, `docs/AGENT-AUTHORITY.md` and `docs/QUALITY.md`. It was tracked at the repository root but hidden by the sparse checkout, and is never published. |
 | `netplay-staging.md` | Staging-only EmulatorJS netplay relay. The server is not a multiplayer service; see `LAN_PEER_ARCHITECTURE.md`. |
 | `rust-shadow-staging.md`, `rust-shadow-staging-cutover.md` | The `rust-gateway` shadow stack. Its cutover helpers deliberately refuse to act; the gateway is not wired into `app.py`. |
 | `vibe-coded-continuation-prompt.md` | An old session prompt with machine-specific absolute paths. Its durable content is now in `AGENTS.md`. |
