@@ -101,6 +101,10 @@ interaction contracts in `docs/player-layering.md`.
 - Use only lawful fixtures.
 - `tools/publication-check.sh` fails closed. If a scanner cannot run,
   publication is blocked, not waved through.
+- `tools/publish-github.sh` refuses to publish a candidate that is not the
+  core-only public product (RG-155). Export the snapshot from a `core-only/*`
+  branch, never from the full-featured development branch, and run
+  `tools/publish-github.sh --check-candidate --snapshot <dir>` first.
 
 ## Instruction artifacts
 

@@ -29,6 +29,37 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Public snapshot source line — RG-155, 2026-10-17
+
+- RG-155: **The public source snapshot may only be exported from the core-only
+  public product line.** The public repository's own contract tests (its
+  `test_core_only_surface` suite and the publication-workflow checks) require the
+  account/login, CMS/analytics and phone-controller surfaces to be absent.
+  `tools/build-public-snapshot.sh` copies `app.py` and `tests/` verbatim, so a
+  snapshot exported from the full-featured private development branch publishes a
+  candidate that contradicts those tests. This was observed for real: a snapshot
+  exported from the development line and published as a review branch failed the
+  public Python job with 54 failures and 48 errors (`/login`, `/register`,
+  `/account` returned 200/303 where the public contract requires 404), so the
+  pull request was closed unmerged and the public default branch was left
+  unchanged.
+- The publication step now fails closed **before it pushes anything**:
+  `tools/publish-github.sh` checks the candidate's `app.py` between the security
+  gate and `git init`, refuses a candidate that still defines the account
+  surface, and names the line to export from. `tools/publish-github.sh
+  --check-candidate --snapshot DIR` runs that check alone, needs no `--confirm`
+  and publishes nothing. The check lives on the publication path rather than in
+  `tools/build-public-snapshot.sh` because the builder is also used to *preview*
+  a snapshot and `tests/test_licensing.py` legitimately builds one from the
+  development tree.
+- Automated: `tests/test_public_snapshot_source_line.py` exercises the real
+  script against synthetic candidates: a full-featured candidate is refused with
+  the offending surface named, a core-only candidate passes, `--check-candidate`
+  never creates a repository or requires `--confirm`, and the check runs before
+  `git init`. The guard skips cleanly where the publication script is absent,
+  which is the case inside a published snapshot.
+- Owners: `tools/build-public-snapshot.sh`, `tools/publication/`.
+
 ## Native Linux deterministic journey — RG-154, 2026-10-17
 
 - RG-154: **The native Linux gameplay runtime must be reachable through the

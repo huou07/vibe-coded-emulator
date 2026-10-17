@@ -28,6 +28,7 @@ BRANCH=""
 BASE_BRANCH="main"
 CREATE_PR=1
 USE_PREBUILT_SNAPSHOT=0
+CHECK_CANDIDATE=0
 COMMIT_SUBJECT="Update clean public source snapshot"
 # Empty means "not requested": --branch creates a PR with a generic title/body,
 # and an existing PR is left untouched rather than having an owner-edited
@@ -40,6 +41,8 @@ usage() {
 Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
 
   --confirm        required; acknowledge that this publishes publicly
+  --check-candidate only verify that --snapshot is the core-only public product,
+                 then exit (nothing is published; --confirm not required)
   --adopt-remote   merge an existing remote main into the snapshot (no force-push)
   --branch NAME    publish one clean snapshot commit on NAME
   --base NAME      base branch for a new review branch (default: main)
@@ -56,9 +59,11 @@ Environment: AN3_PUBLIC_AUTHOR_NAME, AN3_PUBLIC_AUTHOR_EMAIL
 USAGE
 }
 
+CHECK_CANDIDATE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRMED=1; shift ;;
+    --check-candidate) CHECK_CANDIDATE=1; shift ;;
     --adopt-remote) ADOPT_REMOTE=1; shift ;;
     --branch) [[ -n "${2:-}" ]] || { printf 'ERROR: --branch needs a name\n' >&2; exit 2; }; BRANCH="$2"; shift 2 ;;
     --base) [[ -n "${2:-}" ]] || { printf 'ERROR: --base needs a branch name\n' >&2; exit 2; }; BASE_BRANCH="$2"; shift 2 ;;
@@ -78,6 +83,55 @@ done
 die() { printf 'PUBLISH=FAIL %s\n' "$*" >&2; exit 1; }
 note() { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
+
+# The public repository is the core-only product. Its own contract tests require
+# the account/login, CMS/analytics and phone-controller surfaces to be absent,
+# and they stay on the public line when a review branch is overlaid onto it. This
+# script copies app.py verbatim, so a candidate exported from the full-featured
+# private development line would replace the public app.py with one that still
+# defines those routes, and the hosted checks reject the pull request after the
+# fact. Refuse here, before anything is pushed, and name the line to export from.
+check_core_only_candidate() {
+  python3 - "$1" <<'PY'
+import pathlib
+import sys
+
+candidate = pathlib.Path(sys.argv[1])
+app = candidate / "app.py"
+if not app.is_file():
+    print(f"PUBLISH=FAIL candidate has no app.py: {candidate}", file=sys.stderr)
+    raise SystemExit(1)
+
+text = app.read_text(encoding="utf-8", errors="replace")
+surfaces = [
+    (marker, label)
+    for marker, label in (
+        ('path == "/login"', "login page route"),
+        ('path == "/register"', "registration page route"),
+        ('path == "/account"', "account page route"),
+        ('"/api/account/', "account API"),
+    )
+    if marker in text
+]
+if surfaces:
+    print("PUBLISH=FAIL this candidate is not the core-only public product:", file=sys.stderr)
+    for marker, label in surfaces:
+        print(f"  - app.py still defines the {label} ({marker})", file=sys.stderr)
+    print(
+        "  Export the snapshot from the core-only line (a core-only/* branch) rather than the "
+        "full-featured development branch; the public line's own contract tests require those "
+        "surfaces to be absent.",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+}
+
+if [[ "$CHECK_CANDIDATE" -eq 1 ]]; then
+  check_core_only_candidate "$SNAPSHOT" || exit 1
+  note "PUBLICATION_SOURCE=PASS core-only public product: $SNAPSHOT"
+  exit 0
+fi
 
 [[ "$CONFIRMED" -eq 1 ]] || die "refusing to publish without --confirm (this is intentional)"
 if [[ -n "$BRANCH" && ( ! "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ || "$BRANCH" == *..* || "$BRANCH" == */ ) ]]; then
@@ -107,6 +161,10 @@ fi
 
 step "2/7 security gate (fail closed)"
 AN3_PUBLICATION_CANDIDATE="$SNAPSHOT" "$ROOT/tools/publication-check.sh" "$SNAPSHOT"
+
+step "2b/7 the candidate must be the core-only public product"
+check_core_only_candidate "$SNAPSHOT" || exit 1
+note "PUBLICATION_SOURCE=PASS core-only public product"
 
 step "3/7 create a fresh single-commit repository (no development history)"
 find "$SNAPSHOT" -name '.git' -maxdepth 2 -prune -exec rm -rf {} + 2>/dev/null || true
