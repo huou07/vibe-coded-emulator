@@ -11,7 +11,7 @@
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -20,7 +20,13 @@ import { createServer } from "node:net";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
-const FIXTURE = process.env.AN3_FIXTURE ?? "/home/huou07/an3-verify/legal-gba.gba";
+const GENERATOR = `${ROOT}/tools/make-synthetic-gba-fixture.py`;
+// A caller-supplied lawful fixture wins. Otherwise use the synthetic GBA ROM the
+// repository can build from its own source (tools/make-synthetic-gba-fixture.py,
+// git-ignored, never bundled), so the emulator lane is reproducible on any host
+// instead of depending on a machine-specific owner-home path.
+const SYNTHETIC_FIXTURE = `${ROOT}/work/fixtures/an3-synthetic-gba.gba`;
+const FIXTURE = process.env.AN3_FIXTURE ?? SYNTHETIC_FIXTURE;
 
 // Keep every pid file, log and Playwright session this test creates out of the
 // shared work/an3ctl directory, so a concurrent agent lane or a leftover manual
@@ -178,6 +184,12 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
   }
   // A local player needs the fixture locally; a remote player resolves --rom on
   // its own host, so the local file need not exist.
+  if (!playerTarget && !process.env.AN3_FIXTURE && !existsSync(FIXTURE)) {
+    // Reproduce the synthetic fixture instead of skipping: it is pure source
+    // output, contains no bundled ROM or copyrighted data, and lands in the
+    // git-ignored work tree.
+    spawnSync("python3", [GENERATOR, "--output", FIXTURE], { cwd: ROOT, stdio: "ignore" });
+  }
   if (!playerTarget && !existsSync(FIXTURE)) {
     t.skip(`fixture not present locally: ${FIXTURE}`);
     return;

@@ -10,6 +10,7 @@
 // locally built player and for the packaged Linux/Windows players over SSH.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { An3Error, run, runChecked, sha256, stateDir } from "../lib/core.mjs";
 
 const REMOTE_TARGETS = {
@@ -33,20 +34,37 @@ export class EmulatorAdapter {
     this.baselines = `${this.dir}/baselines`;
   }
 
+  // The native runtime resolves a core as `$AN3_OFFLINE_LIBDIR/libretro/<core>.so`
+  // (linux_runtime.cpp). The libdir is therefore the runtime root that carries a
+  // `libretro/` directory, not the core directory itself. A raw build tree holds
+  // the binary alone; its cores are fetched into vendor/libretro, and only the
+  // staged bundle under vendor/runtime pairs the two. Returning null leaves the
+  // player's own default search path in charge instead of guessing a wrong path.
+  inferLibdir(player) {
+    const beside = dirname(player);
+    if (existsSync(`${beside}/libretro`)) return beside;
+    const staged = `${this.root}/native-offline/vendor/runtime/linux-x86_64`;
+    if (existsSync(`${staged}/libretro`)) return staged;
+    return null;
+  }
+
   resolveTarget(opts = {}) {
     const target = opts.playerTarget ?? process.env.AN3_PLAYER_TARGET ?? null;
     if (target && REMOTE_TARGETS[target]) {
       const base = REMOTE_TARGETS[target];
       return { kind: "remote", name: target, ...base, player: opts.player ?? base.player, libdir: opts.libdir ?? base.libdir };
     }
-    if (opts.player) return { kind: "local", player: opts.player, libdir: opts.libdir ?? process.env.AN3_OFFLINE_LIBDIR ?? null };
+    if (opts.player) return { kind: "local", player: opts.player, libdir: opts.libdir ?? process.env.AN3_OFFLINE_LIBDIR ?? this.inferLibdir(opts.player) };
     const envPlayer = process.env.AN3_PLAYER;
-    if (envPlayer) return { kind: "local", player: envPlayer, libdir: process.env.AN3_OFFLINE_LIBDIR ?? null };
+    if (envPlayer) return { kind: "local", player: envPlayer, libdir: process.env.AN3_OFFLINE_LIBDIR ?? this.inferLibdir(envPlayer) };
     const localCandidates = [
+      // The integrity-verified Linux runtime staged by bundle-linux-runtime.mjs.
+      `${this.root}/native-offline/vendor/runtime/linux-x86_64/an3-offline-native`,
+      // A raw build from scripts/build-linux-staging.sh.
       `${this.root}/native-offline/work/linux-build/an3-offline-native`,
     ];
-    for (const candidate of localCandidates) {
-      if (existsSync(candidate)) return { kind: "local", player: candidate, libdir: `${this.root}/native-offline/vendor/libretro/linux-x86_64` };
+    for (const player of localCandidates) {
+      if (existsSync(player)) return { kind: "local", player, libdir: this.inferLibdir(player) };
     }
     return { kind: "unavailable" };
   }
@@ -82,7 +100,10 @@ export class EmulatorAdapter {
   async invoke(target, opts) {
     const args = this.buildArgs(opts);
     if (target.kind === "local") {
-      const result = await run(target.player, args, { timeoutMs: Number(opts.timeoutMs ?? 180000) });
+      // A local player resolves its cores from AN3_OFFLINE_LIBDIR; without this
+      // the vendored runtime falls back to /usr/lib and cannot find its core.
+      const env = target.libdir ? { AN3_OFFLINE_LIBDIR: target.libdir } : undefined;
+      const result = await run(target.player, args, { timeoutMs: Number(opts.timeoutMs ?? 180000), env });
       return { code: result.code, stdout: result.stdout, stderr: result.stderr };
     }
     if (target.kind === "remote") {
@@ -114,7 +135,13 @@ export class EmulatorAdapter {
     if (target.kind === "unavailable") {
       throw new An3Error("E_TARGET_UNAVAILABLE", "No native player is available. Set AN3_PLAYER or AN3_PLAYER_TARGET=linux|windows.");
     }
-    const result = await this.invoke(target, opts);
+    // A local control-plane run keeps native saves in the private state dir
+    // unless the caller chose a storage dir or XDG_DATA_HOME, so it never writes
+    // into the caller's real profile and works when HOME is not writable.
+    const invocation = target.kind === "local" && !opts.storage && !process.env.XDG_DATA_HOME
+      ? { ...opts, storage: `${this.dir}/native-storage` }
+      : opts;
+    const result = await this.invoke(target, invocation);
     const status = this.parseStatus(result.stdout);
     if (result.code !== 0 && !status) {
       throw new An3Error("E_ACTION_FAILED", `Player exited ${result.code}: ${(result.stderr || result.stdout).trim().slice(0, 400)}`);

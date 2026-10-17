@@ -60,6 +60,7 @@ Finished work is archived, not left to rot in place.
 | [`direct-https-migration.md`](checkpoints/direct-https-migration.md) | `READY_FOR_OWNER_ACTION`. Candidate config prepared and reviewed; production routing untouched. Every remaining step is root/owner action. |
 | [`eden-native-integration.md`](checkpoints/eden-native-integration.md) | Eden/Switch bridge integration, updated per completed phase. |
 | [`direct-lan-controller.md`](checkpoints/direct-lan-controller.md) | AN3 Controller LAN v1 protocol and milestone record. |
+| [`native-linux-journey.md`](checkpoints/native-linux-journey.md) | Native (Tauri + libretro) Linux journey: deterministic runtime evidence is `GOOD`; the packaged shell, NDS/3DS and the cross-platform legs are `UNVERIFIED`. |
 
 ## Licensing
 

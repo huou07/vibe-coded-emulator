@@ -29,6 +29,40 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Native Linux deterministic journey — RG-154, 2026-10-17
+
+- RG-154: **The native Linux gameplay runtime must be reachable through the
+  shared control plane, and its deterministic capture must actually distinguish
+  frames.** `an3ctl emulator status|baseline|diff|state|input` drives the real
+  vendored player (`native-offline/vendor/runtime/linux-x86_64/`), never a
+  screenshot or a browser. Two facts are protected: the player resolves its core
+  from `$AN3_OFFLINE_LIBDIR/libretro/<core>.so`, so the adapter must pass a
+  *runtime root* that contains `libretro/`; and the fixture used for frame
+  diffs must render differently at different frame counts, otherwise
+  `emulator diff` "passes" while detecting nothing.
+- Evidence on this host (Debian x86_64, worker UID), vendored runtime SHA-256
+  `94a5e701bf97a5363c27736221ca48f7e7c6a9a6c13e9275cf7503195b076e6c`, mGBA core
+  `0.11-219-e31759b`: `emulator status --frames 120` reports `running:true`,
+  `frames:120`, `coreFrames:120`, `width:240`, `height:160`, `fps:59.7275`.
+  Two `--frames 120` runs render identical raw bytes
+  (`differentPixels:0`, `maxChannelError:0`); `--frames 1` differs from
+  a 120-frame baseline by 30241 pixels (78.7526 %, max channel error 255). State
+  save/load reports `stateSaved:true` / `stateLoaded:true` for a 528448-byte state
+  file, and `--seq 'A@0-30;Start@40-45'` runs 60 frames with core frames 60.
+- Automated: `AN3_PLAYER=<vendored player> node --test tests/an3ctl.test.mjs`
+  now executes the emulator lane (it previously skipped) against a fixture the
+  repository generates from its own source with
+  `tools/make-synthetic-gba-fixture.py`. The fixture is git-ignored, contains no
+  ROM/BIOS/logo bytes, and the generator is idempotent (it reports `unchanged`
+  for an identical file).
+- Scope: this is a **source-tree native runtime** result for GBA on this host. It
+  is not a packaged Tauri/DEB result, not NDS/3DS, not gameplay performance, and
+  not Android/macOS/Windows. Those stay `UNVERIFIED` in
+  `docs/checkpoints/native-linux-journey.md`.
+- Owners: `tools/an3ctl/adapters/emulator.mjs`, `tools/make-synthetic-gba-fixture.py`,
+  `native-offline/native-runtime/platform/linux/linux_runtime.cpp` (the
+  `AN3_OFFLINE_LIBDIR` contract), `native-offline/vendor/runtime/`.
+
 ## Library system filtering — RG-153, 2026-10-17
 
 - RG-153: **Selecting a system in the library must show only that system's games
