@@ -113,14 +113,20 @@ server. With no explicit selection it tries Chrome and then the bundled Chromium
 when Chrome is absent; `ui tree` reports the browser used. Pass
 `AN3_PLAYWRIGHT_BROWSER=chromium` to force the bundled build on this host.
 
-`an3ctl` also owns the Playwright daemon cache (RG-151a): `WebAdapter` points
-`XDG_CACHE_HOME` at `<stateDir>/playwright-cache` unless the caller set one, so
-the daemon and browser profile never need the shared, worker-read-only
-`~/.cache/ms-playwright`. Without that ownership the CLI's
-`mkdir '<cache>/ms-playwright/daemon'` failed with `EACCES` and was reported as
+`an3ctl` can also host the Playwright daemon where the shared cache cannot
+(RG-151a/RG-151b). `WebAdapter` moves the CLI cache base to
+`<stateDir>/playwright-cache` **only** when `<base>/ms-playwright/daemon` is not
+creatable, and it pins `PLAYWRIGHT_BROWSERS_PATH` to the registry it moved away
+from so the installed browser is still found. Without that, the CLI's
+`mkdir '<base>/ms-playwright/daemon'` failed with `EACCES` and was reported as
 `E_TARGET_UNAVAILABLE: Could not open the web target` — a cache permission error
-presented as a page failure. The canonical web-runtime command above still sets
-`XDG_CACHE_HOME` explicitly because it drives `playwright-cli` directly.
+presented as a page failure. Moving the base unconditionally also moves the
+browser registry and breaks a hosted runner whose Chromium lives in the default
+one, which is the regression the hosted browser lane actually caught; the
+decision is now a pure exported function pinned by a unit test, and an explicit
+caller `XDG_CACHE_HOME` is never overridden. The canonical web-runtime command
+above still sets `XDG_CACHE_HOME` explicitly because it drives `playwright-cli`
+directly.
 
 CI also exposed two source-evidence defects hidden by the local sparse checkout:
 retired root handoffs are now labelled archives, with original bodies preserved;

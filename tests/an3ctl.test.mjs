@@ -15,8 +15,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { createServer } from "node:net";
+import { canCreateUnder, daemonCacheOverride } from "../tools/an3ctl/adapters/web.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
@@ -92,6 +93,35 @@ test("usage: an unknown command is a usage error (exit 2)", async () => {
   assert.equal(envelope.error.code, "E_USAGE");
 });
 
+test("web: the Playwright daemon cache moves only when the shared one cannot host it", () => {
+  const base = { dir: "/state", platform: "linux", env: {}, home: "/home/u", creatable: () => true };
+
+  // Hosted runner: the default cache base is writable, so playwright-cli is left
+  // exactly as it was. This is the case that must not regress: overriding
+  // XDG_CACHE_HOME unconditionally also moved the installed-browser registry and
+  // hid a Chromium that CI had installed in the default location.
+  assert.equal(daemonCacheOverride(base), undefined);
+
+  // Worker: the shared cache cannot host the daemon, so the daemon moves beside
+  // this run's state and the browser registry is pinned so it is still found.
+  assert.deepEqual(daemonCacheOverride({ ...base, creatable: () => false }), {
+    XDG_CACHE_HOME: "/state/playwright-cache",
+    PLAYWRIGHT_BROWSERS_PATH: "/home/u/.cache/ms-playwright",
+  });
+
+  // An explicit caller choice always wins.
+  assert.equal(daemonCacheOverride({ ...base, env: { XDG_CACHE_HOME: "/custom" }, creatable: () => false }), undefined);
+  assert.equal(daemonCacheOverride({ ...base, env: { PWTEST_DAEMON_SESSION_DIR: "/sessions" }, creatable: () => false }), undefined);
+  assert.equal(
+    daemonCacheOverride({ ...base, env: { PLAYWRIGHT_BROWSERS_PATH: "/opt/browsers" }, creatable: () => false }).PLAYWRIGHT_BROWSERS_PATH,
+    "/opt/browsers",
+  );
+
+  // Other platforms resolve the daemon base somewhere else, so they are untouched.
+  assert.equal(daemonCacheOverride({ ...base, platform: "darwin", creatable: () => false }), undefined);
+  assert.equal(daemonCacheOverride({ ...base, platform: "win32", creatable: () => false }), undefined);
+});
+
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
   const targets = parse(await cli(["targets", "--json"]));
   if (!targets.data.targets.web.hasPlaywright) {
@@ -117,15 +147,16 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
   assert.ok(tree.data.nodes.every((node) => typeof node.role === "string" && typeof node.name === "string"));
 
   // playwright-cli keeps its daemon and browser profile under
-  // $XDG_CACHE_HOME/ms-playwright. Opening the page must use this run's own
-  // cache, never the shared (worker read-only) browser cache: an unwritable
-  // daemon directory otherwise surfaced here as an EACCES browser-cache error
-  // reported as if the page had failed. An explicit XDG_CACHE_HOME is the
-  // caller's choice and is honoured instead.
-  if (!process.env.XDG_CACHE_HOME) {
+  // $XDG_CACHE_HOME/ms-playwright. Opening the page must have used a base this
+  // run could actually write: an unwritable daemon directory otherwise surfaced
+  // here as an EACCES browser-cache error reported as if the page had failed.
+  // The decision itself is pinned by the unit test below; here we assert its
+  // observable effect on this host.
+  const override = daemonCacheOverride({ dir: STATE, platform: process.platform, env: process.env, home: homedir(), creatable: canCreateUnder });
+  if (override) {
     assert.ok(
-      existsSync(`${STATE}/playwright-cache/ms-playwright/daemon`),
-      "the Playwright daemon must live under the run's private state dir",
+      existsSync(`${override.XDG_CACHE_HOME}/ms-playwright/daemon`),
+      "when the shared cache cannot host the daemon, the private base must be the one used",
     );
   }
 

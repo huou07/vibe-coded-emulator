@@ -8,7 +8,9 @@
 // The dev server is started/stopped by an3ctl itself so an agent can bring the
 // target up and read its state without shelling out manually.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { An3Error, run, stateDir, httpJson } from "../lib/core.mjs";
 import { domTreeExpression } from "../lib/domtree.mjs";
 import { locatorExpression, queryScript, actionScript } from "../lib/playwright.mjs";
@@ -74,19 +76,10 @@ export class WebAdapter {
     // (.playwright-cli/*) never appear in the repository root.
     mkdirSync(this.dir, { recursive: true });
     const full = ["-s=" + SESSION, ...args];
-    // playwright-cli keeps its per-session daemon, browser profile and launch
-    // logs under $XDG_CACHE_HOME/ms-playwright/daemon (or ~/.cache when unset).
-    // On a worker host that shared cache is read-only, and an unwritable daemon
-    // directory surfaced as "Could not open the web target: EACCES ... mkdir
-    // '~/.cache/ms-playwright/daemon'" — a browser-cache permission error
-    // reported as if the page had failed. Own the cache the same way the state
-    // dir and the port are owned: default it to a private directory beside this
-    // run's state, and honour an explicit XDG_CACHE_HOME as the caller's choice.
-    const xdgCache = daemonCacheDir(this.dir);
     return run("playwright-cli", full, {
       timeoutMs,
       cwd: this.dir,
-      env: xdgCache ? { XDG_CACHE_HOME: xdgCache } : undefined,
+      env: daemonEnvironment(this.dir),
     });
   }
 
@@ -348,12 +341,64 @@ export class WebAdapter {
   }
 }
 
-// The private XDG cache root for playwright-cli's daemon, or null when the
-// caller already selected one. Kept separate from the state dir so `app stop`
-// and a later run resolve the same daemon without exposing it as an3ctl state.
-function daemonCacheDir(dir) {
-  if (process.env.XDG_CACHE_HOME) return null;
-  return `${dir}/playwright-cache`;
+// playwright-cli resolves two different things from one cache base:
+//   * the installed-browser registry  -> $PLAYWRIGHT_BROWSERS_PATH or <base>/ms-playwright
+//   * its per-session daemon + browser profile -> <base>/ms-playwright/daemon
+// where on Linux <base> is $XDG_CACHE_HOME or ~/.cache.
+//
+// A worker host can read the shared browser cache but cannot create the daemon
+// inside it; that EACCES was reported as `E_TARGET_UNAVAILABLE: Could not open
+// the web target` — a cache permission error disguised as a page failure. Only
+// when the daemon directory is genuinely not creatable does an3ctl move the base
+// to a private directory, and it then pins PLAYWRIGHT_BROWSERS_PATH to the
+// registry it moved away from so the installed browser is still found. When the
+// default base is usable, the CLI is left exactly as it was, and an explicit
+// XDG_CACHE_HOME or PWTEST_DAEMON_SESSION_DIR stays the caller's own choice.
+//
+// The daemon base is XDG-derived on Linux only; on the other platforms this
+// override is ignored or would pin the wrong registry, so it returns undefined
+// there rather than guessing.
+function daemonEnvironment(dir) {
+  return daemonCacheOverride({
+    dir,
+    platform: process.platform,
+    env: process.env,
+    home: homedir(),
+    creatable: canCreateUnder,
+  });
+}
+
+// The decision above, isolated from process state so a self-test can pin both
+// the worker case (read-only shared cache) and the hosted-runner case (writable
+// default cache) without launching a browser. Returns the environment override
+// to apply, or undefined to leave playwright-cli's own resolution alone.
+export function daemonCacheOverride({ dir, platform, env, home, creatable }) {
+  if (platform !== "linux") return undefined;
+  if (env.XDG_CACHE_HOME || env.PWTEST_DAEMON_SESSION_DIR) return undefined;
+  const cacheBase = join(home, ".cache");
+  const registry = env.PLAYWRIGHT_BROWSERS_PATH || join(cacheBase, "ms-playwright");
+  if (creatable(join(cacheBase, "ms-playwright", "daemon"))) return undefined;
+  return { XDG_CACHE_HOME: `${dir}/playwright-cache`, PLAYWRIGHT_BROWSERS_PATH: registry };
+}
+
+// True when `target` exists and is writable, or when its nearest existing
+// ancestor is writable (so the CLI could create it).
+export function canCreateUnder(target) {
+  let current = target;
+  for (let depth = 0; depth < 16; depth += 1) {
+    if (existsSync(current)) {
+      try {
+        accessSync(current, constants.W_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    const parent = dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+  return false;
 }
 
 function sameDocument(a, b) {

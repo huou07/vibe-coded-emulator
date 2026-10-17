@@ -109,18 +109,31 @@ checks pass.
   falls back to the Playwright-bundled Chromium only when Chrome is genuinely not
   installed; an explicit `AN3_PLAYWRIGHT_BROWSER`/`AN3_PLAYWRIGHT_CONFIG` stays
   authoritative, and `ui tree` reports the browser actually used.
-- RG-151a: **`an3ctl` must own the Playwright daemon/browser-profile cache the
-  same way it owns its state dir and port.** `playwright-cli` resolves its daemon
-  directory from `XDG_CACHE_HOME` (or `~/.cache`), which is shared and read-only
-  for a worker; the resulting `EACCES: permission denied, mkdir
-  '<cache>/ms-playwright/daemon'` was reported as `E_TARGET_UNAVAILABLE: Could
-  not open the web target`, i.e. a browser-cache permission error disguised as a
-  page failure. `WebAdapter.playwright` now passes `XDG_CACHE_HOME` pointing at
-  `<stateDir>/playwright-cache`, and honours an explicit caller `XDG_CACHE_HOME`.
-  The companion assertion checks the daemon directory really is under the run's
-  own state dir. This is an environment defect, not a page defect: the identical
-  manual `app start` / `app state` / `ui tree` sequence failed with the same
-  message before the fix. No assertion was weakened to accommodate it.
+- RG-151a: **`an3ctl` must be able to host the Playwright daemon even when the
+  shared browser cache is not writable, without losing the installed browser.**
+  `playwright-cli` resolves two things from one cache base: the installed-browser
+  registry (`$PLAYWRIGHT_BROWSERS_PATH` or `<base>/ms-playwright`) and its daemon
+  plus browser profile (`<base>/ms-playwright/daemon`), where on Linux `<base>` is
+  `$XDG_CACHE_HOME` or `~/.cache`. On a worker that base is readable but not
+  writable, and the resulting `EACCES: permission denied, mkdir
+  '<base>/ms-playwright/daemon'` was reported as `E_TARGET_UNAVAILABLE: Could not
+  open the web target` — a browser-cache permission error disguised as a page
+  failure. `WebAdapter` now moves the base to `<stateDir>/playwright-cache`
+  **only when the daemon directory is genuinely not creatable**, and pins
+  `PLAYWRIGHT_BROWSERS_PATH` to the registry it moved away from so the installed
+  browser is still found. An explicit caller `XDG_CACHE_HOME` or
+  `PWTEST_DAEMON_SESSION_DIR` is never overridden.
+- RG-151b: **Do not relocate that base unconditionally.** The first attempt did,
+  and it also moved the browser registry: the hosted browser lane then failed
+  with `Browser "chromium" is not installed; expected executable at
+  <XDG_CACHE_HOME>/ms-playwright/chromium-1247/...` while Chromium was installed
+  in the default registry. That is the real regression the hosted lane caught,
+  and `daemonCacheOverride` is now a pure exported decision with a unit test
+  pinning the writable-default case (hosted runner: no override), the read-only
+  case (worker: override plus pinned registry), explicit caller choices, and the
+  non-Linux platforms. The identical manual `app start` / `app state` /
+  `ui tree` sequence failed with the EACCES message before the fix, so this was an
+  environment defect, not a page defect, and no assertion was weakened.
 - Automated: `node --test tests/an3ctl.test.mjs` runs the web journey against an
   isolated temp state dir and an ephemeral port; `targets.web.browser` records
   the resolved channel. On this Debian host the default path resolves to
