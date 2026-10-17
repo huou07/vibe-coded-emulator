@@ -37,9 +37,7 @@ pixel-identical parity across platforms.
 
 1. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
    entries and `deploy/shadow/` (mode 700) hide tracked content from `git status`.
-2. Fixture-dependent tests skip instead of failing, so an emulator lane can
-   report success while measuring nothing.
-3. No automated frame-time or audio budget exists; gameplay performance is
+2. No automated frame-time or audio budget exists; gameplay performance is
    skill-driven evidence only.
 
 Closed since the 2026-10-17 review:
@@ -62,6 +60,14 @@ Closed since the 2026-10-17 review:
   `.codegraph` are forbidden paths in a candidate; and the operator README under
   `tools/android/` (owner key filenames, staging host, legacy checkout path) is
   no longer copied into the snapshot.
+- A green source gate can no longer hide what it did not run.
+  `tools/verify-project.sh` captures each suite's output and ends with
+  `VERIFY_SKIPS=<json>` from `tools/verify-skip-manifest.py`, listing every
+  skipped test with its reason (counted and named, including bare-function
+  skips), and fails if the manifest cannot be produced. The fixture-dependent
+  emulator lane in `tests/an3ctl.test.mjs` now fails when it is claimed
+  (`AN3_PLAYER`/`AN3_PLAYER_TARGET` set) but its fixture is missing, instead of
+  reporting a skip; only the unclaimed lane skips, and it says so.
 
 ## Evidence rules
 

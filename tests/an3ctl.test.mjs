@@ -212,20 +212,36 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
   const playerTarget = process.env.AN3_PLAYER_TARGET;
   const player = process.env.AN3_PLAYER;
   if (!playerTarget && !player) {
+    // The lane is not claimed. Say so in machine-readable form as well as in the
+    // runner's own skip line, so the verify-project skip manifest carries it.
+    console.log("AN3_LANE=emulator SKIPPED reason=no-player-configured");
     t.skip("set AN3_PLAYER or AN3_PLAYER_TARGET to exercise the emulator plane");
     return;
   }
+  // The caller claimed the emulator lane. From here a missing fixture is a
+  // failure, not a skip: a lane that reports success while measuring nothing is
+  // exactly the defect this guard exists for.
+  const declaredFixture = process.env.AN3_FIXTURE;
+  if (!playerTarget && declaredFixture && !existsSync(declaredFixture)) {
+    assert.fail(`AN3_FIXTURE was set to a path that does not exist: ${declaredFixture}`);
+  }
   // A local player needs the fixture locally; a remote player resolves --rom on
   // its own host, so the local file need not exist.
-  if (!playerTarget && !process.env.AN3_FIXTURE && !existsSync(FIXTURE)) {
-    // Reproduce the synthetic fixture instead of skipping: it is pure source
-    // output, contains no bundled ROM or copyrighted data, and lands in the
-    // git-ignored work tree.
-    spawnSync("python3", [GENERATOR, "--output", FIXTURE], { cwd: ROOT, stdio: "ignore" });
+  if (!playerTarget && !declaredFixture && !existsSync(FIXTURE)) {
+    // Reproduce the synthetic fixture: it is pure source output, contains no
+    // bundled ROM or copyrighted data, and lands in the git-ignored work tree.
+    const generated = spawnSync("python3", [GENERATOR, "--output", FIXTURE], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    assert.equal(
+      generated.status,
+      0,
+      `the fixture generator failed while the emulator lane was claimed: ${generated.stderr || generated.error?.message || "unknown error"}`,
+    );
   }
   if (!playerTarget && !existsSync(FIXTURE)) {
-    t.skip(`fixture not present locally: ${FIXTURE}`);
-    return;
+    assert.fail(`the emulator lane was claimed but its fixture is absent: ${FIXTURE}`);
   }
   const base = ["--rom", FIXTURE, "--system", "gba"];
   const selection = [];

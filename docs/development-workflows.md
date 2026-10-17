@@ -85,7 +85,11 @@ reuse Mach-O libraries on Linux.
 
 Run `bash tools/verify-project.sh` to execute the Python suite, Node behavior
 suite, and native JavaScript syntax checks. It runs each gate, reports each
-result, and exits nonzero if any gate fails. In sparse source checkouts, small
+result, and exits nonzero if any gate fails. It ends with
+`VERIFY_SKIPS=<json>` (`tools/verify-skip-manifest.py`), which names every
+skipped test with its reason so a green run cannot hide what it did not run; the
+per-suite logs are kept under `work/verify-logs/`. In sparse source checkouts,
+small
 tracked metadata and legal notices required by tests should be present, while
 large release binaries and platform core payloads may remain omitted. The
 artifact manifest marks missing or hash-mismatched binaries as blocked, and the
