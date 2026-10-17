@@ -8,18 +8,29 @@ This document is visual guidance, not a behavior specification. Existing routes,
 
 ## Tokens
 
-| Role | Value |
-| --- | --- |
-| page | `#080b09` |
-| raised surface | `#121714` |
-| strong surface | `#171d19` |
-| control boundary | `#56635a` |
-| primary text | `#f3f5ef` |
-| supporting text | `#a8b0aa` |
-| primary / ready | `#b7f34a` |
-| information | `#66d9ff` |
-| warning | `#f5c451` |
-| danger | `#ff7474` |
+The shared non-player shell is the "quiet violet" theme in
+`static/theme-violet.css`, loaded after `static/site.css` on every
+`body:not(.player-page)` surface. It rebinds the base token set, so these are the
+values a page actually computes (asserted by the browser lane in
+`tests/web-runtime.test.mjs`):
+
+| Role | Token | Value |
+| --- | --- | --- |
+| page | `--ui-bg` | `#07060c` |
+| raised surface | `--ui-surface` | `#131020` |
+| strong surface | `--ui-surface-strong` | `#191532` |
+| control boundary | `--ui-border` | `#282238` |
+| primary text | `--ui-text` | `#f3f1fa` |
+| supporting text | `--ui-muted` | `#a5a0b6` |
+| primary / ready | `--ui-lime` | `#a855f7` |
+| information | `--ui-cyan` | `#8b5cf6` |
+| warning | `--ui-amber` | `#c4b5fd` |
+| danger | `--ui-danger` | `#f87171` |
+
+The in-game player deliberately keeps the base token set from `site.css` (page
+`#080b09`, primary `#b7f34a`); gameplay controls, canvases and touch geometry are
+outside this design system, and `static/theme-violet.css` scopes every rule to
+`body:not(.player-page)` for that reason.
 
 Use the local Pixelify and Roboto Condensed faces already included in the app shell. Pixel type is reserved for the brand and display headings; Roboto Condensed is the readable interface face; monospace is only for compact metadata and technical status.
 
@@ -27,7 +38,7 @@ Use the local Pixelify and Roboto Condensed faces already included in the app sh
 
 - **App shell:** 72px desktop header; compact brand, Offline destination, and explicit menu control on small screens. No header wrapping or loss of account access.
 - **Surface:** low-contrast panel with a single readable boundary; no decorative shadow stacks competing with cover art.
-- **Action:** 42px minimum control height. Lime is reserved for Play, submit, and an explicitly selected state. Cyan denotes device/system information, not a competing primary action.
+- **Action:** two tiers, both asserted by the browser lane and scoped away from the player. **Primary actions** — form submits and `.button` calls to action — are at least 42px tall. **Compact controls** — the system filter chips, table row actions, the admin range selector and the small nav toggle — are deliberately dense at 28–38px; they are a recorded gap against the 42px guidance (`docs/QUALITY.md`), not an approved target. Violet is reserved for Play, submit, and an explicitly selected state. Cyan denotes device/system information, not a competing primary action.
 - **Game card:** stable 3:4 artwork, title, system/status metadata, and one unambiguous action. Artwork and title both reach the existing detail route.
 - **Status:** uses actual state supplied by the application. Offline destination, network reachability, cached shell/core, and device-local ROM are separate facts.
 - **Metric:** a label, value, and status in a bounded card. Unavailable metrics say unavailable; they never display a fabricated zero.

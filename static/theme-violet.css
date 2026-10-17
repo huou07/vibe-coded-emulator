@@ -140,6 +140,13 @@ body:not(.player-page) .mode-switch{
 body:not(.player-page) .mode-switch .ui-mask{color:var(--v-violet-2)}
 
 /* Buttons */
+/* docs/design-system.md: the shared shell has a 42px minimum control height.
+   Scoped to body:not(.player-page) so the protected player toolbar keeps its own
+   geometry; the player is deliberately outside this theme. */
+body:not(.player-page) button,
+body:not(.player-page) a.button,
+body:not(.player-page) .icon-button{min-height:42px}
+body:not(.player-page) .icon-button{min-width:42px}
 body:not(.player-page) .button,
 body:not(.player-page) button,
 body:not(.player-page) a.button{

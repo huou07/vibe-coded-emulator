@@ -256,6 +256,26 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
   assert.equal(status.data.frames, 120);
   assert.ok(status.data.width > 0 && status.data.height > 0);
 
+  // Automated emulator-loop throughput budget. `--status-json` reports frames,
+  // coreFrames, fps and size but no frame-time distribution and no audio
+  // underrun counter, so this is the strongest budget the runtime currently
+  // supports: a sustained run must finish its frames and stay within an
+  // order-of-magnitude bound. It guards against a readback or per-frame stall
+  // regression in the headless loop. It is NOT display frame pacing and NOT
+  // gameplay/performance acceptance (docs/QUALITY.md, vce-gameplay-performance).
+  const BUDGET_FRAMES = 600;
+  const BUDGET_MS = Number(process.env.AN3_EMULATOR_BUDGET_MS ?? 20000);
+  const budgetStarted = Date.now();
+  const sustained = parse(await cli(["emulator", "status", ...selection, ...base, "--frames", String(BUDGET_FRAMES), "--json"]));
+  const budgetMs = Date.now() - budgetStarted;
+  assert.equal(sustained.ok, true, `sustained status failed: ${JSON.stringify(sustained.error)}`);
+  assert.equal(sustained.data.coreFrames, BUDGET_FRAMES, "the core must run every requested frame");
+  assert.ok(
+    budgetMs <= BUDGET_MS,
+    `emulator-loop throughput budget exceeded: ${BUDGET_FRAMES} frames took ${budgetMs}ms (budget ${BUDGET_MS}ms)`,
+  );
+  console.log(`AN3_EMULATOR_BUDGET frames=${BUDGET_FRAMES} elapsedMs=${budgetMs} budgetMs=${BUDGET_MS} result=PASS`);
+
   const name = `self-test-${Date.now()}`;
   const baseline = parse(await cli(["emulator", "baseline", ...selection, ...base, "--frames", "120", "--name", name, "--json"]));
   assert.equal(baseline.ok, true, `baseline failed: ${JSON.stringify(baseline.error)}`);

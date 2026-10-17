@@ -122,6 +122,72 @@ with app.db() as conn:
         geometry.push({ width, scrollWidth });
       }
       const ariaSnapshot = await page.locator("main").ariaSnapshot();
+      // docs/design-system.md contract, asserted in a real browser rather than
+      // read by hand: documented token values, the 42px minimum shared-shell
+      // control height, and no document-level overflow at 360px. The protected
+      // player boundary is excluded, exactly as the design system says.
+      await page.setViewportSize({ width: 360, height: 900 });
+      await page.goto(${JSON.stringify(url)});
+      const design = await page.evaluate(() => {
+        // The refresh tokens are declared on the shared shell
+        // (body:not(.player-page)), not on :root, so read them from the body.
+        const root = getComputedStyle(document.body);
+        const token = name => root.getPropertyValue(name).trim().toLowerCase();
+        const controls = Array.from(document.querySelectorAll("button, a.button, .icon-button"))
+          .filter(element => !element.closest(".player-page") && element.getClientRects().length > 0)
+          .map(element => ({
+            label: (element.textContent || element.getAttribute("aria-label") || "").trim().slice(0, 40),
+            tag: element.tagName.toLowerCase(),
+            className: String(element.className || "").slice(0, 60),
+            id: element.id || null,
+            height: Math.round(element.getBoundingClientRect().height * 100) / 100,
+            // docs/design-system.md defines two tiers: primary actions at 42px
+            // and a deliberately dense compact tier (chips, table actions,
+            // range selector, nav toggle) with a 28px floor.
+            tier: element.matches("[data-system-filter], .nav-toggle, .range-option")
+              || element.closest(".table-actions, .library-update-notice, .admin-report") ? "compact" : "primary",
+          }));
+        return {
+          tokens: {
+            page: token("--ui-bg"), surface: token("--ui-surface"),
+            surfaceStrong: token("--ui-surface-strong"), border: token("--ui-border"),
+            text: token("--ui-text"), muted: token("--ui-muted"), lime: token("--ui-lime"),
+            cyan: token("--ui-cyan"), amber: token("--ui-amber"), danger: token("--ui-danger"),
+          },
+          controls,
+          scrollWidth: document.documentElement.scrollWidth,
+          viewport: window.innerWidth,
+        };
+      });
+      const documentedTokens = {
+        page: "#07060c", surface: "#131020", surfaceStrong: "#191532", border: "#282238",
+        text: "#f3f1fa", muted: "#a5a0b6", lime: "#a855f7", cyan: "#8b5cf6",
+        amber: "#c4b5fd", danger: "#f87171",
+      };
+      for (const [name, value] of Object.entries(documentedTokens)) {
+        if (design.tokens[name] !== value) {
+          throw new Error("design token " + name + " is " + JSON.stringify(design.tokens[name]) + ", docs/design-system.md documents " + value);
+        }
+      }
+      if (design.scrollWidth > design.viewport) {
+        throw new Error("horizontal overflow at " + design.viewport + "px: " + design.scrollWidth);
+      }
+      const shortPrimary = design.controls.filter(control => control.tier === "primary" && control.height < 42);
+      if (shortPrimary.length) {
+        throw new Error("primary controls below the documented 42px minimum: " + JSON.stringify(shortPrimary));
+      }
+      const shortCompact = design.controls.filter(control => control.tier === "compact" && control.height < 28);
+      if (shortCompact.length) {
+        throw new Error("compact controls below their 28px floor: " + JSON.stringify(shortCompact));
+      }
+      const designContract = {
+        tokens: design.tokens,
+        primaryControls: design.controls.filter(control => control.tier === "primary").length,
+        compactControls: design.controls.filter(control => control.tier === "compact").length,
+        minPrimaryHeight: Math.min(...design.controls.filter(c => c.tier === "primary").map(c => c.height)),
+        minCompactHeight: Math.min(...design.controls.filter(c => c.tier === "compact").map(c => c.height)),
+        scrollWidth: design.scrollWidth,
+      };
       await page.getByRole("link", { name: "Details: Fixture GBA", exact: true }).first().click();
       await page.getByRole("heading", { name: "Fixture GBA", exact: true }).waitFor();
       // Admin comment moderation: the seeded comment is deletable from the real
@@ -209,7 +275,7 @@ with app.db() as conn:
         throw new Error("quick-save IndexedDB round-trip failed: " + JSON.stringify(quickSave));
       }
       if (errors.length) throw new Error(errors.join("\\n"));
-      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", quickSave, outcome: "search, no-results recovery, keyboard clear, system filtering, detail navigation, admin comment moderation, real IndexedDB quick saves" };
+      return { geometry, designContract, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", quickSave, outcome: "search, no-results recovery, keyboard clear, system filtering, detail navigation, admin comment moderation, real IndexedDB quick saves, design tokens, control height, 360px no-overflow" };
     }`);
     writeFileSync(resolve(artifacts, "evidence.json"), JSON.stringify({
       source: spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim(),

@@ -25,9 +25,9 @@ pixel-identical parity across platforms.
 | Attribute | Target | How it is measured | Gate that enforces it | Current status |
 |---|---|---|---|---|
 | Correctness | source gate passes | `bash tools/verify-project.sh` | verify | see recorded result |
-| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | `vce-gameplay-performance` evidence | manual, skill-driven | UNVERIFIED for sustained runs |
+| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | emulator-loop throughput budget in `tests/an3ctl.test.mjs` (600 frames ≤ 20s, measured 280ms on the vendored Linux runtime); `vce-gameplay-performance` evidence for sustained runs | verify (throughput only) | throughput budget enforced; sustained gameplay `UNVERIFIED` |
 | Reliability | save states, 10 quick slots, autosave, Exit Game, recovery | Python + JS behaviour tests, guards in `REGRESSION_GUARDS.md` | verify | verified for covered paths |
-| Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py` | verify | partial: `ui-page-contract.md` and `design-system.md` rules are manual |
+| Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, two-tier control height and 360px no-overflow assertions | verify + browser lane | tokens/overflow enforced; the compact control tier is a recorded gap |
 | Security | sanitized snapshot, pinned gitleaks, fail-closed publication gate | `tools/publication-check.sh` | acceptance (candidate) | enforced when a candidate exists |
 | Compatibility | pinned core artifacts per platform | release catalog check | `verify-release-catalog.py` + hosted CI | hosted authority |
 | Maintainability | docs index complete, refs resolve, no orphan scripts | `check-docs-refs.py` | verify | verified |
@@ -37,8 +37,17 @@ pixel-identical parity across platforms.
 
 1. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
    entries and `deploy/shadow/` (mode 700) hide tracked content from `git status`.
-2. No automated frame-time or audio budget exists; gameplay performance is
-   skill-driven evidence only.
+2. No frame-time distribution and no audio-underrun counter exist in
+   `--status-json`, so the automated budget is emulator-loop throughput only.
+   Adding them means changing the native runtime and re-vendoring the pinned
+   artifact (with its recorded SHA-256), which is its own reviewed change; until
+   then sustained frame pacing and audio stay `UNVERIFIED`.
+3. The shared shell's compact control tier (system filter chips, table row
+   actions, admin range selector, small nav toggle) ships at 28–38px, below the
+   42px guidance in `docs/design-system.md`. The browser lane now asserts the
+   real two-tier contract (primary ≥42px, compact ≥28px) instead of a blanket
+   42px, and the doc states the gap; raising the compact tier is a UI change that
+   needs its own responsive review.
 
 Closed since the 2026-10-17 review:
 
@@ -60,6 +69,13 @@ Closed since the 2026-10-17 review:
   `.codegraph` are forbidden paths in a candidate; and the operator README under
   `tools/android/` (owner key filenames, staging host, legacy checkout path) is
   no longer copied into the snapshot.
+- The missing gates exist for what the product can measure. The browser lane
+  (`tests/web-runtime.test.mjs`) asserts the computed design tokens, the two-tier
+  control-height contract and 360px no-overflow in a real browser, and
+  `docs/design-system.md` now documents the shipped violet token values and the
+  compact tier instead of a stale lime table and a blanket 42px claim. The
+  emulator lane carries a throughput budget (600 frames ≤ 20s) on the vendored
+  Linux runtime and prints `AN3_EMULATOR_BUDGET ... result=PASS`.
 - A green source gate can no longer hide what it did not run.
   `tools/verify-project.sh` captures each suite's output and ends with
   `VERIFY_SKIPS=<json>` from `tools/verify-skip-manifest.py`, listing every
