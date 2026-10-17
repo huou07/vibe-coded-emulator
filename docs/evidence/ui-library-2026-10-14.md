@@ -89,3 +89,37 @@ offline relaunch, and preservation of an existing library remain **UNVERIFIED**.
 The concrete next requirement is a reachable packaged test target with its real
 file picker and a lawful fixture; the current worker exposes none of the targets
 needed to complete that journey.
+
+## Refreshed target and fixture check (source `f97bb7c534a026f70e5b901e1c244a22e41d4153`)
+
+At this source on 2026-10-14, `an3ctl targets --json` exited 0. Web is listed
+but has no Playwright bridge; Android has no connected device; the emulator
+adapter has no local player and lists configured Linux and Windows SSH targets;
+Switch has no harness; macOS has no UI bridge; Linux desktop lacks WebKitGTK
+WebDriver/display; and the Windows builder is unreachable. A repository glob for
+`**/*.gba` and `tools/testrom/**` returned no files, so this checkout also has no
+lawful GBA fixture or fixture generator available to launch. No app or emulator
+process was started, and no gameplay or performance metric was collected.
+
+The offline import and relaunch journey remains **UNVERIFIED**. Its next
+acceptance prerequisites are a reachable packaged Android or desktop target with
+a real file picker, plus a lawful system-compatible fixture. Gameplay-performance
+acceptance separately needs an authorized physical device or capable builder, a
+pinned core and renderer, and the workload/telemetry listed in the performance
+procedure; configured SSH target names alone do not establish reachability.
+
+## Fresh control-plane recheck (2026-10-14)
+
+- The bare `an3ctl targets --json` command was not on this shell's `PATH`
+  (exit 127). The documented project-local entry point,
+  `tools/an3ctl/bin/an3ctl targets --json`, ran successfully (exit 0); its
+  structured report matches the target limits above.
+- A fresh repository glob for `**/*.{gba,nds,3ds,zip}` returned no files.
+  This checks only this checkout; it cannot establish that a user has no lawful
+  fixture elsewhere.
+- No app, emulator or build process was started. The offline import/relaunch
+  journey and gameplay-performance result remain **UNVERIFIED**. The concrete
+  next action is to provide an authorized reachable Android or desktop test
+  target and a lawful compatible fixture outside the repository; performance
+  acceptance additionally needs physical hardware or an authorized capable
+  builder with intended renderer and telemetry.

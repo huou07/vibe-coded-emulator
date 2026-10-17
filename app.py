@@ -1689,8 +1689,9 @@ def home_page(lang, user, csrf):
             classes += " collection-card"
         marker = f'<span class="recommendation-marker" aria-label="{tr(lang,"Đề xuất","Recommended")}"><span class="ui-mask ui-star" aria-hidden="true"></span></span>' if recommended else ""
         if compact:
+            play_action = f'''<a class="button primary" href="/play/{esc(game['slug'])}"><span class="ui-mask ui-play" aria-hidden="true"></span>{tr(lang,"Chơi ngay","Play now")}</a>'''
             return f"""<article class="{classes}" data-system="{esc(game['system'])}" data-system-section="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}"><a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960" {image_loading}></a>
-<div class="game-card-body"><h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2><div class="game-meta"><span class="badge">{esc(system_label)}</span>{draft}{testing}</div></div></article>"""
+<div class="game-card-body"><h2><a href="/game/{esc(game['slug'])}">{esc(title)}</a></h2><div class="game-meta"><span class="badge">{esc(system_label)}</span>{draft}{testing}</div><div class="card-actions">{play_action}</div></div></article>"""
         secondary_action = f'''<a class="card-download" href="/download/{esc(game['slug'])}" aria-label="{tr(lang,'Tải game','Download game')}: {esc(title)}"><span class="ui-mask ui-download" aria-hidden="true"></span></a>'''
         lead_action = f'''<a class="button primary" href="/play/{esc(game['slug'])}"><span class="ui-mask ui-play" aria-hidden="true"></span>{tr(lang,"Chơi ngay","Play now")}</a>'''
         return f"""<article class="{classes}" data-system="{esc(game['system'])}" data-system-section="{esc(game['system'])}" data-game-slug="{esc(game['slug'])}">{marker}<a class="cover" href="/game/{esc(game['slug'])}" aria-label="{tr(lang,'Chi tiết','Details')}: {esc(title)}"><img src="{game_cover(game)}" alt="{esc(title)}" width="720" height="960" {image_loading}></a>
@@ -1739,7 +1740,6 @@ def auth_page(kind, lang, user, csrf, error="", next_path="/"):
     nickname = f'<label class="auth-field"><span>{tr(lang,"Nickname hiển thị","Display nickname")}</span><span class="auth-control">{ref_icon("users-round")}<input name="display_name" minlength="2" maxlength="40" required autocomplete="nickname" placeholder="{tr(lang,"Nhập nickname","Enter display nickname")}"></span></label>' if register else ""
     password_rules = f'<p id="passwordRules" class="field-help">{tr(lang,"Dùng 10–200 ký tự và ít nhất hai loại: chữ thường, chữ hoa, số hoặc ký hiệu.","Use 10–200 characters and at least two types: lowercase, uppercase, numbers, or symbols.")}</p>' if register else ""
     password_describedby = ' aria-describedby="passwordRules"' if register else ""
-    confirm = f'<label>{tr(lang,"Nhập lại mật khẩu","Confirm password")}<input name="confirm" type="password" minlength="10" maxlength="200" required autocomplete="new-password" aria-describedby="passwordRules"></label>' if register else ""
     next_query = f'?next={quote(next_path, safe="")}' if next_path != "/" else ""
     switch = f'<section class="auth-switch"><span>{tr(lang,"Đã có tài khoản?","Already registered?") if register else tr(lang,"Chưa có tài khoản?","No account yet?")}</span><a href="/{"login" if register else "register"}{next_query}">{tr(lang,"Đăng nhập ngay","Log in now") if register else tr(lang,"Đăng ký ngay","Register now")} {ref_icon("arrow-right")}</a></section>'
     error_hidden = "" if error else " hidden"
@@ -1769,7 +1769,7 @@ def game_page(game, lang, user, csrf):
     stars = "".join(f'<button type="button" class="star{" active" if own and own["value"]>=value else ""}" data-rate="{value}" aria-label="{tr(lang,"Chấm","Rate")} {value} {tr(lang,"trên 5","out of 5")}" aria-pressed="{str(bool(own and own["value"] >= value)).lower()}">{value}</button>' for value in range(1, 6))
     comment_rows = []
     for item in comments:
-        remove = f'<button class="comment-delete" data-comment-delete="{item["id"]}">×</button>' if user and user["role"] == "admin" else ""
+        remove = f'<button class="comment-delete" type="button" data-comment-delete="{item["id"]}" aria-label="{tr(lang,"Xóa bình luận","Delete comment")}"><span aria-hidden="true">×</span></button>' if user and user["role"] == "admin" else ""
         stamp = datetime.fromtimestamp(item["created_at"]).strftime("%Y-%m-%d %H:%M")
         comment_rows.append(f'<article class="comment"><header><strong>{esc(item["display_name"])}</strong><time>{stamp}</time>{remove}</header><p>{esc(item["body"])}</p></article>')
     comment_form = f'<form id="commentForm" data-game="{game["id"]}"><input class="honeypot" name="website" tabindex="-1" autocomplete="off"><label>{tr(lang,"Bình luận của bạn","Your comment")}<textarea name="body" maxlength="1200" required placeholder="{tr(lang,"Chia sẻ trải nghiệm của bạn","Share your experience")}"></textarea></label><button class="button" type="submit">{tr(lang,"Gửi bình luận","Post comment")}</button></form>' if user else ""

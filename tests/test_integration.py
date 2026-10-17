@@ -320,6 +320,10 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         self.assertIn(b'data-system-section="nds"', body)
         self.assertIn(b'data-system-section="gba"', body)
         self.assertIn(b'data-section-kind="recommended"', body)
+        # Compact collection cards expose a direct Play action for every game.
+        self.assertIn(f'href="/play/{draft["slug"]}"'.encode(), body)
+        with open(os.path.join(ROOT, "static", "site.css"), encoding="utf-8") as stylesheet:
+            self.assertIn("body.library-shell .collection-card .card-actions .primary{min-height:44px}", stylesheet.read())
         status, headers, partial = public.raw("GET", f"/game-file/{gba['slug']}", None, {"Range": "bytes=0-5"})
         self.assertEqual((status, headers.get("Content-Range"), partial), (206, f"bytes 0-5/{len(gba_payload)}", gba_payload[:6]))
 
@@ -397,6 +401,13 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         self.assertEqual((status, report["ok"]), (201, True))
         status, comment = guest.post(f"/api/games/{draft['id']}/comments", {"body": "Works nicely."}, guest_csrf)
         self.assertEqual((status, comment["ok"]), (201, True))
+        status, _, admin_detail = admin.request("GET", f"/game/{draft['slug']}")
+        self.assertEqual(status, 200)
+        self.assertIn(b'class="comment-delete" type="button"', admin_detail)
+        self.assertIn(b'aria-label="Delete comment"', admin_detail)
+        status, _, guest_detail = guest.request("GET", f"/game/{draft['slug']}")
+        self.assertEqual(status, 200)
+        self.assertNotIn(b'class="comment-delete"', guest_detail)
 
         status, large = admin.post("/admin/api/games", {
             "title_vi": "Large 3DS", "title_en": "Large 3DS", "description_vi": "", "description_en": "",

@@ -14,6 +14,10 @@ import { domTreeExpression } from "../lib/domtree.mjs";
 import { locatorExpression, queryScript, actionScript } from "../lib/playwright.mjs";
 
 const SESSION = "an3-web";
+// System Chrome is the default and the verified target. AN3_PLAYWRIGHT_BROWSER
+// selects another playwright-cli browser (for example "chromium" on a host with
+// no branded Chrome and no root to install one); it never changes the default.
+const BROWSER = process.env.AN3_PLAYWRIGHT_BROWSER ?? "chrome";
 const BROWSER_CONFIG = process.env.AN3_PLAYWRIGHT_CONFIG;
 const DEFAULT_PORT = Number(process.env.AN3_WEB_PORT ?? 8099);
 const DEFAULT_ENV = process.env.AN3_WEB_ENVIRONMENT ?? "development";
@@ -124,7 +128,7 @@ export class WebAdapter {
       const goto = await this.playwright(["goto", target], { timeoutMs });
       if (goto.code === 0 && !/### Error/.test(goto.stdout)) return;
     }
-    const browserOptions = BROWSER_CONFIG ? [`--config=${BROWSER_CONFIG}`] : ["--browser=chrome"];
+    const browserOptions = BROWSER_CONFIG ? [`--config=${BROWSER_CONFIG}`] : [`--browser=${BROWSER}`];
     const open = await this.playwright(["open", ...browserOptions, target], { timeoutMs });
     if (open.code !== 0 || /### Error/.test(open.stdout)) {
       throw new An3Error("E_TARGET_UNAVAILABLE", `Could not open the web target: ${(open.stderr || open.stdout).trim().slice(0, 300)}`);

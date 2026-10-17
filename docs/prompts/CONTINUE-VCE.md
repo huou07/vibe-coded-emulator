@@ -46,16 +46,22 @@ The owner authorizes coherent commits, scoped pushes and stable releases to
 registered GitHub/production destinations after exact-source required CI,
 licensing/publication, version/artifact, health and rollback gates. This current
 authorization supersedes older task-specific blanket release/AVD prohibitions;
-it does not grant credentials, general sudo or permission changes.
+it does not grant credentials, general sudo or blanket permission changes.
+Permission changes must be scoped to a worker and target and applied through the
+owner-authenticated H07P Permissions page.
 
-On this host, use only enabled installed /usr/local/bin/aehctl profiles for heavy
-native/browser/guest jobs. The reviewed bundle adds vce-web for the existing
-synthetic Chromium library journey; verify installation and actual results.
-vce-linux remains disabled until a real binary/player and bounded journey are
-registered. Android likewise needs reviewed SDK/image/APK inputs. Prepare
-reviewable project code and an exact profile proposal when needed; the owner
-installs protected capabilities. Never execute source ops installers/guest
-launchers, change your permissions or substitute browser evidence for native.
+The former `/usr/local/bin/aehctl` and `agents-worker` capability bundle is
+retired; do not reinstall it or run its archived installers. H07P is the current
+owner control surface. This host has `dsh-worker`, `codex-worker` and
+`opencode-worker`, but no `vce-web` profile. For a browser job, assign the VCE
+workspace and read-only shared Playwright/Chromium runtime access to the selected
+existing worker in H07P. Keep native harness credential stores private to their
+matching worker; no worker gets sudo. The canonical browser test uses only a
+temporary local test password and local fixture data; it is not credential
+detection evidence. `vce-linux` remains disabled until a real binary/player and
+bounded journey are registered. Android still needs reviewed SDK/image/APK
+inputs. Never execute archived source ops installers or substitute browser
+evidence for native.
 
 Serialize heavy jobs, check current RAM/disk headroom, use bounded compilation,
 timeouts and cleanup of the entire test process group. Keep fixtures isolated

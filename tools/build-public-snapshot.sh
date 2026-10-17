@@ -137,9 +137,12 @@ if [[ -d "$OUT/native-offline/src-tauri/gen" ]]; then
 fi
 
 # --- 3. Deployment/build scripts (sanitized; required for GPL source) ---------
-mkdir -p "$OUT/tools"
-cp -R "$ROOT/deploy" "$OUT/deploy"
-rm -rf "$OUT/deploy/shadow" "$OUT/tools/ssh" 2>/dev/null || true
+mkdir -p "$OUT/tools" "$OUT/deploy"
+# Exclude the owner-only shadow tree at copy time. Copying deploy/ first and
+# deleting deploy/shadow afterwards fails outright for a worker UID that cannot
+# read the directory at all, which is how this snapshot is built off-CI.
+( cd "$ROOT/deploy" && tar --exclude='./shadow' -cf - . ) | ( cd "$OUT/deploy" && tar -xf - )
+rm -rf "$OUT/tools/ssh" 2>/dev/null || true
 cp "$ROOT/tools/verify-release-catalog.py" "$OUT/tools/"
 for file in disk-preflight.sh disk-preflight.ps1; do
   [[ -f "$ROOT/tools/$file" ]] || die "missing build helper: tools/$file"

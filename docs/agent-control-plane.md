@@ -116,6 +116,11 @@ with a prohibited readback — see §7.
 adapter navigates only when the requested document differs from the current one,
 so `fill → value → click` flows keep state.
 
+System Chrome is the default. On a host that has no branded Chrome and no root
+to install one, set `AN3_PLAYWRIGHT_BROWSER=chromium` to drive the Chromium
+build that `playwright install chromium` provides. The default is unchanged, and
+the browser is used only when `playwright-cli` is on `PATH`.
+
 ### Adapter: Android
 
 Reuses the audit's verified path:

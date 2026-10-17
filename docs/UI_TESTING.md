@@ -28,13 +28,47 @@ It cannot establish focus, contrast, responsive layout or runtime accessibility.
 AN3_WEB_RUNTIME=1 node --test tests/web-runtime.test.mjs
 ```
 
-Requires playwright-cli on PATH and its Chromium installation. The test uses a
-private browser configuration, loopback server, temporary SQLite data and a
-synthetic catalog with no game ROM. It verifies real search/no-results recovery,
-keyboard clear, detail navigation and 360/390/1440px geometry, retains three
-screenshots plus source identity, and saves a trace on failure. Browser/profile
-and server are closed; generated script files and fixture data are removed.
-Artifacts are bounded to the selected states under ignored work/ui-runtime.
+On the Debian host, the shared `playwright-cli` is at
+`~/.local/share/playwright-cli/node_modules/.bin` and Chromium is cached in
+`~/.cache/ms-playwright`. The old `aehctl` / `agents-worker` bundle is retired;
+do not reinstall or invoke it. Configure the selected existing H07P-managed
+worker and the VCE workspace through H07P's Permissions page. This host has
+`dsh-worker`, `codex-worker` and `opencode-worker`; it has no `vce-web` profile.
+Shared Playwright and Chromium runtime paths are read-only to workers by default.
+Keep each harness store private to its matching worker and do not grant sudo.
+
+For a real Debian worker run, keep the shared browser installation
+read/execute-only and place Playwright's daemon state under the ignored VCE
+work tree:
+
+```sh
+cd /home/huou07/Projects/VCE
+sudo -u opencode-worker env \
+  PATH=/home/huou07/.local/share/playwright-cli/node_modules/.bin:/usr/local/bin:/usr/bin:/bin \
+  PLAYWRIGHT_BROWSERS_PATH=/home/huou07/.cache/ms-playwright \
+  XDG_CACHE_HOME="$PWD/work/ui-runtime/.xdg-cache" \
+  GIT_CONFIG_PARAMETERS="'safe.directory=$PWD'" GIT_CONFIG_COUNT=0 \
+  AN3_WEB_RUNTIME=1 node --test tests/web-runtime.test.mjs
+```
+
+Without `XDG_CACHE_HOME`, the CLI tries to create its daemon directory inside
+the shared browser cache. On 2026-10-17, H07P's Permissions page set
+`opencode-worker`'s workspace to the repository checkout and enforced
+revision 18. The worker passed this Chromium lane in 12.25 seconds using
+Playwright CLI 0.1.22 and Chromium 155.0.8059.12. Source revision:
+`0c3c9d882133c7afea6f5324748ba472882e0f55`; the run retained its dirty-tree
+list, three viewport screenshots and `evidence.json` under ignored
+`work/ui-runtime`. This is browser UI evidence only; it does not verify ROM
+gameplay, native execution or credential detection.
+
+The browser test uses a private browser configuration, loopback server,
+temporary SQLite data, a test-only local admin password and a synthetic catalog
+with no game ROM. It verifies search/no-results recovery, keyboard clear, detail
+navigation and 360/390/1440px geometry, retains three screenshots plus source
+identity, and saves a trace on failure. It does not inspect real credentials or
+verify credential detection. Browser/profile and server are closed; generated
+script files and fixture data are removed. Artifacts are bounded to the selected
+states under ignored work/ui-runtime.
 GitHub's browser job is the independent execution lane. Exact product source
 `a8a26e711b3b38a8d322220e95e852d1efa0ff7a` passed all three jobs in
 [run 38680843043](https://github.com/huou07/vibe-coded-emulator/actions/runs/38680843043):

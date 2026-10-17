@@ -38,6 +38,49 @@ build needs the matching OS toolchain and pinned runtime/core artifacts. Read
 source-only or cross-platform host, mark unavailable package/runtime acceptance
 as unverified; do not fabricate a binary or reuse a package from another SHA.
 
+## Debian development after a macOS checkout
+
+Do not transfer `node_modules`, Rust `target`, Tauri `dist` or native build
+directories between operating systems. Keep checked-in lockfiles, legal notices,
+source and user data. Reinstall npm dependencies with `npm ci` in
+`native-offline` only when native tooling is needed; the Python web server and
+the lightweight gate do not need npm packages.
+
+The default desktop commands now select the host:
+
+| Command in native-offline | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| `npm run build` | Complete Linux staging DEB script | macOS app build | Windows staging script |
+| `npm run dev` | Prepared Linux player + Tauri shell | macOS preparation + Tauri shell | Prepared Windows player + Tauri shell |
+
+`npm run build:deb` uses `scripts/build-linux-staging.sh deb`, which fetches
+the pinned Linux cores, builds and stages the native player and then packages
+the shell. Calling Tauri's DEB bundler alone omits that preparation. Linux and
+Windows dev commands stop with a diagnostic when the native player is absent.
+The build routing can be inspected without compiling or downloading anything:
+
+```sh
+npm --prefix native-offline run build -- --print-plan
+npm --prefix native-offline run dev -- --print-plan
+```
+
+On the inspected Debian x86_64 worker (2026-10-15), Python 3.13.5, Node 24.21.0,
+npm 11.19.0 and SDL2/Vulkan/GTK3/WebKitGTK 4.1 development metadata are present.
+The checkout initially lacked `@tauri-apps/cli`. Reinstalling with
+`npm ci --ignore-scripts --no-audit --no-fund` selected the locked Linux CLI;
+`npm run tauri -- --version` returned 2.11.4 and the lockfile was unchanged.
+The lightweight gate passed on baseline `f97bb7c534a0` with the six pre-existing
+working-tree edits retained. After the routing patch, native syntax checks,
+documentation references and the Node suite passed (92 passed, 3 skipped).
+Routing checks covered build/dev selection for all three desktop systems and
+refusal to launch dev without a prepared player; these do not execute the
+platform builders. Python 3.13 also emitted SQLite connection ResourceWarnings
+in the existing suite; these were not treated as package installation failures.
+Browser automation, device tests and native runtime/package acceptance remain UNVERIFIED. Continue web/source work
+with the local gate; perform native compilation and packaging on the dedicated
+builders under the existing host policy. Do not install macOS frameworks or
+reuse Mach-O libraries on Linux.
+
 ## Combined deterministic source gate
 
 Run `bash tools/verify-project.sh` to execute the Python suite, Node behavior
