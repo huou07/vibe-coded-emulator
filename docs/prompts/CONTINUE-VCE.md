@@ -97,3 +97,54 @@ then select the next justified product outcome. Report implemented, locally
 verified, CI-accepted, blocked and unverified separately. If a provisioned native
 lane, lawful fixture or publication route is missing, identify that precise
 boundary and continue independent implementation; do not mark it passed.
+
+## Pause record — 2026-10-17 (+07), graceful stop for a workspace reorganization
+
+Recorded by the owner's pause instruction. Nothing was running when the session
+stopped: every background job had completed, the native lock
+(`/tmp/aeh-native-ui-995.lock`) was released, and no test server, browser daemon
+or native player process was left behind.
+
+- Branch: `feature/semantic-ui-inspection`
+- HEAD: `40a0a21f4181ab9e719970234e6d5005f7933630`
+- `git status --short`: empty (tree clean; the only noise is `Permission denied`
+  for the owner-only `deploy/shadow/`, which is not a change — see
+  `docs/AGENT-AUTHORITY.md`)
+- Last command: `gh run list --limit 2 --json headSha,status,conclusion` →
+  `40a0a21 completed success`, `bf76751 completed success`. The full local gate
+  ran at `bf76751`: `bash tools/verify-project.sh` → `PROJECT_VERIFY=PASS`
+  (485 Python tests / 20 skipped, 97 JS tests / 95 passed / 2 skipped, 5/5
+  sections); `tools/check-docs-refs.py` clean. Hosted `verify.yml` is green on
+  `5525d6a`, `cd647ca`, `645ea06`, `bf76751`, `40a0a21`; it failed on
+  `215a49f`/`8feb72f`, which introduced the daemon-cache regression that
+  `5525d6a` repaired.
+
+Session outcome (detail in `docs/REGRESSION_GUARDS.md` RG-151a/151b, RG-154,
+RG-155 and `docs/checkpoints/native-linux-journey.md`):
+
+- The known `tests/an3ctl.test.mjs` failure is fixed and the native Linux
+  deterministic journey is registered with real source-tree evidence.
+- The Linux DEB lane now passes core verification and the native player compile,
+  and stops on its real boundary: the seeded EmulatorJS `latest/data-v2` Azahar
+  runtime is not available to this worker.
+- Public snapshot publication from this line is refused by
+  `tools/publish-github.sh` (a core-only line is required). Review-branch pull
+  request #10 was closed unmerged; the public default branch was never changed.
+  Branch `public/source-20261017` still exists on `origin` (safe to delete after
+  review).
+- Release and production update are owner actions here: `/opt/an3-arcade` is
+  root-owned and `tools/release-train.sh` needs builder SSH keys. Production was
+  untouched (`production-23702348eab171e2`, health `ok`, identical before and
+  after the session).
+
+Unfinished: the packaged desktop shell and packaged interactive journey, NDS/3DS
+native journeys, Android/macOS/Windows acceptance, gameplay performance, the
+direct-LAN two-peer controller journey, and the Eden/Switch bridge. All remain
+`UNVERIFIED` in their own trackers; none was marked passed.
+
+Single next action: obtain a seeded EmulatorJS runtime source for the packaged
+lane — start `an3-arcade-staging.service` on `:8092`, point
+`AN3_OFFLINE_RUNTIME_SOURCE` at another seeded source, or supply a complete
+`AN3_DEPENDENCY_CACHE` — then run `cd native-offline && npm run build:deb` and
+continue the packaged journey from the checkpoint's next actions. See
+`docs/AGENT-AUTHORITY.md` for the authority that pause does not revoke.
