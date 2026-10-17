@@ -29,6 +29,11 @@ BASE_BRANCH="main"
 CREATE_PR=1
 USE_PREBUILT_SNAPSHOT=0
 COMMIT_SUBJECT="Update clean public source snapshot"
+# Empty means "not requested": --branch creates a PR with a generic title/body,
+# and an existing PR is left untouched rather than having an owner-edited
+# title or body overwritten.
+PR_TITLE=""
+PR_BODY_FILE=""
 
 usage() {
   cat <<'USAGE'
@@ -41,6 +46,8 @@ Usage: tools/publish-github.sh --confirm [--repo OWNER/NAME] [--snapshot DIR]
   --no-pr           push a review branch without opening or editing a PR
   --prebuilt        publish the already-built and scanned snapshot at --snapshot
   --message TITLE   public commit title (default: Update clean public source snapshot)
+  --title TITLE     pull-request title for --branch (default: a generic snapshot title)
+  --body-file FILE  pull-request body for --branch (default: a generic publication body)
   --repo OWNER/NAME  default: huou07/vibe-coded-emulator
   --snapshot DIR     default: work/public-snapshot
   -h, --help       show this help
@@ -58,6 +65,8 @@ while [[ $# -gt 0 ]]; do
     --no-pr) CREATE_PR=0; shift ;;
     --prebuilt) USE_PREBUILT_SNAPSHOT=1; shift ;;
     --message) [[ -n "${2:-}" ]] || { printf 'ERROR: --message needs a title\n' >&2; exit 2; }; COMMIT_SUBJECT="$2"; shift 2 ;;
+    --title) [[ -n "${2:-}" ]] || { printf 'ERROR: --title needs a value\n' >&2; exit 2; }; PR_TITLE="$2"; shift 2 ;;
+    --body-file) [[ -n "${2:-}" ]] || { printf 'ERROR: --body-file needs a path\n' >&2; exit 2; }; PR_BODY_FILE="$2"; shift 2 ;;
     --repo) [[ -n "${2:-}" ]] || { printf 'ERROR: --repo needs OWNER/NAME\n' >&2; exit 2; }; REPO="$2"; shift 2 ;;
     --snapshot) [[ -n "${2:-}" ]] || { printf 'ERROR: --snapshot needs a directory\n' >&2; exit 2; }; SNAPSHOT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -190,26 +199,50 @@ if [[ -n "$BRANCH" ]]; then
     note "base: $BASE_BRANCH"
     exit 0
   fi
+  # The pull-request text must describe the publication that actually happened.
+  # A hard-coded title/body from an earlier publication read as a different
+  # change; pass --title/--body-file to be specific, or use the generic text
+  # below, which claims only what this script actually verifies.
   pr_body="$(mktemp -t an3-pr-body.XXXXXX)"
   trap 'rm -f "${pr_body:-}"' EXIT
-  cat > "$pr_body" <<'BODY'
+  if [[ -n "$PR_BODY_FILE" ]]; then
+    [[ -f "$PR_BODY_FILE" && ! -L "$PR_BODY_FILE" ]] || die "PR body file is not a regular file: $PR_BODY_FILE"
+    cp -- "$PR_BODY_FILE" "$pr_body"
+  else
+    cat > "$pr_body" <<'BODY'
 ## Summary
 
-- Add a non-destructive disk-space preflight to local macOS, Windows, Linux, and Android build entrypoints.
-- Keep the sanitized environment example and public CI checks aligned with the current core-only source.
+Curated public source snapshot exported from the private development history
+without that history. See `PROVENANCE.md`.
 
 ## Validation
 
-- 22 focused Python tests passed on the current source line.
-- Snapshot secret and personal-data scans passed.
-- Windows PowerShell preflight execution still needs a Windows runner; platform CI will exercise the Windows build path.
+- The fail-closed publication gate ran before this branch was pushed: snapshot
+  secret, personal-data and private-infrastructure scans reported no findings.
+- Source verification, packaging and device acceptance remain the authority of
+  the exact-SHA CI runs and the dedicated platform builders. This pull request
+  publishes source, not build artifacts, and does not claim a packaged or
+  gameplay result.
 BODY
+  fi
   if PR_URL="$(gh pr view --repo "$REPO" "$BRANCH" --json url --jq .url 2>/dev/null)"; then
-    gh pr edit --repo "$REPO" "$PR_URL" --body-file "$pr_body" \
-      || die "branch was pushed, but pull request update failed"
+    # An existing pull request is only rewritten for the fields the caller
+    # explicitly asked to set; an owner-edited title or body is never clobbered.
+    if [[ -n "$PR_TITLE" && -n "$PR_BODY_FILE" ]]; then
+      gh pr edit --repo "$REPO" "$PR_URL" --title "$PR_TITLE" --body-file "$pr_body" \
+        || die "branch was pushed, but pull request update failed"
+    elif [[ -n "$PR_TITLE" ]]; then
+      gh pr edit --repo "$REPO" "$PR_URL" --title "$PR_TITLE" \
+        || die "branch was pushed, but pull request title update failed"
+    elif [[ -n "$PR_BODY_FILE" ]]; then
+      gh pr edit --repo "$REPO" "$PR_URL" --body-file "$pr_body" \
+        || die "branch was pushed, but pull request update failed"
+    else
+      note "existing pull request left unchanged (pass --title/--body-file to update it)"
+    fi
   else
     PR_URL="$(gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
-      --title "Add local build storage preflight guards" --body-file "$pr_body")" \
+      --title "${PR_TITLE:-Update clean public source snapshot}" --body-file "$pr_body")" \
       || die "branch was pushed, but pull request creation failed"
   fi
   rm -f "$pr_body"
