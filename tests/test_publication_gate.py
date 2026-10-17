@@ -133,6 +133,61 @@ class ProjectPatternScanTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, "private LAN address must block publication")
         self.assertIn("PUBLICATION_CHECK=FAIL", result.stderr)
 
+    def test_absolute_home_path_is_blocked(self):
+        """A home directory resolves on one machine and leaks that layout."""
+        leaked = "/" + "home" + "/" + "worker" + "/roms/emerald.gba"
+        (self.candidate / "notes.md").write_text(f"ROM at {leaked}\n", encoding="utf-8")
+
+        if not has_gitleaks():
+            self.skipTest("gitleaks is not installed")
+
+        result = run_gate(self.candidate)
+
+        self.assertNotEqual(result.returncode, 0, "an absolute home path must block publication")
+        self.assertIn("PUBLICATION_CHECK=FAIL", result.stderr)
+
+    def test_tilde_path_is_blocked_and_the_bare_tilde_is_not(self):
+        """A tilde-slash path is an unresolved host path; a lone tilde is prose."""
+        tilde_path = "~" + "/" + "an3-staging-key"
+        (self.candidate / "notes.md").write_text(f"key at {tilde_path}\n", encoding="utf-8")
+
+        if not has_gitleaks():
+            self.skipTest("gitleaks is not installed")
+
+        blocked = run_gate(self.candidate)
+        self.assertNotEqual(blocked.returncode, 0, "a tilde-slash path must block publication")
+
+        (self.candidate / "notes.md").write_text(
+            "a tilde ~ on its own is not a path\n", encoding="utf-8"
+        )
+        allowed = run_gate(self.candidate)
+        self.assertEqual(allowed.returncode, 0, allowed.stdout + allowed.stderr)
+
+    def test_forbidden_paths_cover_prompts_and_authority_records(self):
+        """The candidate must not carry agent prompts or the authority record."""
+        for relative in ("docs/prompts", "docs/AGENT-AUTHORITY.md",
+                         "AGENT_INTERACTION_CAPABILITY_AUDIT.md", ".codegraph"):
+            with self.subTest(relative=relative):
+                target = self.candidate / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if relative.endswith(".md"):
+                    target.write_text("private note\n", encoding="utf-8")
+                else:
+                    target.mkdir(exist_ok=True)
+                    (target / "note.md").write_text("private note\n", encoding="utf-8")
+
+                if not has_gitleaks():
+                    self.skipTest("gitleaks is not installed")
+
+                result = run_gate(self.candidate)
+                self.assertNotEqual(result.returncode, 0, f"{relative} must block publication")
+                self.assertIn(f"forbidden path present in the candidate: {relative}", result.stderr)
+
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+
     def test_clean_candidate_passes(self):
         """A candidate with no forbidden content must still be publishable."""
         (self.candidate / "app.py").write_text("print('ok')\n", encoding="utf-8")

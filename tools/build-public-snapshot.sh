@@ -148,7 +148,15 @@ for file in disk-preflight.sh disk-preflight.ps1; do
   [[ -f "$ROOT/tools/$file" ]] || die "missing build helper: tools/$file"
   cp "$ROOT/tools/$file" "$OUT/tools/"
 done
-[[ -d "$ROOT/tools/android" ]] && cp -R "$ROOT/tools/android" "$OUT/tools/android"
+if [[ -d "$ROOT/tools/android" ]]; then
+  cp -R "$ROOT/tools/android" "$OUT/tools/android"
+  # The operator README documents the private staging harness: owner SSH key
+  # filenames, a legacy checkout path and the staging host. None of it is usable
+  # to a public reader, and it is exactly the private-infrastructure guidance the
+  # publication gate forbids, so it is not published. The scripts stay, because
+  # they are part of the build tooling.
+  rm -f "$OUT/tools/android/README.md"
+fi
 
 # --- 4. Curated documentation -------------------------------------------------
 mkdir -p "$OUT/docs/architecture" "$OUT/docs/licensing"
@@ -228,9 +236,14 @@ print(f"sanitized files: {changed}; revision: {revision}")
 PY
 
 # --- 7. Fail if any personal/infrastructure pattern survived ------------------
-# A grep error must not read as "nothing survived sanitisation".
+# A grep error must not read as "nothing survived sanitisation". Absolute host
+# paths and `~/` are included here: a home directory that resolves on one machine
+# does not resolve anywhere else, and it describes a person's layout. The
+# publication gate scans for the same patterns on its own copy of the candidate.
+# `-I` skips binary assets, whose byte streams can contain any pattern by chance;
+# text leaks are still caught, and the gate's own scan ignores binaries too.
 survivor_error=""
-survivors="$(grep -rlE "/Users/[A-Za-z]|192\.168\.[0-9]+\.|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.|\bmeomeo\b|an3_codex" -- "$OUT" 2>/tmp/an3-survivor.err)" \
+survivors="$(grep -rlIE "/Users/[A-Za-z]|/home/[A-Za-z0-9._-]+/|(^|[^A-Za-z0-9_])~/|192\.168\.[0-9]+\.|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.|\bmeomeo\b|an3_codex" -- "$OUT" 2>/tmp/an3-survivor.err)" \
   || survivor_error="$(head -5 /tmp/an3-survivor.err)"
 rm -f /tmp/an3-survivor.err
 [[ -z "$survivor_error" ]] || die "post-sanitisation scan could not complete: $survivor_error"

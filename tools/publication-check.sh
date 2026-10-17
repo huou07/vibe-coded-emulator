@@ -59,7 +59,9 @@ grep -q "GPL-3.0-or-later" "$CANDIDATE/README.md" || fail "README does not state
 # the public candidate. build-public-snapshot.sh does not copy them; this list
 # is the second line of defence for --prebuilt snapshots.
 for forbidden in .opencode .codex .agents .parallelism AGENTS.md opencode.json \
-                 reports work tools/ssh AN3-ARCADE-FULL-SYSTEM-HANDOFF-*.md; do
+                 reports work tools/ssh AN3-ARCADE-FULL-SYSTEM-HANDOFF-*.md \
+                 .codegraph docs/prompts docs/AGENT-AUTHORITY.md \
+                 AGENT_INTERACTION_CAPABILITY_AUDIT.md; do
   if compgen -G "$CANDIDATE/$forbidden" >/dev/null; then
     fail "forbidden path present in the candidate: $forbidden"
   fi
@@ -121,7 +123,7 @@ esac
 # so a `git grep` here silently matched nothing on the primary publication path
 # and reported "clean". Plain grep is used instead, and a scanner error is
 # treated as a failure rather than as a clean result.
-PROJECT_PATTERNS='AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|AN3_GOOGLE_CLIENT_ID=[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com|CF_API_TOKEN=[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.'
+PROJECT_PATTERNS='AN3_GOOGLE_CLIENT_SECRET=[A-Za-z0-9_-]{8,}|AN3_AUTH_PEPPER=[A-Za-z0-9]{8,}|AN3_GOOGLE_CLIENT_ID=[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com|CF_API_TOKEN=[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|/Users/[A-Za-z][A-Za-z0-9._-]*/|/home/[A-Za-z0-9._-]+/|(^|[^A-Za-z0-9_])~/|192\.168\.[0-9]+\.[0-9]+|an3tocom\.space|[A-Za-z0-9._%+-]+@(gmail|outlook|yahoo|hotmail)\.'
 
 # grep exit codes: 0 = at least one match, 1 = no match, >=2 = error.
 scan_error=""

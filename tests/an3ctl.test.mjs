@@ -94,7 +94,9 @@ test("usage: an unknown command is a usage error (exit 2)", async () => {
 });
 
 test("web: the Playwright daemon cache moves only when the shared one cannot host it", () => {
-  const base = { dir: "/state", platform: "linux", env: {}, home: "/home/u", creatable: () => true };
+  // Synthetic, host-neutral paths: a literal home-directory path here would be a
+  // finding against the published snapshot (tools/publication-check.sh).
+  const base = { dir: "/state", platform: "linux", env: {}, home: "/opt/agent-home", creatable: () => true };
 
   // Hosted runner: the default cache base is writable, so playwright-cli is left
   // exactly as it was. This is the case that must not regress: overriding
@@ -106,7 +108,7 @@ test("web: the Playwright daemon cache moves only when the shared one cannot hos
   // this run's state and the browser registry is pinned so it is still found.
   assert.deepEqual(daemonCacheOverride({ ...base, creatable: () => false }), {
     XDG_CACHE_HOME: "/state/playwright-cache",
-    PLAYWRIGHT_BROWSERS_PATH: "/home/u/.cache/ms-playwright",
+    PLAYWRIGHT_BROWSERS_PATH: "/opt/agent-home/.cache/ms-playwright",
   });
 
   // An explicit caller choice always wins.

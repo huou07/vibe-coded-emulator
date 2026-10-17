@@ -35,14 +35,11 @@ pixel-identical parity across platforms.
 
 ## Known gaps, in priority order
 
-1. The sanitizer patterns omit absolute home-directory paths and `~/`, and the forbidden-path list
-   misses `docs/prompts/`, `docs/AGENT-AUTHORITY.md`,
-   `AGENT_INTERACTION_CAPABILITY_AUDIT.md` and `.codegraph`.
-2. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
+1. `tools/home-scratch-audit.sh` is referenced by nothing; two sparse-checkout
    entries and `deploy/shadow/` (mode 700) hide tracked content from `git status`.
-3. Fixture-dependent tests skip instead of failing, so an emulator lane can
+2. Fixture-dependent tests skip instead of failing, so an emulator lane can
    report success while measuring nothing.
-4. No automated frame-time or audio budget exists; gameplay performance is
+3. No automated frame-time or audio budget exists; gameplay performance is
    skill-driven evidence only.
 
 Closed since the 2026-10-17 review:
@@ -57,6 +54,14 @@ Closed since the 2026-10-17 review:
   (`tools/publication/check-workflow-scripts.py`). The portable published
   workflow's whitespace step no longer assumes a parent commit, so it runs in the
   single-commit public repository.
+- The sanitizer hole is closed. `/home/<user>/` and `~/` are now blocking
+  patterns in both `tools/publication-check.sh` and the snapshot builder's
+  post-sanitisation scan; `check-docs-refs.py` scans source and test files for
+  absolute host paths as well as prose; `docs/prompts/`,
+  `docs/AGENT-AUTHORITY.md`, `AGENT_INTERACTION_CAPABILITY_AUDIT.md` and
+  `.codegraph` are forbidden paths in a candidate; and the operator README under
+  `tools/android/` (owner key filenames, staging host, legacy checkout path) is
+  no longer copied into the snapshot.
 
 ## Evidence rules
 

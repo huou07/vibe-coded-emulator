@@ -35,6 +35,33 @@ ARCHIVE_PREFIX = "docs/archive/"
 DOC_GLOBS = ("*.md", "docs/**/*.md", "tools/**/*.md", "deploy/**/*.md",
              "native-offline/**/*.md", "rust-gateway/**/*.md", "native/**/*.md")
 
+# Source and test files are checked for absolute host paths too. A path that
+# names a home directory resolves on one machine and leaks that machine's layout;
+# tests/an3ctl.test.mjs already carried one. Prose documents are covered by the
+# token scan above, and retained private evidence under docs/evidence is not
+# source and is never published, so neither is rescanned here.
+CODE_GLOBS = ("*.py", "tools/**/*.py", "tools/**/*.mjs", "tools/**/*.js",
+              "tests/**/*.py", "tests/**/*.js", "tests/**/*.mjs",
+              "static/**/*.js", "static/**/*.mjs")
+
+# A home directory with a real user segment: /home/<name>/... or /Users/<name>/...
+# The trailing slash matters: a test fixture that asserts on the bare prefix
+# ``"/home/"`` is a detector, not a leaked path.
+ABSOLUTE_HOST_PATH = re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+/")
+
+# Files that must contain the patterns themselves, and vendored or generated
+# third-party content whose bytes are not ours to rewrite.
+HOST_PATH_EXEMPT = (
+    "tools/check-docs-refs.py",
+    "tools/build-public-snapshot.sh",
+    "tools/publication-check.sh",
+    "native-offline/vendor/",
+    "native-offline/native-runtime/core/vendor/",
+    "native-offline/src-tauri/gen/",
+    "native-offline/patches/",
+    "static/fonts/",
+)
+
 # A backticked token is treated as a path reference when it looks like one.
 PATH_TOKEN = re.compile(
     r"`([^`\n]+?)`",
@@ -125,6 +152,39 @@ def doc_files() -> list[Path]:
     return sorted(ROOT / p for p in seen)
 
 
+def code_files() -> list[Path]:
+    seen: dict[Path, None] = {}
+    for pattern in CODE_GLOBS:
+        for path in ROOT.glob(pattern):
+            rel = path.relative_to(ROOT).as_posix()
+            if path.is_file() and not any(rel.startswith(p) or rel == p for p in HOST_PATH_EXEMPT):
+                seen.setdefault(rel, None)
+    return sorted(ROOT / p for p in seen)
+
+
+def scan_host_paths(path: Path) -> list[str]:
+    """Absolute host paths in source or test files.
+
+    ``docs/archive/`` is exempt because it keeps the historical record verbatim,
+    and the bookkeeping files above are exempt because they define the scan.
+    """
+    rel = path.relative_to(ROOT).as_posix()
+    if rel.startswith(ARCHIVE_PREFIX):
+        return []
+    findings: list[str] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    for line_no, line in enumerate(text.splitlines(), 1):
+        for match in ABSOLUTE_HOST_PATH.finditer(line):
+            findings.append(
+                f"{rel}:{line_no}: absolute host path {match.group(0)!r} — use a "
+                f"repository-relative path or a named environment variable"
+            )
+    return findings
+
+
 def top_segment(token: str) -> str:
     return token.split("/", 1)[0]
 
@@ -191,22 +251,26 @@ def main() -> int:
     tracked = tracked_files()
     ignored = set(ignored_paths())
     docs = doc_files()
+    sources = code_files()
     findings: list[str] = []
     for doc in docs:
         findings.extend(scan(doc, tracked, ignored))
+    for source in sources:
+        findings.extend(scan_host_paths(source))
     if findings:
         print("Documentation reference check FAILED:\n", file=sys.stderr)
         for finding in findings:
             print(f"  {finding}", file=sys.stderr)
         print(
-            f"\n{len(findings)} finding(s) across {len(docs)} document(s).\n"
+            f"\n{len(findings)} finding(s) across {len(docs)} document(s) and "
+            f"{len(sources)} source file(s).\n"
             "Fix the reference, or move a superseded document to docs/archive/ "
             "with a reason. Do not silence the check.",
             file=sys.stderr,
         )
         return 1
     print(f"Documentation reference check: clean ({len(docs)} documents, "
-          f"{len(tracked)} tracked paths)")
+          f"{len(sources)} source files, {len(tracked)} tracked paths)")
     return 0
 
 
