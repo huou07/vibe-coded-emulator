@@ -68,7 +68,18 @@ find "$OUT" -type d -name '__pycache__' -prune -exec rm -rf {} +
 mkdir -p "$OUT/native-offline"
 for item in src-tauri native-runtime scripts web shared tests flatpak; do
   [[ -e "$ROOT/native-offline/$item" ]] || continue
-  cp -R "$ROOT/native-offline/$item" "$OUT/native-offline/$item"
+  if [[ "$item" == "src-tauri" ]]; then
+    # `src-tauri/target` is a multi-gigabyte Rust build tree that this snapshot
+    # deletes again below. Copying it first fills a workstation's scratch space
+    # for nothing, and a full disk fails the candidate build with `cp: No space
+    # left on device` instead of the assertion the test is actually making, so
+    # exclude it at copy time and keep the same result.
+    mkdir -p "$OUT/native-offline/$item"
+    ( cd "$ROOT/native-offline/src-tauri" && tar --exclude='./target' -cf - . ) \
+      | ( cd "$OUT/native-offline/$item" && tar -xf - )
+  else
+    cp -R "$ROOT/native-offline/$item" "$OUT/native-offline/$item"
+  fi
 done
 for file in package.json package-lock.json THIRD_PARTY_NOTICES.md .gitignore patches; do
   [[ -e "$ROOT/native-offline/$file" ]] && cp -R "$ROOT/native-offline/$file" "$OUT/native-offline/"
