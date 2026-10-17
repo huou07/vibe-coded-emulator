@@ -5,7 +5,7 @@ replace [AGENTS.md](../AGENTS.md), `.agents/skills.md`, `docs/REGRESSION_GUARDS.
 or `docs/AGENT-AUTHORITY.md`; where they disagree, the source, the guards and the
 exact-SHA hosted runs decide.
 
-Last reviewed: 2026-10-17.
+Last reviewed: 2026-10-18.
 
 ## Supported targets
 
@@ -116,3 +116,8 @@ Closed since the 2026-10-17 review:
   aggregates every lane and fails unless all of them succeeded, so a skipped or
   cancelled lane cannot read as green. `main` requires that job.
 - A skipped, missing or unavailable check is `UNVERIFIED`; it is never PASS.
+- Hosted evidence: after a successful hosted run for the current commit,
+  `bash tools/record-hosted-evidence.sh <workflow>` records it in `.hub/hosted-evidence.json`. The Hub
+  merges it into a verification record only when it names that exact revision;
+  without it `release-check` is `BLOCKED` by "no hosted-runner evidence", which
+  is true, not a defect.
