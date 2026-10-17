@@ -24,6 +24,17 @@ npm run check
 npm run build:macos
 ```
 
+On Linux, `npm run build:deb` routes to `scripts/build-linux-staging.sh deb`: it
+verifies the pinned libretro cores, compiles the native player, stages
+`vendor/runtime/linux-x86_64/`, and only then packages the Tauri shell. It needs
+one input the repository does not carry: the EmulatorJS runtime assets. The
+`/stable` files come from the public EmulatorJS CDN, but `/latest/data-v2/*` is
+the repaired Azahar runtime and is published only by a seeded AN3 runtime source
+(`AN3_OFFLINE_RUNTIME_SOURCE`, default `http://127.0.0.1:8092/emulatorjs`) or by
+a pre-populated frozen dependency cache (`AN3_DEPENDENCY_CACHE`). Without either,
+the build stops on that asset and names the boundary instead of packaging a shell
+with a broken 3DS runtime.
+
 The build script copies only `static/` plus `native-offline/web/` into the
 Tauri frontend bundle. The macOS package includes pinned native mGBA, melonDS
 DS, and Azahar libretro cores plus the Vulkan/MoltenVK renderer dependencies,

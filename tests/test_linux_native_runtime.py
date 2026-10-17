@@ -9,6 +9,7 @@ path.
 """
 
 from pathlib import Path
+import hashlib
 import json
 import unittest
 
@@ -16,6 +17,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 LINUX = ROOT / "native-offline/native-runtime/platform/linux"
 BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encoding="utf-8")
+FETCH_LINUX_CORES = (ROOT / "native-offline/scripts/fetch-linux-gba-nds-libretro.mjs").read_text(encoding="utf-8")
+LINUX_CORE_MANIFEST = ROOT / "native-offline/vendor/libretro/linux-x86_64/manifest.json"
+BUNDLED_CORE_MANIFEST = ROOT / "native-offline/vendor/runtime/linux-x86_64/libretro/manifest.json"
 FLATPAK_INSTALL_VERIFY = (ROOT / "native-offline/scripts/verify-flatpak-install.sh").read_text(encoding="utf-8")
 RUNTIME = (LINUX / "linux_runtime.cpp").read_text(encoding="utf-8")
 CONTROLS = (LINUX / "linux_controls.cpp").read_text(encoding="utf-8")
@@ -40,6 +44,62 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('--runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo', BUILD)
         self.assertIn('flatpak_deb_path="$root/releases/$deb_name"', BUILD)
         self.assertIn('The Flatpak source DEB is stale or differs from the selected staged DEB.', BUILD)
+
+    def test_prepare_web_names_the_runtime_source_it_needs(self):
+        """A missing runtime source must fail with the boundary named.
+
+        `latest/data-v2/*` (the repaired Azahar runtime) is published only by a
+        seeded local runtime source, never by the public EmulatorJS CDN. A bare
+        `TypeError: fetch failed` reads like a broken build host, so the failure
+        must name the asset, the origin, the cache and `AN3_OFFLINE_RUNTIME_SOURCE`.
+        """
+        prepare_web = (ROOT / "native-offline/scripts/prepare-web.mjs").read_text(encoding="utf-8")
+        self.assertIn("AN3_OFFLINE_RUNTIME_SOURCE", prepare_web)
+        self.assertIn("AN3_DEPENDENCY_CACHE", prepare_web)
+        self.assertIn("comes from a seeded local runtime source", prepare_web)
+        # The frozen lock still guards every asset, including the seeded ones.
+        self.assertIn("differs from the frozen dependency lock", prepare_web)
+        self.assertIn("Frozen dependency cache is missing or corrupt", prepare_web)
+
+    def test_linux_core_pins_describe_the_cores_the_repository_ships(self):
+        """The Linux build must reuse the verified cores, not chase a mutable nightly.
+
+        `fetch-linux-gba-nds-libretro.mjs` downloads from a rolling buildbot
+        `latest` URL and verifies both the archive and the unpacked core. Pins
+        that describe different bytes than the tracked vendor tree make the DEB
+        lane fail closed on every fresh run (the 2026-10-08 refresh pinned
+        nightly-20261007 while the repository shipped nightly-20260911), so the
+        pins must equal the tracked manifest and the core actually bundled into
+        the runtime.
+        """
+        if not LINUX_CORE_MANIFEST.exists():
+            self.skipTest("vendored Linux core manifest is not present in this checkout")
+        pinned = {core["coreName"]: core for core in json.loads(LINUX_CORE_MANIFEST.read_text(encoding="utf-8"))["cores"]}
+        self.assertIn("mgba_libretro.so", pinned)
+        self.assertIn("melondsds_libretro.so", pinned)
+
+        for core_name in ("mgba_libretro.so", "melondsds_libretro.so"):
+            core = pinned[core_name]
+            self.assertIn(core["coreSha256"], FETCH_LINUX_CORES, f"{core_name} core pin drifted from the build script")
+            self.assertIn(core["archiveSha256"], FETCH_LINUX_CORES, f"{core_name} archive pin drifted from the build script")
+            self.assertIn(core["version"], FETCH_LINUX_CORES, f"{core_name} version pin drifted from the build script")
+
+            staged = ROOT / f"native-offline/vendor/libretro/linux-x86_64/{core_name}"
+            if staged.exists():
+                self.assertEqual(
+                    hashlib.sha256(staged.read_bytes()).hexdigest(),
+                    core["coreSha256"],
+                    f"staged {core_name} does not match its pinned manifest hash",
+                )
+
+        if BUNDLED_CORE_MANIFEST.exists():
+            bundled = {core["coreName"]: core for core in json.loads(BUNDLED_CORE_MANIFEST.read_text(encoding="utf-8"))["cores"]}
+            for core_name in ("mgba_libretro.so", "melondsds_libretro.so"):
+                self.assertEqual(
+                    bundled[core_name]["coreSha256"],
+                    pinned[core_name]["coreSha256"],
+                    f"the bundled runtime ships a different {core_name} than the build pins",
+                )
 
     def test_flatpak_bundle_is_clean_installable_without_a_builder_runtime_cache(self):
         self.assertIn('flatpak --user install --noninteractive "$bundle"', FLATPAK_INSTALL_VERIFY)

@@ -12,29 +12,36 @@ const nativeRoot = resolve(scriptDirectory, "..");
 const destination = resolve(nativeRoot, "vendor", "libretro", "linux-x86_64");
 const sha256 = data => createHash("sha256").update(data).digest("hex");
 
-// Buildbot URLs are mutable, so both the archive and the unpacked core are
-// pinned to the exact bytes inspected for this staging train. A changed
-// nightly fails closed instead of silently changing the Linux package.
+// Buildbot URLs are mutable `latest` targets, so both the archive and the
+// unpacked core are pinned to the exact bytes inspected for this staging train.
+// A changed nightly fails closed instead of silently changing the Linux package.
+//
+// These pins MUST describe the bytes the repository actually ships: they are
+// kept identical to the tracked vendor/libretro/linux-x86_64/manifest.json and
+// to the cores bundled into vendor/runtime by bundle-linux-runtime.mjs, and
+// tests/test_linux_native_runtime.py fails if they drift apart. A refresh of
+// these pins is only valid together with the re-fetched, re-inspected cores.
+// Because the URL rolls forward, the normal build reuses the already-verified
+// tracked cores and never downloads; a download is only attempted when they are
+// missing, and then only the pinned bytes are accepted.
 const cores = [
   {
-    system: "gba", engine: "mGBA libretro", version: "nightly-20261007",
+    system: "gba", engine: "mGBA libretro", version: "nightly-20260911",
     archiveName: "mgba_libretro.so.zip",
     archiveUrl: "https://buildbot.libretro.com/nightly/linux/x86_64/latest/mgba_libretro.so.zip",
-    archiveSha256: "ff9a625528180b9bb9cc5b9726c772188653325783232e7f15490f64305f406a",
+    archiveSha256: "983a23879249bb7727a4a0665e28a3a8e98c1ba4da8ff1fa83ff35722cd4e466",
     coreName: "mgba_libretro.so",
-    coreSha256: "c840f305825d07c9bec7a6ec18841073c4b539fd234f73623474f97c507f1cdc",
-    sourceRevision: "7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6",
+    coreSha256: "768921964037e0a40e8eab9e0d6eccad1b8a13d74bc37e9cae5543bb167d18c4",
     licenseName: "mGBA-MPL-2.0.txt", license: "MPL-2.0",
     sourceUrl: "https://github.com/mgba-emu/mgba",
   },
   {
-    system: "nds", engine: "melonDS DS libretro", version: "nightly-20261007 (1.4.0)",
+    system: "nds", engine: "melonDS DS libretro", version: "nightly-20260911",
     archiveName: "melondsds_libretro.so.zip",
     archiveUrl: "https://buildbot.libretro.com/nightly/linux/x86_64/latest/melondsds_libretro.so.zip",
-    archiveSha256: "ce01e5a9a1794093d516c1835487494e23c4c1ba4c3ad1b3bc68bb898e6521ba",
+    archiveSha256: "db02d78068ef72e797468136471763892f3cf954ea216ef349a0eb092e4c48b3",
     coreName: "melondsds_libretro.so",
-    coreSha256: "3a2533677b458e1f2199748a001465a95c7a2e5f8b725ba054e1db93ebe39b77",
-    sourceRevision: "v1.4.0",
+    coreSha256: "a217ebd98a68745591cf68bdf35342d73b9044f2a3e6a6071c165dc632ae7cf9",
     licenseName: "melonDS-DS-GPL-3.0-or-later.txt", license: "GPL-3.0-or-later",
     sourceUrl: "https://github.com/JesseTG/melonds-ds",
   },
@@ -70,7 +77,8 @@ if (process.platform !== "linux" || process.arch !== "x64") {
   process.exit(0);
 }
 
-if (!await artifactsReady()) {
+const ready = await artifactsReady();
+if (!ready) {
   const temporary = await mkdtemp(join(tmpdir(), "an3-linux-libretro-"));
   try {
     const staged = join(temporary, "staged"); await mkdir(staged, { recursive: true });
@@ -87,6 +95,8 @@ if (!await artifactsReady()) {
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+} else {
+  console.log(`LINUX_GBA_NDS_LIBRETRO_REUSE=${destination} (pinned cores already verified; no download)`);
 }
 
 await writeFile(join(destination, "manifest.json"), `${JSON.stringify({
