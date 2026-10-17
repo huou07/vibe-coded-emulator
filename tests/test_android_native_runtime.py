@@ -505,6 +505,53 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
             activity.index('if (header.size > 0xb2', activity.index('private fun systemFromHeader')),
         )
 
+    def test_android_build_selects_the_ndk_host_toolchain_it_is_running_on(self):
+        """The hosted Linux Android builder must not be sent to a macOS NDK path.
+
+        The NDK ships one prebuilt host toolchain per build host. The build
+        scripts hardcoded `toolchains/llvm/prebuilt/darwin-x86_64`, so every
+        hosted ubuntu-24.04 Android job died on the first compiler invocation
+        with a bare `No such file or directory`, and the macOS-only JAVA_HOME /
+        ANDROID_HOME defaults made a Linux host fail its prerequisite guard
+        even when Java and the SDK were present.
+        """
+        runtime_build = source(ROOT / "native-offline/scripts/build-android-runtime.sh")
+        self.assertNotIn("prebuilt/darwin-x86_64", runtime_build)
+        self.assertIn('case "$(uname -s)" in', runtime_build)
+        self.assertIn("linux-x86_64", runtime_build)
+        self.assertIn("darwin-x86_64", runtime_build)
+        # The failure must name the missing compiler instead of surfacing as a
+        # shell-level "No such file or directory" from the compiler invocation.
+        self.assertIn("Missing Android NDK C++ compiler:", runtime_build)
+
+        staging_build = source(ROOT / "native-offline/scripts/build-android-staging.sh")
+        self.assertNotIn(
+            'export JAVA_HOME="${JAVA_HOME:-/opt/homebrew',
+            staging_build,
+            "a Linux host must not default JAVA_HOME to a Homebrew macOS path",
+        )
+        self.assertIn("sha256sum", staging_build)
+        self.assertIn("shasum -a 256", staging_build)
+
+    def test_hosted_android_lane_builds_from_this_revision(self):
+        """The hosted Android lane must exist and use this tree's own builder.
+
+        The repository's only Android workflow lived on an unrelated
+        public-release history, and its job hardcoded the macOS NDK toolchain, so
+        it could never pass on ubuntu-24.04. This pins the replacement wiring: a
+        hosted Linux job that calls the platform builder script this tree
+        contains, and states plainly that device acceptance does not run there.
+        """
+        workflow = source(ROOT / ".github/workflows/native-build.yml")
+        self.assertIn("runs-on: ubuntu-24.04", workflow)
+        self.assertIn("bash native-offline/scripts/build-android-staging.sh", workflow)
+        self.assertIn("ndk;26.3.11579264", workflow)
+        self.assertIn("aarch64-linux-android", workflow)
+        self.assertIn("NOT RUN on this lane", workflow)
+        # The Android staging *candidate* stays with the release train and its
+        # guarded builder; this lane must not present itself as that release.
+        self.assertNotIn("bash tools/release-train.sh", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

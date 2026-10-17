@@ -22,9 +22,11 @@ await cp(resolve(nativeRoot, "web"), destination, { recursive: true });
 // Package only the reviewed GBA, NDS and 3DS runtime files from staging, then
 // let the Rust loopback server deliver them with COOP/COEP.  `data-v2` is the
 // staging-only repaired Azahar path; the public EmulatorJS CDN has no such
-// path, which is why the former native 3DS launcher always failed. A source
-// must be provided by the local build/test environment when the frozen cache
-// is incomplete; the installed app never uses this origin at runtime.
+// path, which is why the former native 3DS launcher always failed. The repaired
+// runtime is vendored in-tree (see `vendoredRuntime` below), so a fresh
+// checkout builds from what the repository already ships; the frozen cache and
+// `AN3_OFFLINE_RUNTIME_SOURCE` remain the sources for the public `stable` files
+// and for a seeded mirror. The installed app never uses this origin at runtime.
 const patchedRuntimeOrigin = (process.env.AN3_OFFLINE_RUNTIME_SOURCE || "http://127.0.0.1:8092/emulatorjs").replace(/\/+$/, "");
 const standardRuntimeOrigin = "https://cdn.emulatorjs.org";
 const runtimeFiles = [
@@ -46,6 +48,13 @@ const runtimeFiles = [
 const runtimeHashes = JSON.parse(await readFile(resolve(nativeRoot, "shared/web-runtime-lock.json"), "utf8"));
 const dependencyCache = resolve(process.env.AN3_DEPENDENCY_CACHE || resolve(nativeRoot, "work/dependency-cache"));
 const requireDependencyCache = process.env.AN3_REQUIRE_DEPENDENCY_CACHE === "1";
+// Tauri's generated Android project is where the repository vendors the nine
+// locked `latest/data-v2` files (4.9 MB): the public CDN has no such path, so
+// they are committed rather than fetched. Reading them here is what lets a
+// fresh checkout build without a seeded runtime source or a pre-populated
+// cache; the lock still decides, so a vendored file whose bytes drift from
+// `web-runtime-lock.json` is rejected exactly like a downloaded one.
+const vendoredRuntime = resolve(nativeRoot, "src-tauri", "gen", "android", "app", "src", "main", "assets", "emulatorjs");
 await mkdir(dependencyCache, {recursive:true});
 
 for (const relativePath of runtimeFiles) {
@@ -58,7 +67,13 @@ for (const relativePath of runtimeFiles) {
     if (createHash("sha256").update(cached).digest("hex") === runtimeHashes[relativePath]) payload = cached;
   } catch {}
   if (!payload) {
-    if (requireDependencyCache) throw new Error(`Frozen dependency cache is missing or corrupt: ${relativePath}`);
+    try {
+      const vendored = await readFile(resolve(vendoredRuntime, relativePath));
+      if (createHash("sha256").update(vendored).digest("hex") === runtimeHashes[relativePath]) payload = vendored;
+    } catch {}
+  }
+  if (!payload) {
+    if (requireDependencyCache) throw new Error(`Frozen dependency cache is missing or corrupt: ${relativePath}, and the in-tree vendored runtime does not supply it either`);
     // Fail with the boundary named. A bare `TypeError: fetch failed` here reads
     // like a broken build host, but the real precondition is a configured
     // runtime source: every latest/data-v2 asset (the repaired Azahar runtime)
@@ -69,7 +84,7 @@ for (const relativePath of runtimeFiles) {
       response = await fetch(`${origin}/${sourcePath}`);
     } catch (error) {
       throw new Error(
-        `Native runtime asset ${relativePath} is neither in the frozen dependency cache (${dependencyCache}) nor fetchable from ${origin} (${error.message}). ` +
+        `Native runtime asset ${relativePath} is neither in the frozen dependency cache (${dependencyCache}), nor vendored at ${vendoredRuntime}, nor fetchable from ${origin} (${error.message}). ` +
         `The latest/data-v2 runtime (repaired Azahar) comes from a seeded local runtime source: set AN3_OFFLINE_RUNTIME_SOURCE to one (default ${patchedRuntimeOrigin}), ` +
         `or pre-populate the dependency cache with the pinned downloaded files, then re-run.`,
       );
@@ -77,7 +92,7 @@ for (const relativePath of runtimeFiles) {
     if (!response.ok) {
       throw new Error(
         `Native runtime asset ${relativePath} returned HTTP ${response.status} from ${origin}. ` +
-        `The standard assets come from ${standardRuntimeOrigin}; the latest/data-v2 assets come from AN3_OFFLINE_RUNTIME_SOURCE (currently ${patchedRuntimeOrigin}) or from the frozen dependency cache.`,
+        `The standard assets come from ${standardRuntimeOrigin}; the latest/data-v2 assets come from AN3_OFFLINE_RUNTIME_SOURCE (currently ${patchedRuntimeOrigin}), from the frozen dependency cache, or from the tracked vendored runtime at ${vendoredRuntime}.`,
       );
     }
     payload = new Uint8Array(await response.arrayBuffer());

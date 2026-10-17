@@ -1,0 +1,109 @@
+# Hosted Android/native build lane.
+#
+# Scope and honesty boundaries:
+#   * This lane compiles the Android arm64 product package from the exact
+#     revision it runs on, on a hosted Linux runner, and publishes its SHA-256.
+#   * It is a build lane, not a release candidate and not platform acceptance.
+#     No emulator or physical device runs here, so Android instrumentation,
+#     runtime and gameplay acceptance stay UNVERIFIED; `docs/QUALITY.md` keeps
+#     the Windows/macOS/Android VERIFIED_NATIVE row on the private release train
+#     and its dedicated builders.
+#   * The canonical release train (`tools/release-train.sh`) still restricts the
+#     Android staging *candidate* to its macOS builder. That release guard is
+#     deliberately left in place, so this lane calls the same platform builder
+#     script directly instead of weakening the guard.
+#
+# Why it exists: the only hosted Android lane this repository had lived on an
+# unrelated public-release history and could never pass, because its builder
+# hardcoded the macOS NDK host toolchain
+# (`toolchains/llvm/prebuilt/darwin-x86_64/...`) while the job ran on
+# ubuntu-24.04. `native-offline/scripts/build-android-runtime.sh` now selects the
+# NDK host from `uname`, so the same builder runs on both hosts.
+name: native-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+    paths:
+      - '.github/workflows/native-build.yml'
+      - 'native-offline/**'
+      - 'tools/disk-preflight.sh'
+  pull_request:
+    paths:
+      - '.github/workflows/native-build.yml'
+      - 'native-offline/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  android-apk:
+    name: Android arm64 APK (build lane, no device acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CI: 'true'
+      NDK_VERSION: '26.3.11579264'
+      # android-actions/setup-android installs into this SDK root and the builder
+      # defaults NDK_HOME to $ANDROID_HOME/ndk/26.3.11579264; set it explicitly so
+      # the compiler path is never ambiguous in the job log.
+      NDK_HOME: /usr/local/lib/android/sdk/ndk/26.3.11579264
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 15859902
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;26.3.11579264'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.88.0'
+          targets: aarch64-linux-android
+      - name: Print the builder identity and the selected NDK host toolchain
+        run: |
+          set -euo pipefail
+          uname -s -m
+          java -version
+          node --version
+          rustc --version
+          # The line that used to be hardcoded to darwin-x86_64.
+          ls -d "$NDK_HOME"/toolchains/llvm/prebuilt/*/
+          git rev-parse HEAD
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Build the Android arm64 release package
+        run: bash native-offline/scripts/build-android-staging.sh
+      - name: Checksum and label the artifact
+        run: |
+          set -euo pipefail
+          apk="$(find native-offline/releases -maxdepth 1 -name '*-android-arm64-staging.apk' -print -quit)"
+          test -n "$apk" || { echo 'The Android build produced no staging APK.' >&2; exit 1; }
+          (cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")" > "$(basename "$apk").sha256")
+          printf 'Android product APK: arm64 release variant signed with the shared debug identity; not a production signing identity.\nSource revision: %s\nDevice, instrumentation and gameplay acceptance: NOT RUN on this lane.\n' \
+            "$GITHUB_SHA" > native-offline/releases/BUILD_LABELS-android-apk.txt
+          cat "$apk.sha256" native-offline/releases/BUILD_LABELS-android-apk.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            native-offline/releases/*-android-arm64-staging.apk
+            native-offline/releases/*-android-arm64-staging.apk.sha256
+            native-offline/releases/BUILD_LABELS-android-apk.txt
+          if-no-files-found: error
+          retention-days: 7

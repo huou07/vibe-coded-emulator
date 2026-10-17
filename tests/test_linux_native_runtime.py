@@ -28,6 +28,8 @@ AUDIO = (LINUX / "sdl_audio_backend.cpp").read_text(encoding="utf-8")
 SURFACE = (LINUX / "sdl_window_surface.h").read_text(encoding="utf-8")
 FLATPAK = (ROOT / "native-offline/flatpak/space.an3tocom.offline.yml").read_text(encoding="utf-8")
 VULKAN = (ROOT / "native-offline/native-runtime/video/vulkan/vulkan_backend.cpp").read_text(encoding="utf-8")
+WEB_RUNTIME_LOCK = ROOT / "native-offline/shared/web-runtime-lock.json"
+VENDORED_WEB_RUNTIME = ROOT / "native-offline/src-tauri/gen/android/app/src/main/assets/emulatorjs"
 
 
 class LinuxNativeRuntimeTests(unittest.TestCase):
@@ -60,6 +62,39 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         # The frozen lock still guards every asset, including the seeded ones.
         self.assertIn("differs from the frozen dependency lock", prepare_web)
         self.assertIn("Frozen dependency cache is missing or corrupt", prepare_web)
+
+    def test_prepare_web_reads_the_vendored_runtime_before_reaching_the_network(self):
+        """The repaired runtime is vendored in-tree, not only owner-seeded.
+
+        `latest/data-v2` cannot be fetched from the public EmulatorJS CDN, so the
+        nine locked files are committed under the generated Android project and
+        `prepare-web.mjs` must consume that copy as a local source. Without it a
+        fresh checkout reports the runtime as unavailable while the repository
+        already ships every byte of it.
+        """
+        prepare_web = (ROOT / "native-offline/scripts/prepare-web.mjs").read_text(encoding="utf-8")
+        self.assertIn("vendoredRuntime", prepare_web)
+        self.assertIn('"src-tauri", "gen", "android", "app", "src", "main", "assets", "emulatorjs"', prepare_web)
+
+    def test_vendored_repaired_runtime_matches_the_frozen_lock(self):
+        """The tracked `latest/data-v2` copy must stay byte-identical to the lock.
+
+        The vendored files are a build input with a pinned SHA-256, so drift
+        against `native-offline/shared/web-runtime-lock.json` has to fail here
+        instead of surfacing later as `differs from the frozen dependency lock`
+        in the middle of a release build.
+        """
+        lock = json.loads(WEB_RUNTIME_LOCK.read_text(encoding="utf-8"))
+        repaired = {name: digest for name, digest in lock.items() if name.startswith("latest/data-v2/")}
+        self.assertTrue(repaired, "the frozen lock no longer names the repaired Azahar runtime")
+        for name, digest in repaired.items():
+            asset = VENDORED_WEB_RUNTIME / name
+            self.assertTrue(asset.is_file(), f"the tracked repaired runtime is missing {name}")
+            self.assertEqual(
+                hashlib.sha256(asset.read_bytes()).hexdigest(),
+                digest,
+                f"{name} drifted from the frozen web runtime lock",
+            )
 
     def test_linux_core_pins_describe_the_cores_the_repository_ships(self):
         """The Linux build must reuse the verified cores, not chase a mutable nightly.

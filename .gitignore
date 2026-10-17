@@ -60,6 +60,10 @@ native-offline/releases/*.dmg
 native-offline/releases/*.flatpak
 native-offline/releases/*.exe
 native-offline/releases/*.idsig
+# Every builder writes a `<artifact>.sha256` sidecar next to the installer it
+# just produced, so a documented staging build must not leave the tree dirty
+# over a checksum of a binary that is already ignored.
+native-offline/releases/*.sha256
 
 # Cloud credential directories must never be committed from a workstation
 .aws/
