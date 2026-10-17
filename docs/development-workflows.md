@@ -53,7 +53,7 @@ The default desktop commands now select the host:
 | `npm run build` | Complete Linux staging DEB script | macOS app build | Windows staging script |
 | `npm run dev` | Prepared Linux player + Tauri shell | macOS preparation + Tauri shell | Prepared Windows player + Tauri shell |
 
-`npm run build:deb` uses `scripts/build-linux-staging.sh deb`, which fetches
+`npm run build:deb` uses `native-offline/scripts/build-linux-staging.sh deb`, which fetches
 the pinned Linux cores, builds and stages the native player and then packages
 the shell. Calling Tauri's DEB bundler alone omits that preparation. Linux and
 Windows dev commands stop with a diagnostic when the native player is absent.

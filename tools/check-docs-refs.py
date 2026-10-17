@@ -143,12 +143,20 @@ def ignored_paths() -> list[str]:
     return sorted(ignored)
 
 
+# Generated scaffolding is not authored documentation: the Android asset tree
+# copies tracked notices verbatim, so a relative reference inside the copy
+# resolves from a different directory and reports as broken. The whitespace gate
+# excludes the same tree for the same reason.
+DOC_EXEMPT_PREFIXES = ("native-offline/src-tauri/gen/",)
+
+
 def doc_files() -> list[Path]:
     seen: dict[Path, None] = {}
     for pattern in DOC_GLOBS:
         for path in ROOT.glob(pattern):
-            if path.is_file():
-                seen.setdefault(path.relative_to(ROOT).as_posix(), None)
+            rel = path.relative_to(ROOT).as_posix()
+            if path.is_file() and not rel.startswith(DOC_EXEMPT_PREFIXES):
+                seen.setdefault(rel, None)
     return sorted(ROOT / p for p in seen)
 
 
@@ -207,7 +215,11 @@ def check_repo_relative(line_no: int, doc: str, token: str,
         return
     # A bare word, a filename we do not own, or something outside the repo.
     head = top_segment(target)
-    if head not in KNOWN_ROOTS:
+    # `scripts/...` is a path reference even though `scripts` is not a top-level
+    # directory. That is exactly how a document points at a path that has moved:
+    # the staging build scripts live in `native-offline/scripts/`, and the bare
+    # relative form silently dangled. Check it instead of ignoring the root.
+    if head not in KNOWN_ROOTS and head != "scripts":
         return
     candidates = {target, target.lstrip("./")}
     doc_dir = str(Path(doc).parent)
@@ -240,10 +252,13 @@ def scan(doc: Path, tracked: set[str], ignored: set[str]) -> list[str]:
         targets += [m.group(1) for m in PATH_TOKEN.finditer(line)]
         for raw in targets:
             token = raw.strip()
-            if not PATHISH.match(token):
+            # A documented command carries arguments: `native-offline/scripts/build-linux-staging.sh deb`.
+            # Validate the path part, which is the first word; the rest is arguments.
+            path_token = token.split()[0] if token.split() else token
+            if not PATHISH.match(path_token):
                 continue
-            check_absolute(line_no, rel, token, findings)
-            check_repo_relative(line_no, rel, token, tracked, ignored, findings)
+            check_absolute(line_no, rel, path_token, findings)
+            check_repo_relative(line_no, rel, path_token, tracked, ignored, findings)
     return findings
 
 

@@ -24,7 +24,7 @@ npm run check
 npm run build:macos
 ```
 
-On Linux, `npm run build:deb` routes to `scripts/build-linux-staging.sh deb`: it
+On Linux, `npm run build:deb` routes to `native-offline/scripts/build-linux-staging.sh deb`: it
 verifies the pinned libretro cores, compiles the native player, stages
 `vendor/runtime/linux-x86_64/`, and only then packages the Tauri shell. It needs
 one input the repository does not carry: the EmulatorJS runtime assets. The

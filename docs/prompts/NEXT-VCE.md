@@ -49,10 +49,11 @@ duplicate mandate in `.agents/skills.md` are superseded by `AGENT-AUTHORITY.md`.
    machine-readable skip manifest from `verify-project.sh` so a green run cannot
    hide 20 skipped tests.
 4. **Fix the wrong path and the false claim.** `docs/AGENT-AUTHORITY.md` and
-   `docs/development-workflows.md` point at `scripts/build-linux-staging.sh`
-   (real path: `native-offline/scripts/`); `tools/publication/docs/building.md`
+   `docs/development-workflows.md` point at the staging build script by its bare
+   relative name whose real location is `native-offline/scripts/`;
+   `tools/publication/docs/building.md`
    says cores are not vendored as binaries while 318 vendored files are tracked.
-   Fix both, and make the doc-reference checker validate `scripts/...` tokens
+   Fix both, and make the doc-reference checker validate a bare `scripts/<>` token
    instead of ignoring unknown roots.
 5. **Add the missing gates.** One automated performance budget (frame-time p95 or
    audio underruns from `--status-json`) and one browser test asserting the

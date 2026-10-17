@@ -32,9 +32,13 @@ bash scripts/build-linux-staging.sh flatpak           # Flatpak bundle
 #   scripts/build-windows-staging.ps1
 ```
 
-Emulator cores are not vendored as binaries in this repository; the
-`scripts/fetch-*.mjs` helpers download and SHA-256 verify the pinned upstream
-cores (mGBA, melonDS DS, Azahar) before bundling.
+The pinned emulator cores are vendored in the development repository under
+`native-offline/vendor/` (core binaries, their licence texts and a hash
+manifest). This public snapshot carries the licence texts only: no core binaries
+and no manifest, because the snapshot publishes source. The
+`native-offline/scripts/fetch-*.mjs` helpers download and SHA-256 verify every
+pinned core (mGBA, melonDS DS, Azahar) before bundling, and refuse bytes that do
+not match the pin.
 
 ## Android notes
 

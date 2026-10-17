@@ -194,7 +194,7 @@ agents, when still needed, remain under `.opencode/agent/`:
 
 1. **skill `an3-build`** — "Build/publish a native platform for Vibe Coded
    Emulator." Encodes: the version-bump rule (patch/minor/major), the exact
-   per-platform commands (`npm run build:macos`, `scripts/build-android-staging.sh`,
+   per-platform commands (`npm run build:macos`, `native-offline/scripts/build-android-staging.sh`,
    Dell `build-linux-staging.sh deb|flatpak` via `an3-dell`, Windows two-step via
    `an3-win11-build`), artifact collection, sidecar creation, `catalog.json`
    update, `tools/verify-release-catalog.py`, and the VM shutdown step.
