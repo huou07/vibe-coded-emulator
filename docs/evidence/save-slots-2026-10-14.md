@@ -40,3 +40,29 @@ using a lawful save-capable fixture without replacing unrelated saves.
 The modeled write abort tests QuickSaveManager's rejection handling and the
 expected atomic record contract; it does not prove the browser's IndexedDB engine
 or EmulatorJS core state compatibility.
+
+## Real-browser IndexedDB round-trip (2026-10-17)
+
+Source `68ca5c5f0065bdca424fb3281ab02aa304dfd880`, with the RG-152 change to
+`tests/web-runtime.test.mjs` (the run below also carried that uncommitted test
+edit). The `vce-product-journeys` procedure and the canonical Chromium lane were
+used against the local test server:
+
+```sh
+AN3_WEB_RUNTIME=1 AN3_PLAYWRIGHT_BROWSER=chromium XDG_CACHE_HOME=<tmp> \
+  node --test tests/web-runtime.test.mjs
+```
+
+The lane loads the actual `static/player-runtime.js` into the live page and calls
+the real `QuickSaveManager`. Observed: all ten slots wrote and round-tripped
+byte-for-byte (`roundTripMatches: true`); a freshly constructed manager read slot
+7 back (`restartedSlot7Matches: true`), standing in for a restart; slots 0 and 11
+raised `RangeError` (`rangeRejected: true`); autosave wrote its own record
+(`autoMatches`, `autoFlag`) without touching manual slot 1 (`autoIsSeparate`).
+Result: **1 test passed**, retained as `quickSave` in
+`work/ui-runtime/evidence.json` with zero page errors.
+
+Acceptance limits: browser-engine quick-save/autosave storage is now **GOOD**.
+Game-level save/load inside a running EmulatorJS core, a real page reload during
+gameplay, and the packaged native save journey remain **UNVERIFIED**; no ROM or
+core was launched.

@@ -84,6 +84,14 @@ checks pass.
   save/load remain **UNVERIFIED** until exercised on a real supported target.
 - Owners: `static/player-runtime.js::QuickSaveManager`. Preserve the existing
   database name, store, keys, and raw core-state format.
+- Updated 2026-10-17: the canonical Chromium lane (RG-152 test file) now loads
+  the real `QuickSaveManager` into a live page and exercises the browser's own
+  IndexedDB engine: all ten slots written and round-tripped byte-for-byte, a
+  fresh manager proving restart persistence, slots 0/11 rejected, and autosave
+  isolated from manual slot 1 with its `auto` flag. `work/ui-runtime/evidence.json`
+  carries the `quickSave` result. Browser-engine storage is now **GOOD**;
+  game-level save/load in a running core, a real player restart, and the packaged
+  native journey remain **UNVERIFIED**.
 
 ## Phone controller utility naming — 2026-10-13
 

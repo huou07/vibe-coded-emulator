@@ -147,8 +147,56 @@ with app.db() as conn:
       await page.locator("article.comment", { hasText: commentBody }).waitFor({ state: "detached" });
       await page.goto(origin + "/game/fixture-gba");
       if (await page.getByText(commentBody, { exact: true }).count() !== 0) throw new Error("comment persisted after delete");
+      // Real IndexedDB round-trip: RG-150 asked for the ten-slot/autosave model
+      // to be exercised against the browser's own IndexedDB engine, not only the
+      // in-memory model. This loads the real QuickSaveManager and checks raw
+      // byte round-trips, a fresh manager (restart), slot rejection, and
+      // autosave isolation.
+      const quickSave = await page.evaluate(async () => {
+        if (!window.AN3PlayerRuntime?.QuickSaveManager) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = "/static/player-runtime.js";
+            script.onload = resolve;
+            script.onerror = () => reject(new Error("player-runtime.js did not load"));
+            document.head.appendChild(script);
+          });
+        }
+        const {QuickSaveManager, QUICK_SAVE_SLOTS} = window.AN3PlayerRuntime;
+        const manager = new QuickSaveManager("browser-save-fixture");
+        const bytesFor = slot => new Uint8Array([slot, 0xa5, 0x5a, 200 - slot]).buffer;
+        const decode = async record => record ? Array.from(new Uint8Array(await record.state.arrayBuffer())) : null;
+        for (const slot of QUICK_SAVE_SLOTS) await manager.put(slot, bytesFor(slot), 1000 + slot);
+        const roundTrip = [];
+        for (const slot of QUICK_SAVE_SLOTS) roundTrip.push(await decode(await manager.get(slot)));
+        const expected = QUICK_SAVE_SLOTS.map(slot => Array.from(new Uint8Array(bytesFor(slot))));
+        const rangeErrors = [];
+        for (const bad of [0, 11]) {
+          try { manager.assertSlot(bad); rangeErrors.push(false); } catch (error) { rangeErrors.push(error instanceof RangeError); }
+        }
+        const restarted = new QuickSaveManager("browser-save-fixture");
+        const restartedSlot7 = await decode(await restarted.get(7));
+        await manager.put(1, new Uint8Array([9, 9]).buffer, 5000);
+        await manager.putAuto(new Uint8Array([7, 7, 7]).buffer, 6000, "digest-auto");
+        const auto = await manager.getAuto();
+        const autoBytes = await decode(auto);
+        const slot1AfterAuto = await decode(await manager.get(1));
+        return {
+          slots: QUICK_SAVE_SLOTS,
+          roundTripMatches: JSON.stringify(roundTrip) === JSON.stringify(expected),
+          restartedSlot7Matches: JSON.stringify(restartedSlot7) === JSON.stringify(Array.from(new Uint8Array(bytesFor(7)))),
+          rangeRejected: rangeErrors.every(Boolean),
+          autoMatches: JSON.stringify(autoBytes) === JSON.stringify([7, 7, 7]),
+          autoIsSeparate: JSON.stringify(slot1AfterAuto) === JSON.stringify([9, 9]),
+          autoFlag: auto?.auto === true,
+        };
+      });
+      if (!quickSave.roundTripMatches || !quickSave.restartedSlot7Matches || !quickSave.rangeRejected
+          || !quickSave.autoMatches || !quickSave.autoIsSeparate || !quickSave.autoFlag) {
+        throw new Error("quick-save IndexedDB round-trip failed: " + JSON.stringify(quickSave));
+      }
       if (errors.length) throw new Error(errors.join("\\n"));
-      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", outcome: "search, no-results recovery, keyboard clear, detail navigation, admin comment moderation" };
+      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", quickSave, outcome: "search, no-results recovery, keyboard clear, detail navigation, admin comment moderation, real IndexedDB quick saves" };
     }`);
     writeFileSync(resolve(artifacts, "evidence.json"), JSON.stringify({
       source: spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim(),
