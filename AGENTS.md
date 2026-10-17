@@ -118,7 +118,9 @@ and report missing tools or unavailable source identity explicitly.
 Project skills in `.agents/skills/` load on demand and cover the areas a
 generic agent cannot know: `an3-build` (packaging and the release catalog),
 `an3-control-plane` (the `an3ctl` runtime control loop), `an3-player-regression`
-(the player guards), `an3-staging-deploy`, `public-release-security`. Prefer
+(the player guards), `an3-staging-deploy`, `public-release-security`,
+`vce-gameplay-performance` (repeatable sustained gameplay evidence) and
+`vce-product-journeys` (user-visible flows and recovery). Prefer
 these and the shared host skills over inventing a parallel process. See
 `.agents/skills.md` for positive/negative routing and authority. Skill descriptions
 and builder examples do not authorize running VMs, reading protected keys,

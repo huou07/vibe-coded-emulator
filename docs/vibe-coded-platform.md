@@ -7,15 +7,17 @@ operations/staging docs; those still govern deployment.
 
 Dates and version numbers below reflect the current source tree.
 
+Last reviewed: 2026-10-17.
+
 ## 1. System architecture
 
 | Surface | Technology | Location |
 | --- | --- | --- |
-| Web + API | Flask, server-rendered, `BaseHTTPRequestHandler` router | `app.py` |
+| Web + API | Python standard library only, server-rendered, `BaseHTTPRequestHandler` router (no Flask) | `app.py` |
 | Web player | EmulatorJS (libretro cores via proxy) + custom WASM renderer worker | `static/player.js`, `static/player-runtime.js`, `static/renderer-worker.js` |
 | Native desktop | Tauri 2 + Rust shell + Objective-C++/SDL adapters | `native-offline/` |
 | Native cores | libretro host (mGBA, melonDS DS, Azahar) | `native-offline/native-runtime/` |
-| Netplay relay | EmulatorJS-Netplay Rust relay (staging-only) | `rust-gateway/`, `Dockerfile.rust-netplay` |
+| Netplay relay | EmulatorJS-Netplay Rust relay — **staging-only and permanently blocked: not wired into `app.py`**, do not build on it | `rust-gateway/`, `Dockerfile.rust-netplay`, `docs/archive/rust-shadow-staging-cutover.md` |
 | Sync core (new) | Transport-agnostic sync planning | `sync_engine.py` |
 | Google sync | **Removed** — not a product feature. See `docs/archive/checkpoint-google-sync-removal.md` | — |
 | Shared networking (new) | Pairing, sessions, controller, rooms | `netcode.py` |

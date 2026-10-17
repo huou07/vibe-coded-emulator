@@ -46,6 +46,7 @@ literally.
 | Document | What it is for |
 | --- | --- |
 | [`operations.md`](operations.md) | Current topology, safety rules, baseline validation. |
+| [`AGENT-AUTHORITY.md`](AGENT-AUTHORITY.md) | The standing owner mandate and its exact limits; read before any commit, push, release or deploy. |
 | [`staging.md`](staging.md) | The staging update and rollback workflow. |
 | [`android-regression.md`](android-regression.md) | Android regression and private PWA procedure. |
 | [`ai-game-enrichment-upload.md`](ai-game-enrichment-upload.md) | Runbook for AI-generated game metadata proposals (admin approval). |
