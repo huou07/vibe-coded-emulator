@@ -197,7 +197,10 @@ function cssEscape(value) {
 // ---------------------------------------------------------------------------
 
 export function stateDir(root) {
-  return `${root}/work/an3ctl`;
+  // AN3_STATE_DIR lets a caller (a self-test, a parallel agent lane) keep its
+  // pid files, logs and Playwright session fully separate from the shared
+  // work/an3ctl directory, so one run can never observe another run's state.
+  return process.env.AN3_STATE_DIR || `${root}/work/an3ctl`;
 }
 
 // ---------------------------------------------------------------------------

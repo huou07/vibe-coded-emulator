@@ -103,6 +103,13 @@ without replacement evidence. Unavailable targets and skipped tests stay UNVERIF
 AN3_PLAYWRIGHT_CONFIG selects a native CLI JSON configuration; when supplied it
 controls the browser instead of the default system Chrome channel.
 
+The web self-test (`node --test tests/an3ctl.test.mjs`, RG-151) runs against a
+private `AN3_STATE_DIR` and an ephemeral port, so it never reads a peer's pid
+file, log or `an3-web` Playwright session and never collides with a leftover
+server. With no explicit selection it tries Chrome and then the bundled Chromium
+when Chrome is absent; `ui tree` reports the browser used. Pass
+`AN3_PLAYWRIGHT_BROWSER=chromium` to force the bundled build on this host.
+
 CI also exposed two source-evidence defects hidden by the local sparse checkout:
 retired root handoffs are now labelled archives, with original bodies preserved;
 and the scanner CLI is pinned to 8.30.1. The old global path allowlists skipped

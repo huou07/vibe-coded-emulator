@@ -29,6 +29,27 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## an3ctl web control plane — RG-151, 2026-10-17
+
+- RG-151: **`an3ctl` web sessions must not share pid/browser state between
+  runs, and a missing browser channel must not be reported as a page failure.**
+  `lib/core.mjs::stateDir` honours `AN3_STATE_DIR`, so the self-test (and any
+  parallel agent lane) keeps its pid file, log and Playwright session private.
+  `WebAdapter.appStart` removes a stale pid file before launch, refuses a port
+  already serving a target it does not own, and reaps the process it started if
+  post-start validation fails; `appStop` removes the pid file and still stops a
+  recorded pid whose `web.json` was cleared by an earlier failed start. When no
+  browser or config is selected explicitly, `ensureOpen` tries Chrome, then once
+  falls back to the Playwright-bundled Chromium only when Chrome is genuinely not
+  installed; an explicit `AN3_PLAYWRIGHT_BROWSER`/`AN3_PLAYWRIGHT_CONFIG` stays
+  authoritative, and `ui tree` reports the browser actually used.
+- Automated: `node --test tests/an3ctl.test.mjs` runs the web journey against an
+  isolated temp state dir and an ephemeral port; `targets.web.browser` records
+  the resolved channel. On this Debian host the default path resolves to
+  Chromium because no branded Chrome is installed. Native and packaged
+  acceptance remain the authority of their own lanes.
+- Owners: `tools/an3ctl/adapters/web.mjs`, `tools/an3ctl/lib/core.mjs`.
+
 ## Quick-save storage round-trip — RG-150, 2026-10-14
 
 - RG-150: **Web quick-save slots 1–10 must retain their raw state bytes across

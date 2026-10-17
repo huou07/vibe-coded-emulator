@@ -118,8 +118,15 @@ so `fill → value → click` flows keep state.
 
 System Chrome is the default. On a host that has no branded Chrome and no root
 to install one, set `AN3_PLAYWRIGHT_BROWSER=chromium` to drive the Chromium
-build that `playwright install chromium` provides. The default is unchanged, and
-the browser is used only when `playwright-cli` is on `PATH`.
+build that `playwright install chromium` provides. When nothing is selected
+explicitly and Chrome is not installed, `ensureOpen` falls back once to that
+bundled Chromium and `ui tree` reports the browser that actually ran; an
+explicit `AN3_PLAYWRIGHT_BROWSER` or `AN3_PLAYWRIGHT_CONFIG` is used alone and
+never falls back. The browser is used only when `playwright-cli` is on `PATH`.
+
+`AN3_STATE_DIR` selects the directory for pid files, logs and the Playwright
+session (default `work/an3ctl`). Set it to run an isolated lane that cannot
+observe or disturb another agent's web target.
 
 ### Adapter: Android
 

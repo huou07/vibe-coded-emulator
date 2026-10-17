@@ -17,6 +17,8 @@ const SESSION = "an3-web";
 // System Chrome is the default and the verified target. AN3_PLAYWRIGHT_BROWSER
 // selects another playwright-cli browser (for example "chromium" on a host with
 // no branded Chrome and no root to install one); it never changes the default.
+// When no browser or config is requested explicitly and Chrome is not installed,
+// ensureOpen falls back once to the Playwright-bundled Chromium and records it.
 const BROWSER = process.env.AN3_PLAYWRIGHT_BROWSER ?? "chrome";
 const BROWSER_CONFIG = process.env.AN3_PLAYWRIGHT_CONFIG;
 const DEFAULT_PORT = Number(process.env.AN3_WEB_PORT ?? 8099);
@@ -59,6 +61,7 @@ export class WebAdapter {
     return {
       available: true,
       url: state ? `http://127.0.0.1:${state.port}` : null,
+      browser: this.browser ?? BROWSER,
       hasPlaywright,
       note: hasPlaywright ? "playwright-cli present" : "playwright-cli missing (ui.* unavailable)",
     };
@@ -128,11 +131,21 @@ export class WebAdapter {
       const goto = await this.playwright(["goto", target], { timeoutMs });
       if (goto.code === 0 && !/### Error/.test(goto.stdout)) return;
     }
-    const browserOptions = BROWSER_CONFIG ? [`--config=${BROWSER_CONFIG}`] : [`--browser=${BROWSER}`];
-    const open = await this.playwright(["open", ...browserOptions, target], { timeoutMs });
-    if (open.code !== 0 || /### Error/.test(open.stdout)) {
-      throw new An3Error("E_TARGET_UNAVAILABLE", `Could not open the web target: ${(open.stderr || open.stdout).trim().slice(0, 300)}`);
+    let last = null;
+    for (const candidate of browserCandidates()) {
+      const options = candidate.config ? [`--config=${candidate.config}`] : [`--browser=${candidate.browser}`];
+      const open = await this.playwright(["open", ...options, target], { timeoutMs });
+      if (open.code === 0 && !/### Error/.test(open.stdout)) {
+        this.browser = candidate.label;
+        return;
+      }
+      last = open;
+      // Fall back from the default Chrome channel only when it is not installed.
+      // An explicit AN3_PLAYWRIGHT_BROWSER or AN3_PLAYWRIGHT_CONFIG is authoritative.
+      if (!candidate.allowFallback || !isUnavailableBrowser(open)) break;
+      await this.playwright(["close"]).catch(() => {});
     }
+    throw new An3Error("E_TARGET_UNAVAILABLE", `Could not open the web target: ${browserErrorDetail(last)}`);
   }
 
   // --- app lifecycle -------------------------------------------------------
@@ -144,9 +157,19 @@ export class WebAdapter {
     }
     const resolvedPort = Number(port ?? DEFAULT_PORT);
     const env = environment ?? DEFAULT_ENV;
+    // Refuse to start on a port that already serves something this state
+    // directory does not own. Starting anyway lets a foreign health response
+    // validate the new process while it is still racing to bind, which then
+    // reports a false success and leaves two servers competing for the port.
+    if (await waitForHealth(resolvedPort, 300)) {
+      throw new An3Error("E_STATE", `Web port :${resolvedPort} is already serving a target not recorded in ${this.dir}; stop it or choose another port.`);
+    }
     mkdirSync(this.dir, { recursive: true });
     const logPath = `${this.dir}/web.log`;
     writeFileSync(logPath, "");
+    // A pid file left by an interrupted run must never be mistaken for the
+    // process this call is about to start.
+    removeFile(this.pidPath);
     // `echo $$` before `exec` records the PID that becomes the server, so a
     // wrapper shell exiting can never leave a stale PID behind.
     const script = `cd ${shellQuote(this.root)} && echo $$ > ${shellQuote(this.pidPath)} && exec python3 app.py >> ${shellQuote(logPath)} 2>&1`;
@@ -165,6 +188,10 @@ export class WebAdapter {
     const state = { pid, port: resolvedPort, environment: env, logPath, startedAt: new Date().toISOString() };
     const health = await waitForHealth(resolvedPort, 20000);
     if (!health || !isAlive(pid)) {
+      // Never orphan a server this call started but could not validate: a leaked
+      // listener owns the port and makes every later run collide or skip.
+      await reap(pid);
+      removeFile(this.pidPath);
       const tail = existsSync(logPath) ? readFileSync(logPath, "utf8").split("\n").slice(-6).join("\n") : "";
       this.clearState();
       throw new An3Error("E_TARGET_UNAVAILABLE", `Web target did not start on :${resolvedPort}${health ? " (recorded process exited; the port may already be in use)" : ""}`, { logTail: tail });
@@ -175,25 +202,18 @@ export class WebAdapter {
 
   async appStop() {
     const state = this.readState();
-    if (!state) return { stopped: false, reason: "no recorded web target" };
-    await this.playwright(["close"]).catch(() => {});
-    if (isAlive(state.pid)) {
-      try {
-        process.kill(state.pid, "SIGTERM");
-      } catch {
-        /* ignore */
-      }
-      await sleep(500);
-      if (isAlive(state.pid)) {
-        try {
-          process.kill(state.pid, "SIGKILL");
-        } catch {
-          /* ignore */
-        }
-      }
+    // Recover a pid file whose state was cleared by a failed start, so a leaked
+    // server can still be stopped by the next `app stop`.
+    const recordedPid = state?.pid ?? readPidFile(this.pidPath);
+    if (!state && !isAlive(recordedPid)) {
+      removeFile(this.pidPath);
+      return { stopped: false, reason: "no recorded web target" };
     }
+    await this.playwright(["close"]).catch(() => {});
+    await reap(recordedPid);
     this.clearState();
-    return { stopped: true, pid: state.pid };
+    removeFile(this.pidPath);
+    return { stopped: true, pid: recordedPid ?? null };
   }
 
   async appState() {
@@ -218,7 +238,7 @@ export class WebAdapter {
     const limit = Number(opts.limit ?? 120);
     const tree = await this.runCode(`async (page) => {\n  return await page.evaluate(() => ${domTreeExpression(limit)});\n}`);
     const ariaSnapshot = await this.runCode("async (page) => page.locator(\"body\").ariaSnapshot()");
-    return { ...tree, limit, ariaSnapshot, legacyNodes: true, semanticsAuthority: "Playwright ariaSnapshot" };
+    return { ...tree, limit, browser: this.browser ?? BROWSER, ariaSnapshot, legacyNodes: true, semanticsAuthority: "Playwright ariaSnapshot" };
   }
 
   async locate(opts) {
@@ -341,6 +361,73 @@ function describeSelector(selector) {
 
 function stripAnsi(text) {
   return String(text).replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+// Browser attempts in order. An explicit browser/config is authoritative and is
+// tried alone; otherwise Chrome is attempted first and, if it is genuinely not
+// installed, the Playwright-bundled Chromium is tried once.
+function browserCandidates() {
+  if (BROWSER_CONFIG) return [{ config: BROWSER_CONFIG, label: "config", allowFallback: false }];
+  if (process.env.AN3_PLAYWRIGHT_BROWSER) {
+    const browser = process.env.AN3_PLAYWRIGHT_BROWSER;
+    return [{ browser, label: browser, allowFallback: false }];
+  }
+  return [
+    { browser: "chrome", label: "chrome", allowFallback: true },
+    { browser: "chromium", label: "chromium", allowFallback: false },
+  ];
+}
+
+// Playwright reports a missing channel as `[PlaywrightError: Chromium
+// distribution 'chrome' is not found at ...]`, buried in a daemon stack trace.
+// Surface that sentence instead of the unreadable stack head.
+function browserErrorDetail(result) {
+  const text = stripAnsi(`${result?.stderr ?? ""}\n${result?.stdout ?? ""}`);
+  const match = text.match(/\[PlaywrightError:\s*([^\]]*)\]/);
+  if (match) return match[1].replace(/\s+/g, " ").trim().slice(0, 300);
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("at ") && !line.startsWith("/") && line !== "^");
+  return (lines.slice(0, 3).join(" ") || "unknown browser launch error").slice(0, 300);
+}
+
+function isUnavailableBrowser(result) {
+  const detail = browserErrorDetail(result);
+  return /is not found at|Executable doesn't exist|distribution .*not found|playwright install|run "?npx playwright install/i.test(detail);
+}
+
+async function reap(pid) {
+  if (!isAlive(pid)) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  await sleep(500);
+  if (isAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function removeFile(path) {
+  try {
+    unlinkSync(path);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readPidFile(path) {
+  try {
+    return Number(readFileSync(path, "utf8").trim()) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 function shellQuote(value) {

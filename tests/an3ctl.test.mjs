@@ -9,16 +9,36 @@
 // player (set AN3_PLAYER / AN3_PLAYER_TARGET) and a legal fixture; they skip
 // cleanly when that is absent so the suite never reports a false failure.
 
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
 const FIXTURE = process.env.AN3_FIXTURE ?? "/home/huou07/an3-verify/legal-gba.gba";
+
+// Keep every pid file, log and Playwright session this test creates out of the
+// shared work/an3ctl directory, so a concurrent agent lane or a leftover manual
+// session can never make this self-test observe foreign state.
+const STATE = mkdtempSync(resolve(tmpdir(), "an3ctl-self-test-"));
+process.env.AN3_STATE_DIR = STATE;
+after(() => rmSync(STATE, { recursive: true, force: true }));
+
+function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const listener = createServer();
+    listener.on("error", reject);
+    listener.listen(0, "127.0.0.1", () => {
+      const { port } = listener.address();
+      listener.close(() => resolvePort(String(port)));
+    });
+  });
+}
 
 function cli(args, { timeoutMs = 180000 } = {}) {
   return new Promise((resolvePromise) => {
@@ -72,7 +92,7 @@ test("web: launch, inspect, act, read back, and shut down cleanly", async (t) =>
     t.skip("playwright-cli is not installed");
     return;
   }
-  const port = process.env.AN3_TEST_PORT ?? "8097";
+  const port = process.env.AN3_TEST_PORT ?? (await freePort());
   const started = parse(await cli(["app", "start", "--target", "web", "--port", port, "--json"]));
   if (!started.ok) {
     t.skip(`web target unavailable: ${started.error.message}`);
