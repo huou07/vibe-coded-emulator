@@ -53,10 +53,22 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: native-offline/package-lock.json
-      - name: Install native guard headers
+      - name: Install native guard headers and the player runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan-dev
+          # The vendored player is dynamically linked. Without its runtime
+          # libraries the emulator loop exits 127, and the gate then fails
+          # loudly instead of letting the throughput budget be skipped:
+          # libSDL2 was the library missing from the ubuntu-24.04 image
+          # (run 39035517162). The probe below names any other missing soname
+          # in the job log so the next failure is diagnosable in one look.
+          sudo apt-get install -y --no-install-recommends libvulkan-dev libsdl2-2.0-0
+          missing=$(ldd "$AN3_PLAYER" | awk '/not found/ {print $1}')
+          if [ -n "$missing" ]; then
+            printf '::error title=Player runtime libraries::missing sonames: %s\n' \
+              "$(echo "$missing" | tr '\n' ' ')"
+            exit 1
+          fi
       - name: Install native JS dependencies
         working-directory: native-offline
         run: npm ci
