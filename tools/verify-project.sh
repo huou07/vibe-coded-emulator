@@ -93,6 +93,42 @@ if ! python3 tools/verify-skip-manifest.py \
   failed=1
 fi
 
+# --- AEH gate report ----------------------------------------------------------
+# The quality contract (.aeh/quality.json) declares .hub/gate-report.json, which
+# the Hub ingests after the run; the skipped/not_run lists are taken from the
+# skip manifest above and are never re-derived. This step does not change the
+# gate's own verdict: exit 0/1 is decided by the checks above exactly as before,
+# and a report that was never produced is reported by the Hub as BLOCKED, never
+# as a pass, so the gap stays visible without moving the verdict.
+printf '\n== Gate report ==\n'
+MANIFEST="$LOG_DIR/skip-manifest.json"
+if [[ -f "$MANIFEST" ]]; then
+  EVIDENCE_CLASS=UNVERIFIED
+  (( failed )) || EVIDENCE_CLASS=VERIFIED_SOURCE
+  report_args=(
+    --root "$ROOT"
+    --manifest "$MANIFEST"
+    --out "$ROOT/.hub/gate-report.json"
+    --covered-gate source-integrity
+    --evidence-class "$EVIDENCE_CLASS"
+    --runner-label vce-local-source-gate
+    --artifact "skip-manifest.json|${MANIFEST#"$ROOT"/}"
+    --not-run "native-tauri-build|cross-platform Tauri packaging needs per-platform toolchains and pinned core artifacts and stays with the dedicated builders and GitHub Actions, never with this Debian gate"
+    --not-run "android-instrumentation|no Android device or emulator is attached to this host"
+    --not-run "windows-macos-native-acceptance|no Windows or macOS host is available to this Debian workstation"
+    --not-run "hosted-browser-lane|the Playwright browser semantics lane is the separate browser-runtime CI job and does not run here"
+    --limitation "this is the local source gate: it proves source behaviour only and never establishes packaged, native, Android, Windows or macOS acceptance"
+    --limitation "the enforced emulator budget is emulator-loop throughput (600 frames), not display frame pacing or audio underruns; sustained frame pacing and audio remain UNVERIFIED"
+    --limitation "the skipped list comes from tools/verify-skip-manifest.py; a skip is never a pass"
+  )
+  if ! python3 tools/verify-gate-report.py "${report_args[@]}"; then
+    printf 'RESULT: WARN — gate report not written; the Hub blocks on a missing declared report\n'
+  fi
+else
+  # The manifest step above already failed this gate; nothing else to report.
+  printf 'RESULT: WARN — no skip manifest, so no gate report was written\n'
+fi
+
 if (( failed )); then
   printf '\nPROJECT_VERIFY=FAIL\n'
   exit 1

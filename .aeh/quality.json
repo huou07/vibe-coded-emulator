@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "project": "VCE",
+  "product_type": "emulator",
+  "supported_platforms": [
+    "linux-x64"
+  ],
+  "required_gates": [
+    "source-integrity",
+    "admission-build"
+  ],
+  "release_gates": [
+    "browser-semantics",
+    "publication-gate"
+  ],
+  "external_requirements": [
+    "windows-x64-native-builder",
+    "macos-arm64-native-builder",
+    "android-arm64-native-builder",
+    "windows-physical-gpu-3ds-acceptance",
+    "production-signing-identity"
+  ],
+  "hosted_ci": "required",
+  "gates": {
+    "source-integrity": {
+      "gate": "verify"
+    },
+    "admission-build": {
+      "gate": "acceptance"
+    },
+    "browser-semantics": {
+      "gate": "release"
+    },
+    "publication-gate": {
+      "gate": "release"
+    }
+  },
+  "report": ".hub/gate-report.json",
+  "artifacts": [],
+  "policies": {
+    "missing_evidence": "block",
+    "stale_evidence": "block",
+    "skipped_required_gate": "block",
+    "production_changes": "require_approval"
+  }
+}

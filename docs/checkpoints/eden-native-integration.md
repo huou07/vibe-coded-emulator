@@ -167,9 +167,11 @@ Build integration changes are in `integration/CMakeLists.txt`; the fragile
 
 ### Requires the owner
 
-1. **Public source repository URL** — `git remote -v` is a local path; the README
-   still holds `https://REPLACE-WITH-PUBLIC-REPOSITORY-URL`. No combined binary
-   may be published until this exists (GPL corresponding-source condition).
+1. **Public source repository URL** — **resolved**: the README now carries the
+   real public repository URL (`https://github.com/huou07/vibe-coded-emulator`),
+   so the GPL corresponding-source condition this blocker named is met. The
+   2026-09-17 snapshot saw a local `git remote -v` path and a placeholder README
+   URL instead.
 2. **Runtime hardware for Windows/Linux** — the Dell has only the Mesa software
    rasterizer (lavapipe) and no cmake/ninja; macOS is the only verified runtime.
 

@@ -13,7 +13,7 @@ Last reviewed: 2026-10-17.
 |---|---|---|---|
 | Web (browser) | GBA/NDS/3DS via EmulatorJS on the surfaces it supports | VERIFIED_BEHAVIORAL (node --test, rendered-tree checks) | `tools/verify-project.sh` |
 | Linux native (Tauri) | deterministic runtime evidence is `GOOD`; packaged shell is `UNVERIFIED` | VERIFIED_SOURCE / partial native | `docs/checkpoints/native-linux-journey.md` |
-| Windows / macOS / Android | built and packaged on dedicated builders | VERIFIED_NATIVE only when the private release-train job passes | `native-offline/scripts/build-*.sh` on those builders; the public snapshot publishes source, not packages |
+| Windows / macOS / Android | built and packaged on dedicated builders; the public packages are unsigned staging | VERIFIED_NATIVE only when the private release-train job passes | `native-offline/scripts/build-*.sh` on those builders; the public snapshot publishes source, and the public `v3.6.8` release serves unsigned staging packages (`.deb`, `.dmg`, `.exe`, `.apk`/`.aab`, `.flatpak`) with `.sha256` sidecars |
 | Switch (Eden) companion | macOS-verified bridge in a separate process | VERIFIED_NATIVE (macOS only) | licensing + checkpoint docs |
 
 Not claimed: cloud-hosted multiplayer rooms, the `rust-gateway` relay (cutover
@@ -35,11 +35,23 @@ pixel-identical parity across platforms.
 
 ## Known gaps, in priority order
 
-1. No frame-time distribution and no audio-underrun counter exist in
-   `--status-json`, so the automated budget is emulator-loop throughput only.
-   Adding them means changing the native runtime and re-vendoring the pinned
-   artifact (with its recorded SHA-256), which is its own reviewed change; until
-   then sustained frame pacing and audio stay `UNVERIFIED`.
+1. No frame-time distribution and no audio-underrun counter exist in the native
+   runtime's `--status-json`, so the automated budget is emulator-loop
+   throughput only. Adding them means changing the native runtime and
+   re-vendoring the pinned artifact (with its recorded SHA-256), which is its
+   own reviewed change; once the pinned runtime reports them, the lane that
+   would carry the assertion is:
+
+   ```bash
+   AN3_PLAYER=native-offline/vendor/runtime/linux-x86_64/an3-offline-native \
+     AN3_FIXTURE=work/fixtures/an3-synthetic-gba.gba \
+     node --test tests/an3ctl.test.mjs
+   ```
+
+   The browser player already samples `uiFrameP50Ms`/`uiFrameP95Ms`/`uiFrameP99Ms`
+   and long tasks in `static/player-runtime.js`, but no lane asserts them and no
+   sustained real-device run is recorded, so sustained frame pacing and audio
+   stay `UNVERIFIED`.
 2. The shared shell's compact control tier (system filter chips, table row
    actions, admin range selector, small nav toggle) ships at 28–38px, below the
    42px guidance in `docs/design-system.md`. The browser lane now asserts the
@@ -96,4 +108,11 @@ Closed since the 2026-10-17 review:
 - Acceptance gate: `bash tools/acceptance.sh` — source gate plus the fail-closed
   publication gate when a candidate snapshot exists.
 - Release gate: `tools/release-train.sh` on dedicated builders plus hosted CI.
+- Quality contract: `.aeh/quality.json` maps those gate names to the Hub's
+  `verify`/`acceptance`/`release` commands, and `tools/verify-project.sh` writes
+  the declared `.hub/gate-report.json` so every run publishes what it skipped and
+  did not run (git-ignored runtime state, never source, never published).
+- Required check: the `release-gate` job in `.github/workflows/verify.yml`
+  aggregates every lane and fails unless all of them succeeded, so a skipped or
+  cancelled lane cannot read as green. `main` requires that job.
 - A skipped, missing or unavailable check is `UNVERIFIED`; it is never PASS.

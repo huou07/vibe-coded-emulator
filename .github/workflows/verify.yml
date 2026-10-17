@@ -2,9 +2,10 @@
 #
 # This runs the same gate a developer runs locally, so a green run here means
 # `bash tools/verify-project.sh` would also pass. It is deliberately minimal:
-# one aggregate job plus a publication-gate job. Native packages are not built
-# here; that needs the pinned core artifacts and per-platform toolchains, and
-# claiming otherwise would be unverified.
+# the source gate, the browser-semantics lane and the publication gate, plus the
+# aggregate `release-gate` job that `main` requires. Native packages are not
+# built here; that needs the pinned core artifacts and per-platform toolchains,
+# and claiming otherwise would be unverified.
 #
 # The public snapshot gets its own workflows from tools/publication/.github/;
 # this file is not published.
@@ -21,6 +22,10 @@ on:
       - 'feature/**'
       - main
   pull_request:
+  # A merge queue re-runs the required checks on the queued merge commit; without
+  # this trigger the queue would report `Release gate` as Expected and never
+  # produce it.
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -161,3 +166,34 @@ jobs:
           exit "$result"
       - name: Publication gate regression tests
         run: python3 -m unittest tests.test_publication_gate -v
+
+  release-gate:
+    name: Release gate
+    # The aggregate required status check on `main`. `if: always()` plus the
+    # complete `needs` list is the point: a skipped, cancelled or failed lane
+    # makes this job fail too. A required check that reads green while a lane
+    # never ran is exactly the defect this job exists to prevent.
+    if: always()
+    needs:
+      - project-verify
+      - browser-runtime
+      - publication-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every required lane must have succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+
+          needs = json.loads(os.environ["NEEDS"])
+          bad = {name: entry.get("result") for name, entry in needs.items()
+                 if entry.get("result") != "success"}
+          if bad:
+              named = ", ".join(f"{name}={result}" for name, result in sorted(bad.items()))
+              print(f"::error title=Release gate::lane(s) not successful: {named}")
+              raise SystemExit(1)
+          print(f"Release gate: all {len(needs)} required lane(s) succeeded")
+          PY
