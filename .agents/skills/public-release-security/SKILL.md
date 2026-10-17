@@ -19,6 +19,16 @@ tool/OS permissions. Read snapshot/gate scripts before running them and inspect
 the candidate's licence contract rather than changing licence text to obtain a
 pass.
 
+The public repository is the **core-only product**, and its line carries its own
+contract tests (the account/login, CMS/analytics and phone-controller surfaces
+must be absent). Those tests stay in place when a review branch is overlaid onto
+the public line, so a candidate exported from the full-featured development
+branch cannot pass them even when the security gate is clean. Export from the
+core-only line, and run
+`tools/publish-github.sh --check-candidate --snapshot <dir>` before publishing;
+`tools/publish-github.sh` performs the same check between the gate and `git init`
+(RG-155).
+
 ## Run
 
 ```bash
