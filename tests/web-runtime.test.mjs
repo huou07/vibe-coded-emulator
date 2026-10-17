@@ -88,6 +88,19 @@ with app.db() as conn:
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(${JSON.stringify(url)});
       const search = page.getByRole("searchbox", { name: "Search games", exact: true });
+      // System filter: a real library journey with no ROM. Selecting a system
+      // must hide the other system's cards, update the live count, and All must
+      // restore them.
+      await page.locator('[data-system-filter="gba"]').click();
+      if (!(await page.locator('[data-game-slug="fixture-gba"]').first().isVisible())) throw new Error("GBA filter hid the GBA game");
+      if (await page.locator('[data-game-slug="fixture-nds"]').first().isVisible()) throw new Error("GBA filter left the NDS game visible");
+      const gbaStatus = (await page.locator("#libraryStatus").textContent()) || "";
+      if (!gbaStatus.includes("1 matching game")) throw new Error("GBA filter count was: " + JSON.stringify(gbaStatus));
+      await page.locator('[data-system-filter="nds"]').click();
+      if (!(await page.locator('[data-game-slug="fixture-nds"]').first().isVisible())) throw new Error("NDS filter hid the NDS game");
+      if (await page.locator('[data-game-slug="fixture-gba"]').first().isVisible()) throw new Error("NDS filter left the GBA game visible");
+      await page.locator('[data-system-filter="all"]').click();
+      if (!(await page.locator('[data-game-slug="fixture-gba"]').first().isVisible())) throw new Error("All filter did not restore the GBA game");
       await search.fill("no-such-fixture");
       await page.locator("#libraryNoResults").waitFor({ state: "visible" });
       await page.getByRole("button", { name: "Clear search and filters", exact: true }).click();
@@ -196,7 +209,7 @@ with app.db() as conn:
         throw new Error("quick-save IndexedDB round-trip failed: " + JSON.stringify(quickSave));
       }
       if (errors.length) throw new Error(errors.join("\\n"));
-      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", quickSave, outcome: "search, no-results recovery, keyboard clear, detail navigation, admin comment moderation, real IndexedDB quick saves" };
+      return { geometry, ariaSnapshot, errors, commentModeration: "confirm prompt, dismiss keeps, accept deletes and persists", quickSave, outcome: "search, no-results recovery, keyboard clear, system filtering, detail navigation, admin comment moderation, real IndexedDB quick saves" };
     }`);
     writeFileSync(resolve(artifacts, "evidence.json"), JSON.stringify({
       source: spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).stdout.trim(),

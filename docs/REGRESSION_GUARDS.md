@@ -29,6 +29,19 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Library system filtering — RG-153, 2026-10-17
+
+- RG-153: **Selecting a system in the library must show only that system's games
+  and update the live match count; All must restore the full grid.** The filter
+  is client-side (`static/site.js` `[data-system-filter]` + `filterLibrary`) and
+  is shared with the native UI through `static/`.
+- Automated: the canonical Chromium lane (`web-runtime`) seeds one GBA and one
+  NDS game, clicks GBA and NDS, asserts the opposite card is hidden and the
+  status text reads `1 matching game`, then clicks All and asserts both are
+  back. It is part of the same journey script as RG-152. Browser evidence does
+  not establish native packaged filtering.
+- Owners: `static/site.js` (`filterLibrary`), `app.py` (`home_page`).
+
 ## Admin comment moderation — RG-152, 2026-10-17
 
 - RG-152: **An administrator must be able to delete a game comment from the

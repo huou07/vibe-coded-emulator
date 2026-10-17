@@ -136,7 +136,9 @@ AN3_WEB_RUNTIME=1 AN3_PLAYWRIGHT_BROWSER=chromium XDG_CACHE_HOME=<tmp> \
   node --test tests/web-runtime.test.mjs
 ```
 
-Observed: the seeded anonymous library journey still passes; after signing in as
+Observed: the seeded anonymous library journey still passes; the script clicks
+the GBA, NDS and All system filters and asserts the opposite card hides and
+restores and the live count reads `1 matching game` (RG-153). After signing in as
 the seeded admin on `/login`, `/game/fixture-gba` renders exactly one
 `Delete comment` control. The app calls `window.confirm("Delete this comment?")`;
 a dismissed prompt leaves the comment row in place, and an accepted prompt

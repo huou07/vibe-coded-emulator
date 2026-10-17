@@ -165,3 +165,23 @@ packaged and two-device acceptance.
   into the source tree (exclude `._*` from sync tarballs).
 - Android `NativeGameActivity` runs in `:game`; the controller host lives in the
   main process and forwards input through `ControllerHostService`.
+
+## Target refresh and web-lane progress (2026-10-17)
+
+- `tools/an3ctl/bin/an3ctl targets --json` exited 0 on this host: Web is
+  available with `playwright-cli` present (no branded Chrome, so the adapter
+  falls back to the Playwright-bundled Chromium); Android is unavailable (no
+  connected device); the emulator has no local player and its configured Linux
+  and Windows SSH targets were not probed as reachable; Switch has no harness;
+  macOS has no UI-control bridge; Linux lacks WebKitGTK WebDriver/display;
+  Windows is unreachable. No native build, emulator, controller host or
+  two-peer session was started.
+- The browser lane did improve this session: the direct-LAN checkpoint's
+  remaining gap is still the two-peer journey, not the web library. Browser
+  evidence is now `GOOD` for the `/games` search/filter/reset journey, admin
+  comment moderation and a real-browser IndexedDB quick-save round-trip
+  (RG-150/RG-152/RG-153). None of that is a controller or device result.
+- Two real peers on the same LAN with internet disconnected and a compiled
+  Android (or desktop) build remain the next discriminating action. The
+  Android token lifetime is still process-only; app-restart recovery is
+  unimplemented.
