@@ -18,9 +18,18 @@ Launcher: `tools/an3ctl/bin/an3ctl` (repo root). All commands accept `--json`.
 Do not load for documentation, packaging-only work or ordinary backend edits.
 Read project guidance and the CLI contract; inspect `targets --json` before
 choosing a target. Availability and bridges are current runtime observations,
-not promises from this document. Bounded Web/Linux checks are authorized under
-AGENTS.md resource limits; no AVD, VM or heavy release build. Missing targets
-are BLOCKED/UNVERIFIED, never a simulated native pass.
+not promises from this document. Release/publication authority is the owner
+instruction dated 2026-10-18, which authorizes releases only after the exact-SHA
+CI gate and the recorded acceptance for the claimed surfaces; see
+`docs/release.md` and `docs/AGENT-AUTHORITY.md`. A green gate or scanner PASS is
+evidence, not authorization; no production deploy, publication or privileged
+change happens without an authorization current for that task. Bounded Web/Linux
+checks are authorized under AGENTS.md resource limits; no VM or heavy release
+build. The owner instruction dated 2026-10-18 authorizes ONE Android AVD dedicated
+to VCE on this Debian host (for example `vce-api35`), never OR's AVD, one
+resource-intensive job at a time, sharing the native lock; record the AVD name/API
+image/artifact hash and clean up. Missing targets are BLOCKED/UNVERIFIED, never a
+simulated native pass.
 Track any process started by this task and stop only processes this task owns.
 
 ## The loop
@@ -43,8 +52,12 @@ an3ctl targets --json                       # availability + reasons per target
 
 - `web` — the Python server. `app start --target web` boots it and records state.
 - `android` — adb + WebView CDP for exposed Web content. Use Android-native
-  accessibility/instrumentation for native controls; do not launch a local AVD.
+  accessibility/instrumentation for native controls; use only the VCE-dedicated
+  AVD (`vce-api35`), never OR's, serialized by the shared lock and cleaned up.
 - `emulator` — the native player's deterministic test mode.
+- `switch` — the Eden companion. `an3ctl targets --json` reports it with the
+  missing-harness reason, so an absent companion is recorded, never silently
+  treated as no target.
 - `macos` / `linux` / `windows` — desktop Tauri shells; structured bridge not
   enabled yet, so `ui` returns `E_TARGET_UNAVAILABLE` with the exact requirement.
 

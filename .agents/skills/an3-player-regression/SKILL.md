@@ -5,9 +5,11 @@ description: Use before and after editing the AN3/Vibe Coded Emulator web player
 
 # AN3 player regression guards
 
-Any edit to `static/player.js`, `static/nds-touch.js`, `static/site.css`, or
-`static/renderer-worker.js` that affects player canvas/input/layers must run the
-matching guards **before and after** the edit, in the repo root.
+Any edit to `static/player.js`, `static/nds-touch.js`, `static/site.css`,
+`static/renderer-worker.js` or `static/player-runtime.js`, or to a shared
+player-model file (`native-offline/shared/player-ui.json` and its generated
+header), that affects player canvas/input/layers must run the matching guards
+**before and after** the edit, in the repo root.
 
 ## Scope and authority
 

@@ -19,9 +19,12 @@ in `native-offline/releases/catalog.json` and the package's actual version field
 
 Inspect source identity, the affected package and its current version/catalog.
 Read packaging scripts before execution. This procedure prepares source and
-artifact evidence. The active owner mandate dated 2026-10-14 authorizes suitable
-GitHub releases and promotion of accepted versions through the existing production
-path after the required gates pass. That authorization does not override platform
+artifact evidence. Release/publication authority is the owner instruction dated
+2026-10-18, which authorizes releases only after the exact-SHA CI gate and the
+recorded acceptance for the claimed surfaces; see `docs/release.md` and
+`docs/AGENT-AUTHORITY.md`. A green gate is evidence, not authorization, and no
+production deploy, publication or privileged change happens without an
+authorization current for that task. That instruction does not override platform
 builder limits or grant protected credentials. Builder commands below are
 references for authorized dedicated builders, not permission to start local VMs,
 install toolchains or access protected credentials.
@@ -43,7 +46,8 @@ bytes under an already-published version + filename.**
 ## Per-platform commands
 
 ```bash
-# macOS (ad-hoc signed, not notarized — staging only; no Apple credentials)
+# macOS (ad-hoc signed, NOT notarized — staging only)
+#   publishing a DMG needs an Apple Developer identity this worker does not have
 cd native-offline && npm run build:macos
 
 # Android (staging signing) -> releases/vibecodedemulator-<v>-android-arm64-staging.apk
@@ -80,12 +84,18 @@ sha256), then:
 python3 tools/verify-release-catalog.py     # must print RELEASE_CATALOG=PASS
 ```
 
+`RELEASE_CATALOG=PASS` covers the verifier's required artifact set (DMG, APK, DEB,
+Flatpak). It does **not** cover a Windows EXE, so a Windows artifact needs its own
+check and evidence.
+
 ## Verify
 
 ```bash
-PYTHONPYCACHEPREFIX="$PWD/work/pycache" python3 -m unittest discover -s tests
-node --check static/player.js
+bash tools/verify-project.sh              # the whole local gate
+npm --prefix native-offline run check
 ```
+
+Run both before any packaging or release step.
 
 ## Windows VM lifecycle
 
@@ -103,9 +113,13 @@ packaged runtime acceptance must be independently recorded.
 
 ## Rules
 
-- Staging first. Use the active owner mandate for accepted production releases
-  within its stated scope and gates; otherwise require explicit owner approval.
+- Staging first. Release only under the owner instruction dated 2026-10-18 within
+  its stated scope and gates; otherwise require explicit owner approval.
   A green build does not establish gameplay acceptance.
 - No UX/audio/input "fixed" claim from compilation alone; exercise the
   packaged runtime.
 - Version bumps and release records must match the bytes actually published.
+
+A successful package build is not a release: hand off to `vce-release` (CI →
+GitHub release → web production) and, for a public snapshot,
+`public-release-security`.

@@ -107,7 +107,7 @@ Before editing shared player/render/input/audio/save behavior, read
 `docs/REGRESSION_GUARDS.md` and `docs/player-layering.md` and run the applicable
 behavioral and live guards before and after the edit. For Android changes, use
 `docs/android-regression.md`. Use the existing staging workflow for runtime
-changes. The active owner mandate dated 2026-10-14 authorizes public source
-publication, suitable GitHub releases and deployment of accepted versions through
-the existing production path after its checks pass; see `AGENTS.md` for scope and
-host boundaries.
+changes. Release authority is the owner instruction dated 2026-10-18: it
+authorizes releases only after the exact-SHA CI gate and the recorded acceptance
+for the claimed surfaces (`docs/release.md`, `docs/AGENT-AUTHORITY.md`). A green
+gate is evidence, not authorization.

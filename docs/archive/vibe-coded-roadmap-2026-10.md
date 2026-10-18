@@ -1,6 +1,12 @@
 # Vibe Coded Emulator — roadmap and status plan
 
-Status: current for feature scope and status; **section 1 is archival**. Listed in
+Status: archival (moved 2026-10-18). Superseded by `docs/ARCHITECTURE.md`,
+`docs/features/` and the active checkpoints. Its status rows were verified
+2026-09-16, before the 3.2.5 line and before the Switch companion, LAN peer and
+tracked Android tree existed; treat every row as dated evidence. Do not update
+it in place.
+
+Status as originally written: current for feature scope and status; **section 1 is archival**. Listed in
 [`docs/README.md`](README.md) so it is not an unindexed document. Dated lines
 inside sections 2+ are evidence of what was run on that date, never a substitute
 for the source or for `docs/QUALITY.md`.

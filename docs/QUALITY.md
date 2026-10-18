@@ -178,6 +178,9 @@ Closed since the 2026-10-17 review:
   aggregates every lane and fails unless all of them succeeded, so a skipped or
   cancelled lane cannot read as green. `main` requires that job.
 - A skipped, missing or unavailable check is `UNVERIFIED`; it is never PASS.
+- Per-feature status and open work live in [`features/`](features/); a change that
+  alters a status updates its feature page in the same commit. This file keeps the
+  cross-cutting bar and the known gaps.
 - Hosted evidence: after a successful hosted run for the current commit,
   `bash tools/record-hosted-evidence.sh <workflow>` records it in `.hub/hosted-evidence.json`. The Hub
   merges it into a verification record only when it names that exact revision;

@@ -1,5 +1,11 @@
 # Vibe Coded Emulator — platform architecture and feature status
 
+Status: archival (moved 2026-10-18). Superseded by `docs/ARCHITECTURE.md` and
+`docs/features/`. Its status was last reviewed 2026-10-17 and several "not done"
+rows (sync endpoints, controller QR, multiplayer page) were completed after
+that; treat it as dated evidence, never as current state. Do not update it in
+place.
+
 This document describes the systems added or changed for the Vibe Coded
 Emulator expansion, and states plainly what is implemented versus what is
 designed but not yet wired in. It replaces nothing in the existing AN3

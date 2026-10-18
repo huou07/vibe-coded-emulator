@@ -22,7 +22,7 @@ file.
 - Never write passwords, tokens, cookies, pepper values, production user records, device identifiers, or SSH credentials into reports, commands, commits, or documentation.
 - For staging SSH, use only the verified key/agent control path in `tools/ssh/README.md`. It must run with password authentication disabled and `StrictHostKeyChecking=yes`.
 - Use SQLite Online Backup for backups/snapshots; never raw-copy a live WAL database.
-- Production deploy, Cloudflare/tunnel change, production data change, destructive batch operation, and migration each require separate explicit owner approval.
+- Production deploy, Cloudflare/tunnel change, production data change, destructive batch operation, and migration each require an explicit owner authorization that is current for the task. The owner instruction dated 2026-10-18 authorizes releasing versions that pass the exact-SHA CI gate and the recorded acceptance to the web production path ([`release.md`](release.md)); it is not a standing approval for unrelated production changes.
 
 ## Baseline validation
 

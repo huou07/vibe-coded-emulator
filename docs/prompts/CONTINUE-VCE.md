@@ -167,8 +167,9 @@ loop was left behind, and no new work was started after the steer.
     live references were this task and an archived checkpoint)
   - `M docs/README.md` (roadmap added to the product-status index; archived audit
     added to the archive table)
-  - `M docs/vibe-coded-roadmap.md` (status line added: current for feature scope,
-    section 1 archival)
+  - `M` the roadmap document (later archived as
+    `docs/archive/vibe-coded-roadmap-2026-10.md`) — status line added: current
+    for feature scope, section 1 archival
 - Last command: `git status --short` plus `tail docs/prompts/CONTINUE-VCE.md`
   after `git rev-parse HEAD`; result: the four paths above, HEAD `fc83806`.
 - Last verified command before that: the canonical browser lane

@@ -6,16 +6,21 @@ description: Use when deploying or smoke-testing the AN3 Arcade / Vibe Coded Emu
 # Deploy and verify AN3 staging
 
 Staging is `http://192.168.1.8:8092` (host `huou07@192.168.1.8`). Production is
-`192.168.1.8:8091`. The active owner mandate dated 2026-10-14 authorizes deploying
-accepted VCE versions through the existing production path after its checks pass;
-other production changes still require explicit owner authorization.
+`192.168.1.8:8091`. Release/publication authority is the owner instruction dated
+2026-10-18, which authorizes releases only after the exact-SHA CI gate and the
+recorded acceptance for the claimed surfaces; see `docs/release.md` and
+`docs/AGENT-AUTHORITY.md`. A green gate is evidence, not authorization; no
+production deploy, publication or privileged change happens without an
+authorization current for that task. Other production changes still require
+explicit owner authorization.
 
 ## Preconditions and authority
 
 Skip ordinary source edits and local status questions. A deployment request
-permits only the named scope within host/tool permissions. The active owner mandate
-authorizes accepted VCE production promotion through the existing path; it does
-not grant protected owner keys, sudo, DNS/router changes or unrelated host control.
+permits only the named scope within host/tool permissions. The owner instruction
+dated 2026-10-18 authorizes accepted VCE production promotion through the existing
+path, after the exact-SHA CI gate and recorded acceptance; it does not grant
+protected owner keys, sudo, DNS/router changes or unrelated host control.
 First read the deployment scripts and current endpoint/rollback configuration. Do
 not run a root helper with model-controlled arguments or access protected owner
 keys. If the available identity cannot use the approved operator path, prepare the
@@ -74,7 +79,9 @@ marker nor an HTTP 200 proves the full user journey.
 
 ## Rules
 
-- Keep the compact dark-violet minimal design.
+- The product keeps the quiet-violet token theme installed by
+  `static/theme-violet.css` and documented in `docs/design-system.md`; the deploy
+  does not restyle the product.
 - Record the asset version, active release, browser/runtime, ROM identity, and
   console errors for any runtime verification.
 - Never mix staging and production paths or expose secrets.

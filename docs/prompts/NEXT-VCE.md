@@ -61,7 +61,8 @@ duplicate mandate in `.agents/skills.md` are superseded by `AGENT-AUTHORITY.md`.
    no-overflow, control height, token values), or record in `../QUALITY.md` why
    neither exists yet.
 6. **Delete or archive what lies.** The orphaned one-shot scratch-audit script is
-   referenced by nothing; `docs/vibe-coded-roadmap.md` is absent from the index;
+   referenced by nothing; the roadmap document (later archived as
+   `docs/archive/vibe-coded-roadmap-2026-10.md`) is absent from the index;
    `AGENT_INTERACTION_CAPABILITY_AUDIT.md` exists only in the index. Move stale
    documents to `docs/archive/` with a one-line reason, and document the
    sparse-checkout in `docs/development-workflows.md` so `git status` hiding 768

@@ -228,7 +228,7 @@ Prefer `--testid`/`--id`; never key off layout paths or coordinates.
 
 | Capability | Evidence |
 | --- | --- |
-| `targets --json` | lists web/android/emulator/macos/linux/windows with reasons |
+| `targets --json` | lists web/android/emulator/macos/linux/windows/switch with reasons; `switch` reports the companion target and its missing harness rather than pretending it is absent |
 | web lifecycle | `app start/state/stop` on :8099 with correct PID tracking and health |
 | web structured UI | `ui tree/query/click/fill/value/wait/press`; `fill`→`value` = `emerald`; missing element = exit 4; wait timeout = exit 5 |
 | android structured UI | `ui tree` over WebView CDP (auto-forward); `click Settings`; `fill`/`value nativeSearch`; logs |

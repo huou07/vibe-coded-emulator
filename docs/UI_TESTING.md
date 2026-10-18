@@ -175,6 +175,9 @@ when unavailable to the worker.
 
 Bound local Linux work to one job, one compilation worker, a timeout and fresh
 memory/storage checks; share /tmp/aeh-native-ui-UID.lock with OR and the optional
-H07P guest. No uncontrolled compile, GPU workload, VM, AVD or release matrix.
+H07P guest. No uncontrolled compile, GPU workload, unmanaged VM, release matrix,
+or any Android AVD other than the single VCE-dedicated one that the owner
+authorized on 2026-10-18 (one at a time, never OR's AVD; see
+[`features/android.md`](features/android.md)).
 CI remains authoritative for cross-platform/native/package acceptance.
 A shell smoke cannot establish gameplay, media correctness or latency.

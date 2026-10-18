@@ -13,11 +13,14 @@ a failure, never as a clean result — see "Fail-open history" below.
 
 Resolve the exact publication candidate, source identity and requested operation.
 Skip routine internal edits and non-public status requests. Review and snapshot
-preparation do not by themselves authorize a push or release: check the active
-session mandate and `AGENTS.md`, then stay within its scope, gates and effective
-tool/OS permissions. Read snapshot/gate scripts before running them and inspect
-the candidate's licence contract rather than changing licence text to obtain a
-pass.
+preparation do not by themselves authorize a push or release. Release/publication
+authority is the owner instruction dated 2026-10-18, which authorizes releases
+only after the exact-SHA CI gate and the recorded acceptance for the claimed
+surfaces; see `docs/release.md` and `docs/AGENT-AUTHORITY.md`. A green gate or
+scanner PASS is evidence, not authorization; no publication or privileged change
+happens without an authorization current for that task. Read snapshot/gate scripts
+before running them and inspect the candidate's licence contract rather than
+changing licence text to obtain a pass.
 
 The public repository is the **core-only product**, and its line carries its own
 contract tests (the account/login, CMS/analytics and phone-controller surfaces
@@ -65,6 +68,12 @@ Non-zero exit means **do not publish**.
 The gate does **not** verify third-party licence headers or redistributable
 rights. Those are reviewed by hand; see `docs/licensing/`.
 
+`SECURITY.md`, `CONTRIBUTING.md` and `.env.example` are publication templates
+authored under `tools/publication/` and copied into the candidate by
+`tools/build-public-snapshot.sh`. The development tree has no `.gitleaks.toml` at
+its root, so a root copy is wrong — edit `tools/publication/.gitleaks.toml`.
+`.gitignore` is the repository-root file, copied into the candidate as-is.
+
 ## Adding a fixture
 
 `tests/` is copied verbatim into the public snapshot, so anything written in a
@@ -104,7 +113,7 @@ to publish. Do not execute publication merely because review passed.
   it through the authorized credential-management path; review grants no such access.
 - Publishing is blocked while an active exposed credential is unresolved.
 - False-positive suppressions must be narrowly scoped and documented in
-  `.gitleaks.toml` without exposing private data.
+  `tools/publication/.gitleaks.toml` without exposing private data.
 - GitHub Actions cannot protect content that was already pushed; the local
   check must pass before the first push.
 - The public repository is the product source only. The development history is
