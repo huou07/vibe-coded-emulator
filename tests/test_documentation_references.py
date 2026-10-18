@@ -152,5 +152,52 @@ class DocumentationReferenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+    def test_nested_ignored_path_is_valid_when_not_materialized(self):
+        """A nested ignore rule must hold on a checkout that never built it.
+
+        The hosted gate rejected `native-offline/src-tauri/gen/schemas/` on a
+        clean checkout while the local gate accepted it, because a build had
+        materialized the directory here: one document, two verdicts, and the
+        local one was wrong. Bind the decision to the ignore rules rather than to
+        the working tree.
+        """
+        with tempfile.TemporaryDirectory(prefix="an3-doc-refs-") as temporary:
+            repo = Path(temporary)
+            (repo / "tools").mkdir()
+            (repo / "native-offline").mkdir()
+            (repo / ".gitignore").write_text(
+                "native-offline/src-tauri/gen/schemas/\n", encoding="utf-8"
+            )
+            (repo / "native-offline/THIRD_PARTY_NOTICES.md").write_text(
+                "Generated schemas live in `native-offline/src-tauri/gen/schemas/`.\n",
+                encoding="utf-8",
+            )
+            checker = repo / "tools/check-docs-refs.py"
+            shutil.copyfile(CHECKER, checker)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "add",
+                    ".gitignore",
+                    "native-offline/THIRD_PARTY_NOTICES.md",
+                    "tools/check-docs-refs.py",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            self.assertFalse((repo / "native-offline/src-tauri").exists())
+            result = subprocess.run(
+                ["python3", str(checker)],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

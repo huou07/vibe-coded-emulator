@@ -205,6 +205,35 @@ def check_absolute(line_no: int, doc: str, token: str, findings: list[str]) -> N
         )
 
 
+def ignored_by_rule(candidates: set[str]) -> bool:
+    """True when Git's ignore rules cover a candidate, materialized or not.
+
+    ``ignored_paths`` can only collect paths that exist on this host, plus the
+    documented top-level roots. A *nested* ignore rule therefore behaved
+    differently in the two environments that run this check:
+    ``native-offline/src-tauri/gen/schemas/`` was honoured locally, where a build
+    had materialized it, and rejected by the hosted gate on a clean checkout that
+    had never built the native app. The hosted lane is the authority, so ask the
+    rules themselves rather than the working tree, and the two agree.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "check-ignore", "--no-index", "--stdin"],
+            cwd=ROOT,
+            # A directory-only rule such as `.../gen/schemas/` matches the
+            # trailing-slash form and not the bare one, and the caller has
+            # already stripped the slash off the reference it is validating.
+            # Ask about both forms: naming the directory either way is the same
+            # claim about the same ignored directory.
+            input="\n".join(sorted({c for candidate in candidates
+                                    for c in (candidate, candidate + "/")})) + "\n",
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def check_repo_relative(line_no: int, doc: str, token: str,
                         tracked: set[str], ignored: set[str],
                         findings: list[str]) -> None:
@@ -234,6 +263,8 @@ def check_repo_relative(line_no: int, doc: str, token: str,
         for candidate in candidates
         for path in ignored
     ):
+        return
+    if ignored_by_rule(candidates):
         return
     findings.append(
         f"{doc}:{line_no}: {token!r} is not a path in this repository"
