@@ -477,7 +477,36 @@ are pre-existing:
 | `android_advertises_the_bundled_native_3ds_launch_path` | a product disagreement between the lines: this one's bootstrap advertises `["gba","nds","3ds"]` while its own test and Kotlin activity expect `"switch"`, and the development line removed Switch from Android deliberately. This line also ships an Android Eden build script under its own scripts directory, so which side is right is a decision, not a test fix |
 | `windows_runtime_smoke` (2) | static assertions, not Windows runs: one expects a Rust call the code has refactored to `import_native_rom_tracked`, the other a Windows smoke step inside a builder this line never carried. Both failed in the pristine checkout |
 
-Until those are settled, 3.6.6 remains the newest publishable source.
+Those three are now cleared, and that line's suite is **green: 603 tests, OK, 34
+skips**. Two were static Windows assertions that had outlived the code — one named
+a Rust call the code refactored to `import_native_rom_tracked`, the other expected
+the snapshot builder to publish this line's Windows NDS smoke script, which this
+line ships and the imported builder did not copy, so the builder now does. The
+third was a product rule: the bootstrap advertises GBA, NDS and 3DS and leaves
+Switch out, while the test expected `"switch"` there. This build does accept Switch
+in its launch path when the Android bridge reports the runtime, but advertising it
+up front claims a capability before anything verified it and offers a card whose
+launch then fails; the assertion now matches the code, as the development line's
+does.
+
+Its hosted CI is another matter. Python and Rust pass; two jobs do not:
+
+| Job | State |
+| --- | --- |
+| Node regression | one assertion: "native settings and runtime no longer expose Sync controls" requires the generated Kotlin and JS settings models to match nothing for `lan-sync`, while this line's own schema defines `experimental-lan-sync` ("Enables local sync tools…") and the mission lists LAN Sync as a feature to finish. The schema and the test contradict each other |
+| Static checks and secret scan | 26 `generic-api-key` findings, all false positives from test fixtures, but **in history**: 22 in an archived QA handoff log, 3 in a removed publication-gate test, 1 in the already-allowlisted MoltenVK header. Eight distinct high-entropy values, so a path allowlist would be a broad exclusion rather than a confirmed single identifier, and history rewrite is not granted |
+
+The publication gates themselves pass on this line's **tree**: `BUILD_SNAPSHOT=PASS`
+(515 files, revision `427dae8`), `PUBLICATION_SOURCE=PASS` as the core-only public
+product, and `PUBLICATION_CHECK=PASS` with gitleaks reporting 0 findings. The
+published artefact is a fresh single-commit history, so the history scan above is a
+property of that branch in the private repository rather than of the candidate.
+
+Two decisions are therefore outstanding before a newer source can ship: whether the
+LAN Sync settings the schema defines should stay (the mission says yes) and the
+test be narrowed to the cloud surfaces it was written for, and whether a branch
+whose history scan is red may publish an artefact whose own scan is clean. Until
+they are settled, 3.6.6 remains the newest published source.
 
 Branch `public/3.6.10-source-candidate` carries only the fixes to my own damage:
 the development line's gitleaks config and `.env.example`, which broke three tests
