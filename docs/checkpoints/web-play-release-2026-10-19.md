@@ -155,6 +155,77 @@ VBlank (or a read taken inside the frame callback with the buffer preserved), on
 physical hardware for the native platforms. Until then, per-platform gameplay
 performance stays UNVERIFIED.
 
+## App-branch evaluation (objective: evaluate and merge where appropriate)
+
+Every branch was enumerated, local and remote, after `git fetch --all --prune`.
+The remote has 27 heads, several of which were not in this checkout at all:
+`codex/vce-3.6.10-windows-beta-review`, `codex/vce-3.6.7-ci-candidate`,
+`codex/vce-3.6.8-windows-p0-review`, and a whole `core-only/*` family.
+
+**The two lines are unrelated histories.** `git merge-base HEAD origin/main` is
+empty; `48fb769`, `fea3fa2` and `d389e22` are separate root commits by different
+authors (`huou07` vs `meomeo`). A merge would need
+`--allow-unrelated-histories`.
+
+**They are not two halves of one product.** The apparent "62 files the dev branch
+lacks" is mostly the app line organising the same capabilities differently, and
+two of those differences are contradictory implementations, not gaps:
+
+| Capability | Development branch | App line |
+| --- | --- | --- |
+| Switch companion | `src-tauri/src/switch_companion.rs`, 9 `switch_companion_*.toml` permissions, `prepare-switch-companion.mjs`, vendored macOS binary | `hosted_frame.rs`, `hosted_frame_consumer.{h,mm}`, 7 `switch_companion_hosted_frame*.toml`, `build-*-eden-companion.*` |
+| Core licence texts | Android assets with a `manifest.json`, plus `vendor/` copies | its own `native-core-licenses` directory at the app root |
+
+So "merge the apps branches into the development branch" is the wrong operation:
+it would put two Switch implementations in one tree and force a design choice
+inside a merge commit. The defensible reconciliation is by **version and
+packaging**, keeping one implementation per capability.
+
+**Within the app line itself**, the branches do share `48fb769`, so those merges
+are ordinary. Dry runs, on a scratch worktree from the 3.6.10 tip:
+
+| Merge | Conflicts | Files added cleanly |
+| --- | --- | --- |
+| `vce-3.6.8-flatpak-version-fix` (398 unique) | 22 | 273 |
+| `vce-desktop-parity` (333 unique) | 24 | 201 |
+
+The conflicts are concentrated and classifiable: `package.json` /
+`package-lock.json`, `Cargo.toml` / `Cargo.lock`, the flatpak manifests and
+metainfo, `native-release.yml` / `native-build.yml`, `PRODUCT_STATE.md`, that line's `building.md`, plus three real source files — `sdl_gl_backend.cpp`,
+`native-settings-model.json` — and the Android mirror `assets/index.html`. Policy
+for a real merge: take the higher version and the newer Azahar pin, union the
+workflows and docs, regenerate the lockfiles, resolve the two source files by
+reading both sides, and rebuild the mirror with `prepare-web.mjs` rather than by
+hand. Then a Linux build and the native guards before it can be called a release
+candidate. That is a bounded task and it is not started.
+
+## The core-only line exists, and it is stale
+
+`tools/publish-github.sh --check-candidate` tells a refused candidate to "export
+the snapshot from the core-only line (a `core-only/*` branch)". That line **does**
+exist on the remote — `core-only/3.6.1-candidate-20261009` (app 3.6.6) is the
+newest, and `3.6.0`, `3.4.0`, `3.3.13`, `3.3.12`, `acceptance` precede it. All are
+genuinely core-only: `app.py` is 142,570 bytes and defines no `/login` route.
+
+Building a snapshot from the newest one fails, and each failure is a real gap
+rather than a tooling quirk:
+
+1. `missing upstream core license: mGBA-MPL-2.0.txt` — and
+   `melonDS-DS-GPL-3.0-or-later.txt` with it. `native-offline/vendor/libretro/macos-arm64/`
+   tracks only `manifest.json`; `git ls-files -t` returns nothing for either text,
+   so they are absent from the tree, not sparse in a worktree. A GPL source
+   snapshot shipping the cores' build tooling without their licence texts is not
+   publishable. Both are now tracked on branch
+   `core-only/3.6.6-publication-candidate`, which fixes that one gap.
+2. `missing build helper: tools/disk-preflight.ps1` — the core-only line does not
+   carry it.
+3. `cp: cannot stat 'tools/publication/docs/.'` — the core-only line does not
+   carry the publication templates the current builder reads.
+
+So the core-only line predates the current publication tooling. Refreshing it is
+the prerequisite for any GitHub source publication and is not started; the branch
+above carries only the licence fix.
+
 ## The apps line and this branch are two histories
 
 `origin/main` is a squashed 2-commit "initial public release" at **3.3.3**. The
