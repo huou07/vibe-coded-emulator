@@ -255,7 +255,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         import_command = TAURI_LIB[import_start:import_end]
         self.assertIn('#[cfg(feature = "ui-control")]', import_command)
         self.assertIn("AN3_UI_TEST_ROM", import_command)
-        self.assertIn("import_native_rom(&import_app, &rom_id, PathBuf::from(path))", import_command)
+        # The automation path imports the fixture through the tracked variant,
+        # which records the import the same way the dialog path does.
+        self.assertIn("import_native_rom_tracked(&import_app, &rom_id, PathBuf::from(path))", import_command)
         self.assertIn("blocking_pick_file()", import_command)
 
 

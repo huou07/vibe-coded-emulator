@@ -159,6 +159,9 @@ for file in disk-preflight.sh disk-preflight.ps1; do
   [[ -f "$ROOT/tools/$file" ]] || die "missing build helper: tools/$file"
   cp "$ROOT/tools/$file" "$OUT/tools/"
 done
+# This line ships a packaged Windows NDS smoke script; a published candidate that
+# omitted it would leave the hosted Windows lane calling a file it does not have.
+[[ -f "$ROOT/tools/windows-nds-runtime-smoke.ps1" ]] && cp "$ROOT/tools/windows-nds-runtime-smoke.ps1" "$OUT/tools/"
 if [[ -d "$ROOT/tools/android" ]]; then
   cp -R "$ROOT/tools/android" "$OUT/tools/android"
   # The operator README documents the private staging harness: owner SSH key

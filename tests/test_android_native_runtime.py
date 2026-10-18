@@ -370,7 +370,13 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         manifest = source(ANDROID_MANIFEST)
         library = source(OFFLINE_LIBRARY)
 
-        self.assertIn('? ["gba", "nds", "3ds", "switch"] :', bootstrap)
+        # The bootstrap advertises GBA, NDS and 3DS. Switch is deliberately not in
+        # that list: this build accepts it in the launch path when the Android
+        # bridge reports the runtime present, but advertising it up front would
+        # claim a capability before anything has verified it, and the library would
+        # then offer a card whose launch fails. The development line reached the
+        # same conclusion and asserts the same list.
+        self.assertIn('? ["gba", "nds", "3ds"] :', bootstrap)
         self.assertNotIn("AN3AndroidLaunchThreeDs", bootstrap)
         self.assertNotIn("launchThreeDs", activity)
         self.assertIn('system !in listOf("gba", "nds", "3ds", "switch")', activity)
