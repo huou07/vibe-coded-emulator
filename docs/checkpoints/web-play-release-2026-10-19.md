@@ -44,6 +44,41 @@ Three defects were found and fixed to get there:
    replacing it. Both are fixed; the installed tree is now exactly the released
    tree and the gate passes.
 
+## UI/UX audit against the design-system contract
+
+`work/phaseA/audit-ui-contract.mjs` measures the non-player shell against
+`docs/design-system.md` and `docs/ui-page-contract.md` on a live surface, at 360,
+390 and 1280px, on `/`, `/download-app`, `/offline` and `/licenses`. It reads the
+`--ui-*` set from `body`, which is where `theme-violet.css` scopes it and where
+`tests/web-runtime.test.mjs` reads it.
+
+| Check | Before | After (production, `3877f6a56f94`) |
+| --- | --- | --- |
+| Token mismatches | 0 | **0** |
+| Document-level horizontal overflow | **4** — `/offline` 462px at 360 and 390, `/licenses` 668px at 360 and 390 | **0** |
+| `.button` under 42px | 0 | **0** |
+| Missing menu control at 360/390 | 0 | **0** |
+| Header height at 1280px | 72px | 72px |
+| Shell destinations | — | `Web play`, `Download app` only |
+
+Two cascade defects, not taste: `body.offline-shell .offline-facts` (five columns)
+outranked the 560px media query by source order, and the readiness card pins a
+fixed 308px column that collapsed the facts column to 0px; the offline hero's
+full-bleed `100vw` margin arithmetic overshot by 8px at 390px. The licence table
+now scrolls in its own labelled region.
+
+**The audit was wrong before it was right**, and that is recorded deliberately:
+its first version read the tokens from `documentElement`, where they are empty,
+and reported 120 mismatches on a correct page. No product defect was reported on
+that reading.
+
+**Not established by a human eye.** This session's image reader is blocked
+(`EACCES` traversing `/home`), so taste, hierarchy and legibility are still an
+owner verdict. What is established is measurable: geometry, tokens, control tiers
+and the responsive contract. The native shell declares no `--ui-*` set at all —
+`native-offline/web/native.css` uses its own naming — so Web and app token parity
+is a real divergence, not a measurement artefact, and is open work.
+
 ## Browser 3DS is blocked by a platform constraint, not by code
 
 The 3DS core is the threaded build: it needs `window.crossOriginIsolated` with
