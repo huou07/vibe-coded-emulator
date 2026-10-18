@@ -192,7 +192,7 @@ class NativeSupportApiTests(unittest.TestCase):
 
     def test_anonymous_capability_submission_is_sanitized_and_persisted(self):
         token = self.capability()["capability"]
-        payload = self.payload("crashed with token " + FAKE_TOKEN + " on ~/<REDACTED_PATH>")
+        payload = self.payload("crashed with token " + FAKE_TOKEN + " on /opt/developer/ROMs/game.gba")
         payload.update({"macAddress": FAKE_MAC, "accessToken": FAKE_TOKEN, "password": "hunter2"})
         status, _, data = self.json(
             "POST",

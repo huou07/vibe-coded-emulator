@@ -12,7 +12,7 @@ const FAKE_TOKEN = 'ghp_' + 'A'.repeat(36);
 test('client sanitizer removes credentials, identities, and personal paths', () => {
   const api = load();
   const text = api.sanitizeText(
-    'token=' + FAKE_TOKEN + ' mac de:ad:be:ef:00:11 ip 10.1.2.3 ~/<REDACTED_PATH> a@b.invalid'
+    'token=' + FAKE_TOKEN + ' mac de:ad:be:ef:00:11 ip 10.1.2.3 /opt/developer/ROMs/game.gba a@b.invalid'
   );
   assert.doesNotMatch(text, /ghp_/);
   assert.doesNotMatch(text, /de:ad:be:ef:00:11/);
@@ -26,7 +26,7 @@ test('client sanitizer drops forbidden keys before upload', () => {
   const api = load();
   const clean = api.sanitizeReport({
     description: 'crash',
-    romPath: '~/<REDACTED_PATH>',
+    romPath: '/opt/developer/ROMs/game.gba',
     accessToken: FAKE_TOKEN,
     saveState: 'AAECAwQ=',
     settings: {renderer: 'webgl2', refreshToken: 'nope'},

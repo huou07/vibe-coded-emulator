@@ -33,8 +33,8 @@ The GBA/NDS/fullscreen tools intentionally require live coordinates rather than 
 Start the verified key-only private local forward from `<LEGACY_CHECKOUT> then run the script. Do not disable browser security, expose staging publicly, change Cloudflare, or leave the reverse mapping behind.
 
 ```bash
-export AN3_STAGING_SSH_IDENTITY_FILE=~/<REDACTED_PATH>
-export AN3_STAGING_SSH_KNOWN_HOSTS=~/<REDACTED_PATH>
+export AN3_STAGING_SSH_IDENTITY_FILE=/opt/developer/ROMs/game.gba
+export AN3_STAGING_SSH_KNOWN_HOSTS=/opt/developer/ROMs/game.gba
 <LEGACY_CHECKOUT> 18092
 <LEGACY_CHECKOUT> 18092
 ```
