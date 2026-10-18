@@ -220,7 +220,7 @@ in the candidate:
 | --- | --- |
 | `tools/publication` held only `.gitleaks.toml` | templates refreshed from the development line, with `disk-preflight.ps1` and the builder |
 | Eight files carried `~/<REDACTED_PATH>`, which the builder's own post-scan rejects | replaced with `/opt/developer/ROMs/game.gba`, which also restores the meaning of the test named "username in paths is removed" |
-| A PEM-header fixture in `tests/test_bug_report.py` matched the checker's secret pattern | assembled at run time, identical input to the scrubber, 20 tests still pass |
+| A PEM-header fixture in that line's bug-report test matched the checker's secret pattern | assembled at run time, identical input to the scrubber, 20 tests still pass |
 | The `an3-presentation-renderer-v1` allowlist named only `static/player-runtime.js` | the existing path-scoped entry now also names the test that reproduces that identifier |
 
 The first two are worth naming as toolchain faults: a sanitizer that rewrites
