@@ -78,6 +78,7 @@ Trackers hold unfinished work. Finished work moves to `docs/archive/`.
 | --- | --- |
 | [`native-linux-journey.md`](checkpoints/native-linux-journey.md) | The only native tracker. Deterministic runtime `GOOD`; packaged shell, NDS/3DS and cross-platform legs `UNVERIFIED`; Exit Game `BROKEN` |
 | [`ui-ux-baseline.md`](checkpoints/ui-ux-baseline.md) | The only UI/UX tracker. Bounded friction backlog, one change per journey, and the `Devices` entry pattern |
+| [`web-play-release-2026-10-19.md`](checkpoints/web-play-release-2026-10-19.md) | Web play live on production with no account surface (`fe0a9e80f859`); the apps 3.6.8 line is not yet reconciled |
 | [`web-3ds-browser.md`](checkpoints/web-3ds-browser.md) | The only browser-3DS tracker. Both defects closed on this host; hosted coverage, other browsers, audible audio and sustained play open |
 | [`direct-lan-controller.md`](checkpoints/direct-lan-controller.md) | Phone controller and LAN peer milestones; two-device acceptance not run |
 | [`eden-native-integration.md`](checkpoints/eden-native-integration.md) | Eden/Switch bridge phases; packaged acceptance outside macOS not run |
