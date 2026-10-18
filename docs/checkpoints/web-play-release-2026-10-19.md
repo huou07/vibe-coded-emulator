@@ -112,6 +112,7 @@ iGPU host.
 | Main-thread long tasks | 0 observed, 0ms total | GOOD, same scope |
 | JS heap while playing | 18MB used of a 4192MB limit | GOOD, same scope |
 | No-GPU vs GPU launch flags | **both** report `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)` | GPU path **UNVERIFIED** |
+| Emulated machine advances while displayed | yes: three captures 1s apart differ | GOOD |
 | Emulated frame rate | **not established** (see below) | UNVERIFIED |
 | Native (Linux/macOS/Windows), Android, Switch, physical phones | not measured on this host | UNVERIFIED |
 
@@ -136,6 +137,17 @@ sampling the wrong canvas, with a WebGL drawing buffer that is not preserved
 across the read, or with a stalled core. This probe cannot distinguish those, so
 it establishes nothing about performance, and `EJS_emulator` exposes no `fps` or
 frame counter in this build to fall back on.
+
+A third probe (`perf-frames.mjs`) settles the weaker question — whether the
+machine advances at all while it is displayed — without settling the rate. Three
+Playwright element screenshots of the live canvas, one second apart, produce three
+different images (sha256 `dc4ac1484aea8ede`, `36be377acbe714e4`, `9d7f775be114714b`,
+1280x606 each): the emulated machine is executing and its output is being
+presented. Reading the counter itself then failed for a known reason, not an
+unknown one: the GBA's 240x160 image is letterboxed inside that 1280x606 canvas,
+so canvas pixel (0,0) — and (1,0), and the centre — is black border, not pixel 0 of
+the fixture's mode-3 frame buffer. The displayed-pixel rate therefore remains
+unestablished.
 
 What would settle it, in order: a headed Chromium on the iGPU with a GPU process
 report showing ANGLE-on-Intel, and a fixture whose *entire* frame changes each
