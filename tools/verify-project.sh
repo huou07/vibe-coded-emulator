@@ -124,7 +124,7 @@ if [[ -f "$MANIFEST" ]]; then
     --not-run "windows-macos-native-acceptance|no Windows or macOS host is available to this Debian workstation"
     --not-run "hosted-browser-lane|the Playwright browser semantics lane is the separate browser-runtime CI job and does not run here"
     --limitation "this is the local source gate: it proves source behaviour only and never establishes packaged, native, Android, Windows or macOS acceptance"
-    --limitation "the enforced emulator budget is emulator-loop throughput (600 frames), not display frame pacing or audio underruns; sustained frame pacing and audio remain UNVERIFIED"
+    --limitation "the enforced emulator budget is the emulator loop's measured frame-time distribution and its whole-run throughput, both emulator-loop timings: it is not display frame pacing and not audio, and the headless lane runs no audio device (it reports audioMeasured=false); sustained display frame pacing and audio underruns remain UNVERIFIED"
     --limitation "the skipped list comes from tools/verify-skip-manifest.py; a skip is never a pass"
   )
   if ! python3 tools/verify-gate-report.py "${report_args[@]}"; then

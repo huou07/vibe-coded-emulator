@@ -256,15 +256,23 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
   assert.equal(status.data.frames, 120);
   assert.ok(status.data.width > 0 && status.data.height > 0);
 
-  // Automated emulator-loop throughput budget. `--status-json` reports frames,
-  // coreFrames, fps and size but no frame-time distribution and no audio
-  // underrun counter, so this is the strongest budget the runtime currently
-  // supports: a sustained run must finish its frames and stay within an
-  // order-of-magnitude bound. It guards against a readback or per-frame stall
-  // regression in the headless loop. It is NOT display frame pacing and NOT
-  // gameplay/performance acceptance (docs/QUALITY.md, vce-gameplay-performance).
+  // Automated emulator-loop budget, in two parts. The whole-run throughput bound
+  // alone cannot see a single stalled frame: 600 frames may take 15s because one
+  // frame took 14s. `--status-json` now reports a measured frame-time
+  // distribution (`frameMs`, wall clock around `run_one`) and a measured
+  // `measuredFps`, so the tail is asserted too. These stay emulator-loop timings:
+  // they are NOT display frame pacing, and the headless lane runs no audio device
+  // (the payload says `audioMeasured:false`), so audio underruns are not
+  // established here. docs/QUALITY.md, vce-gameplay-performance.
   const BUDGET_FRAMES = 600;
   const BUDGET_MS = Number(process.env.AN3_EMULATOR_BUDGET_MS ?? 20000);
+  // Stall guards. The vendored Linux runtime measures p95 ~0.3ms and max
+  // ~0.4ms per emulated frame on this class of host, so these are two orders of
+  // magnitude above the measurement: they tolerate shared-runner noise and still
+  // catch the gross stalls a whole-run mean hides (a single 200ms frame inside a
+  // 600-frame run passes the throughput bound above).
+  const BUDGET_P95_MS = Number(process.env.AN3_EMULATOR_FRAME_P95_MS ?? 10);
+  const BUDGET_FRAME_MAX_MS = Number(process.env.AN3_EMULATOR_FRAME_MAX_MS ?? 250);
   const budgetStarted = Date.now();
   const sustained = parse(await cli(["emulator", "status", ...selection, ...base, "--frames", String(BUDGET_FRAMES), "--json"]));
   const budgetMs = Date.now() - budgetStarted;
@@ -274,7 +282,39 @@ test("emulator: deterministic status, and diff detects a frame change", async (t
     budgetMs <= BUDGET_MS,
     `emulator-loop throughput budget exceeded: ${BUDGET_FRAMES} frames took ${budgetMs}ms (budget ${BUDGET_MS}ms)`,
   );
+  const frameMs = sustained.data.frameMs;
+  assert.ok(frameMs && typeof frameMs === "object", `status must report a frame-time distribution, got ${JSON.stringify(frameMs)}`);
+  assert.equal(frameMs.samples, BUDGET_FRAMES, "every frame must contribute one timing sample");
+  for (const field of ["mean", "p50", "p95", "p99", "max"]) {
+    assert.ok(
+      Number.isFinite(frameMs[field]) && frameMs[field] > 0,
+      `frameMs.${field} must be a measured positive number, got ${frameMs[field]}`,
+    );
+  }
+  assert.ok(
+    frameMs.p50 <= frameMs.p95 && frameMs.p95 <= frameMs.p99 && frameMs.p99 <= frameMs.max,
+    `frame-time distribution must be ordered: ${JSON.stringify(frameMs)}`,
+  );
+  assert.ok(
+    frameMs.p95 <= BUDGET_P95_MS,
+    `emulator-loop p95 frame time exceeded: p95=${frameMs.p95}ms (budget ${BUDGET_P95_MS}ms)`,
+  );
+  assert.ok(
+    frameMs.max <= BUDGET_FRAME_MAX_MS,
+    `emulator-loop worst frame exceeded: max=${frameMs.max}ms (budget ${BUDGET_FRAME_MAX_MS}ms)`,
+  );
+  assert.ok(
+    Number.isFinite(sustained.data.measuredFps) && sustained.data.measuredFps > 0,
+    `status must report a measured fps, got ${sustained.data.measuredFps}`,
+  );
+  assert.equal(sustained.data.audioMeasured, false, "the headless lane runs no audio device and must say so");
   console.log(`AN3_EMULATOR_BUDGET frames=${BUDGET_FRAMES} elapsedMs=${budgetMs} budgetMs=${BUDGET_MS} result=PASS`);
+  console.log(
+    `AN3_EMULATOR_FRAME_BUDGET samples=${frameMs.samples} meanMs=${frameMs.mean.toFixed(3)} `
+    + `p50Ms=${frameMs.p50.toFixed(3)} p95Ms=${frameMs.p95.toFixed(3)} p99Ms=${frameMs.p99.toFixed(3)} `
+    + `maxMs=${frameMs.max.toFixed(3)} measuredFps=${sustained.data.measuredFps.toFixed(1)} `
+    + `audioMeasured=${sustained.data.audioMeasured} result=PASS`,
+  );
 
   const name = `self-test-${Date.now()}`;
   const baseline = parse(await cli(["emulator", "baseline", ...selection, ...base, "--frames", "120", "--name", name, "--json"]));

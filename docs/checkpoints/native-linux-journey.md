@@ -17,7 +17,7 @@ here at all. A source-tree runtime result is never packaged acceptance.
 
 | Milestone | Status |
 | --- | --- |
-| Vendored Linux gameplay runtime (ELF, cores, manifest, licenses) | `GOOD` — vendored 2026-10-17, integrity-verified SHA-256 `94a5e701…b076e6c` |
+| Vendored Linux gameplay runtime (ELF, cores, manifest, licenses) | `GOOD` — re-vendored 2026-10-18 with the measured frame-time fields of RG-158; integrity-verified SHA-256 `c441cd99…8f60364` (the 2026-10-17 build was `94a5e701…b076e6c`) |
 | `an3ctl` native control-plane journey (status / baseline / diff) | `GOOD` — real runs, RG-154 |
 | Deterministic frame diff detects a frame change | `GOOD` — 120-vs-120 identical, 1-vs-120 differs by 30241 px |
 | State save → load round trip through the control plane | `GOOD` — `stateSaved`/`stateLoaded` true, 528448-byte state file |

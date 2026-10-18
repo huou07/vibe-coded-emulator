@@ -23,12 +23,14 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <vector>
 #if !defined(_WIN32)
 #include <pwd.h>
 #include <unistd.h>
@@ -119,6 +121,42 @@ void apply_input_window(NativeInput& input, const std::vector<InputWindow>& wind
     for (const auto& window : windows) {
         if (frame >= window.start && frame <= window.end) input.set_button(static_cast<unsigned>(window.button), true);
     }
+}
+
+// Emulation loop frame-time distribution. `--status-json` used to report only
+// `fps`, which is the rate the *core advertises* (`av.timing.fps`), never a
+// measured one, plus a whole-run throughput number in the lane. That cannot show
+// a single stalled frame or a jittery tail, which is what a pacing regression
+// looks like. These are measured wall-clock times around `run_one`, in
+// milliseconds, and they stay emulator-loop timings: they are not display frame
+// pacing, and the headless path runs no audio device.
+struct FrameTimeStats {
+    double p50 = 0.0;
+    double p95 = 0.0;
+    double p99 = 0.0;
+    double max = 0.0;
+    double mean = 0.0;
+};
+
+FrameTimeStats frame_time_stats(std::vector<double> samples) {
+    FrameTimeStats stats;
+    if (samples.empty()) return stats;
+    std::sort(samples.begin(), samples.end());
+    const auto at = [&samples](double fraction) {
+        const double index = fraction * static_cast<double>(samples.size() - 1);
+        const auto lower = static_cast<std::size_t>(index);
+        const auto upper = std::min(lower + 1, samples.size() - 1);
+        const double weight = index - static_cast<double>(lower);
+        return samples[lower] * (1.0 - weight) + samples[upper] * weight;
+    };
+    stats.p50 = at(0.50);
+    stats.p95 = at(0.95);
+    stats.p99 = at(0.99);
+    stats.max = samples.back();
+    double total = 0.0;
+    for (double sample : samples) total += sample;
+    stats.mean = total / static_cast<double>(samples.size());
+    return stats;
 }
 
 std::string json_escape(const std::string& value) {
@@ -412,12 +450,21 @@ int main(int argc, char** argv) {
         const long frames = options.frames >= 0 ? options.frames : 1;
         bool state_ok = true;
         long ran_frames = 0;
+        std::vector<double> frame_ms;
+        frame_ms.reserve(static_cast<std::size_t>(std::max<long>(frames, 1)));
+        const auto loop_started = std::chrono::steady_clock::now();
         for (long frame = 0; frame < frames; ++frame) {
             apply_input_window(host.input(), windows, frame);
+            const auto frame_started = std::chrono::steady_clock::now();
             if (!host.run_one(error, true)) { state_ok = false; break; }
+            const auto frame_finished = std::chrono::steady_clock::now();
+            frame_ms.push_back(std::chrono::duration<double, std::milli>(frame_finished - frame_started).count());
             host.input().clear();
             ++ran_frames;
         }
+        const double loop_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - loop_started).count();
+        const double measured_fps = loop_seconds > 0.0 ? static_cast<double>(ran_frames) / loop_seconds : 0.0;
+        const FrameTimeStats timing = frame_time_stats(frame_ms);
         bool state_saved = false;
         if (state_ok && !options.save_state.empty()) {
             state_saved = host.export_state(options.save_state.string(), error);
@@ -444,6 +491,16 @@ int main(int argc, char** argv) {
                       << "\"coreFrames\":" << status.core_frames << ","
                       << "\"requestedFrames\":" << frames << ","
                       << "\"fps\":" << status.core_fps << ","
+                      << "\"measuredFps\":" << measured_fps << ","
+                      << "\"frameMs\":{"
+                      << "\"samples\":" << ran_frames << ","
+                      << "\"mean\":" << timing.mean << ","
+                      << "\"p50\":" << timing.p50 << ","
+                      << "\"p95\":" << timing.p95 << ","
+                      << "\"p99\":" << timing.p99 << ","
+                      << "\"max\":" << timing.max
+                      << "},"
+                      << "\"audioMeasured\":false,"
                       << "\"width\":" << capture_video.width() << ","
                       << "\"height\":" << capture_video.height() << ","
                       << "\"capture\":\"" << json_escape(options.capture.string()) << "\","

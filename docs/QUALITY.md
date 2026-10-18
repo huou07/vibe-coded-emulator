@@ -25,7 +25,7 @@ pixel-identical parity across platforms.
 | Attribute | Target | How it is measured | Gate that enforces it | Current status |
 |---|---|---|---|---|
 | Correctness | source gate passes | `bash tools/verify-project.sh` | verify | see recorded result |
-| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | emulator-loop throughput budget in `tests/an3ctl.test.mjs` (600 frames ≤ 20s, ≈0.3 s measured on the vendored Linux runtime), claimed by the verify gate; `vce-gameplay-performance` evidence for sustained runs | verify (emulator-loop throughput only) | the throughput budget is enforced whenever the gate runs; sustained frame pacing and audio `UNVERIFIED` |
+| Gameplay performance | sustained frame pacing / no audio underruns on named hardware | measured emulator-loop frame-time distribution in `tests/an3ctl.test.mjs` (`frameMs` p50/p95/p99/max over 600 frames, plus measured fps and the whole-run ≤ 20s throughput bound), read from the vendored Linux runtime's `--status-json`; `vce-gameplay-performance` evidence for sustained runs | verify (emulator-loop timing only) | the frame-time distribution and the throughput bound are enforced whenever the gate runs (measured p95 ≈ 0.29 ms, max ≈ 0.43 ms); sustained display frame pacing and audio underruns `UNVERIFIED` |
 | Reliability | save states, 10 quick slots, autosave, Exit Game, recovery | Python + JS behaviour tests, guards in `REGRESSION_GUARDS.md` | verify | verified for covered paths |
 | Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, two-tier control height and 360px no-overflow assertions | verify + browser lane | tokens/overflow enforced; the compact control tier is a recorded gap |
 | Security | sanitized snapshot, pinned gitleaks, fail-closed publication gate | `tools/publication-check.sh` | acceptance (candidate) | enforced when a candidate exists |
@@ -35,12 +35,21 @@ pixel-identical parity across platforms.
 
 ## Known gaps, in priority order
 
-1. No frame-time distribution and no audio-underrun counter exist in the native
-   runtime's `--status-json`, so the automated budget is emulator-loop
-   throughput only. Adding them means changing the native runtime and
-   re-vendoring the pinned artifact (with its recorded SHA-256), which is its
-   own reviewed change; once the pinned runtime reports them, the lane that
-   would carry the assertion is:
+1. The enforced budget covers the emulator loop, not the display pipeline and not
+   audio. `--status-json` now reports a measured frame-time distribution
+   (`frameMs` p50/p95/p99/max over 600 frames) and a measured `measuredFps`,
+   distinguishable from the pre-existing `fps` field, which is the rate the core
+   *advertises*. The lane asserts the distribution and fails at p95 > 10 ms or a
+   single frame > 250 ms (`AN3_EMULATOR_FRAME_P95_MS`,
+   `AN3_EMULATOR_FRAME_MAX_MS`), which the whole-run throughput bound cannot see.
+   What remains open is presentation and audio: the lane runs `--headless`, which
+   uses `NullAudioBackend` and a capture video backend and now says so
+   (`audioMeasured:false`). The metrics contract already reserves
+   `audio_underruns` (`native-runtime/core/renderer_contract.h`), but
+   `LinuxSdlAudioBackend` does not populate it, and closing that needs a host
+   with a real display and audio device, which the gate host does not have. The
+   same lane carries the assertion once such a host reports the SDL renderer's
+   metrics:
 
    ```bash
    AN3_PLAYER=native-offline/vendor/runtime/linux-x86_64/an3-offline-native \
@@ -50,8 +59,8 @@ pixel-identical parity across platforms.
 
    The browser player already samples `uiFrameP50Ms`/`uiFrameP95Ms`/`uiFrameP99Ms`
    and long tasks in `static/player-runtime.js`, but no lane asserts them and no
-   sustained real-device run is recorded, so sustained frame pacing and audio
-   stay `UNVERIFIED`.
+   sustained real-device run is recorded, so sustained display frame pacing and
+   audio underruns stay `UNVERIFIED`.
 2. The shared shell's compact control tier (system filter chips, table row
    actions, admin range selector, small nav toggle) ships at 28–38px, below the
    42px guidance in `docs/design-system.md`. The browser lane now asserts the
@@ -60,6 +69,21 @@ pixel-identical parity across platforms.
    needs its own responsive review.
 
 Closed since the 2026-10-18 review:
+
+- The automated gameplay budget could not see a single stalled frame. The
+  vendored Linux runtime's `--status-json` reported only `fps`, which is the rate
+  the *core advertises* (`av.timing.fps`), never a measurement, so the lane's one
+  throughput number was the strongest available claim. It now reports a measured
+  wall-clock frame-time distribution around `run_one`
+  (`frameMs` samples/mean/p50/p95/p99/max) and a measured `measuredFps`, and
+  `tests/an3ctl.test.mjs` asserts the distribution, its ordering and its tail
+  (p95 ≤ 10 ms, max ≤ 250 ms, both overridable). Measured on the vendored runtime
+  after re-vendoring: mean 0.284 ms, p50 0.283 ms, p95 0.292 ms, p99 0.308 ms,
+  max 0.413 ms, measured 3519 fps over 600 frames, with the whole-run bound at
+  234 ms against its 20 s budget. The parked half of gap 1 — display presentation
+  and audio underruns — stays open and is now stated by the payload itself
+  (`audioMeasured:false`), because the lane runs `--headless` with
+  `NullAudioBackend`.
 
 - Every local native build dirtied the working tree, so no evidence could bind to
   a revision: `source-integrity` was `NOT_VERIFIED` and both gates `STALE` at

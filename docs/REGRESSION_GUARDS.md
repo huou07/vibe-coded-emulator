@@ -29,6 +29,38 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Emulator-loop frame-time distribution — RG-158, 2026-10-18
+
+- RG-158: **The automated gameplay budget must be a measured distribution, not a
+  whole-run mean and not the core's advertised rate.** `--status-json` reported
+  `fps: status.core_fps`, which is `av.timing.fps` — the rate the core declares at
+  initialisation, never a measurement — so the lane's single throughput bound
+  (600 frames ≤ 20 s) was the strongest claim available, and it cannot see one
+  stalled frame: 600 frames may take 15 s because a single frame took 14 s.
+- The Linux runtime now times every headless frame around `host.run_one` and
+  reports `frameMs` (samples, mean, p50, p95, p99, max) with `measuredFps`, and it
+  states `audioMeasured:false` because the headless path runs `NullAudioBackend`.
+  `tests/an3ctl.test.mjs` asserts the sample count, that each field is a measured
+  positive number, that the distribution is ordered, and the tail: p95 ≤ 10 ms and
+  max ≤ 250 ms, overridable through `AN3_EMULATOR_FRAME_P95_MS` and
+  `AN3_EMULATOR_FRAME_MAX_MS`.
+- Validation on the vendored runtime after re-vendoring:
+  `AN3_EMULATOR_BUDGET frames=600 elapsedMs=234 budgetMs=20000 result=PASS` and
+  `AN3_EMULATOR_FRAME_BUDGET samples=600 meanMs=0.284 p50Ms=0.283 p95Ms=0.292
+  p99Ms=0.308 maxMs=0.413 measuredFps=3518.7 audioMeasured=false result=PASS`.
+  The assertion is not vacuous: with `AN3_EMULATOR_FRAME_P95_MS=0.05` the lane
+  fails with `p95=0.287048ms (budget 0.05ms)`. The rebuilt runtime was staged by
+  `native-offline/scripts/bundle-linux-runtime.mjs`, so
+  `native-offline/vendor/runtime/linux-x86_64/manifest.json` records the new
+  binary SHA-256 `c441cd99…8f60364` and the 28 source hashes it was built from.
+- **NOT established**: display frame pacing and audio underruns. The lane runs
+  `--headless`, which uses `NullAudioBackend` and a capture video backend, and no
+  host used for this gate has a display or an audio device.
+  `NativeRendererMetrics` already reserves `audio_underruns` in
+  `native-offline/native-runtime/core/renderer_contract.h`, but
+  `LinuxSdlAudioBackend` does not populate it, so the audio half needs a
+  real-device lane plus a backend change, not an assertion here.
+
 ## Generated Tauri capability schemas — RG-157, 2026-10-18
 
 - RG-157: **`native-offline/src-tauri/gen/schemas/` is per-target build output
