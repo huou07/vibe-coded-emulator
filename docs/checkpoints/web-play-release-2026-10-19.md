@@ -104,7 +104,28 @@ the note is scoped to insecure origins. The fixture is the lawful
 devkitPro/3ds-hbmenu v2.4.3 `boot.3dsx` (383,400 bytes), kept in the git-ignored
 `work/fixtures/` and never committed.
 
-So the Web-play requirement is met on the public product for **GBA** and **3DS**.
+### NDS closes too, with a lawful fixture
+
+NDS was UNVERIFIED for want of a ROM. `devkitPro/nds-hb-menu` v0.11.0 publishes
+`hbmenu-0.11.0.zip`, and `hbmenu/BOOT.NDS` from it is the NDS counterpart of the
+3DS fixture used above: 299,008 bytes, sha256
+`95f6561daa9d61402d39a2622ce19e7a887f2c8ba24fdb487753db3fcc357d24`, lawful
+homebrew, kept in the git-ignored `work/fixtures/` and never committed.
+
+Run on `https://an3tocom.space/offline` with `system=nds`: import succeeds, the
+launch is enabled, and the player reaches **`ready` with two canvases, loading
+"Ready", no player notice and no page errors**.
+
+Two honest limits on that result. The probe reported a null stored size for the
+NDS record while it reads 32768 for GBA — the NDS path keeps its payload in a
+different field (the invariants have NDS serving the original ZIP where
+appropriate) and the probe does not read it, so that number is a probe gap, not a
+storage defect; the launch reaching ready is what shows the ROM was available. And
+the page logs two blocked requests for `static.cloudflareinsights.com`, which the
+Cloudflare Tunnel injects and our own CSP refuses; it is Cloudflare's analytics
+beacon, not a product asset, and it does not affect play.
+
+So the Web-play requirement is met on the public product for **GBA**, **NDS** and **3DS**.
 **NDS remains UNVERIFIED for real boot**: it needs a lawful NDS ROM and this host
 has neither one nor a toolchain to build one (`arm-none-eabi-gcc` is absent and
 there is no devkitPro), and the repository ships no synthetic NDS generator.
