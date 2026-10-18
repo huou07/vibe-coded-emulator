@@ -44,6 +44,35 @@ Three defects were found and fixed to get there:
    replacing it. Both are fixed; the installed tree is now exactly the released
    tree and the gate passes.
 
+## Is the Web shell consistent with the installed app's shell?
+
+Measured, because "consistent" had to be turned into something checkable. The
+answer is that the two shells already share the documented palette, and the gap is
+in how they declare it rather than in what they render.
+
+| Measurement | Web shell (`static/theme-violet.css`) | App shell (`native.css`) |
+| --- | --- | --- |
+| CSS custom properties declared | **55** | **0** |
+| Distinct hex colours | 20 | 16 |
+| Colours used by both | — | **14** |
+| Unique to this shell | 6 | 2 |
+| Documented `--ui-*` role values present | 10 of 10 | **9 of 10** (`--ui-danger #f87171` absent) |
+
+So the app shell renders the same violet values — `#07060c`, `#131020`, `#191532`,
+`#282238`, `#f3f1fa`, `#a5a0b6`, `#a855f7`, `#8b5cf6`, `#c4b5fd` all appear in
+`native.css` — but hardcoded rather than exposed as the token vocabulary the design
+system names. That is a maintainability and verifiability gap, not a visual
+mismatch, and it means "the Web matches the app" cannot be asserted by comparing
+tokens; only the palette can be compared that way.
+
+What remains for a human: hierarchy, spacing rhythm, typography and legibility.
+The Web shell's interface face is Inter with Pixelify Sans for display, set by the
+theme itself, while the design-system text describes Pixelify and Roboto Condensed
+as the app shell's faces; whether those should converge is a design decision, not a
+measurement. This session cannot read images (`EACCES` traversing `/home`), so the
+visual verdict stays with the owner, and the captures presented alongside this
+tracker are the material for it.
+
 ## UI/UX audit against the design-system contract
 
 `work/phaseA/audit-ui-contract.mjs` measures the non-player shell against
