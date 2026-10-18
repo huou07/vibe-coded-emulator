@@ -33,7 +33,7 @@ here at all. A source-tree runtime result is never packaged acceptance.
 | NDS / 3DS native journey | `UNVERIFIED` — only GBA exercised on this host |
 | Visual/input/audio correctness of gameplay | `UNVERIFIED` — the synthetic stub renders an animated counter, not a game; this host has no sound device and the GL window is not capturable (see below) |
 | Gameplay performance (frame pacing, latency, thermals) | `UNVERIFIED` — see the audit in `docs/evidence/linux-runtime-2026-10/README.md` |
-| Hosted Android arm64 build lane | `GOOD` — `.github/workflows/native-build.yml` green on `ubuntu-24.04` at `cfe6a6c` (run `39064964493`) and at the pushed HEAD `2f27cbd` (run `39065560904`) |
+| Hosted Android arm64 build lane | `GOOD` — `.github/workflows/native-build.yml` green on `ubuntu-24.04` at every revision listed below; the lane is dispatched for each revision of this branch and `tools/record-hosted-evidence.sh` records the run for the revision that carries this file |
 | Android device / instrumentation / gameplay acceptance | `UNVERIFIED` — no SDK, NDK, `adb`, emulator or device on this host; the hosted lane is a build lane only |
 | macOS / Windows native builds | `UNVERIFIED` here — hosted CI and dedicated builders only |
 
@@ -259,8 +259,24 @@ release train's macOS-only Android *candidate* guard is untouched.
 | --- | --- | --- | --- | --- |
 | `39064964493` | `cfe6a6c` | push | Android arm64 APK (build lane, no device acceptance) | success |
 | `39065560904` | `2f27cbd` | workflow_dispatch | Android arm64 APK (build lane, no device acceptance) | success |
+| `39066997580` | `7ef6352` | workflow_dispatch | Android arm64 APK (build lane, no device acceptance) | success |
 | `39065425857` | `2f27cbd` | push | verify: project-verify, browser-runtime, publication-gate, release-gate | success, all four |
 | `39064964363` | `cfe6a6c` | push | verify: project-verify, browser-runtime, publication-gate, release-gate | success, all four |
+| `39066985469` | `7ef6352` | push | verify: project-verify, browser-runtime, publication-gate, release-gate | success, all four |
+
+A docs-only commit does not re-trigger this lane (its `paths:` filter covers
+`native-offline/**`, the workflow itself and the disk preflight), so each later
+revision is dispatched with
+`gh workflow run native-build.yml --ref feature/semantic-ui-inspection`. The APK
+digest is not stable across runs even from identical native source — zip entries
+carry build timestamps — so the recorded digests identify artifacts, not a
+reproducible build:
+
+| Revision | APK SHA-256 |
+| --- | --- |
+| `cfe6a6c` | `2a39f8f6cbde16d2343fd0697ab027aef98c65cf71efc139cff4ee310c15d92a` |
+| `2f27cbd` | `0e7a6ada2a5f24e68d008133fa1692267c708749cfdf9be44a7fab960e0e441f` |
+| `7ef6352` | `1d8d7f8c6f59173490767dcbcc033613fe7e899e34cffa77a59cfaff0fb5d469` |
 
 Both Android runs selected the right toolchain, which is the line that used to
 be hardcoded, and produced the same product package name:
