@@ -1,0 +1,23 @@
+[Unit]
+Description=AN3 Arcade public game library
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tvshare
+Group=tvshare
+EnvironmentFile=/etc/an3-arcade.env
+ExecStart=/usr/bin/python3 /opt/an3-arcade/app.py
+WorkingDirectory=/opt/an3-arcade
+Restart=on-failure
+RestartSec=3
+UMask=0027
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/an3-arcade
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
