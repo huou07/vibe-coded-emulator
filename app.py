@@ -1384,7 +1384,7 @@ def library_fingerprint(conn):
     return f'{row["changed"]}:{row["games"]}:{row["ratings"]}:{row["score"]}'
 
 
-def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False, auth=False, admin=False):
+def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False, auth=False, admin=False, download_current=False):
     with db() as conn:
         settings = site_settings(conn)
     account = ""
@@ -1398,16 +1398,21 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
         account = f'<a href="/login">{tr(lang,"Đăng nhập","Log in")}</a><a href="/register">{tr(lang,"Tạo tài khoản","Register")}</a>'
     # The onboarding guide explained the retired online library + player flow.
     guide_nav = ""
-    # The reference header keeps the same offline-state affordance across its
-    # public, account and dashboard surfaces. The existing link remains intact.
-    mode_label = "Offline"
-    online_target = "/games" if ENVIRONMENT != "production" else "/"
-    mode_aria = tr(lang,"Mở thư viện trực tuyến","Open online library") if offline and ENVIRONMENT != "production" else tr(lang,"Mở trang tải ứng dụng","Open app downloads")
-    mode_icon = '<span class="ui-mask ui-wifi-off" aria-hidden="true"></span>'
-    mode = f'<a id="modeSwitch" class="mode-switch" href="{online_target if offline else "/download-app"}" aria-label="{mode_aria}">{mode_icon}<span>{mode_label}</span></a>'
+    # One destination per purpose. `/` and `/download-app` render the same
+    # download-first page, so the header carried two labels ("Download app",
+    # and a chip reading "Offline" whose accessible name was "Open app
+    # downloads") for one place, and the chip's visible text was not contained
+    # in its accessible name (WCAG 2.5.3). The chip had no JavaScript consumer
+    # and its only real job -- the recovery path off `/offline` -- lives on the
+    # offline page itself.
+    mode = ""
     # The web offline page is a minimal connection notice; the PWA shortcut
     # control belonged to the retired browser-local library and is gone.
     shortcut = ""
+    # Where a visitor recovers to from the offline notice. Production has no
+    # public library at all (`/games` is 404 there), so it recovers to the
+    # download page instead of a dead end.
+    library_entry = "/games" if ENVIRONMENT != "production" else "/download-app"
     contacts = []
     if settings.get("maintainer_email"):
         contacts.append(f'<a href="mailto:{esc(settings["maintainer_email"])}">{esc(settings["maintainer_email"])}</a>')
@@ -1439,7 +1444,7 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
 <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v={ASSET_VERSION}">
 <link rel="apple-touch-icon" href="/static/icon-192.png?v={ASSET_VERSION}">
 <link rel="stylesheet" href="{versioned_player_asset("site.css") if player else f"/static/site.css?v={ASSET_VERSION}"}">{"" if player else f'<link rel="stylesheet" href="/static/theme-violet.css?v={ASSET_VERSION}">'}</head><body class="{' '.join(body_classes)}">
-<header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-download-app" href="/">{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
+<header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-download-app" href="/download-app"{' aria-current="page"' if download_current else ''}>{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
 {content}
 <footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span></div>{contact_block}
 <div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a><a href="/licenses">{tr(lang,"Giấy phép","Licenses")}</a></div></footer>
@@ -1550,7 +1555,7 @@ def download_app_page(lang, user, csrf):
 <article>{ref_icon("gamepad-2")}<div><strong>{t("Chơi offline","Plays offline")}</strong><span>{t("Menu, phím ảo, cảm ứng và bàn phím vật lý ngay trong app.","Menu, virtual pad, touch and physical keyboard inside the app.")}</span></div></article>
 </section>
 </main>'''
-    return layout(tr(lang, "Tải ứng dụng", "Download app"), body, lang, user, csrf)
+    return layout(tr(lang, "Tải ứng dụng", "Download app"), body, lang, user, csrf, download_current=True)
 
 
 def native_offline_source_bundle():
@@ -1828,6 +1833,15 @@ def offline_page(lang, user, csrf):
     now live only in the installed Vibe Coded Emulator app, so this page communicates the
     connection state and points at the app instead of duplicating that UI.
     """
+    # Retry currently only reloads this notice. The one useful move off a dead
+    # end is the library where an online session can continue, and production
+    # has no public library, so it points at the app download instead.
+    recovery = "/games" if ENVIRONMENT != "production" else "/download-app"
+    recovery_label = (
+        tr(lang, "Mở thư viện trực tuyến", "Open the online library")
+        if ENVIRONMENT != "production"
+        else tr(lang, "Mở trang tải ứng dụng", "Open app downloads")
+    )
     facts = "".join(
         f'<li>{ref_icon(icon)}{label}</li>'
         for icon, label in (
@@ -1841,7 +1855,7 @@ def offline_page(lang, user, csrf):
 <span class="offline-notice-icon">{ref_icon("gamepad-2")}</span>
 <h1 id="offlineTitle">You're offline</h1>
 <p>No internet connection. Games already stored on this device can still be played in the Vibe Coded Emulator app.</p>
-<div class="offline-notice-actions"><a class="button primary" href="/offline">{ref_icon("arrow-right")}Try Again</a></div>
+<div class="offline-notice-actions"><a class="button primary" href="{recovery}">{ref_icon("arrow-right")}{recovery_label}</a></div>
 <ul class="offline-notice-facts">{facts}</ul>
 </section></main>'''
     return layout("Offline", body, lang, user, csrf, offline=True)

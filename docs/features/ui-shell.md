@@ -14,6 +14,7 @@ Skip when: the change is emulation, transport or storage with no visible effect.
 | Dense desktop controls (table row actions, admin range selector, small nav toggle) | 28 px floor, not machine-checked | They live on surfaces the 360 px lane never loads; the floor is documented, the real heights are not measured |
 | 360 px no-overflow contract | `GOOD` | Browser lane |
 | Rendered-tree names and landmarks | `GOOD` | `tests/test_rendered_ui_accessibility.py` |
+| Web header destinations | `GOOD` | one destination per purpose on every probed route; the mislabelled `Offline`/`Open app downloads` duplicate chip is gone and `/offline` recovers to the library instead of to itself (`work/phaseA/probe-web.mjs`, recorded in the commit) |
 | Linux native UI clarity | owner-reported problem | Owner report 2026-10-18: "giao diện còn khá rối" — a requirement, not a verification |
 | Android and macOS UI | owner-accepted as a baseline | Owner report 2026-10-18; no formal review recorded |
 | Entry points for Switch, LAN Sync and Phone Controller in the native UI | incomplete | The features exist at source level; discoverability is not established |
