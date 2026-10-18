@@ -50,13 +50,20 @@ systemctl stop "$UNIT"
 mv -- "$APP_ROOT" "$FAILED"
 mv -- "$NEXT" "$APP_ROOT"
 
-install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade.service" /etc/systemd/system/an3-arcade.service
-install -o root -g tvshare -m 0750 "$APP_ROOT/deploy/an3-arcade-backup.sh" /usr/local/libexec/an3-arcade-backup
-install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade-backup.service" /etc/systemd/system/an3-arcade-backup.service
-install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade-backup.timer" /etc/systemd/system/an3-arcade-backup.timer
-install -o root -g root -m 0755 "$APP_ROOT/deploy/an3-arcade-health.sh" /usr/local/sbin/an3-arcade-health
-install -o root -g root -m 0755 "$APP_ROOT/deploy/an3-arcade-turbostat.sh" /usr/local/libexec/an3-arcade-turbostat
-install -o root -g root -m 0440 "$APP_ROOT/deploy/an3-arcade-turbostat.sudoers" /etc/sudoers.d/an3-arcade-turbostat
+# Restore the units and helpers the retained snapshot actually carries. The
+# previous assumption was that $APP_ROOT/deploy always held them; on this host it
+# held four files, so a real rollback aborted on the first missing helper while
+# the service was stopped. A rollback must never depend on an optional file.
+for unit in an3-arcade.service; do
+  [[ -f "$APP_ROOT/deploy/$unit" ]] || { systemctl daemon-reload; systemctl restart "$UNIT"; die "Snapshot has no $unit; kept the installed unit."; }
+done
+[[ -f "$APP_ROOT/deploy/an3-arcade.service" ]] && install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade.service" /etc/systemd/system/an3-arcade.service
+[[ -f "$APP_ROOT/deploy/an3-arcade-backup.sh" ]] && install -o root -g tvshare -m 0750 "$APP_ROOT/deploy/an3-arcade-backup.sh" /usr/local/libexec/an3-arcade-backup
+[[ -f "$APP_ROOT/deploy/an3-arcade-backup.service" ]] && install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade-backup.service" /etc/systemd/system/an3-arcade-backup.service
+[[ -f "$APP_ROOT/deploy/an3-arcade-backup.timer" ]] && install -o root -g root -m 0644 "$APP_ROOT/deploy/an3-arcade-backup.timer" /etc/systemd/system/an3-arcade-backup.timer
+[[ -f "$APP_ROOT/deploy/an3-arcade-health.sh" ]] && install -o root -g root -m 0755 "$APP_ROOT/deploy/an3-arcade-health.sh" /usr/local/sbin/an3-arcade-health
+[[ -f "$APP_ROOT/deploy/an3-arcade-turbostat.sh" ]] && install -o root -g root -m 0755 "$APP_ROOT/deploy/an3-arcade-turbostat.sh" /usr/local/libexec/an3-arcade-turbostat
+[[ -f "$APP_ROOT/deploy/an3-arcade-turbostat.sudoers" ]] && install -o root -g root -m 0440 "$APP_ROOT/deploy/an3-arcade-turbostat.sudoers" /etc/sudoers.d/an3-arcade-turbostat
 if [[ -f "$APP_ROOT/deploy/backup-production-current.sh" ]]; then
   install -o root -g root -m 0755 "$APP_ROOT/deploy/backup-production-current.sh" /usr/local/sbin/an3-arcade-backup-current
 fi
@@ -69,7 +76,7 @@ fi
 if [[ -f "$APP_ROOT/deploy/retire-production-rom-library.sh" ]]; then
   install -o root -g root -m 0755 "$APP_ROOT/deploy/retire-production-rom-library.sh" /usr/local/sbin/an3-arcade-retire-rom-library
 fi
-visudo -cf /etc/sudoers.d/an3-arcade-turbostat >/dev/null
+[[ -f /etc/sudoers.d/an3-arcade-turbostat ]] && visudo -cf /etc/sudoers.d/an3-arcade-turbostat >/dev/null
 
 systemctl daemon-reload
 systemctl enable "$UNIT"

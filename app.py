@@ -1153,10 +1153,15 @@ def init_db():
             CREATE INDEX IF NOT EXISTS upload_sessions_updated_idx ON upload_sessions(updated_at);
             """
         )
-        user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
-        if "display_name" not in user_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
-        conn.execute("UPDATE users SET display_name=name WHERE display_name='' OR display_name IS NULL")
+        # Account-table maintenance runs only where accounts exist. The public
+        # product stores no accounts, and its database predates this schema, so
+        # touching `users` there is both pointless and fatal: production died on
+        # "no such column: name" during a deploy that only meant to ship Web play.
+        if ACCOUNTS_ENABLED:
+            user_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+            if "display_name" not in user_columns:
+                conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''")
+            conn.execute("UPDATE users SET display_name=name WHERE display_name='' OR display_name IS NULL")
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(games)")}
         if "system_auto" not in columns:
             conn.execute("ALTER TABLE games ADD COLUMN system_auto INTEGER NOT NULL DEFAULT 0")
