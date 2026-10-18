@@ -73,6 +73,30 @@ measurement. This session cannot read images (`EACCES` traversing `/home`), so t
 visual verdict stays with the owner, and the captures presented alongside this
 tracker are the material for it.
 
+### Thread partitioning and input dispatch, the two remaining quantities
+
+`work/phaseG/perf-threads-latency.mjs` covers what the pacing probe does not, on the
+same workload and the same GPU lane, 15s:
+
+| Quantity | Result |
+| --- | --- |
+| Cross-origin isolation | `crossOriginIsolated: true`, `SharedArrayBuffer: true`, `hardwareConcurrency: 20` |
+| Renderer | Intel UHD Graphics 770 via ANGLE-on-Vulkan |
+| Main thread while the core runs | 901 frames, p50 16.66ms, p90 16.67ms, p99 16.67ms, max 16.67ms, **0 long tasks** |
+| Input dispatch, 12 samples | min 18.54ms, **p50 19.75ms**, p90 21.63ms, max 33.14ms |
+
+The main-thread numbers are the evidence for partitioning: the core runs for
+fifteen seconds without a single long task and without moving the frame cadence, so
+the emulation work is not on the main thread and the page stays responsive. What
+this does **not** say is how many workers the core runs — a page cannot observe that
+directly — so the claim is "the main thread is free", not "N threads are used".
+
+The latency figure is **input dispatch, not gameplay latency**. It measures a
+synthetic `keydown` to the second following frame, so p50 19.75ms is one to two 60Hz
+frames of event-loop and compositor cost. The fixture ignores input, so the time
+until the game itself reacts cannot be measured with it, and no gameplay-latency
+number is claimed.
+
 ## UI/UX audit against the design-system contract
 
 `work/phaseA/audit-ui-contract.mjs` measures the non-player shell against
