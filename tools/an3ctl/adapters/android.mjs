@@ -62,10 +62,40 @@ export class AndroidAdapter {
 
   async available() {
     const devices = await this.devices();
+    // A listed serial is not a usable target: a stopped emulator or an
+    // unauthorised phone stays in `adb devices` and then fails the lane as if the
+    // product regressed. Probe each candidate and report only the ones that
+    // answer.
+    const responsive = [];
+    for (const device of devices) {
+      if (device.state !== "device") continue;
+      const probe = await this.adb(["shell", "getprop", "sys.boot_completed"], { serial: device.serial, timeoutMs: 15000, allowFailure: true }).catch(() => null);
+      if (!probe || probe.code !== 0 || String(probe.stdout || "").trim() !== "1") continue;
+      // An emulator that belongs to another project must never be attached to,
+      // driven or reconfigured. Only the VCE-dedicated AVD is a target, and an
+      // explicit serial has to name it. `ro.kernel.qemu.avd_name` is the only
+      // identity adb exposes; a physical device has none and is accepted only
+      // when its serial was named explicitly.
+      const named = process.env.AN3_ANDROID_SERIAL;
+      if (named) {
+        if (device.serial === named) responsive.push(device);
+        continue;
+      }
+      const avd = await this.adb(["shell", "getprop", "ro.kernel.qemu.avd_name"], { serial: device.serial, timeoutMs: 15000, allowFailure: true }).catch(() => null);
+      const avdName = String((avd && avd.stdout) || "").trim();
+      const expected = process.env.AN3_ANDROID_AVD || "vce-api36";
+      if (device.serial.startsWith("emulator-") && avdName !== expected) {
+        this.foreignDevices = [...(this.foreignDevices || []), { serial: device.serial, avd: avdName || "unknown" }];
+        continue;
+      }
+      responsive.push(device);
+    }
     return {
-      available: devices.length > 0,
-      devices,
-      kind: devices.some((device) => device.serial.startsWith("emulator-")) ? "emulator" : devices.length ? "physical" : null,
+      available: responsive.length > 0,
+      listed: devices.map((device) => `${device.serial}:${device.state}`),
+      foreign: this.foreignDevices || [],
+      devices: responsive,
+      kind: responsive.some((device) => device.serial.startsWith("emulator-")) ? "emulator" : responsive.length ? "physical" : null,
     };
   }
 

@@ -31,6 +31,10 @@ class SyncApiTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="an3-sync-test-")
         root = self.temp.name
         self.patches = [
+            # The installed app still uses the account-scoped peer proof, so these
+            # contract tests enable it explicitly. The public product has no
+            # accounts at all (ACCOUNTS_ENABLED is false in production).
+            patch.object(app, "ACCOUNTS_ENABLED", True),
             patch.object(app, "SYNC_ENABLED", True),
             patch.object(app, "GOOGLE_DRIVE_ENABLED", False),
             patch.object(app, "DB_PATH", os.path.join(root, "arcade.db")),

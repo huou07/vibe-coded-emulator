@@ -615,17 +615,18 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
             connection.close()
 
     def test_public_rom_library_and_staging_routes_stay_retired(self):
-        admin = Client(PRODUCTION_PORT)
-        status, _ = admin.post("/api/login", {"name": "rootadmin", "password": "admin-pass-123"})
-        self.assertEqual(status, 200)
-        csrf = admin.csrf("/admin")
-        status, game = admin.post("/admin/api/games", {
-            "title_vi": "Retired route", "title_en": "Retired route", "description_vi": "", "description_en": "",
-            "system": "gba", "rom_name": "retired-route.gba", "published": True, "experimental": False,
-        }, csrf)
-        self.assertEqual(status, 201)
+        # Production has no accounts and no catalog, so it cannot seed a game row
+        # through the admin API any more — that surface answers 404 by design. The
+        # contract under test is the route itself: every legacy library path is
+        # refused, and the refusal is not "that record does not exist" dressed up
+        # as a library. A literal slug and id are used for exactly that reason.
+        game = {"id": 987654, "slug": "retired-route-does-not-exist"}
 
         public = Client(PRODUCTION_PORT)
+        self.assertEqual(public.request("GET", "/login")[0], 404)
+        self.assertEqual(public.request("GET", "/register")[0], 404)
+        self.assertEqual(public.request("GET", "/admin")[0], 404)
+        self.assertEqual(public.raw("POST", "/api/login", b'{"name":"x","password":"y"}', {"Content-Type": "application/json"})[0], 404)
         for path in (
             "/games",
             "/api/library-version",
@@ -637,7 +638,9 @@ class ArcadeProductionIntegrationTests(ServerBackedTestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(public.request("GET", path)[0], 404)
-        status, payload = public.post(f"/api/games/{game['id']}/rating", {"value": 5})
+        # A refused route answers with a plain 404, so the raw client is used:
+        # Client.post expects JSON and a 404 body is text by design.
+        status, _, _ = public.raw("POST", f"/api/games/{game['id']}/rating", b'{"value":5}', {"Content-Type": "application/json"})
         self.assertEqual(status, 404)
 
         self.assertEqual(public.request("GET", "/download-app/source")[0], 404)

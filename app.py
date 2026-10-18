@@ -3613,6 +3613,24 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": "invalid payload"}, 400)
         self.send_bytes(200, svg.encode("utf-8"), "image/svg+xml; charset=utf-8", cache="no-store")
 
+    def accounts_route_is_absent(self, path):
+        """True when the request targets a surface the public product does not have.
+
+        No accounts, no community, no admin. A surface that does not exist must
+        answer 404 for every verb, never 403: a 403 would advertise that the
+        route exists and is merely closed.
+        """
+        if ACCOUNTS_ENABLED:
+            return False
+        return (
+            path in {"/login", "/register", "/account", "/admin", "/api/login",
+                     "/api/logout", "/api/register", "/api/account/session",
+                     "/api/account/display-name", "/api/account/peer-proof",
+                     "/api/account/peer-proof/verify"}
+            or path.startswith("/admin/")
+            or path.startswith("/api/account/")
+        )
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -3645,17 +3663,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             system = path.rsplit("/", 1)[1]
             self.redirect(f"/core-preload/{quote(system)}")
             return
-        # No accounts on the public product: the account, community and admin
-        # surfaces answer 404 rather than redirecting to a login page that does
-        # not exist. See ACCOUNTS_ENABLED.
-        if not ACCOUNTS_ENABLED and (
-            path in {"/login", "/register", "/account", "/admin", "/api/login",
-                     "/api/logout", "/api/register", "/api/account/session",
-                     "/api/account/display-name", "/api/account/peer-proof",
-                     "/api/account/peer-proof/verify"}
-            or path.startswith("/admin/")
-            or path.startswith("/api/account/")
-        ):
+        if self.accounts_route_is_absent(path):
             self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             return
         if path == "/download-app/source":
@@ -3923,6 +3931,9 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if self.accounts_route_is_absent(path):
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
         lang = language(self)
         try:
             if ENVIRONMENT == "production" and path.startswith("/api/games/"):
@@ -4337,6 +4348,9 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
 
     def do_PUT(self):
         path = urlparse(self.path).path
+        if self.accounts_route_is_absent(path):
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
         chunk_match = re.fullmatch(r"/admin/api/uploads/([A-Za-z0-9_-]{16,128})", path)
         if chunk_match:
             user = self.require_user(admin=True)
@@ -4425,6 +4439,9 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
 
     def do_DELETE(self):
         path=urlparse(self.path).path
+        if self.accounts_route_is_absent(path):
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
         upload_match = re.fullmatch(r"/admin/api/uploads/([A-Za-z0-9_-]{16,128})", path)
         if upload_match:
             user = self.require_user(admin=True)

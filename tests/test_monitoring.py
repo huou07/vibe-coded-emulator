@@ -43,7 +43,10 @@ class MonitoringTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.mkdtemp(prefix="an3-monitoring-")
         env = os.environ.copy()
-        env.update({"AN3_DATA_DIR": os.path.join(cls.temp, "data"), "AN3_PORT": str(PORT), "AN3_ADMIN_NAME": "monitor-admin", "AN3_ADMIN_PASSWORD": "monitor-admin-pass-123"})
+        # The admin monitoring surface exists for staging and development only; the
+        # public product has no accounts and no admin (owner decision 2026-10-18).
+        env.update({"AN3_DATA_DIR": os.path.join(cls.temp, "data"), "AN3_PORT": str(PORT), "AN3_ENVIRONMENT": "staging",
+                    "AN3_ADMIN_NAME": "monitor-admin", "AN3_ADMIN_PASSWORD": "monitor-admin-pass-123"})
         cls.server = subprocess.Popen([sys.executable, APP], cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         deadline = time.time() + 12
         while time.time() < deadline:
