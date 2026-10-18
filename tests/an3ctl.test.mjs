@@ -22,7 +22,7 @@ import { DesktopAdapter } from "../tools/an3ctl/adapters/desktop.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
-const FIXTURE = process.env.AN3_FIXTURE ?? "/home/YOUR_GITHUB_USER/an3-verify/legal-gba.gba";
+const FIXTURE = process.env.AN3_FIXTURE ?? "/opt/an3-verify/legal-gba.gba";
 
 function cli(args, { timeoutMs = 180000, env = {} } = {}) {
   return new Promise((resolvePromise) => {

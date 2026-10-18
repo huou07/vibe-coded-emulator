@@ -61,7 +61,7 @@ class ScrubTests(unittest.TestCase):
         self.assertIn("redacted-email", text)
 
     def test_username_in_paths_is_removed(self):
-        for raw in ("~/<REDACTED_PATH>", "C:\\Users\\developer\\ROMs\\game.nds"):
+        for raw in ("/opt/developer/ROMs/game.gba", "C:\\Users\\developer\\ROMs\\game.nds"):
             text = bug_report.scrub_text(raw)
             self.assertNotIn("developer", text)
             self.assertNotIn(".gba", text)
@@ -78,7 +78,7 @@ class BuildReportTests(unittest.TestCase):
         report = bug_report.build_report(
             {
                 "description": "game crashed",
-                "romPath": "~/<REDACTED_PATH>",
+                "romPath": "/opt/developer/ROMs/game.gba",
                 "romData": "BASE64ROMBYTES",
                 "accessToken": FAKE_GITHUB_TOKEN,
                 "refreshToken": "refresh-value",
@@ -114,13 +114,13 @@ class BuildReportTests(unittest.TestCase):
         long_description = "x" * (bug_report.MAX_DESCRIPTION + 500)
         report = bug_report.build_report(
             {
-                "description": "leak %s and %s" % (FAKE_GITHUB_TOKEN, "~/<REDACTED_PATH>"),
+                "description": "leak %s and %s" % (FAKE_GITHUB_TOKEN, "/opt/developer/ROMs/game.gba"),
                 "logs": ["ok line", "bad %s" % FAKE_EMAIL] * 50,
                 "platform": "macOS",
                 "emulatorSystem": "nds",
                 "coreName": "/private/cores/melonds_libretro.dylib",
                 "settings": {"renderer": "webgl2", "access_token": "nope", long_description: "x"},
-                "crash": {"message": "boom", "stack": "at ~/<REDACTED_PATH>:1"},
+                "crash": {"message": "boom", "stack": "at /opt/developer/ROMs/game.gba:1"},
             },
             build_id="b",
             app_version="a",
@@ -145,7 +145,7 @@ class BuildReportTests(unittest.TestCase):
         self.assertNotIn("Emerald", first["gameIdentifier"])
 
     def test_explicit_slug_identifier_is_kept_but_path_is_not(self):
-        report = bug_report.build_report({"gameTitle": "Emerald", "gameIdentifier": "~/<REDACTED_PATH>"})
+        report = bug_report.build_report({"gameTitle": "Emerald", "gameIdentifier": "/opt/developer/ROMs/game.gba"})
         self.assertTrue(report["gameIdentifier"].startswith("game-"))
         self.assertNotIn("developer", report["gameIdentifier"])
 

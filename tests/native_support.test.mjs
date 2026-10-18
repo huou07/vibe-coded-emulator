@@ -95,7 +95,7 @@ test("collection is allowlist-first and sanitizes credentials, paths, MACs and I
   const sandbox = createHarness();
   const api = sandbox.AN3NativeSupport;
   const report = api.collectDiagnostics({
-    description: `token=${FAKE_TOKEN} mac de:ad:be:ef:00:11 ip 10.1.2.3 path ~/<REDACTED_PATH> mail a@b.invalid`,
+    description: `token=${FAKE_TOKEN} mac de:ad:be:ef:00:11 ip 10.1.2.3 path /opt/developer/ROMs/game.gba mail a@b.invalid`,
     gameTitle: "Clean title"
   });
   const serialized = JSON.stringify(report);

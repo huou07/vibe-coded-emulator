@@ -304,7 +304,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
             binary = Path(temporary) / "frame-queue"
             command = [
                 compiler, "-std=c++20", "-Wall", "-Wextra", "-Wpedantic",
-                "-I", "~/<REDACTED_PATH>",
+                "-I", "/opt/developer/ROMs/game.gba",
                 "-I", str(ROOT / "native-offline/native-runtime"),
                 "-I", str(ROOT / "native-offline/native-runtime/core"),
                 str(ROOT / "native-offline/native-runtime/video/software_frame_queue.cpp"),

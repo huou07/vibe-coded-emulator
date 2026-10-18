@@ -161,7 +161,7 @@ class BugReportApiTests(unittest.TestCase):
         payload = self.seed_payload("game crashed after load")
         payload.update(
             {
-                "romPath": "~/<REDACTED_PATH>",
+                "romPath": "/opt/developer/ROMs/game.gba",
                 "tomPath": "ignored",
                 "accessToken": FAKE_TOKEN,
                 "refreshToken": "refresh-value",
@@ -170,7 +170,7 @@ class BugReportApiTests(unittest.TestCase):
                 "password": "hunter2",
                 "gpu": "Adreno 740",
                 "logs": ["boot ok", "token " + FAKE_PAT, "ip 10.0.0.7"],
-                "description": "crashed with token " + FAKE_TOKEN + " on ~/<REDACTED_PATH>",
+                "description": "crashed with token " + FAKE_TOKEN + " on /opt/developer/ROMs/game.gba",
             }
         )
         status, data = client.json("POST", "/api/bug-reports", payload, client.support_headers())
