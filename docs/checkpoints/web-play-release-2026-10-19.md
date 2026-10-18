@@ -405,6 +405,42 @@ So the core-only line predates the current publication tooling. Refreshing it is
 the prerequisite for any GitHub source publication and is not started; the branch
 above carries only the licence fix.
 
+## Why 3.6.6 and not 3.6.10: that line has never been green
+
+The app line's tip is 3.6.10, and publishing it would be the better release. It
+cannot be published, and the reason is not the publication tooling.
+
+A **pristine checkout** of `origin/codex/vce-3.6.10-windows-beta-review` at
+`e49ca9d`, with nothing of mine applied, fails its own suite: **603 tests, 10
+failures and 2 errors**, 34 skips. The failures are its own:
+
+| Failure | Class |
+| --- | --- |
+| `native_release_version_sources_are_consistent` | version sources disagree: `{'3.6.10', '3.6.9'}` |
+| `generated_android_about_matches_the_package_version` | the packaged shell still says `data-app-version="3.6.9"` |
+| `flatpak_sources_track_the_desktop_version` | the manifest still names `vibecodedemulator-3.6.9-linux-amd64.deb` |
+| `generated_tauri_permission_schemas_match_active_commands` (4 schemas) | generated schemas are stale |
+| `packaged_android_web_assets_have_no_phone_controller_files` | phone-controller files left in the packaged assets |
+| `android_advertises_the_bundled_native_3ds_launch_path` | assertion and code disagree |
+| `windows_runtime_smoke` (2) | Windows-only |
+
+So the 3.6.10 bump was incomplete: `package.json` says 3.6.10 while the generated
+artefacts still say 3.6.9. `native-offline/scripts/prepare-web.mjs` is the
+generator that injects the canonical version ("so the About panel can never drift
+from the real build"), but it needs an environment this session did not reproduce,
+and hand-editing generated files would defeat the point of having the generator.
+Making this line green is a bounded but real piece of work — run the generators
+properly, regenerate the Tauri schemas, remove the phone-controller files from the
+packaged assets, reconcile the Android 3DS assertion, and accept or fix the
+Windows-only smoke tests. It is not started, and it is the prerequisite for
+publishing a source newer than 3.6.6.
+
+Branch `public/3.6.10-source-candidate` carries only the fixes to my own damage:
+the development line's gitleaks config and `.env.example`, which broke three tests
+here, are reverted to this line's own files, and the tooling this line genuinely
+lacked (templates, `disk-preflight.ps1`, the builder) stays. It is pushed and
+clean.
+
 ## The apps line and this branch are two histories
 
 `origin/main` is a squashed 2-commit "initial public release" at **3.3.3**. The
