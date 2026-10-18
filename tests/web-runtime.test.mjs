@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
@@ -312,4 +312,126 @@ with app.db() as conn:
     await adapter.runCode(`async page => { await page.context().tracing.stop({ path: ${JSON.stringify(resolve(artifacts, "failure-trace.zip"))} }); return true; }`).catch(() => {});
     throw error;
   }
+});
+
+// Browser 3DS: the repaired data-v2 Azahar runtime declares a threaded core and
+// WebGL2, and the player keeps its own playable gate (source canvas, first
+// video frame, running audio). This case drives that gate on a real browser.
+// It needs a lawful user-owned 3DS fixture, so without one it skips with its
+// reason instead of reporting a pass: no ROM, firmware, key or save may enter
+// the repository or the evidence.
+test("browser 3DS reaches the first presented frame with a lawful fixture", {
+  skip: process.env.AN3_WEB_RUNTIME !== "1"
+    ? "explicit Web runtime lane not requested"
+    : (process.env.AN3_3DS_FIXTURE ? false : "no lawful user-owned 3DS fixture (set AN3_3DS_FIXTURE)"),
+  timeout: 240000,
+}, async (t) => {
+  const fixture = resolve(process.env.AN3_3DS_FIXTURE);
+  const scratch = mkdtempSync(resolve(tmpdir(), "vce-web-3ds-"));
+  const artifacts = resolve(ROOT, "work/ui-runtime");
+  mkdirSync(artifacts, { recursive: true });
+  const adapter = new WebAdapter(scratch);
+  let server;
+  t.after(async () => {
+    await adapter.playwright(["close"]).catch(() => {});
+    if (server && server.exitCode === null) {
+      server.kill("SIGTERM");
+      await new Promise(done => {
+        const timer = setTimeout(() => { server.kill("SIGKILL"); done(); }, 3000);
+        server.once("exit", () => { clearTimeout(timer); done(); });
+      });
+    }
+    rmSync(scratch, { recursive: true, force: true });
+  });
+  const config = resolve(scratch, "browser.json");
+  writeFileSync(config, JSON.stringify({ browser: {
+    browserName: "chromium", isolated: true,
+    launchOptions: { channel: "chromium", headless: true },
+  }}));
+  const opened = await adapter.playwright(["open", `--config=${config}`, "about:blank"]);
+  assert.equal(opened.code, 0, opened.stderr + opened.stdout);
+
+  const listener = createServer();
+  await new Promise(done => listener.listen(0, "127.0.0.1", done));
+  const port = listener.address().port;
+  await new Promise(done => listener.close(done));
+  const env = { ...process.env, AN3_HOST: "127.0.0.1", AN3_PORT: String(port),
+    AN3_DATA_DIR: resolve(scratch, "data"), AN3_ENVIRONMENT: "staging",
+    AN3_ADMIN_NAME: "fixture-admin", AN3_ADMIN_PASSWORD: "synthetic-fixture-only",
+    AN3_COOKIE_SECURE: "0", AN3_3DS_FIXTURE: fixture };
+  const seeded = spawnSync("python3", ["-c", `
+import os, shutil, app
+app.init_db(); app.bootstrap_admin()
+os.makedirs(app.ROM_DIR, exist_ok=True)
+name = "an3-lawful-3ds-homebrew.3dsx"
+target = os.path.join(app.ROM_DIR, name)
+shutil.copyfile(os.environ["AN3_3DS_FIXTURE"], target)
+with app.db() as conn:
+    conn.execute("INSERT INTO games (slug,title_vi,title_en,system,rom_path,rom_name,file_size,published,experimental,created_at,updated_at) VALUES (?,?,?,?,?,?,?,1,1,0,0)",
+                 ("fixture-3ds-homebrew","Lawful 3DS fixture","Lawful 3DS fixture","3ds",name,name,os.path.getsize(target)))
+`], { cwd: ROOT, env, encoding: "utf8" });
+  assert.equal(seeded.status, 0, seeded.stderr);
+  server = spawn("python3", ["app.py"], { cwd: ROOT, env, stdio: "ignore" });
+  const url = `http://127.0.0.1:${port}`;
+  const deadline = Date.now() + 20000;
+  let ready = false;
+  while (Date.now() < deadline && server.exitCode === null) {
+    try { if ((await fetch(url + "/health")).ok) { ready = true; break; } } catch {}
+    await new Promise(done => setTimeout(done, 150));
+  }
+  assert.ok(ready, "fixture server must become ready");
+
+  const evidence = await adapter.runCode(`async page => {
+    const pageErrors = [];
+    page.on("pageerror", error => pageErrors.push(String(error && error.message || error)));
+    const badResponses = [];
+    page.on("response", response => {
+      if (response.url().includes("/emulatorjs/") && response.status() >= 400) {
+        badResponses.push(response.status() + " " + response.url().slice(0, 160));
+      }
+    });
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto(${JSON.stringify(url)} + "/play/fixture-3ds-homebrew?debug3ds=1");
+    // The player clears its own loading overlay only once it has seen the
+    // source canvas, a presented frame and a running audio context. Waiting on
+    // that is the product's verdict, not a harness guess.
+    await page.locator("#loading").waitFor({ state: "hidden", timeout: 90000 });
+    const diagnostics = await page.evaluate(() => globalThis.AN3ThreeDsDiagnostics || null);
+    const events = (diagnostics?.events || []).map(event => event.name);
+    const canvas = page.locator("#game canvas").first();
+    await canvas.screenshot({ path: ${JSON.stringify(artifacts)} + "/3ds-frame-a.png" });
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(2500);
+    await canvas.screenshot({ path: ${JSON.stringify(artifacts)} + "/3ds-frame-b.png" });
+    return { events, pageErrors, badResponses,
+      notice: (await page.locator("#playerNotice").textContent()) || "" };
+  }`);
+  for (const stage of ["SOURCE_CANVAS_AVAILABLE", "FIRST_VIDEO_FRAME", "AUDIO_STARTED", "THREAD_POOL_READY"]) {
+    assert.ok(evidence.events.includes(stage), `3DS gate never reached ${stage}: ${JSON.stringify(evidence.events)}`);
+  }
+  assert.deepEqual(evidence.pageErrors, [], "the 3DS player raised a page error");
+  assert.deepEqual(evidence.badResponses, [], "an emulator asset failed to load");
+  const [frameA, frameB] = ["3ds-frame-a.png", "3ds-frame-b.png"].map(name => {
+    const raw = spawnSync("ffmpeg", ["-v", "error", "-i", resolve(artifacts, name), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+      { maxBuffer: 1 << 28 });
+    assert.equal(raw.status, 0, `${name} could not be decoded: ${raw.stderr}`);
+    const bytes = raw.stdout;
+    const colours = new Set();
+    let sum = 0;
+    for (let i = 0; i + 2 < bytes.length; i += 3) {
+      colours.add((bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2]);
+      sum += bytes[i] + bytes[i + 1] + bytes[i + 2];
+    }
+    return { distinctColours: colours.size, meanLuma: sum / (bytes.length || 1) };
+  });
+  // A black or uniform rectangle is not a presented frame.
+  assert.ok(frameA.distinctColours > 64, `the 3DS canvas presented ${frameA.distinctColours} colours`);
+  assert.ok(frameA.meanLuma > 4 && frameA.meanLuma < 251, `the 3DS canvas mean luma was ${frameA.meanLuma}`);
+  assert.ok(frameB.distinctColours > 64, `the second 3DS capture presented ${frameB.distinctColours} colours`);
+  writeFileSync(resolve(artifacts, "3ds-evidence.json"), JSON.stringify({
+    fixture: { name: process.env.AN3_3DS_FIXTURE.split("/").pop(), bytes: statSync(fixture).size },
+    gate: evidence.events.filter(name => ["SOURCE_CANVAS_AVAILABLE", "FIRST_VIDEO_FRAME", "AUDIO_STARTED", "THREAD_POOL_READY"].includes(name)),
+    frames: { a: frameA, b: frameB },
+    notice: evidence.notice,
+  }, null, 2));
 });

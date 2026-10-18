@@ -101,6 +101,17 @@ SCREENSHOT_DIR = os.path.join(DATA_DIR, "screenshots")
 CUSTOM_DIR = os.path.join(DATA_DIR, "custom")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 EMULATOR_CACHE_DIR = os.path.join(DATA_DIR, "emulatorjs-cache")
+# The repaired `latest/data-v2` Azahar runtime is published by a pinned project
+# build, not by the public EmulatorJS CDN, so the server cache is normally
+# seeded by `deploy/seed-azahar-core.sh` on the deployed host. That root helper
+# is not available on a workstation, and the same bytes are already tracked
+# here and pinned by `native-offline/shared/web-runtime-lock.json`, so the
+# locked vendored copy is consulted before the network. The lock still decides:
+# a vendored file whose bytes drift from the lock is rejected like any other.
+EMULATOR_VENDORED_RUNTIME = os.path.join(
+    NATIVE_OFFLINE_DIR, "src-tauri", "gen", "android", "app", "src", "main", "assets", "emulatorjs"
+)
+EMULATOR_RUNTIME_LOCK = os.path.join(NATIVE_OFFLINE_DIR, "shared", "web-runtime-lock.json")
 PREPARED_ROM_DIR = os.path.join(DATA_DIR, "prepared-roms")
 DB_PATH = os.path.join(DATA_DIR, "arcade.db")
 HOST = os.environ.get("AN3_HOST", "0.0.0.0")
@@ -912,6 +923,72 @@ def browser_rom_name(game):
     return game["rom_name"]
 
 
+def emulator_runtime_lock():
+    """The frozen `latest/data-v2` asset lock, or an empty map when absent.
+
+    Reading is best-effort: a deployment payload that does not ship the native
+    tree simply has no vendored runtime, and the cache/CDN path decides alone.
+    """
+    try:
+        with open(EMULATOR_RUNTIME_LOCK, "rb") as handle:
+            lock = json.loads(handle.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(lock, dict):
+        return {}
+    return {
+        name: digest
+        for name, digest in lock.items()
+        if isinstance(name, str) and name.startswith("latest/data-v2/") and isinstance(digest, str)
+    }
+
+
+def install_vendored_emulator_asset(channel, relative):
+    """Serve a locked `latest/data-v2` asset from the tracked vendored runtime.
+
+    Returns the cache path once the vendored bytes are installed, or None when
+    the asset is not locked, not vendored, or does not match the lock. The cache
+    is the single delivery point, so a browser keeps the same immutable caching
+    behaviour it has for a CDN-fetched asset.
+    """
+    lock_key = f"latest/data-v2/{relative}"
+    if channel != "latest":
+        # The lock pins the `latest/data-v2` runtime only; the `stable` channel
+        # and the ordinary `data` paths keep their existing cache/CDN behaviour.
+        return None
+    expected = emulator_runtime_lock().get(lock_key)
+    if not expected:
+        return None
+    source = safe_data_path(EMULATOR_VENDORED_RUNTIME, lock_key)
+    if not os.path.isfile(source):
+        return None
+    target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
+    if os.path.isfile(target) and os.path.getsize(target) > 0:
+        return target
+    try:
+        with open(source, "rb") as handle:
+            payload = handle.read()
+    except OSError:
+        return None
+    if hashlib.sha256(payload).hexdigest() != expected:
+        return None
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    temp = f"{target}.part-{secrets.token_hex(6)}"
+    try:
+        with open(temp, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, target)
+    finally:
+        try:
+            if os.path.exists(temp):
+                os.remove(temp)
+        except OSError:
+            pass
+    return target
+
+
 def cached_emulator_asset(channel, relative):
     if channel not in {"stable", "latest"}:
         raise ValueError("unsupported emulator channel")
@@ -921,6 +998,9 @@ def cached_emulator_asset(channel, relative):
     target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
     if os.path.isfile(target) and os.path.getsize(target) > 0:
         return target
+    vendored = install_vendored_emulator_asset(channel, relative)
+    if vendored:
+        return vendored
     with EMULATOR_CACHE_LOCK:
         asset_lock = EMULATOR_ASSET_LOCKS.setdefault(f"{channel}/{relative}", threading.Lock())
     with asset_lock:

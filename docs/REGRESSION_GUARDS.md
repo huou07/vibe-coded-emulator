@@ -29,7 +29,61 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
-## Phone-width compact controls meet the touch minimum — RG-159, 2026-10-18
+## Browser 3DS reaches the asset stage and a playable frame — RG-160, 2026-10-18
+
+- RG-160: **The repaired `latest/data-v2` Azahar runtime must be reachable by the
+  Web server without a seeded cache, and the 3DS playable check must read the
+  audio context the core actually creates.** Reproduced live before any change,
+  with a lawful fixture and `?debug3ds=1`: `GET
+  /emulatorjs/latest/data-v2/cores/azahar-thread-wasm.data` and
+  `.../cores/reports/azahar.json` answered **502**, the loader fell back to
+  `cdn.emulatorjs.org`, and that fetch died with `TypeError: Failed to fetch`
+  because the player page is cross-origin isolated and the CDN sends no CORP
+  header. The player never left the asset stage.
+- `app.py` reached only `EMULATOR_CACHE_DIR` and then the CDN. The repaired
+  runtime is published by a pinned project build — the public CDN has no
+  `latest/data-v2` path at all — so on any host whose cache had not been seeded
+  by `deploy/seed-azahar-core.sh`, browser 3DS could not start. The same bytes
+  are already tracked in-tree and pinned by
+  `native-offline/shared/web-runtime-lock.json`, so `cached_emulator_asset`
+  now consults that locked vendored copy before the network, exactly as
+  `native-offline/scripts/prepare-web.mjs` does for the desktop build. The lock
+  still decides: a vendored file whose bytes drift is rejected and does not
+  populate the cache. The `stable` channel and the ordinary `data` paths are
+  untouched, and the cache layout is unchanged, so the deploy seed helper and
+  the server agree on one delivery point.
+- The second defect was structural. `waitForThreeDsPlayable` required a running
+  `AudioContext` found at `EJS_emulator.audioContext`, `EJS_emulator.audio.context`
+  or `EJS_audioContext`; this runtime exposes none of them — the core creates its
+  context inside its own glue (`RWebAudioInit`). The check could therefore never
+  pass, and the overlay stayed on "3DS did not reach a verified source canvas,
+  first frame, and running audio output" while frames were already presenting.
+  `static/player.js` now records the contexts the platform actually constructs,
+  before the core loads, and the gate reads those. The requirement is not
+  weakened: it still demands a genuinely running `AudioContext` created by the
+  emulator.
+- Guards: `tests/test_web_3ds_runtime.py` — lock equality for the nine
+  `latest/data-v2` assets, cold-cache delivery over HTTP, drift rejection, the
+  untouched plain channel, a missing native tree, and the recorder-before-boot
+  source contract. `tests/web-runtime.test.mjs` adds an opt-in case that drives
+  the real player to `THREAD_POOL_READY` and requires non-uniform, changing
+  canvas content; without a lawful fixture it skips with its reason and is never
+  a `GOOD`.
+- Live run (2026-10-18, Chromium, Debian x86_64, lawful `devkitPro/3ds-hbmenu`
+  v2.4.3 `boot.3dsx`, SHA-256
+  `9c95ef995e34f7fce2dab7bf3d6ff19d952837d032586a11256f5ae0b2a3fee6`):
+  `SOURCE_CANVAS_AVAILABLE` 300x150, `AUDIO_STARTED` state `running`,
+  `FIRST_VIDEO_FRAME` frame 1 at 1836 ms, `THREAD_POOL_READY` isolated, the
+  loading overlay cleared, no page errors and no failing emulator asset. Three
+  canvas captures around two arrow presses held 2795, 3601 and 3681 distinct
+  colours at mean luma 112.7, 111.6 and 111.6 — real, input-responsive content,
+  not a black rectangle.
+- **UNVERIFIED**: other browsers, other platforms, sustained play, and audio
+  correctness. The lane has no sound device, so it proves a running audio context,
+  not audible output. `THREAD_POOL_READY` carries the player's own
+  `gameplayVerified:false`.
+
+
 
 - RG-159: **A compact control a thumb taps at phone width must clear 42px, and the
   lane must publish the ones that do not instead of describing them in prose.**
