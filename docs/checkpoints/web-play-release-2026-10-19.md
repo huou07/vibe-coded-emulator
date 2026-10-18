@@ -171,6 +171,40 @@ Options, none taken yet: serve production over HTTPS (the repository carries
 the installed app for 3DS. The card now states the reason without disabling
 itself, because RG-078 forbids a browser-only 3DS lock.
 
+## Phone Controller: two-peer acceptance, PASS 11/11
+
+The feature was recorded BLOCKED because same-host multicast discovery never
+delivers on this machine. That blocks *discovery*, not the product: the web
+controller pairs with a code over its HTTP control plane, so two independent peers
+can be exercised on one host. `work/phaseC/two-peer-acceptance.py` drives a staging
+instance as peer A (the host page) and peer B (the phone), in the order the real
+pages use:
+
+| Step | Result |
+| --- | --- |
+| Host creates a session | 201, code `984069`, TTL 120s, `joinPath /controller/join?code=984069` |
+| Phone join page renders | 200 |
+| Phone pairs with the code | 200, role `phone` |
+| Host observes the pairing | `paired: true` |
+| Phone sends an input frame | `applied: true` |
+| Host acknowledges it | `ackSequence: 1`, `inputActive: true` |
+| Host observes the input | `lastSequence: 1`, `inputActive: true` |
+| A stale sequence | `applied: false` — not applied |
+| Wrong host token / wrong phone token / unknown code | 403 / 403 / 404 |
+
+`TWO_PEER_ACCEPTANCE=PASS 11/11`. Two details are worth recording because they cost
+time and are easy to misread as product defects: `input_active()` requires the host
+to have acknowledged a frame (`ack_sequence > 0`), and the host acknowledges through
+its own `POST /api/controller/ack`, not by reading state — so a probe that only
+reads state reports `inputActive: false` on a working session. The first version of
+this probe did exactly that and was wrong, not the product.
+
+What this establishes: pairing, input submission, acknowledgement, staleness
+handling and the refusals, end to end, between two peers. What it does **not**:
+multicast discovery stays BLOCKED on this host, the frames are not applied to a
+running emulator here (the host page does that), the phone page's own JavaScript is
+only known to render, and two physical devices remain UNVERIFIED.
+
 ## Performance: what was measured, and what it cannot establish
 
 Probes live in `work/phaseG/perf-probe.mjs`, `perf-core.mjs` and `perf-pixel.mjs`
