@@ -89,8 +89,11 @@ Trackers hold unfinished work. Finished work moves to `docs/archive/`.
 [`ci-2026-10-14.md`](evidence/ci-2026-10-14.md) (inspected CI failures and their
 repairs), [`ui-library-2026-10-14.md`](evidence/ui-library-2026-10-14.md),
 [`save-slots-2026-10-14.md`](evidence/save-slots-2026-10-14.md),
-[`staging-availability-2026-10-14.md`](evidence/staging-availability-2026-10-14.md)
-and [`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md).
+[`staging-availability-2026-10-14.md`](evidence/staging-availability-2026-10-14.md),
+[`linux-runtime-2026-10/README.md`](evidence/linux-runtime-2026-10/README.md) and
+[`product-track-2026-10-18.md`](evidence/product-track-2026-10-18.md) (the
+2026-10-18 product track: per-workstream acceptance, the release artifact and the
+release state, which is **not published**).
 Per-run captures are not committed; the reference checker fails a document that
 points at a machine-specific report path.
 
