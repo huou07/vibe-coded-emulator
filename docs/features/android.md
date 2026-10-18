@@ -13,7 +13,9 @@ that changes Android content too, through the mirror.
 | Android host (activities, overlay, controller bridge, generated models) | `GOOD` at source level | `native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/` |
 | Committed asset mirror matching `static/` and `native-offline/web/` | `GOOD` | `tools/check-native-mirror.py`, the `native-mirror` section of the local gate (RG-156) |
 | Hosted Android arm64 build lane | `GOOD` at the recorded revisions | `.github/workflows/native-build.yml` on `ubuntu-24.04`; build lane only, no device acceptance |
-| Device / AVD acceptance (install, launch, play, save, touch, layout) | `UNVERIFIED` | No device run recorded for the current source |
+| Device / AVD acceptance: install and library → import → play | `GOOD` for the recorded run | 2026-10-18 on the VCE-dedicated AVD `vce-api36` (x86_64, API 36, `google_apis`) with the recorded arm64 staging APK sha256 `fa835dab55cafe235b6dad341fc62a644aad78e52fc83bdebd820a84667b1040`; library → import → `NativeGameActivity` in the foreground with the `:game` process running. The AVD installed an arm64-only APK through the image's `arm64-v8a` translation |
+| Device / AVD acceptance: touch effect, save/load, layout | `UNVERIFIED` | touch input is delivered and the game process survives it, but no gameplay effect and no save artifact could be observed on a non-debuggable staging APK (`run-as` refused), and the synthetic fixture renders a counter rather than a game |
+| Exit leaves no spinning work | `GOOD` for the recorded run | after BACK the `:game` process stayed resident but **idle**: `State: S`, 0 CPU ticks over 5 s, 130 MB RSS, activity task removed — Android's cached-process behaviour, not a busy orphan |
 | Android 3DS route (Azahar companion, read-only content URI) | `GOOD` at source level; runtime `UNVERIFIED` | `docs/native-offline.md`; no companion installed on any recorded run |
 | Signing | debug/testing key only | A production APK/AAB needs the owner release key |
 
