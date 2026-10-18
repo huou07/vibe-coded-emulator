@@ -502,11 +502,28 @@ product, and `PUBLICATION_CHECK=PASS` with gitleaks reporting 0 findings. The
 published artefact is a fresh single-commit history, so the history scan above is a
 property of that branch in the private repository rather than of the candidate.
 
-Two decisions are therefore outstanding before a newer source can ship: whether the
-LAN Sync settings the schema defines should stay (the mission says yes) and the
-test be narrowed to the cloud surfaces it was written for, and whether a branch
-whose history scan is red may publish an artefact whose own scan is clean. Until
-they are settled, 3.6.6 remains the newest published source.
+### The Node failure is a proven contradiction, not a defect
+
+I first took the schema to be the drift and removed the two toggles with no runtime
+behind them — this line ships no LAN sync or phone controller runtime, only the
+settings. That made things worse and settled the question the other way, because
+two of this line's own tests require opposite things of the same generated files at
+the same commit:
+
+| Test | Requires | Result on one tree |
+| --- | --- | --- |
+| `tests/native_settings.test.mjs:39` | the experimental features are exactly `["experimental-phone-controller","experimental-lan-sync","experimental-switch-eden"]` | **17 pass, 0 fail** |
+| `tests/native_support.test.mjs:79` | the generated Kotlin and JS models match nothing for `lan-sync\|LAN Sync` | **7 pass, 1 fail** |
+
+Both cannot hold. The schema edit was reverted, the tree is clean, and the numbers
+above are the state at `427dae8`. So that line's Node suite is **unsatisfiable as
+written**, and its CI cannot be green until someone decides which of the two is the
+product: settings that ship a toggle for a feature with no runtime, or a suite that
+forbids the toggle the other test demands.
+
+Two decisions are therefore outstanding before a newer source can ship: that one,
+and whether a branch whose history scan is red may publish an artefact whose own
+scan is clean. Until they are settled, 3.6.6 remains the newest published source.
 
 Branch `public/3.6.10-source-candidate` carries only the fixes to my own damage:
 the development line's gitleaks config and `.env.example`, which broke three tests
