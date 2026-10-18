@@ -97,41 +97,41 @@
               <h2>LAN Sync</h2>
               <p class="native-muted">Move a save directly to another of your AN3 devices on this network. It is not relayed through the AN3 server, and a guest identity cannot prove the other device is yours, so signing in is required before a transfer is allowed.</p>
               <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
-                <label><input id="nativeSyncGuestMode" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
-                <label><input id="nativeSyncAccountMode" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
+                <label><input id="nativeSyncGuestMode" data-testid="sync-mode-guest" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
+                <label><input id="nativeSyncAccountMode" data-testid="sync-mode-account" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
               </div>
               <form id="nativeAccountLogin" class="native-sync-login" hidden>
-                <label class="native-field"><span>AN3 username</span><input id="nativeAccountName" autocomplete="username"></label>
-                <label class="native-field"><span>Password</span><input id="nativeAccountPassword" type="password" autocomplete="current-password"></label>
-                <div class="native-settings-actions"><button id="nativeAccountLoginButton" class="button primary" type="submit">Sign in</button><button id="nativeAccountLogoutButton" class="button" type="button" hidden>Sign out</button></div>
+                <label class="native-field"><span>AN3 username</span><input id="nativeAccountName" data-testid="account-name" autocomplete="username"></label>
+                <label class="native-field"><span>Password</span><input id="nativeAccountPassword" data-testid="account-password" type="password" autocomplete="current-password"></label>
+                <div class="native-settings-actions"><button id="nativeAccountLoginButton" data-testid="account-login" class="button primary" type="submit">Sign in</button><button id="nativeAccountLogoutButton" class="button" type="button" hidden>Sign out</button></div>
               </form>
               <div class="native-facts">
-                <div class="native-fact"><span>Identity</span><strong id="nativeAccountStatus" role="status">Guest</strong></div>
-                <div class="native-fact"><span>LAN Sync</span><strong id="nativeSyncStatus" role="status">Starting</strong></div>
+                <div class="native-fact"><span>Identity</span><strong id="nativeAccountStatus" data-testid="account-status" role="status">Guest</strong></div>
+                <div class="native-fact"><span>LAN Sync</span><strong id="nativeSyncStatus" data-testid="sync-status" role="status">Starting</strong></div>
               </div>
               <div class="native-settings-actions">
                 <button id="nativeSyncStart" class="button primary" type="button">Start Hosting</button>
                 <button id="nativeSyncStop" class="button" type="button">Stop Hosting</button>
               </div>
-              <p class="native-sync-code">LAN Sync pairing code: <strong id="nativeSyncCode">—</strong></p>
-              <label class="native-field"><span>Enter another device’s six-digit code</span><input id="nativeSyncPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
-              <button id="nativeSyncJoin" class="button" type="button">Pair device</button>
-              <div id="nativeSyncPeers" class="native-sync-peers" aria-live="polite"></div>
-              <div id="nativeSyncConflicts" class="native-sync-peers" aria-live="polite"></div>
+              <p class="native-sync-code">LAN Sync pairing code: <strong id="nativeSyncCode" data-testid="sync-code">—</strong></p>
+              <label class="native-field"><span>Enter another device’s six-digit code</span><input id="nativeSyncPairCode" data-testid="sync-pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeSyncJoin" data-testid="sync-join" class="button" type="button">Pair device</button>
+              <div id="nativeSyncPeers" data-testid="sync-peers" class="native-sync-peers" aria-live="polite"></div>
+              <div id="nativeSyncConflicts" data-testid="sync-conflicts" class="native-sync-peers" aria-live="polite"></div>
               <label class="native-settings-field native-sync-background"><input id="nativeSyncBackground" type="checkbox"> <span>Allow LAN reconnection while this app is open</span></label>
               <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
-              <p id="nativeSyncMessage" class="native-status" role="status"></p>
+              <p id="nativeSyncMessage" data-testid="sync-message" class="native-status" role="status"></p>
             </div>
             <div class="native-card" id="nativeControllerCard" data-testid="phone-controller" hidden>
               <h2>Phone Controller</h2>
               <p class="native-muted">Use a second device on the same network as a controller for the running game. The phone never receives the game or its saves, and nothing is relayed through the AN3 server.</p>
               <div class="native-facts">
-                <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" role="status">Off</strong></div>
-                <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
+                <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" data-testid="controller-status" role="status">Off</strong></div>
+                <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode" data-testid="controller-code">—</strong></div>
               </div>
-              <button id="nativeControllerStart" type="button" class="button primary">Start Hosting</button>
-              <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
-              <button id="nativeControllerJoin" type="button" class="button">Join Host</button>
+              <button id="nativeControllerStart" data-testid="controller-start" type="button" class="button primary">Start Hosting</button>
+              <label class="native-field"><span>Pair code</span><input id="nativeControllerPairCode" data-testid="controller-pair-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 digits"></label>
+              <button id="nativeControllerJoin" data-testid="controller-join" type="button" class="button">Join Host</button>
               <div class="ctrl-phone-head" id="nativeControllerPadHead" hidden>
                 <label class="ctrl-layout-picker">Layout<select id="nativeControllerLayout">
                   <option value="auto">Automatic</option>
@@ -147,15 +147,15 @@
                 </select></label>
               </div>
               <section id="nativeControllerPad" class="ctrl-pad" hidden aria-label="Direct LAN controller pad">
-                <div class="ctrl-padbar"><span id="nativeControllerPadState" class="ctrl-state">Connected</span><button id="nativeControllerDisconnect" type="button">Disconnect</button></div>
-                <div class="ctrl-touchscreen" id="nativeControllerTouchscreen" data-role="touchscreen" hidden>Touch Screen</div>
-                <div class="ctrl-shoulders"><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="l">L</button><button type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="r">R</button></div>
+                <div class="ctrl-padbar"><span id="nativeControllerPadState" data-testid="controller-pad-state" class="ctrl-state">Connected</span><button id="nativeControllerDisconnect" data-testid="controller-disconnect" type="button">Disconnect</button></div>
+                <div class="ctrl-touchscreen" id="nativeControllerTouchscreen" data-testid="pad-touchscreen" data-role="touchscreen" hidden>Touch Screen</div>
+                <div class="ctrl-shoulders"><button data-testid="pad-l" type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="l">L</button><button data-testid="pad-r" type="button" class="ctrl-key ctrl-shoulder" data-native-controller-button="r">R</button></div>
                 <div class="ctrl-main">
                   <div class="ctrl-dpad" data-role="dpad">
-                    <button type="button" class="ctrl-key dpad-up" data-native-controller-button="up" aria-label="Up">▲</button>
-                    <button type="button" class="ctrl-key dpad-left" data-native-controller-button="left" aria-label="Left">◀</button>
-                    <button type="button" class="ctrl-key dpad-right" data-native-controller-button="right" aria-label="Right">▶</button>
-                    <button type="button" class="ctrl-key dpad-down" data-native-controller-button="down" aria-label="Down">▼</button>
+                    <button data-testid="pad-up" type="button" class="ctrl-key dpad-up" data-native-controller-button="up" aria-label="Up">▲</button>
+                    <button data-testid="pad-left" type="button" class="ctrl-key dpad-left" data-native-controller-button="left" aria-label="Left">◀</button>
+                    <button data-testid="pad-right" type="button" class="ctrl-key dpad-right" data-native-controller-button="right" aria-label="Right">▶</button>
+                    <button data-testid="pad-down" type="button" class="ctrl-key dpad-down" data-native-controller-button="down" aria-label="Down">▼</button>
                   </div>
                   <div id="nativeControllerCircular" class="ctrl-circular" data-role="circular" role="group" aria-label="Circular D-pad" hidden>
                     <span class="ctrl-circular-arrow up" data-dir="up">▲</span>
@@ -164,22 +164,22 @@
                     <span class="ctrl-circular-arrow down" data-dir="down">▼</span>
                   </div>
                   <div class="ctrl-sticks" data-role="sticks">
-                    <span class="ctrl-stick" data-native-controller-stick="left" role="slider" aria-label="Left stick" tabindex="0"></span>
-                    <span class="ctrl-stick" data-native-controller-stick="right" role="slider" aria-label="Right stick" tabindex="0"></span>
+                    <span data-testid="pad-stick-left" class="ctrl-stick" data-native-controller-stick="left" role="slider" aria-label="Left stick" tabindex="0"></span>
+                    <span data-testid="pad-stick-right" class="ctrl-stick" data-native-controller-stick="right" role="slider" aria-label="Right stick" tabindex="0"></span>
                   </div>
                   <div class="ctrl-face">
-                    <button type="button" class="ctrl-key face-x" data-native-controller-button="x">X</button>
-                    <button type="button" class="ctrl-key face-y" data-native-controller-button="y">Y</button>
-                    <button type="button" class="ctrl-key face-a" data-native-controller-button="a">A</button>
-                    <button type="button" class="ctrl-key face-b" data-native-controller-button="b">B</button>
+                    <button data-testid="pad-x" type="button" class="ctrl-key face-x" data-native-controller-button="x">X</button>
+                    <button data-testid="pad-y" type="button" class="ctrl-key face-y" data-native-controller-button="y">Y</button>
+                    <button data-testid="pad-a" type="button" class="ctrl-key face-a" data-native-controller-button="a">A</button>
+                    <button data-testid="pad-b" type="button" class="ctrl-key face-b" data-native-controller-button="b">B</button>
                   </div>
                 </div>
-                <div class="ctrl-system"><button type="button" class="ctrl-key" data-native-controller-button="select">Select</button><button type="button" class="ctrl-key" data-native-controller-button="start">Start</button></div>
+                <div class="ctrl-system"><button data-testid="pad-select" type="button" class="ctrl-key" data-native-controller-button="select">Select</button><button data-testid="pad-start" type="button" class="ctrl-key" data-native-controller-button="start">Start</button></div>
                 <div class="ctrl-utility">
-                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_down">Speed −</button>
-                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_up">Speed +</button>
-                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_save">Quick Save</button>
-                  <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
+                  <button data-testid="util-speed_down" type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_down">Speed −</button>
+                  <button data-testid="util-speed_up" type="button" class="ctrl-key ctrl-util" data-native-controller-util="speed_up">Speed +</button>
+                  <button data-testid="util-quick_save" type="button" class="ctrl-key ctrl-util" data-native-controller-util="quick_save">Quick Save</button>
+                  <button data-testid="util-open_menu" type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
                 </div>
               </section>
               <p class="native-muted">Start makes this device the game host and shows a six-digit code. On the phone, open Vibe Coded Emulator, choose Devices, open Phone Controller and enter that code with Join Host. Use the field above only when this device is the one joining another host.</p>

@@ -210,3 +210,32 @@ class AndroidHostUnchangedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DirectLanFailurePathTests(unittest.TestCase):
+    """A failed direct-LAN action must say why.
+
+    A Tauri command rejection is a plain string, so `error.message` is
+    undefined. The join handler used `error?.message || "Could not join the
+    direct LAN host."`, which replaced the transport's own reason — "No AN3
+    controller host was found on the local network.", a discovery timeout, a
+    port conflict, an incompatible protocol or a rejected code — with one
+    generic sentence, and made a two-peer failure undiagnosable from the UI.
+    """
+
+    def test_the_join_failure_path_surfaces_the_transport_reason(self):
+        app_js = source(INDEX.parent / "native-app.js")
+        self.assertIn("const describeError =", app_js)
+        self.assertIn("typeof error === \"string\" ? error :", app_js)
+        for generic in (
+            'setStatus(error?.message || "Could not join the direct LAN host.");',
+            'setStatus(error?.message || "Direct controller session ended");',
+            'setMessage(error?.message || "LAN multiplayer configuration failed.");',
+        ):
+            self.assertNotIn(generic, app_js)
+        self.assertIn('setStatus(describeError(error, "Could not join the direct LAN host."));', app_js)
+
+    def test_discovery_reports_a_missing_host_distinctly(self):
+        host = source(LAN_HOST)
+        self.assertIn("No AN3 controller host was found on the local network.", host)
+        self.assertIn("Direct LAN discovery is unavailable", host)

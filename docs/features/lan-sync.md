@@ -14,7 +14,7 @@ or cloud sync (removed; not a product feature).
 | Server-side sync API (`/api/sync/*`) | development/test fixture only | `docs/LAN_PEER_ARCHITECTURE.md`: the server is not a relay, blob store or rendezvous service |
 | Web peer transport | `GOOD` at source level | `static/lan-peer.js`, `static/sync.js`, `static/sync-transfer.js`; `tests/sync_transfer.test.mjs`, `tests/lan_peer.test.mjs` |
 | Native peer transport | `GOOD` at source level | `native-offline/src-tauri/src/lan_peer.rs`, `lan_host.rs`, `sync_peer.rs`; `tests/native_sync.test.mjs`, `tests/test_native_sync_command.py` |
-| Two real peers transferring a save on one LAN with internet off | `UNVERIFIED` | No two-peer run recorded for the current source; see `docs/checkpoints/direct-lan-controller.md` |
+| Two real peers transferring a save on one LAN with internet off | `BLOCKED` on this host | A two-packaged-instance attempt on 2026-10-18 is recorded in `docs/checkpoints/direct-lan-controller.md`: discovery is multicast-only, and this host does not deliver multicast to a same-host listener (raw-socket reproduction retained). Needs a second network stack |
 | Gameplay impact of a transfer in flight | `UNVERIFIED` | No measurement |
 
 ## Code map
@@ -55,8 +55,10 @@ reconnect, with the exact peers and code revisions recorded.
 
 ## Open work
 
-1. Run and record the two-peer transfer for the current source; fill the
+1. Run and record the two-peer transfer for the current source on two network
+   stacks (physical devices, or a second host bridged onto one LAN); fill the
    `UNVERIFIED` rows in the checkpoint with exact peer identities and revisions.
+   The packaged pair and its two fixed defects are recorded there.
 2. Measure gameplay while a transfer runs (frame pacing), since a transfer that
    stutters the game is a product defect.
 3. Expose the flow in the native UI where the entry point does not yet exist;

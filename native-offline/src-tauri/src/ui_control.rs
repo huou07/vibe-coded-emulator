@@ -63,6 +63,32 @@ mod runtime {
 
     const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Minimal percent-decoder for one query value. The control plane carries a
+/// pairing code, a username or a password, all of which are ASCII in practice;
+/// an undecodable escape is left as written rather than silently dropped.
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' && index + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).ok();
+            if let Some(byte) = hex.and_then(|text| u8::from_str_radix(text, 16).ok()) {
+                out.push(byte);
+                index += 3;
+                continue;
+            }
+        }
+        if bytes[index] == b'+' {
+            out.push(b' ');
+        } else {
+            out.push(bytes[index]);
+        }
+        index += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
     /// Evaluates an expression in the WebView and returns its JSON value. The
     /// expression is generated here from a validated test id, never from caller
     /// JavaScript.
@@ -126,7 +152,7 @@ mod runtime {
         })
     }
 
-    fn handle(app: &AppHandle, action: &str, testid: Option<&str>) -> Result<serde_json::Value, String> {
+    fn handle(app: &AppHandle, action: &str, testid: Option<&str>, value: Option<&str>) -> Result<serde_json::Value, String> {
         match action {
             "diag" => {
                 let expression = "({href:location.href,title:document.title,ready:document.readyState,\
@@ -159,12 +185,51 @@ mod runtime {
                 let text = node.as_ref().and_then(|value| value.text.clone());
                 Ok(serde_json::json!({ "text": text, "present": node.is_some() }))
             }
+            // A pairing code or a sign-in name is typed into a real field by the
+            // user, so the control plane must set the value through the native
+            // setter and emit the events the app's own listeners expect.
+            "fill" => {
+                let testid = testid.ok_or("fill requires a testid")?;
+                let value = value.ok_or("fill requires a value")?;
+                let literal = serde_json::to_string(value).map_err(|error| error.to_string())?;
+                let expression = format!(
+                    "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
+                     if(!el)return {{filled:false,reason:'missing'}};\
+                     var proto=el.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;\
+                     var descriptor=Object.getOwnPropertyDescriptor(proto,'value');\
+                     if(descriptor&&descriptor.set)descriptor.set.call(el,{literal});else el.value={literal};\
+                     el.dispatchEvent(new Event('input',{{bubbles:true}}));\
+                     el.dispatchEvent(new Event('change',{{bubbles:true}}));\
+                     return {{filled:true,length:String(el.value).length}};}})()"
+                );
+                let payload = evaluate(app, &expression)?;
+                Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null))
+            }
             "click" => {
                 let testid = testid.ok_or("click requires a testid")?;
                 let expression = format!(
                     "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
                      if(!el)return {{clicked:false,reason:'missing'}};el.scrollIntoView({{block:'center'}});\
                      el.click();return {{clicked:true}};}})()"
+                );
+                let payload = evaluate(app, &expression)?;
+                Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null))
+            }
+            // A control that acts on pointerdown and releases on pointerup cannot
+            // be exercised by a synthetic click, and a held input is exactly what
+            // the controller release-all contract is about. Dispatch a real
+            // PointerEvent so press/hold/release are observable.
+            "down" | "up" => {
+                let testid = testid.ok_or("down/up requires a testid")?;
+                let kind = if action == "down" { "pointerdown" } else { "pointerup" };
+                let buttons = if action == "down" { 1 } else { 0 };
+                let expression = format!(
+                    "(function(){{var el=document.querySelector('[data-testid=\"{testid}\"]');\
+                     if(!el)return {{dispatched:false,reason:'missing'}};\
+                     var box=el.getBoundingClientRect();var x=box.left+box.width/2;var y=box.top+box.height/2;\
+                     var event=new PointerEvent('{kind}',{{bubbles:true,cancelable:true,composed:true,\
+                     pointerId:1,pointerType:'touch',isPrimary:true,button:0,buttons:{buttons},clientX:x,clientY:y}});\
+                     el.dispatchEvent(event);return {{dispatched:true,type:'{kind}'}};}})()"
                 );
                 let payload = evaluate(app, &expression)?;
                 Ok(serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null))
@@ -232,12 +297,19 @@ mod runtime {
                 .split('&')
                 .find_map(|pair| pair.strip_prefix("testid="))
                 .map(|value| value.replace("%2D", "-").replace("%5F", "_"));
+            let supplied_value = query
+                .split('&')
+                .find_map(|pair| pair.strip_prefix("value="))
+                .map(percent_decode);
             let action = match route {
                 "/diag" => "diag",
                 "/tree" => "tree",
                 "/query" => "query",
                 "/text" => "text",
                 "/click" => "click",
+                "/fill" => "fill",
+                "/down" => "down",
+                "/up" => "up",
                 _ => {
                     respond(&mut stream, "404 Not Found", "{\"error\":\"route\"}");
                     continue;
@@ -249,7 +321,13 @@ mod runtime {
                     continue;
                 }
             }
-            match handle(&app, action, testid.as_deref()) {
+            if let Some(value) = supplied_value.as_deref() {
+                if value.len() > 512 {
+                    respond(&mut stream, "400 Bad Request", "{\"error\":\"value too long\"}");
+                    continue;
+                }
+            }
+            match handle(&app, action, testid.as_deref(), supplied_value.as_deref()) {
                 Ok(value) => respond(&mut stream, "200 OK", &value.to_string()),
                 Err(error) => respond(
                     &mut stream,

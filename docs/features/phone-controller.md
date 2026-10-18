@@ -16,7 +16,7 @@ through the operating system (not this feature).
 | Web controller UI (`/controller`, `/controller/join`) | `GOOD` at source level | `static/controller.js`, `static/controller-utility.js` |
 | Desktop host in the native shell | `GOOD` at source level | `native-offline/src-tauri/src/controller_host.rs`; `tests/test_phone_controller_hosts.py` |
 | Android client and host bridge | `GOOD` at source level | `ControllerClient.kt`, `An3ControllerHost.kt`, `ControllerHostService.kt` |
-| Two real devices, internet off, live gameplay input | `UNVERIFIED` | Recorded staging pairing is dated and not two-device gameplay |
+| Two real devices, internet off, live gameplay input | `BLOCKED` on this host | A two-packaged-instance attempt on 2026-10-18 is recorded in `docs/checkpoints/direct-lan-controller.md`: a fresh code and a valid join were reached, then discovery timed out because this host does not deliver multicast to a same-host listener. Needs a second network stack |
 | Input release on focus loss / disconnect / explicit stop | `GOOD` at source level | Covered by native controller pad tests; device behaviour `UNVERIFIED` |
 
 ## Code map
@@ -54,7 +54,10 @@ revisions and the observed latency/failures.
 
 ## Open work
 
-1. Record the two-device gameplay run; today every device row is `UNVERIFIED`.
+1. Record the two-device gameplay run on two network stacks; today every device
+   row is `UNVERIFIED`. The packaged desktop pair, its fixed port/capability
+   defect and its fixed failure-message defect are recorded in
+   `docs/checkpoints/direct-lan-controller.md`.
 2. Make the entry point discoverable in the native UI without adding clutter —
    coordinate with [ui-shell](ui-shell.md).
 3. Confirm the phone UI works against the packaged desktop host, not only the

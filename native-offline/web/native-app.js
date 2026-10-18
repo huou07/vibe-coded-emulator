@@ -7,6 +7,15 @@
 (() => {
   const SECTION_TITLES = {play: "Play", library: "Library", devices: "Devices", settings: "Settings", help: "Help", about: "About"};
 
+  // A Tauri command rejection is a plain string, so `error.message` is
+  // undefined and the user was shown a generic sentence instead of the real
+  // reason a direct-LAN pairing or an action failed. Describe whatever was
+  // actually thrown before falling back.
+  const describeError = (error, fallback) => {
+    const text = typeof error === "string" ? error : (error?.message ?? String(error ?? ""));
+    return String(text || "").trim() || fallback;
+  };
+
   const start = () => {
     const app = document.getElementById("nativeApp");
     // When a ROM launch query is present, offline.js replaces the body with the
@@ -154,7 +163,7 @@
         const frame = Object.assign({s: sequence, b: [...pressed], a: [axes.lx, axes.ly, axes.rx, axes.ry]}, payload || {});
         if (touch.active) frame.t = [touch.x, touch.y];
         Promise.resolve(window.AN3NativeController.send(frame)).catch(error => {
-          setStatus(error?.message || "Direct controller session ended");
+          setStatus(describeError(error, "Direct controller session ended"));
         });
       };
       const sendSnapshot = () => sendState();
@@ -426,7 +435,7 @@
           setStatus(session.error || (session.paired ? "Connected directly to host" : words(session)));
           poll();
         } catch (error) {
-          setStatus(error?.message || "Could not join the direct LAN host.");
+          setStatus(describeError(error, "Could not join the direct LAN host."));
         }
       });
       refresh();
@@ -785,16 +794,16 @@
           setMessage(role === "host" ? "Preparing a direct melonDS LAN host…" : "Preparing a direct melonDS LAN join…");
           render(await window.AN3NativeMultiplayer.configure(role, selectedAddress, selectedPort));
           setMessage("Configuration saved. Launch the same NDS game on both devices.");
-        } catch (error) { setMessage(error?.message || "LAN multiplayer configuration failed."); }
+        } catch (error) { setMessage(describeError(error, "LAN multiplayer configuration failed.")); }
       };
       hostButton?.addEventListener("click", () => configure("host"));
       joinButton?.addEventListener("click", () => configure("join"));
       stopButton?.addEventListener("click", async () => {
         try { render(await window.AN3NativeMultiplayer.stop()); setMessage("LAN multiplayer left."); }
-        catch (error) { setMessage(error?.message || "Could not leave LAN multiplayer."); }
+        catch (error) { setMessage(describeError(error, "Could not leave LAN multiplayer.")); }
       });
       const refreshMultiplayer = async () => {
-        try { render(await window.AN3NativeMultiplayer.status()); } catch (error) { setMessage(error?.message || "LAN multiplayer status unavailable."); }
+        try { render(await window.AN3NativeMultiplayer.status()); } catch (error) { setMessage(describeError(error, "LAN multiplayer status unavailable.")); }
       };
       refreshMultiplayer();
       const multiplayerTimer = setInterval(refreshMultiplayer, 2500);

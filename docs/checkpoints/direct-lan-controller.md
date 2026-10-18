@@ -185,3 +185,63 @@ packaged and two-device acceptance.
   Android (or desktop) build remain the next discriminating action. The
   Android token lifetime is still process-only; app-restart recovery is
   unimplemented.
+
+## Two-peer attempt on this host, 2026-10-18 — BLOCKED on the network stack
+
+A two-peer run was attempted with two instances of the **packaged Linux shell**
+(`VibeCodedEmulator_3.2.5_amd64.deb`, sha256
+`29287b38f4ab0c04768a08d7b26d3c7cd2dd81695f4d4d569c8baba11c79888b`, built with the
+test-only `ui-control` feature), separate `XDG_DATA_HOME` trees, distinct device
+identities, driven through their own control bridges on one host.
+
+Three defects were found and two were fixed:
+
+1. **The packaged app could not run two instances.** The local game runtime bound
+   the fixed loopback port 38471, and the Tauri capability pinned the remote IPC
+   origin to `http://127.0.0.1:38471/*`, so the documented isolation knob
+   (`AN3_NATIVE_RUNTIME_PORT`) made the second instance's WebView load an origin
+   that had no IPC at all: every bridge call answered "the web UI did not answer
+   in time". Fixed by enumerating the second loopback origin (`38472`) in
+   `native-offline/src-tauri/capabilities/default.json`. The origin stays
+   loopback-only and explicit; an ephemeral port (`AN3_NATIVE_RUNTIME_PORT=0`)
+   still has no IPC, which is now a stated limitation rather than a silent one.
+2. **A failed direct-LAN action hid its own reason.** A Tauri command rejection is
+   a plain string, so `error?.message` is undefined and the join handler replaced
+   the transport's reason with one generic sentence. With `describeError` the same
+   run reported **"No AN3 controller host was found on the local network."**
+   Guarded by `tests/test_phone_controller_hosts.py::DirectLanFailurePathTests`.
+3. **Nothing else could run: this host does not deliver multicast to a
+   same-host listener.** Reproduced outside the product with two plain UDP
+   sockets (`work/phaseC/multicast-loopback-repro.txt`): with the sender's
+   `IP_MULTICAST_LOOP` enabled and the receiver joined to `239.255.43.3:47831`,
+   **nothing is received** under any of four interface selections
+   (`ANY/ANY/ANY`, `ANY/ANY/enp0s31f6`, `ANY/enp0s31f6/enp0s31f6`,
+   `enp0s31f6` on all three), while a **unicast** datagram to `192.168.1.8:47831`
+   is received. `ip route get 239.255.43.3` reports
+   `multicast 239.255.43.3 dev enp0s31f6 src 192.168.1.8 … rt_offload_failed`.
+   Peer discovery is multicast-only by design, so the two instances never saw each
+   other's advertisements and `join()` returned the discovery timeout above.
+
+**The missing prerequisite is a second network stack**: two peers on one LAN
+where multicast actually crosses the wire — physical devices, or a second
+host/VM bridged onto the LAN. The VCE-dedicated AVD does not supply it either:
+the Android emulator puts the guest behind QEMU user-mode NAT, which does not
+bridge the LAN or carry the discovery group. Every two-peer and two-device row in
+this file therefore stays `UNVERIFIED`, and the acceptance detail that remains
+unexercised is: discovery → transfer → hash match → conflict choice → reconnect
+for LAN Sync, and fresh code → play → release-all on focus loss / explicit stop /
+transport loss → reconnect for the controller.
+
+### What was established without two peers
+
+| Check | Evidence |
+| --- | --- |
+| Two packaged instances coexist with separate storage and identities | both `/diag` answered; `systems="gba,nds,3ds"`, distinct instance ids in the discovery payload |
+| The host imports and runs the lawful synthetic GBA fixture | `game-launch` clicked, `native-status` `data-state=running`, text "Native game window opened. Menu: F2 · Pad: F3 · Next Layout: F1" |
+| The host issues a fresh six-digit pairing code and the controller accepts it as input | `controller-code` `183123`/`014182`, field filled with 6 digits, join handler passed its own `/^\d{6}$/` validation |
+| A pairing failure reaches the user with its real cause | "No AN3 controller host was found on the local network." |
+| Direct-transport source contracts | `tests/test_sync_engine.py`, `tests/test_sync_api.py`, `tests/test_native_sync_command.py`, `tests/test_netcode.py`, `tests/test_phone_controller_hosts.py` — 95 pass, 0 fail |
+| Direct-transport JavaScript contracts | `tests/sync_transfer.test.mjs`, `lan_peer.test.mjs`, `native_sync.test.mjs`, `native_controller_pad.test.mjs`, `controller_utility.test.js` — 36 pass, 0 fail, 0 skipped |
+
+No internet was disconnected for this attempt; the blocker is local multicast, and
+no AN3 server was in the path (no server process was started at all).
