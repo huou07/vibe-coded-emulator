@@ -2281,7 +2281,7 @@ def licenses_page(lang, user, csrf):
 <section class="native-card">
 <h2>{tr(lang,"Thành phần bên thứ ba","Third-party components")}</h2>
 <p class="muted">{tr(lang,"Mỗi thành phần giữ bản quyền và giấy phép riêng.","Each component keeps its own copyright and license.")}</p>
-<table class="licenses-table"><thead><tr><th>{tr(lang,"Thành phần","Component")}</th><th>{tr(lang,"Giấy phép","License")}</th><th>{tr(lang,"Bản quyền","Copyright")}</th></tr></thead><tbody>{rows}</tbody></table>
+<div class="licenses-table-scroll" role="region" tabindex="0" aria-label="{tr(lang,"Bảng giấy phép","Licence table")}"><table class="licenses-table"><thead><tr><th>{tr(lang,"Thành phần","Component")}</th><th>{tr(lang,"Giấy phép","License")}</th><th>{tr(lang,"Bản quyền","Copyright")}</th></tr></thead><tbody>{rows}</tbody></table></div>
 </section>
 </main>'''
     return layout(tr(lang, "Giấy phép", "Licenses"), body, lang, user, csrf)

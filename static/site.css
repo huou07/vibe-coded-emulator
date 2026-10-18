@@ -1821,6 +1821,13 @@ body.offline-shell .offline-page>.library-head{
   border-bottom:1px solid #28382d;
 }
 body.offline-shell .offline-page>.library-head>div{width:min(610px,52%);margin-left:20%}
+/* A 20% left indent and a 52% measure suit a wide reference layout and are
+   wrong on a phone: the block is not only off-centre, it pushed the
+   document 8px past a 360px viewport. Full width, no indent, below 700px. */
+@media(max-width:700px){
+  body.offline-shell .offline-page>.library-head{display:block}
+  body.offline-shell .offline-page>.library-head>div{width:100%;margin-left:0}
+}
 body.offline-shell .offline-page>.library-head .eyebrow{font-family:var(--ui-mono);font-size:13px;color:var(--ui-cyan)}
 body.offline-shell .offline-page>.library-head h1{margin:5px 0 8px;color:#fbfcf8;font-family:var(--ui-display);font-size:clamp(35px,4.15vw,62px);font-weight:700;letter-spacing:-.035em;line-height:1}
 body.offline-shell .offline-page>.library-head .muted{max-width:580px;color:#d3d8d1;font-size:16px}
@@ -1834,6 +1841,13 @@ body.offline-shell .offline-readiness{
 body.offline-shell .offline-readiness .section-title{margin:0 0 13px}
 body.offline-shell .offline-readiness .section-title h2{color:#f4f6ed;font-size:18px}
 body.offline-shell .offline-facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+/* This rule and `body:not(.player-page) .offline-facts` have equal
+   specificity, so source order decides: the 5-column declaration above wins
+   over the 560px media query and pushed the document to 462px at a 360px
+   viewport. Restate the small-width column counts here, where they win. */
+@media(max-width:980px){body.offline-shell .offline-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:430px){body.offline-shell .offline-facts{grid-template-columns:1fr}}
+body.offline-shell .offline-facts>div{min-height:0}
 body.offline-shell .offline-facts>div{min-height:103px;border:1px solid #415545;border-radius:9px;background:#0d1410;padding:12px 13px}
 body.offline-shell .offline-facts span{display:block;color:#e4e8df;font-size:13px;font-weight:700}
 body.offline-shell .offline-facts strong{display:block;margin:6px 0 2px;color:var(--ui-lime);font-size:15px;line-height:1.15}
@@ -2339,6 +2353,12 @@ body.reference-shell.offline-shell .offline-page>.library-head .eyebrow{margin:0
 body.reference-shell.offline-shell .offline-page>.library-head h1{margin:0;color:#fff;font-family:"AN3 Pixel","Pixelify Sans",sans-serif;font-size:49px;letter-spacing:-.045em;line-height:1}
 body.reference-shell.offline-shell .offline-page>.library-head .muted{margin:14px 0 0;color:#e0e5dd;font-size:16px;line-height:1.42}
 body.reference-shell.offline-shell .offline-readiness{grid-column:1/-1;display:grid;grid-template-columns:308px minmax(0,1fr);gap:12px;margin:0;padding:0;border:0;background:transparent}
+/* The fixed 308px first column above is wider than the content box below a
+   ~700px viewport. The remaining 1fr column then computed to 0px, the facts
+   grid inside it collapsed to five 0px columns, and its cards spilled out
+   far enough to push the document to 462px at 360px. Equal specificity, so
+   this restatement has to come after it. */
+@media(max-width:700px){body.reference-shell.offline-shell .offline-readiness{grid-template-columns:minmax(0,1fr)}}
 body.reference-shell.offline-shell .offline-ready-card,body.reference-shell.offline-shell .offline-fact-card{position:relative;min-height:120px;display:flex;align-items:center;gap:15px;border:1px solid #4b5a4c;border-radius:11px;background:#0b120e;padding:17px}
 body.reference-shell.offline-shell .offline-ready-card{border-color:#83b431;background:#102014}
 body.reference-shell.offline-shell .offline-ready-card>.ui-mask{width:70px;height:70px;border:1px solid #668d32;border-radius:11px;padding:17px;color:var(--ref-lime)}
@@ -2631,6 +2651,7 @@ body.reference-shell .site-header .brand{
 /* Licenses page (GPLv3 notices). */
 .licenses-page .native-card{margin-top:16px}
 .licenses-table{width:100%;border-collapse:collapse;margin-top:10px}
+.licenses-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .licenses-table th,.licenses-table td{text-align:left;padding:7px 8px;border-top:1px dotted var(--line);font-size:13px}
 .licenses-table th{color:var(--muted);font-weight:600}
 
@@ -2765,3 +2786,23 @@ body.reference-shell .site-header .brand{
 .ctrl-utility{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
 .ctrl-utility .ctrl-key{min-height:44px;border-radius:20px;font-size:13px;padding:0 14px}
 @media(max-width:420px){.ctrl-circular{--ctrl-circular:136px}}
+
+/* Phone widths: the offline hero is full-bleed by computing negative side
+   margins from 100vw (`(min(1424px, 100vw - 24px) - 100vw)/2`). The arithmetic
+   overshoots once the viewport is small enough that the padding clamp and the
+   margin formula disagree, which left the document 8px wider than the viewport
+   at 390px. On a phone the bleed is not worth the risk: give the hero the page's
+   own width and an ordinary gutter. Appended last so it wins on source order
+   against the two earlier full-bleed restatements at equal specificity. */
+@media(max-width:700px){
+  body.offline-shell .offline-page>.library-head{
+    margin:0 !important;
+    padding:22px 16px 24px !important;
+    width:auto !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+    min-height:0;
+  }
+  body.offline-shell .offline-page>.library-head>div{width:100%;margin-left:0}
+  body.offline-shell .offline-page>.library-head h1{font-size:clamp(28px,8vw,40px)}
+}
