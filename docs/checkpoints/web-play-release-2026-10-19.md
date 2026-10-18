@@ -79,6 +79,36 @@ and the responsive contract. The native shell declares no `--ui-*` set at all �
 `native-offline/web/native.css` uses its own naming — so Web and app token parity
 is a real divergence, not a measurement artefact, and is open work.
 
+## Browser 3DS runs on the public production URL
+
+Earlier in this tracker I recorded that browser 3DS could not run on production
+because the page was opened as `http://192.168.1.8:8091` — a LAN IP over plain
+HTTP, which is not a secure context, so the threaded core could not obtain
+`SharedArrayBuffer`. That conclusion was correct about that URL and wrong about
+the product: production is also served through a Cloudflare Tunnel over HTTPS, and
+the tunnel is the live public route.
+
+Verified on the public URL, not inferred:
+
+| Check | Result |
+| --- | --- |
+| `https://an3tocom.space/health` | 200, `environment production`, `asset_version 3877f6a56f94` — the same release the LAN URL serves |
+| `https://an3tocom.space/offline` | 200 |
+| COOP/COEP through the tunnel | `cross-origin-opener-policy: same-origin`, `cross-origin-embedder-policy: require-corp`, `cross-origin-resource-policy: same-origin` |
+| `/login`, `/register`, `/admin` on the public URL | 404 |
+| `isSecureContext` in the browser | **true** |
+| **3DS import and launch** | **`ready`, two canvases, loading "Ready", no player notice, no page errors** |
+
+The 3DS card correctly renders enabled with no HTTPS note on this origin, because
+the note is scoped to insecure origins. The fixture is the lawful
+devkitPro/3ds-hbmenu v2.4.3 `boot.3dsx` (383,400 bytes), kept in the git-ignored
+`work/fixtures/` and never committed.
+
+So the Web-play requirement is met on the public product for **GBA** and **3DS**.
+**NDS remains UNVERIFIED for real boot**: it needs a lawful NDS ROM and this host
+has neither one nor a toolchain to build one (`arm-none-eabi-gcc` is absent and
+there is no devkitPro), and the repository ships no synthetic NDS generator.
+
 ## Browser 3DS is blocked by a platform constraint, not by code
 
 The 3DS core is the threaded build: it needs `window.crossOriginIsolated` with
