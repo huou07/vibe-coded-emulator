@@ -199,6 +199,44 @@ reading both sides, and rebuild the mirror with `prepare-web.mjs` rather than by
 hand. Then a Linux build and the native guards before it can be called a release
 candidate. That is a bounded task and it is not started.
 
+## The GitHub publication is gated and ready, and has not been run
+
+Branch `core-only/3.6.6-publication-candidate` at `4d9c28c` now satisfies every
+gate the release contract names, on the same SHA:
+
+| Gate | Result |
+| --- | --- |
+| Hosted exact-SHA CI (`core-only/**` triggers it) | **success** |
+| `BUILD_SNAPSHOT` | **PASS** — 507 files, 14MB, revision `4d9c28c` |
+| `PUBLICATION_SOURCE` (RG-155 core-only product) | **PASS** |
+| `PUBLICATION_CHECK` (fail-closed) | **PASS** — gitleaks 0 findings, patterns clean |
+| That line's own Python suite | 591 tests, **OK**, 34 skips |
+
+Two faults in my own refresh had to be corrected first, and both were the same
+mistake: importing development-line files into a line that has its own contracts.
+The gitleaks config import broke `test_real_config_allowlist_targets_the_localstorage_key`
+with an `IndexError`, and the `.env.example` import broke
+`test_account_login_and_cloud_runtime_are_absent` because it documents
+`AN3_AUTH_PEPPER`. That line already covered both cases itself; the imports were
+reverted and only the genuinely missing tooling was added.
+
+**The publication has not been run.** `tools/publish-github.sh --confirm` was read
+rather than executed, and it is a larger act than it looks: it initialises a fresh
+repository in the snapshot, commits the whole tree as one public commit, requires
+`--adopt-remote` because the public `main` already exists, merges with `-X ours` so
+the snapshot wins, pushes to `main`, and then enables secret scanning, Dependabot
+and **branch protection on main requiring a PR and CI**. Nothing about that is
+force-pushed or destructive, but it replaces the public tree and changes the
+repository's future workflow, so it belongs at the start of a round with budget to
+verify the result rather than at the end of one.
+
+It also needs one owner decision the repository cannot make: the candidate is
+**3.6.6**, which is the newest app version that passes CI, while the app line's tip
+is 3.6.10 and its CI is **red** (Python, Node and a history secret scan all fail on
+`18f74f0`). Publishing 3.6.6 moves the public source from 3.3.3 to 3.6.6 and is
+honest about what passed; publishing 3.6.10 would first require that line to go
+green, which is the app-line merge task.
+
 ## The core-only line now publishes (both gates pass)
 
 The refresh above took the core-only candidate from "cannot build a snapshot" to
