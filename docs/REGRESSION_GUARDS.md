@@ -29,6 +29,35 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Phone-width compact controls meet the touch minimum — RG-159, 2026-10-18
+
+- RG-159: **A compact control a thumb taps at phone width must clear 42px, and the
+  lane must publish the ones that do not instead of describing them in prose.**
+  The shared shell's compact tier was a sentence in `docs/QUALITY.md` — "28–38px, a
+  recorded gap" — while the browser lane asserted only a blanket 28px floor, so a
+  filter chip could sit at 31px with nothing measuring it.
+- `tests/web-runtime.test.mjs` now returns `compactBelow42` (height, tag, id,
+  className, label) in the design contract it writes to
+  `work/ui-runtime/evidence.json`, and fails when either tier measured nothing,
+  because an empty control set made every bound pass vacuously. Measured at 360px
+  on the library view before the fix: primary minimum 44px, compact minimum 31px,
+  and three `.system-filter` chips at 37px, 37px and a 31px selected chip.
+- Those chips are the compact controls a phone user actually taps, so
+  `static/site.css` raises them to a 42px minimum inside the existing
+  `@media(max-width:480px)` blocks — the 34px and 38px rules there were the ones
+  that won at 360px. The genuinely desktop-dense controls (table row actions, the
+  admin range selector, the small nav toggle) keep their 28px floor. Re-measured:
+  compact minimum 42px, `compactBelow42` empty, primary minimum 44px, and
+  `scrollWidth` 360 against a 360px viewport, so no horizontal overflow appeared.
+- Editing `static/site.css` without re-copying the committed Android mirror makes
+  `tools/check-native-mirror.py` fail, which is RG-156 keeping this change from
+  shipping a stale stylesheet to Android.
+- **UNVERIFIED**: the desktop-density controls on their own surfaces. The lane
+  loads the 360px library view, so the real heights of the table row actions, the
+  admin range selector and the nav toggle are not machine-checked there; their
+  28px floor is the only assertion. A lane pass over the admin and update-notice
+  surfaces would close that.
+
 ## Emulator-loop frame-time distribution — RG-158, 2026-10-18
 
 - RG-158: **The automated gameplay budget must be a measured distribution, not a

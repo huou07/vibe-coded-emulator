@@ -475,7 +475,7 @@ body:not(.player-page) #welcomeSummary{max-width:570px;margin:-8px 0 18px}
   body:not(.player-page) .search input{min-height:44px}
   body:not(.player-page) .library-page .system-filters{scrollbar-width:none}
   body:not(.player-page) .library-page .system-filters::-webkit-scrollbar{display:none}
-  body:not(.player-page) .library-page .system-filter{min-height:38px;padding:5px 10px}
+  body:not(.player-page) .library-page .system-filter{min-height:42px;padding:5px 10px}
   body:not(.player-page) .library-page .library-status{
     position:absolute;
     width:1px;
@@ -1540,9 +1540,15 @@ body.library-shell .collection-card .badge{font-size:10px}
   body.library-shell .search-field .ui-search{width:22px;height:22px}
   body.library-shell .search input{min-height:42px;font-size:16px}
   body.library-shell .system-filters{border-radius:8px}
-  body.library-shell .library-page .system-filter{min-height:34px;padding:4px 7px;font-size:14px}
+  /* The 360px library view is the touch case: these chips measured 37px and the
+     selected chip 31px, below the 42px shared-shell minimum in
+     docs/design-system.md. The remaining dense tier (table row actions, admin
+     range selector) keeps its 28px floor because it is desktop-density, not a
+     phone touch target. `compactBelow42` in tests/web-runtime.test.mjs is what
+     measures this; do not shrink these back by hand. */
+  body.library-shell .library-page .system-filter{min-height:42px;padding:6px 8px;font-size:14px}
   body.library-shell .library-page .system-filter.active,
-  body.library-shell .library-page .system-filter[aria-pressed="true"]{min-height:28px;margin:3px 14px;border-radius:6px}
+  body.library-shell .library-page .system-filter[aria-pressed="true"]{min-height:42px;margin:3px 14px;border-radius:6px}
   body.library-shell .game-system-section{margin-top:18px}
   body.library-shell .library-page .recommended-section{margin-top:15px}
   body.library-shell .library-page .game-system-section>.section-title{min-height:20px;margin-bottom:7px}

@@ -172,20 +172,43 @@ with app.db() as conn:
       if (design.scrollWidth > design.viewport) {
         throw new Error("horizontal overflow at " + design.viewport + "px: " + design.scrollWidth);
       }
-      const shortPrimary = design.controls.filter(control => control.tier === "primary" && control.height < 42);
+      const primary = design.controls.filter(control => control.tier === "primary");
+      const compact = design.controls.filter(control => control.tier === "compact");
+      // A control set that measured nothing would make every bound below pass
+      // vacuously. The shared shell always renders primary and compact controls
+      // on the library page, so an empty tier is a broken measurement, not a pass.
+      if (!primary.length || !compact.length) {
+        throw new Error(
+          "design contract measured no " + (primary.length ? "compact" : "primary")
+          + " controls, so its bounds would pass vacuously",
+        );
+      }
+      const shortPrimary = primary.filter(control => control.height < 42);
       if (shortPrimary.length) {
         throw new Error("primary controls below the documented 42px minimum: " + JSON.stringify(shortPrimary));
       }
-      const shortCompact = design.controls.filter(control => control.tier === "compact" && control.height < 28);
+      const shortCompact = compact.filter(control => control.height < 28);
       if (shortCompact.length) {
         throw new Error("compact controls below their 28px floor: " + JSON.stringify(shortCompact));
       }
+      // The recorded accessibility gap is published as a measurement rather than
+      // a sentence: which compact controls sit below the 42px guidance and by how
+      // much, so a change in that set is visible in the evidence artifact instead
+      // of being re-described by hand. docs/QUALITY.md, docs/design-system.md.
+      const compactBelow42 = compact
+        .filter(control => control.height < 42)
+        .map(control => ({
+          height: control.height, tag: control.tag, label: control.label,
+          id: control.id, className: control.className,
+        }))
+        .sort((left, right) => left.height - right.height);
       const designContract = {
         tokens: design.tokens,
-        primaryControls: design.controls.filter(control => control.tier === "primary").length,
-        compactControls: design.controls.filter(control => control.tier === "compact").length,
-        minPrimaryHeight: Math.min(...design.controls.filter(c => c.tier === "primary").map(c => c.height)),
-        minCompactHeight: Math.min(...design.controls.filter(c => c.tier === "compact").map(c => c.height)),
+        primaryControls: primary.length,
+        compactControls: compact.length,
+        minPrimaryHeight: Math.min(...primary.map(c => c.height)),
+        minCompactHeight: Math.min(...compact.map(c => c.height)),
+        compactBelow42,
         scrollWidth: design.scrollWidth,
       };
       await page.getByRole("link", { name: "Details: Fixture GBA", exact: true }).first().click();

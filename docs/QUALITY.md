@@ -27,7 +27,7 @@ pixel-identical parity across platforms.
 | Correctness | source gate passes | `bash tools/verify-project.sh` | verify | see recorded result |
 | Gameplay performance | sustained frame pacing / no audio underruns on named hardware | measured emulator-loop frame-time distribution in `tests/an3ctl.test.mjs` (`frameMs` p50/p95/p99/max over 600 frames, plus measured fps and the whole-run ≤ 20s throughput bound), read from the vendored Linux runtime's `--status-json`; `vce-gameplay-performance` evidence for sustained runs | verify (emulator-loop timing only) | the frame-time distribution and the throughput bound are enforced whenever the gate runs (measured p95 ≈ 0.29 ms, max ≈ 0.43 ms); sustained display frame pacing and audio underruns `UNVERIFIED` |
 | Reliability | save states, 10 quick slots, autosave, Exit Game, recovery | Python + JS behaviour tests, guards in `REGRESSION_GUARDS.md` | verify | verified for covered paths |
-| Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, two-tier control height and 360px no-overflow assertions | verify + browser lane | tokens/overflow enforced; the compact control tier is a recorded gap |
+| Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, control tiers, published `compactBelow42` set and 360px no-overflow assertion | verify + browser lane | tokens/overflow enforced; every control measured at 360px is ≥42px, and any compact control still below 42px is published in the evidence artifact rather than described |
 | Security | sanitized snapshot, pinned gitleaks, fail-closed publication gate | `tools/publication-check.sh` | acceptance (candidate) | enforced when a candidate exists |
 | Compatibility | pinned core artifacts per platform | release catalog check | `verify-release-catalog.py` + hosted CI | hosted authority |
 | Maintainability | docs index complete, refs resolve, every committed Android asset matches the source it copies | `check-docs-refs.py`, `tools/check-native-mirror.py` | verify | verified |
@@ -61,14 +61,31 @@ pixel-identical parity across platforms.
    and long tasks in `static/player-runtime.js`, but no lane asserts them and no
    sustained real-device run is recorded, so sustained display frame pacing and
    audio underruns stay `UNVERIFIED`.
-2. The shared shell's compact control tier (system filter chips, table row
-   actions, admin range selector, small nav toggle) ships at 28–38px, below the
-   42px guidance in `docs/design-system.md`. The browser lane now asserts the
-   real two-tier contract (primary ≥42px, compact ≥28px) instead of a blanket
-   42px, and the doc states the gap; raising the compact tier is a UI change that
-   needs its own responsive review.
+2. The tier contract is measured on the 360px library view only. There every
+   control now clears 42px (compact minimum 42px, down from a measured 31px on the
+   selected filter chip), the lane publishes `compactBelow42` in
+   `work/ui-runtime/evidence.json`, and that set is empty. The deliberately dense
+   desktop controls — table row actions, the admin range selector, the small nav
+   toggle — keep their 28px floor and live on surfaces this lane never loads, so
+   their real heights are not machine-checked. A second pass over the admin and
+   library update-notice surfaces is what would close that, and it needs the
+   browser lane, not a source assertion.
 
 Closed since the 2026-10-18 review:
+
+- The compact control tier sat below the 42px touch guidance, and the claim was
+  prose rather than a measurement. The browser lane now publishes every compact
+  control below 42px, with its height, tag, id and class, as `compactBelow42` in
+  `work/ui-runtime/evidence.json`, and refuses to pass when either tier measures
+  nothing (the bounds could otherwise hold vacuously over an empty set). Measured
+  at 360px on the library view: primary minimum 44px; compact minimum 31px with
+  three system filter chips under 42px (37px, 37px and a 31px selected chip). The
+  chips are the compact controls a thumb actually taps at that width, so they were
+  raised to a 42px minimum and the desktop-density tier kept its 28px floor.
+  Re-measured: compact minimum 42px, `compactBelow42` empty, primary minimum
+  44px, `scrollWidth` 360 against a 360px viewport. Repeating the same edit
+  without re-copying the Android mirror makes `tools/check-native-mirror.py` fail,
+  which is RG-156 doing its job.
 
 - The automated gameplay budget could not see a single stalled frame. The
   vendored Linux runtime's `--status-json` reported only `fps`, which is the rate
