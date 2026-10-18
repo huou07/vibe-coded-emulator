@@ -150,6 +150,13 @@ to require, and what was actually done:
 | Backup | `/opt/an3-arcade-backups/20261018-235054/static/player.js` |
 | Rollback | `sudo -n install -o root -g root -m 0644 /opt/an3-arcade-backups/20261018-235054/static/player.js /opt/an3-arcade/static/player.js && sudo -n systemctl restart an3-arcade.service`; acceptance is `/health` returning `asset_version b6276e706965` and `release_id production-23702348eab171e2` |
 
+**Both halves of the browser-3DS fix verified on the live production surface:**
+
+| Check | Result |
+| --- | --- |
+| `GET /emulatorjs/latest/data-v2/cores/azahar-thread-wasm.data` | **200**, 3,982,524 bytes, sha256 `41297cb0b809ec0527df5d1a83e1f221da9d9b9164b850734ded93c39045602e` — byte-identical to the frozen lock, so the asset stage that answered 502 on an unseeded host is delivered |
+| `GET /static/player.js` carries the recorder | `recordThreeDsAudioContext` present, sha256 `033ae12d…` |
+
 **Not claimed:** that production 3DS playback was exercised end to end. Production
 serves no public 3DS game, so the live proof is the byte-identity of the served
 asset with the file that reached `THREAD_POOL_READY` in step 2, plus the seeded
