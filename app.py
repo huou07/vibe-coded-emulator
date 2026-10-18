@@ -189,6 +189,11 @@ def multiplayer_capability(system):
 # Legacy web-controller endpoints are staging/development test fixtures only.
 # Installed AN3 applications host and pair over the direct native LAN peer
 # layer; these endpoints are not part of the product controller architecture.
+# Owner decision 2026-10-18: the public product has no accounts. Download the
+# app, or play on the web with ROMs that never leave the browser. Every account,
+# community and admin surface is therefore absent in production, not merely
+# hidden.
+ACCOUNTS_ENABLED = ENVIRONMENT != "production"
 CONTROLLER_ENABLED = ENVIRONMENT in {"staging", "development"}
 CONTROLLERS = {}
 CONTROLLER_LOCK = threading.Lock()
@@ -1468,13 +1473,13 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
     with db() as conn:
         settings = site_settings(conn)
     account = ""
-    if user:
+    if user and ACCOUNTS_ENABLED:
         admin_link = f'<a class="nav-dashboard" href="/admin">{ref_icon("chart-no-axes-column")}{tr(lang,"Dashboard","Dashboard")}</a>' if user["role"] == "admin" else ""
         account = (
             f'{admin_link}<a class="account" href="/account">{ref_icon("users-round", "account-menu-icon")}{esc(display_name(user))}</a>'
             f'<button class="link-button nav-logout" data-action="logout">{ref_icon("log-out")}{tr(lang,"Đăng xuất","Log out")}</button>'
         )
-    else:
+    elif ACCOUNTS_ENABLED:
         account = f'<a href="/login">{tr(lang,"Đăng nhập","Log in")}</a><a href="/register">{tr(lang,"Tạo tài khoản","Register")}</a>'
     # The onboarding guide explained the retired online library + player flow.
     guide_nav = ""
@@ -2657,11 +2662,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
 
-    def send_html(self, content, status=200, player=False):
-        csp = None
-        if player:
-            csp = player_content_security_policy(NETPLAY_ORIGIN)
-        self.send_bytes(status, content.encode("utf-8"), "text/html; charset=utf-8", csp=csp, cross_origin_isolated=player)
+    def send_html(self, content, status=200, player=False, player_csp=False):
+        # A page that hosts EmulatorJS needs the player's own policy even when it
+        # is not the player shell: the embedded launch fetches its core from the
+        # EmulatorJS CDN (`connect-src`) and the library injects inline styles.
+        # The default page policy blocks both, which is what left the Web-play
+        # launch on "Failed to fetch". It also needs the same cross-origin
+        # isolation the threaded cores rely on.
+        hosts_player = player or player_csp
+        csp = player_content_security_policy(NETPLAY_ORIGIN) if hosts_player else None
+        self.send_bytes(status, content.encode("utf-8"), "text/html; charset=utf-8", csp=csp, cross_origin_isolated=hosts_player)
 
     def read_json(self, maximum=MAX_JSON_BYTES):
         length = int(self.headers.get("Content-Length", "0") or 0)
@@ -3635,6 +3645,19 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             system = path.rsplit("/", 1)[1]
             self.redirect(f"/core-preload/{quote(system)}")
             return
+        # No accounts on the public product: the account, community and admin
+        # surfaces answer 404 rather than redirecting to a login page that does
+        # not exist. See ACCOUNTS_ENABLED.
+        if not ACCOUNTS_ENABLED and (
+            path in {"/login", "/register", "/account", "/admin", "/api/login",
+                     "/api/logout", "/api/register", "/api/account/session",
+                     "/api/account/display-name", "/api/account/peer-proof",
+                     "/api/account/peer-proof/verify"}
+            or path.startswith("/admin/")
+            or path.startswith("/api/account/")
+        ):
+            self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
+            return
         if path == "/download-app/source":
             # This source bundle is staging-only and never contains runtime
             # data, databases, credentials, or server ROMs.
@@ -3717,7 +3740,7 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
                 self.send_html(account_page(lang, user, csrf))
         elif path == "/offline":
             self.track_visit("/offline", user)
-            self.send_html(offline_page(lang, user, csrf))
+            self.send_html(offline_page(lang, user, csrf), player_csp=True)
         elif path == "/multiplayer":
             if not MULTIPLAYER_ENABLED:
                 self.send_html(status_page(404, lang, user, csrf), 404)
