@@ -570,7 +570,14 @@
       return true;
     };
     configureNativePicker();if(nativeOfflineApp&&!nativePicker?.dataset.ready)[50,250,1000].forEach(delay=>setTimeout(configureNativePicker,delay));
-    form.addEventListener("submit",async event=>{event.preventDefault();const file=fileInput.files?.[0];if(!file)return;const title=titleInput.value.trim();if(!title)return showToast(text("Nhập tên game.","Enter a game title."),true);if(systemInput.value==="html5")return showToast(text("Game HTML5 ngoại tuyến chưa được hỗ trợ.","Offline HTML5 games are not supported yet."),true);try{const prior=(await all()).find(game=>game.name===file.name&&game.system===systemInput.value&&!game.fileHandle),id=prior?.id||createOfflineId(),stored=await writeRom(id,file,prior||{}),game={...(prior||{}),id,title,name:file.name,system:systemInput.value,size:file.size,addedAt:Date.now(),...stored};delete game.file;await put(game);form.reset();status.textContent="";renderLibrary();navigator.storage?.persist?.().catch(()=>{});showToast(prior?text("Đã sửa ROM cũ trên máy này.","Repaired the existing device-only ROM."):text("Đã lưu trên máy này.","Saved on this device."));}catch(error){showToast(error.message || String(error),true);}});
+    form.addEventListener("submit",async event=>{event.preventDefault();const file=fileInput.files?.[0];if(!file)return;const title=titleInput.value.trim();if(!title)return showToast(text("Nhập tên game.","Enter a game title."),true);if(systemInput.value==="html5")return showToast(text("Game HTML5 ngoại tuyến chưa được hỗ trợ.","Offline HTML5 games are not supported yet."),true);try{const prior=(await all()).find(game=>game.name===file.name&&game.system===systemInput.value&&!game.fileHandle),id=prior?.id||createOfflineId(),stored=await writeRom(id,file,prior||{}),game={...(prior||{}),id,title,name:file.name,system:systemInput.value,size:file.size,addedAt:Date.now(),...stored};
+// writeRom returns {fileHandle} when it persisted the bytes to OPFS, and {file}
+// when OPFS is unavailable (any origin that is not a secure context — a LAN IP
+// over plain HTTP, which is exactly how the production page is opened). Dropping
+// `file` unconditionally left those records with neither handle nor payload, so
+// the player reported "Local game file is unavailable" on a page whose import had
+// just succeeded. Keep the inline File whenever no handle exists.
+if(game.fileHandle)delete game.file;await put(game);form.reset();status.textContent="";renderLibrary();navigator.storage?.persist?.().catch(()=>{});showToast(prior?text("Đã sửa ROM cũ trên máy này.","Repaired the existing device-only ROM."):text("Đã lưu trên máy này.","Saved on this device."));}catch(error){showToast(error.message || String(error),true);}});
     setupOfflineShortcut();setupCoreManager();renderLibrary();
     addEventListener("online",()=>updateReadiness());addEventListener("offline",()=>updateReadiness());
     addEventListener("load",()=>setTimeout(()=>updateReadiness(),600),{once:true});
