@@ -280,3 +280,45 @@ handle swapchain recreation. Until then, **the macOS Eden bridge is verified onl
 for load + a few frames**, and sustained Switch rendering via the bridge is
 `UNVERIFIED`.
 
+
+## Platform matrix decided, 2026-10-18
+
+Switch is a **library surface only on a host that ships an Eden companion**. The
+matrix below is the decision, with its evidence; a host without a companion row
+does not advertise Switch anywhere in the UI.
+
+| Host | Companion | Row | Evidence |
+| --- | --- | --- | --- |
+| macOS (arm64) | pinned resource `native-offline/vendor/switch/macos-arm64/` | **shipped** | packaged UI journey `tests/test_switch_ui_e2e.py` is `GOOD` for the recorded macOS build; load plus a few frames only — sustained rendering aborts upstream in the bridge (recorded above) |
+| Linux x86_64 | none | **not built** | packaged DEB sha256 `349d090e668673a8a2e14729c41594338f84c2f3cc47f4c4062fb1d82835356d`: `switch_companion_detect` returns `available:false` — "The Nintendo Switch companion is not installed in this build. Re-run the packaging step so `an3_switch_companion` is bundled." |
+| Windows x86_64 | none | **not built** | no companion artifact; the Windows package is built only on its dedicated builder |
+| Android (arm64) | none | **not built** | the schema keeps `platformAvailability.switch.android` empty (`tests/test_native_settings.py`) |
+
+Building a Linux/Windows/Android companion is not a bounded packaging step: Eden
+is a CMake/Qt6/Vulkan application with Boost, SDL2, fmt, enet, httplib and
+nlohmann/json in its dependency graph, and the licensing audit pins commit
+`7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c` and forbids integrating a moving
+branch. No such build was attempted here; each remains `VERIFIED_NATIVE` only
+when its own builder reports the packaged journey.
+
+### What this host now proves about the rule
+
+Measured on the packaged Linux build (`349d090e…`, one instance, driven through
+the test-only ui-control bridge):
+
+| Check | Observable |
+| --- | --- |
+| The Devices destination does not offer Switch | `switch-companion` is present in the tree and `visible:false` |
+| Nothing else advertises Switch | `AN3NativeIntegratedSystems` = `gba,nds,3ds`; `switch_companion_detect` = `{ok:true, available:false, …}` |
+| Game Settings does not offer a Switch tab | the tab row is built from the capability declaration, not the static schema list (`tests/test_native_settings.py::SwitchTabHonestyTests`) |
+| The Settings copy does not promise Switch | the card no longer says "GBA, NDS, 3DS and Switch each keep their own Emulation and Graphics settings" |
+
+Guarded: `tests/test_native_settings.py::SwitchTabHonestyTests` (3 tests) fails if
+the tab row returns to the unfiltered schema list, if the bootstrap advertises
+`switch` before detection, or if the Settings copy promises Switch
+unconditionally.
+
+Remaining per-host acceptance, unchanged by this record: packaged launch →
+render → input → save → reload → exit with a lawful homebrew fixture, no orphan
+process, recorded with source SHA and artifact hash. Every row without that
+evidence stays `UNVERIFIED`.

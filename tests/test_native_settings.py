@@ -245,3 +245,39 @@ class NativeSettingsBehaviorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SwitchTabHonestyTests(unittest.TestCase):
+    """A host without a Switch companion must not offer a Switch tab.
+
+    Switch is the Eden companion, not a libretro core, and only the host whose
+    packaging step bundled one can run it (`docs/features/switch-eden.md`). The
+    Game Settings panel built its tabs from the static schema list, which names
+    `switch` on every platform, so a Linux or Windows build with no companion
+    still showed a Switch tab. The tab set now follows the one capability
+    declaration, `window.AN3NativeIntegratedSystems`, which
+    `native-bootstrap.js` extends with "switch" only after the companion answers
+    its detect call. This is the RG-075 rule: one source, never a second
+    hardcoded system list.
+    """
+
+    def test_the_settings_tabs_follow_the_capability_declaration(self):
+        source = WEB_UI.read_text(encoding="utf-8")
+        self.assertIn("const offeredSystems = () =>", source)
+        self.assertIn("globalThis.AN3NativeIntegratedSystems", source)
+        self.assertIn("model.systems.filter(id => declared.includes(id))", source)
+        # The unfiltered loop must be gone, or a companion-less host shows Switch.
+        self.assertNotIn("for (const id of model.systems) {", source)
+
+    def test_bootstrap_only_advertises_switch_after_detection(self):
+        bootstrap = (NATIVE / "web" / "native-bootstrap.js").read_text(encoding="utf-8")
+        self.assertIn('if (info?.available) {', bootstrap)
+        self.assertIn('[...systems, "switch"]', bootstrap)
+        # The static list never contains switch.
+        self.assertIn('window.AN3NativeIntegratedSystems = /Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds"]',
+                      bootstrap)
+
+    def test_the_settings_copy_does_not_promise_switch_unconditionally(self):
+        index = INDEX.read_text(encoding="utf-8")
+        self.assertNotIn("GBA, NDS, 3DS and Switch each keep their own Emulation", index)
+        self.assertIn("Switch appears only when this build bundles the Eden companion.", index)

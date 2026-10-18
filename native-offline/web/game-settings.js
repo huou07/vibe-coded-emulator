@@ -152,9 +152,23 @@
       reload();
     };
 
+    // A system is offered only when this build actually declares it. Switch runs
+    // in the Eden companion, not a core, so a host whose packaging step did not
+    // bundle one must not show a Switch tab at all — `native-bootstrap.js` adds
+    // "switch" to this declaration only after the companion answers its detect
+    // call. Reading the declaration here is the RG-075 rule: one capability
+    // source, never a second hardcoded system list.
+    const offeredSystems = () => {
+      const declared = globalThis.AN3NativeIntegratedSystems;
+      if (!Array.isArray(declared) || !declared.length) return model.systems;
+      return model.systems.filter(id => declared.includes(id));
+    };
+
     const renderSystems = () => {
+      const offered = offeredSystems();
+      if (!offered.includes(system)) system = offered[0] ?? system;
       systemsRow.textContent = "";
-      for (const id of model.systems) {
+      for (const id of offered) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "native-system-tab";

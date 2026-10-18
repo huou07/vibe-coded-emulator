@@ -14,8 +14,8 @@ a GBA/NDS/3DS core change.
 | Discovery, launch, focus, stop, button and analog input, audio diagnostics, graceful stop | `GOOD` at source level | `switch_companion.rs`; `tests/test_switch_lifecycle.py`, `tests/test_switch_failure_paths.py` |
 | Packaged macOS UI journey | `GOOD` for the recorded macOS build | `tests/test_switch_ui_e2e.py` |
 | Game-level save round trip, captured audible output, physical gamepad | `UNVERIFIED` | The recorded service test explicitly does not claim a game save |
-| Companion on Linux, Windows, Android | not built | No companion artifact for those hosts; no host code path exercises one |
-| Switch library/UI surface in the app | partial | UI exists behind the companion path; user-facing completeness `UNVERIFIED` |
+| Companion on Linux, Windows, Android | not built | No companion artifact for those hosts; the packaged Linux DEB reports `available:false` with its reason. The platform matrix is decided in `docs/checkpoints/eden-native-integration.md` |
+| Switch library/UI surface in the app | `GOOD` for the honesty rule | on a companion-less host the Devices row stays hidden, the capability declaration omits `switch`, and Game Settings offers no Switch tab; a companion host still needs its packaged journey |
 | Web | out of scope | Owner decision 2026-10-18: the web product does not get Eden |
 
 No maintained libretro Switch core exists. The companion is the architecture: a
@@ -73,8 +73,9 @@ lists what the packaged run must cover.
 
 ## Open work
 
-1. Decide and record the platform matrix (macOS shipped; Linux/Windows/Android
-   builds required before any claim).
+1. Build a companion for each additional host before claiming it; the matrix is
+   recorded in `docs/checkpoints/eden-native-integration.md` and a
+   companion-less host is verified not to advertise Switch.
 2. Close the packaged acceptance rows: game save round trip, audible output,
    physical gamepad.
 3. Make the Switch entry visible-but-honest: no Switch tile when no companion
