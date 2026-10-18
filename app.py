@@ -1227,6 +1227,11 @@ def upgrade_password_hash(user_id, password):
 
 
 def bootstrap_admin():
+    # No accounts on the public product, so there is nothing to bootstrap — and
+    # its database has no `users.name` column to bootstrap into. This ran at
+    # startup and crash-looped production a second time.
+    if not ACCOUNTS_ENABLED:
+        return
     name = os.environ.get("AN3_ADMIN_NAME", "admin").strip()
     password = os.environ.get("AN3_ADMIN_PASSWORD", "")
     if not password:
