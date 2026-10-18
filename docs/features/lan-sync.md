@@ -15,6 +15,7 @@ or cloud sync (removed; not a product feature).
 | Web peer transport | `GOOD` at source level | `static/lan-peer.js`, `static/sync.js`, `static/sync-transfer.js`; `tests/sync_transfer.test.mjs`, `tests/lan_peer.test.mjs` |
 | Native peer transport | `GOOD` at source level | `native-offline/src-tauri/src/lan_peer.rs`, `lan_host.rs`, `sync_peer.rs`; `tests/native_sync.test.mjs`, `tests/test_native_sync_command.py` |
 | Two real peers transferring a save on one LAN with internet off | `BLOCKED` on this host | A two-packaged-instance attempt on 2026-10-18 is recorded in `docs/checkpoints/direct-lan-controller.md`: discovery is multicast-only, and this host does not deliver multicast to a same-host listener (raw-socket reproduction retained). Needs a second network stack |
+| Two independent peers on one host over the registry and blob path | `GOOD` | `work/phaseC/lan-sync-acceptance.py`, PASS 9/9 on 2026-10-19: peer A announces, peer B announces and both appear, peer B publishes a save, peer A finds it in the manifest and pulls bytes whose sha256 matches, and an invalid device id, an ineligible kind, a mismatched hash and an unknown blob are refused. Both peers share one IP, so subnet scoping is not exercised, and this does not replace the row below |
 | Gameplay impact of a transfer in flight | `UNVERIFIED` | No measurement |
 
 ## Code map

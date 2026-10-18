@@ -17,6 +17,7 @@ through the operating system (not this feature).
 | Desktop host in the native shell | `GOOD` at source level | `native-offline/src-tauri/src/controller_host.rs`; `tests/test_phone_controller_hosts.py` |
 | Android client and host bridge | `GOOD` at source level | `ControllerClient.kt`, `An3ControllerHost.kt`, `ControllerHostService.kt` |
 | Two real devices, internet off, live gameplay input | `BLOCKED` on this host | A two-packaged-instance attempt on 2026-10-18 is recorded in `docs/checkpoints/direct-lan-controller.md`: a fresh code and a valid join were reached, then discovery timed out because this host does not deliver multicast to a same-host listener. Needs a second network stack |
+| Host and phone as two peers on one host over pairing, state and ack | `GOOD` | `work/phaseC/two-peer-acceptance.py`, PASS 11/11 on 2026-10-19: the host creates a session, the phone page renders, the phone pairs with the code, the host observes the pairing, the phone's frame is applied, the host acknowledges it and observes `inputActive`, a stale sequence is not applied, and wrong host token, wrong phone token and unknown code are 403/403/404. `input_active()` needs `ack_sequence > 0` and the host acks through its own endpoint, not by reading state. This is the control plane between two peers on one host and does not replace the two-device row below |
 | Input release on focus loss / disconnect / explicit stop | `GOOD` at source level | Covered by native controller pad tests; device behaviour `UNVERIFIED` |
 
 ## Code map

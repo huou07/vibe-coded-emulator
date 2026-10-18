@@ -8,7 +8,13 @@ Eden/Switch. The browser never carries the Switch companion.
 
 ## Status
 
-**Playable on this host, in the canonical browser lane, with a lawful fixture.**
+**Playable on this host, in the canonical browser lane, with a lawful fixture, and
+playable on the public production surface over HTTPS.** The public check ran on
+`https://an3tocom.space/offline` on 2026-10-19 with the lawful devkitPro/3ds-hbmenu
+v2.4.3 `boot.3dsx`: the import succeeds and the player reaches ready with two canvases,
+no notice and no page errors, with `isSecureContext` true. The same page opened on a LAN
+IP over plain HTTP cannot run it, because the threaded core needs `SharedArrayBuffer`
+and a secure context; the 3DS card says so there instead of failing at launch.
 Measured 2026-10-18 on the Debian x86_64 host; the hosted browser job is the
 authority and does not carry a fixture, so its 3DS case skips with its reason.
 
