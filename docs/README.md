@@ -77,6 +77,7 @@ Trackers hold unfinished work. Finished work moves to `docs/archive/`.
 | Tracker | State |
 | --- | --- |
 | [`native-linux-journey.md`](checkpoints/native-linux-journey.md) | The only native tracker. Deterministic runtime `GOOD`; packaged shell, NDS/3DS and cross-platform legs `UNVERIFIED`; Exit Game `BROKEN` |
+| [`ui-ux-baseline.md`](checkpoints/ui-ux-baseline.md) | The only UI/UX tracker. Bounded friction backlog, one change per journey, and the `Devices` entry pattern |
 | [`direct-lan-controller.md`](checkpoints/direct-lan-controller.md) | Phone controller and LAN peer milestones; two-device acceptance not run |
 | [`eden-native-integration.md`](checkpoints/eden-native-integration.md) | Eden/Switch bridge phases; packaged acceptance outside macOS not run |
 | [`direct-https-migration.md`](checkpoints/direct-https-migration.md) | `READY_FOR_OWNER_ACTION`; every remaining step is root/owner action |

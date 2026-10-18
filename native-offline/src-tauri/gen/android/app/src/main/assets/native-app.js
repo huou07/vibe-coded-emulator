@@ -5,7 +5,7 @@
 // "Open ROM" action to the import controls that static/offline.js already
 // owns. It never touches the player rendering pipeline.
 (() => {
-  const SECTION_TITLES = {play: "Play", library: "Library", settings: "Settings", help: "Help", about: "About"};
+  const SECTION_TITLES = {play: "Play", library: "Library", devices: "Devices", settings: "Settings", help: "Help", about: "About"};
 
   const start = () => {
     const app = document.getElementById("nativeApp");
@@ -430,6 +430,56 @@
         }
       });
       refresh();
+    }
+
+    // The About screen reports the version this build carries, so a stale
+    // literal cannot describe a newer package.
+    const versionNode = document.getElementById("nativeAppVersion");
+    if (versionNode && typeof window.AN3NativeAppVersion === "function") {
+      window.AN3NativeAppVersion().then(version => {
+        versionNode.textContent = version || "Unavailable in this build";
+      }).catch(() => { versionNode.textContent = "Unavailable in this build"; });
+    }
+
+    // Switch is a companion process, not a core, and it exists only on a host
+    // whose packaging step bundled one. A host without it must not advertise
+    // the destination at all, so the row stays hidden until detection says the
+    // companion is really there.
+    const switchCard = document.getElementById("nativeSwitchCard");
+    if (switchCard && window.AN3NativeSwitch) {
+      const switchStatus = document.getElementById("nativeSwitchStatus");
+      const switchMessage = document.getElementById("nativeSwitchMessage");
+      const switchStart = document.getElementById("nativeSwitchStart");
+      const switchStop = document.getElementById("nativeSwitchStop");
+      const say = message => { if (switchMessage) switchMessage.textContent = message || ""; };
+      const renderSwitch = () => window.AN3NativeSwitch.status().then(state => {
+        if (!state) return state;
+        if (switchStatus) {
+          switchStatus.textContent = state.running ? "Running" : (state.paused ? "Paused" : "Ready");
+        }
+        if (switchStart) switchStart.disabled = state.running === true;
+        if (switchStop) switchStop.hidden = state.running !== true;
+        say(state.error || state.detail || "");
+        return state;
+      }).catch(error => { say(error?.message || String(error)); return null; });
+      switchStart?.addEventListener("click", () => renderSwitch());
+      switchStop?.addEventListener("click", () => window.AN3NativeSwitch.stop().then(renderSwitch).catch(error => say(error?.message || String(error))));
+      // Detection is asynchronous and retried by native-bootstrap.js; reveal the
+      // row only for the answer that says the companion is actually present.
+      let switchAttempts = 0;
+      const revealSwitch = () => {
+        const detect = window.AN3SwitchDetect;
+        if (detect?.available === true) {
+          switchCard.hidden = false;
+          if (switchStatus) switchStatus.textContent = "Ready";
+          renderSwitch();
+          return;
+        }
+        if (detect?.ok === true || switchAttempts >= 60) return;
+        switchAttempts += 1;
+        setTimeout(revealSwitch, 250);
+      };
+      revealSwitch();
     }
 
     const syncCard = document.getElementById("nativeAccountSyncCard");

@@ -23,6 +23,7 @@
         <nav class="native-nav" aria-label="Main">
           <button type="button" class="native-nav-item active" data-nav="play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
           <button type="button" class="native-nav-item" data-nav="library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
+          <button type="button" class="native-nav-item" data-nav="devices" data-testid="nav-devices"><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
           <button type="button" class="native-nav-item" data-nav="settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
           <button type="button" class="native-nav-item" data-nav="help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
           <button type="button" class="native-nav-item" data-nav="about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>
@@ -75,32 +76,26 @@
             <div id="offlineGameGrid" data-testid="game-grid" class="native-grid" aria-live="polite"></div>
           </section>
 
-          <section class="native-panel" data-panel="settings" hidden>
-            <div class="native-card">
-              <h2>Storage &amp; runtime</h2>
+          <section class="native-panel" data-panel="devices" hidden>
+            <div class="native-card native-devices-intro">
+              <h2>Connect a device</h2>
+              <p class="native-muted">Every feature that talks to another device on your network lives here, with one action each. Nothing is relayed through the AN3 server, and a feature is only offered on a host that can actually complete it.</p>
+            </div>
+            <div class="native-card" id="nativeSwitchCard" data-testid="switch-companion" hidden>
+              <h2>Nintendo Switch</h2>
+              <p class="native-muted">Switch games run in the Eden companion, a separate program this app launches. It is never a built-in core, and the app never bundles firmware, keys or games.</p>
               <div class="native-facts">
-                <div class="native-fact"><span>Local games</span><strong id="offlineGameCount">0</strong></div>
-                <div class="native-fact"><span>Cores</span><strong id="offlineCoreState">Bundled</strong></div>
-                <div class="native-fact"><span>Interface</span><strong id="offlineShellState">Bundled with the app</strong></div>
-                <div class="native-fact"><span>Secure context</span><strong id="offlineSecureState">Checking</strong></div>
-                <div class="native-fact"><span>Network</span><strong id="offlineNetworkState">Checking</strong></div>
+                <div class="native-fact"><span>Companion</span><strong id="nativeSwitchStatus" role="status">Checking</strong></div>
               </div>
-            </div>
-            <div class="native-card" id="nativeApplicationSettingsCard" data-testid="application-settings">
-              <h2>Application settings</h2>
-              <p class="native-muted">Shared by every system on this device. Core-specific settings live under Game Settings.</p>
-              <div id="nativeApplicationSettingsBody" class="native-settings-body"></div>
-            </div>
-            <div class="native-card" id="nativeGameSettingsCard" data-testid="game-settings">
-              <h2>Game Settings</h2>
-              <p class="native-muted">GBA, NDS, 3DS and Switch each keep their own Emulation and Graphics settings. Changing one system never changes another. Renderer changes apply on the next launch.</p>
-              <div id="nativeGameSettingsSystems" class="native-system-tabs" role="tablist" aria-label="Game system"></div>
-              <div id="nativeGameSettingsBody" class="native-settings-body"></div>
-              <p id="nativeGameSettingsStatus" class="native-status" role="status"></p>
+              <div class="native-settings-actions">
+                <button id="nativeSwitchStart" class="button primary" type="button" disabled>Launch Eden</button>
+                <button id="nativeSwitchStop" class="button" type="button" hidden>Stop Eden</button>
+              </div>
+              <p id="nativeSwitchMessage" class="native-status" role="status"></p>
             </div>
             <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync">
-              <h2>Account &amp; LAN Sync</h2>
-              <p class="native-muted">Sign in with your AN3 account, or play as a guest. Save data moves directly between remembered AN3 devices on the same LAN; it is not relayed through the AN3 server.</p>
+              <h2>LAN Sync</h2>
+              <p class="native-muted">Move a save directly to another of your AN3 devices on this network. It is not relayed through the AN3 server, and a guest identity cannot prove the other device is yours, so signing in is required before a transfer is allowed.</p>
               <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
                 <label><input id="nativeSyncGuestMode" type="radio" name="nativeSyncMode" value="guest"> Play as guest</label>
                 <label><input id="nativeSyncAccountMode" type="radio" name="nativeSyncMode" value="account"> Sign in</label>
@@ -127,41 +122,9 @@
               <p class="native-sync-hint">Foreground reconnection is supported. The optional background setting is off by default and does not promise OS-level background networking.</p>
               <p id="nativeSyncMessage" class="native-status" role="status"></p>
             </div>
-            <div class="native-card" id="nativeMultiplayerCard" data-testid="lan-multiplayer">
-              <h2>LAN Multiplayer</h2>
-              <p class="native-muted">Uses the selected emulator core’s own LAN protocol. No AN3 server, lobby or relay is involved. The current embedded melonDS DS core is the only integrated LAN multiplayer core.</p>
-              <div class="native-facts">
-                <div class="native-fact"><span>Core support</span><strong id="nativeMultiplayerSupport" role="status">Checking</strong></div>
-                <div class="native-fact"><span>Session</span><strong id="nativeMultiplayerStatus" role="status">Off</strong></div>
-              </div>
-              <div class="native-settings-actions">
-                <button id="nativeMultiplayerHost" class="button primary" type="button">Host Game</button>
-                <button id="nativeMultiplayerStop" class="button" type="button">Leave</button>
-              </div>
-              <label class="native-field"><span>Host LAN address (private IPv4)</span><input id="nativeMultiplayerAddress" inputmode="url" autocomplete="off" placeholder="192.168.x.x"></label>
-              <label class="native-field"><span>Port</span><input id="nativeMultiplayerPort" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" value="47834"></label>
-              <button id="nativeMultiplayerJoin" class="button" type="button">Join Game</button>
-              <p id="nativeMultiplayerMessage" class="native-status" role="status"></p>
-              <p class="native-sync-hint">Start or join, then launch the same NDS game on both devices. mGBA has no upstream network link-cable API in this build; Azahar and Eden do not expose a local room API through AN3’s current embedded bridges.</p>
-            </div>
-            <div class="native-card" id="nativeLicensesCard">
-              <h2>Licenses &amp; open source</h2>
-              <p class="native-muted">Vibe Coded Emulator is free software under the <strong>GNU General Public License v3.0-or-later</strong>. Commercial use, modification and redistribution are permitted; redistributors must keep the notices and provide the corresponding source. Forks do not have to keep this name, logo or UI.</p>
-              <p class="native-muted">Copyright (C) 2026 Vibe Coded Emulator contributors. Full text: <code>LICENSE</code> (GPL-3.0). Third-party notices: <code>THIRD_PARTY_NOTICES.md</code> and <code>native-core-licenses/</code>, bundled with this app.</p>
-              <ul class="native-facts">
-                <li class="native-fact"><span>Azahar libretro</span><strong>GPL-2.0-or-later</strong></li>
-                <li class="native-fact"><span>melonDS DS libretro</span><strong>GPL-3.0-or-later</strong></li>
-                <li class="native-fact"><span>mGBA libretro</span><strong>MPL-2.0</strong></li>
-                <li class="native-fact"><span>EmulatorJS</span><strong>GPL-3.0</strong></li>
-                <li class="native-fact"><span>MoltenVK</span><strong>Apache-2.0</strong></li>
-                <li class="native-fact"><span>Tauri / Rust crates</span><strong>Apache-2.0 / MIT</strong></li>
-                <li class="native-fact"><span>Lucide icons</span><strong>ISC</strong></li>
-                <li class="native-fact"><span>Pixelify Sans, Roboto Condensed</span><strong>SIL OFL 1.1</strong></li>
-              </ul>
-            </div>
-            <div class="native-card" id="nativeControllerCard" hidden>
+            <div class="native-card" id="nativeControllerCard" data-testid="phone-controller" hidden>
               <h2>Phone Controller</h2>
-              <p class="native-muted">Use a phone on the same network as a controller for the running game. The phone never receives the game or its saves.</p>
+              <p class="native-muted">Use a second device on the same network as a controller for the running game. The phone never receives the game or its saves, and nothing is relayed through the AN3 server.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>Status</span><strong id="nativeControllerStatus" role="status">Off</strong></div>
                 <div class="native-fact"><span>Pairing code</span><strong id="nativeControllerCode">—</strong></div>
@@ -219,7 +182,64 @@
                   <button type="button" class="ctrl-key ctrl-util" data-native-controller-util="open_menu">Menu</button>
                 </div>
               </section>
-              <p class="native-muted">Start makes this device the game host. Enter a six-digit code when this device is joining another AN3 host.</p>
+              <p class="native-muted">Start makes this device the game host and shows a six-digit code. On the phone, open Vibe Coded Emulator, choose Devices, open Phone Controller and enter that code with Join Host. Use the field above only when this device is the one joining another host.</p>
+            </div>
+            <div class="native-card" id="nativeMultiplayerCard" data-testid="lan-multiplayer">
+              <h2>LAN Multiplayer</h2>
+              <p class="native-muted">Uses the selected emulator core’s own LAN protocol. No AN3 server, lobby or relay is involved. The current embedded melonDS DS core is the only integrated LAN multiplayer core.</p>
+              <div class="native-facts">
+                <div class="native-fact"><span>Core support</span><strong id="nativeMultiplayerSupport" role="status">Checking</strong></div>
+                <div class="native-fact"><span>Session</span><strong id="nativeMultiplayerStatus" role="status">Off</strong></div>
+              </div>
+              <div class="native-settings-actions">
+                <button id="nativeMultiplayerHost" class="button primary" type="button">Host Game</button>
+                <button id="nativeMultiplayerStop" class="button" type="button">Leave</button>
+              </div>
+              <label class="native-field"><span>Host LAN address (private IPv4)</span><input id="nativeMultiplayerAddress" inputmode="url" autocomplete="off" placeholder="192.168.x.x"></label>
+              <label class="native-field"><span>Port</span><input id="nativeMultiplayerPort" inputmode="numeric" pattern="[0-9]{1,5}" maxlength="5" value="47834"></label>
+              <button id="nativeMultiplayerJoin" class="button" type="button">Join Game</button>
+              <p id="nativeMultiplayerMessage" class="native-status" role="status"></p>
+              <p class="native-sync-hint">Start or join, then launch the same NDS game on both devices. mGBA has no upstream network link-cable API in this build; Azahar and Eden do not expose a local room API through AN3’s current embedded bridges.</p>
+            </div>
+          </section>
+
+          <section class="native-panel" data-panel="settings" hidden>
+            <div class="native-card" data-testid="settings-storage">
+              <h2>Storage &amp; runtime</h2>
+              <div class="native-facts">
+                <div class="native-fact"><span>Local games</span><strong id="offlineGameCount">0</strong></div>
+                <div class="native-fact"><span>Cores</span><strong id="offlineCoreState">Bundled</strong></div>
+                <div class="native-fact"><span>Interface</span><strong id="offlineShellState">Bundled with the app</strong></div>
+                <div class="native-fact"><span>Secure context</span><strong id="offlineSecureState">Checking</strong></div>
+                <div class="native-fact"><span>Network</span><strong id="offlineNetworkState">Checking</strong></div>
+              </div>
+            </div>
+            <div class="native-card" id="nativeApplicationSettingsCard" data-testid="application-settings">
+              <h2>Application settings</h2>
+              <p class="native-muted">Shared by every system on this device. Core-specific settings live under Game Settings.</p>
+              <div id="nativeApplicationSettingsBody" class="native-settings-body"></div>
+            </div>
+            <div class="native-card" id="nativeGameSettingsCard" data-testid="game-settings">
+              <h2>Game Settings</h2>
+              <p class="native-muted">GBA, NDS, 3DS and Switch each keep their own Emulation and Graphics settings. Changing one system never changes another. Renderer changes apply on the next launch.</p>
+              <div id="nativeGameSettingsSystems" class="native-system-tabs" role="tablist" aria-label="Game system"></div>
+              <div id="nativeGameSettingsBody" class="native-settings-body"></div>
+              <p id="nativeGameSettingsStatus" class="native-status" role="status"></p>
+            </div>
+            <div class="native-card" id="nativeLicensesCard" data-testid="licenses">
+              <h2>Licenses &amp; open source</h2>
+              <p class="native-muted">Vibe Coded Emulator is free software under the <strong>GNU General Public License v3.0-or-later</strong>. Commercial use, modification and redistribution are permitted; redistributors must keep the notices and provide the corresponding source. Forks do not have to keep this name, logo or UI.</p>
+              <p class="native-muted">Copyright (C) 2026 Vibe Coded Emulator contributors. Full text: <code>LICENSE</code> (GPL-3.0). Third-party notices: <code>THIRD_PARTY_NOTICES.md</code> and <code>native-core-licenses/</code>, bundled with this app.</p>
+              <ul class="native-facts">
+                <li class="native-fact"><span>Azahar libretro</span><strong>GPL-2.0-or-later</strong></li>
+                <li class="native-fact"><span>melonDS DS libretro</span><strong>GPL-3.0-or-later</strong></li>
+                <li class="native-fact"><span>mGBA libretro</span><strong>MPL-2.0</strong></li>
+                <li class="native-fact"><span>EmulatorJS</span><strong>GPL-3.0</strong></li>
+                <li class="native-fact"><span>MoltenVK</span><strong>Apache-2.0</strong></li>
+                <li class="native-fact"><span>Tauri / Rust crates</span><strong>Apache-2.0 / MIT</strong></li>
+                <li class="native-fact"><span>Lucide icons</span><strong>ISC</strong></li>
+                <li class="native-fact"><span>Pixelify Sans, Roboto Condensed</span><strong>SIL OFL 1.1</strong></li>
+              </ul>
             </div>
           </section>
 
@@ -233,6 +253,16 @@
               </ol>
               <p class="native-note"><span class="ui-mask ui-ref-shield-check" aria-hidden="true"></span>ROMs and saves stay on this device.</p>
             </div>
+            <div class="native-card">
+              <h2>Use another device</h2>
+              <ol class="native-steps">
+                <li><strong>Open Devices</strong><span>Every feature that talks to another device on this network lives on one screen.</span></li>
+                <li><strong>LAN Sync</strong><span>Send a save to another of your AN3 devices. Sign in first: a guest cannot prove the other device is yours, and a name clash always asks you which copy to keep.</span></li>
+                <li><strong>Phone Controller</strong><span>Start hosting here, then type the six-digit code on the phone. Input is released the moment the pad loses focus or the connection drops.</span></li>
+                <li><strong>Nintendo Switch</strong><span>Shown only when this build bundles the Eden companion; games then open in that separate program.</span></li>
+              </ol>
+              <p class="native-note"><span class="ui-mask ui-ref-shield-check" aria-hidden="true"></span>Device-to-device traffic stays on this network. The AN3 server is never a relay.</p>
+            </div>
           </section>
 
           <section class="native-panel" data-panel="about" hidden>
@@ -241,7 +271,7 @@
               <p class="native-muted">Offline emulator for your own local ROM files. No account, no cloud, no web catalog.</p>
               <div class="native-facts">
                 <div class="native-fact"><span>App</span><strong>VibeCodedEmulator</strong></div>
-                <div class="native-fact"><span>Version</span><strong>3.2.0</strong></div>
+                <div class="native-fact"><span>Version</span><strong id="nativeAppVersion" data-testid="native-app-version">Checking</strong></div>
                 <div class="native-fact"><span>Cores</span><strong>mGBA · melonDS DS · Azahar</strong></div>
               </div>
             </div>
@@ -253,6 +283,7 @@
     <nav class="native-bottomnav" aria-label="Main">
       <button type="button" class="active" data-nav="play" data-testid="nav-play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
       <button type="button" data-nav="library" data-testid="nav-library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
+      <button type="button" data-nav="devices" data-testid="nav-devices-bottom"><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
       <button type="button" data-nav="settings" data-testid="nav-settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
       <button type="button" data-nav="help" data-testid="nav-help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
       <button type="button" data-nav="about" data-testid="nav-about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>

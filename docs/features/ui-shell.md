@@ -14,10 +14,10 @@ Skip when: the change is emulation, transport or storage with no visible effect.
 | Dense desktop controls (table row actions, admin range selector, small nav toggle) | 28 px floor, not machine-checked | They live on surfaces the 360 px lane never loads; the floor is documented, the real heights are not measured |
 | 360 px no-overflow contract | `GOOD` | Browser lane |
 | Rendered-tree names and landmarks | `GOOD` | `tests/test_rendered_ui_accessibility.py` |
-| Web header destinations | `GOOD` | one destination per purpose on every probed route; the mislabelled `Offline`/`Open app downloads` duplicate chip is gone and `/offline` recovers to the library instead of to itself (`work/phaseA/probe-web.mjs`, recorded in the commit) |
-| Linux native UI clarity | owner-reported problem | Owner report 2026-10-18: "giao diện còn khá rối" — a requirement, not a verification |
+| Web header destinations | `GOOD` | one destination per purpose; the mislabelled `Offline`/`Open app downloads` duplicate chip is gone (`docs/checkpoints/ui-ux-baseline.md`, change A1) |
+| Linux native UI clarity | in progress | owner report 2026-10-18: "giao diện còn khá rối" — a requirement, not a verification. The device-to-device features left the Settings stack for their own `Devices` destination (change A2); the reviewed before/after captures are the remaining step |
 | Android and macOS UI | owner-accepted as a baseline | Owner report 2026-10-18; no formal review recorded |
-| Entry points for Switch, LAN Sync and Phone Controller in the native UI | incomplete | The features exist at source level; discoverability is not established |
+| Entry points for Switch, LAN Sync and Phone Controller in the native UI | `GOOD` at source level | one `Devices` destination with one card and one primary action per feature; the Switch card stays hidden until a companion reports `available: true` (`docs/checkpoints/ui-ux-baseline.md`, "The entry pattern") |
 
 ## Code map
 
@@ -67,11 +67,17 @@ bash tools/verify-project.sh
 
 ## Open work
 
-1. A structured UX review of the Linux native UI, with a bounded backlog and one
-   journey per change.
-2. Entry points for the three new features, designed once and reused across
-   surfaces, so the shell does not grow three competing panels.
-3. A second browser-lane pass over the admin and library update-notice surfaces so
+1. Review the before/after captures of the 2026-10-18 pass by eye and record the
+   verdict; the tracker holds the backlog, the one change per journey and the
+   measurements — [`checkpoints/ui-ux-baseline.md`](../checkpoints/ui-ux-baseline.md).
+2. Split the remaining Settings stack (device facts, application settings,
+   per-system settings, licenses) if the reviewed captures still read as
+   cluttered, and generate the bundled-asset `?v=` cache-buster from the package
+   version instead of a literal.
+3. Entry points for the three features are designed once and reused across
+   surfaces (the `Devices` destination); the Switch row must stay hidden on a
+   host without a companion.
+4. A second browser-lane pass over the admin and library update-notice surfaces so
    the dense desktop controls are measured rather than merely documented
    (`docs/QUALITY.md` gap 2).
 

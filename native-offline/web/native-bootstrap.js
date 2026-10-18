@@ -30,6 +30,24 @@ window.AN3NativeIntegratedThreeDs = !an3MobileNativeShell;
 // Keep this empty so player.js uses the packaged relative `/emulatorjs/...`
 // path, whether the renderer is desktop loopback or Tauri's mobile HTTPS URL.
 window.AN3OfflineEmulatorOrigin = "";
+// The About screen reports the version the running build actually carries,
+// instead of a hand-maintained literal that drifts at every bump. Resolves to
+// null when the injected bridge cannot answer, and the UI then says so.
+window.AN3NativeAppVersion = async () => {
+  const invoke = window.AN3NativeInvoke?.();
+  const tauri = window.__TAURI__;
+  try {
+    const version = await tauri?.app?.getVersion?.();
+    if (typeof version === "string" && version) return version;
+  } catch (_) {}
+  if (typeof invoke === "function") {
+    try {
+      const version = await invoke("plugin:app|version");
+      if (typeof version === "string" && version) return version;
+    } catch (_) {}
+  }
+  return null;
+};
 
 (() => {
   const desktopSystems = new Set(["gba", "nds", "3ds"]);
