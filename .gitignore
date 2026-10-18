@@ -59,6 +59,9 @@ native-offline/src-tauri/gen/android/local.properties
 # tests/test_offline_consolidation.py, against capabilities/ and build.rs.
 native-offline/src-tauri/gen/schemas/
 .codegraph/
+# CodeGraph's current index location. It is derived tooling state, exactly like
+# `.codegraph/` above, so a re-index must not dirty the tree.
+.cg/
 
 # Release installer binaries (published via the catalog, not source commits)
 native-offline/releases/*.apk
