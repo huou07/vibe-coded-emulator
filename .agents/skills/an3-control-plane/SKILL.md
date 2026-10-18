@@ -26,7 +26,8 @@ evidence, not authorization; no production deploy, publication or privileged
 change happens without an authorization current for that task. Bounded Web/Linux
 checks are authorized under AGENTS.md resource limits; no VM or heavy release
 build. The owner instruction dated 2026-10-18 authorizes ONE Android AVD dedicated
-to VCE on this Debian host (for example `vce-api35`), never OR's AVD, one
+to VCE on this Debian host (for example `vce-api36` from the installed image),
+never the other project's `an3-api36`, one
 resource-intensive job at a time, sharing the native lock; record the AVD name/API
 image/artifact hash and clean up. Missing targets are BLOCKED/UNVERIFIED, never a
 simulated native pass.
@@ -53,7 +54,8 @@ an3ctl targets --json                       # availability + reasons per target
 - `web` — the Python server. `app start --target web` boots it and records state.
 - `android` — adb + WebView CDP for exposed Web content. Use Android-native
   accessibility/instrumentation for native controls; use only the VCE-dedicated
-  AVD (`vce-api35`), never OR's, serialized by the shared lock and cleaned up.
+  AVD (`vce-api36`), never the other project's `an3-api36`, serialized by the
+  shared lock and cleaned up.
 - `emulator` — the native player's deterministic test mode.
 - `switch` — the Eden companion. `an3ctl targets --json` reports it with the
   missing-harness reason, so an absent companion is recorded, never silently

@@ -14,8 +14,9 @@ proves the app works. Never report one as the other.
 - Read `docs/features/android.md`, `docs/android-regression.md` and the mirror
   guard (RG-156).
 - The owner authorized **one Android AVD dedicated to VCE** on this Debian host
-  (2026-10-18), for example `vce-api35`. Never attach to, reconfigure, snapshot or
-  stop the AVD that OR is using.
+  (2026-10-18), for example `vce-api36` from the installed `android-36` image.
+  Never attach to, reconfigure, snapshot or stop the other project's `an3-api36`
+  AVD.
 - One resource-intensive job at a time: check RAM and disk first, share the
   native lock, bound the timeout, clean up the whole process group afterwards.
 - The Android assets under `native-offline/src-tauri/gen/android/app/src/main/assets/`

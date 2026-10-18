@@ -42,10 +42,18 @@ that changes Android content too, through the mirror.
 
 ## Testing on this host (owner authorization, 2026-10-18)
 
-The owner permits an Android AVD on this Debian host **dedicated to VCE**. Rules:
+The owner permits an Android AVD on this Debian host **dedicated to VCE**. The
+host is provisioned for it (inspected 2026-10-18): Android SDK with `sdkmanager`,
+`avdmanager`, `emulator` and `adb`; JDK 17; NDK 26.3/27.2/28.2; `/dev/kvm`
+present; one system image installed, `android-36` `google_apis` `x86_64`. One AVD
+already exists — `an3-api36` — and it belongs to the other project.
 
-- Create and use a VCE-specific AVD (for example `vce-api35`). Do not attach to,
-  reconfigure, snapshot or stop the AVD that OR is using.
+Rules:
+
+- Create and use a VCE-specific AVD from the installed image (for example
+  `vce-api36`). Never attach to, reconfigure, snapshot or stop `an3-api36`; if a
+  different API level is genuinely required, install that image deliberately and
+  record why.
 - One resource-intensive job at a time; check RAM and disk before starting;
   serialize with the shared native lock; bounded timeout and full cleanup.
 - Record AVD name, API level, image, the installed artifact hash, and the exact

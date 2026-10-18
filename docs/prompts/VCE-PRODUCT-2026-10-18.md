@@ -45,7 +45,7 @@ local play, or a claim that CI does not support.
 | --- | --- | --- |
 | Web | This host (browser lane) + hosted CI | Lane run on the exact SHA |
 | Linux native | This host, one bounded build at a time | Packaged journey, recorded in the native tracker |
-| Android | Hosted arm64 build lane + VCE AVD `vce-api35` on this host | AVD install-and-play run; build lane is not acceptance |
+| Android | Hosted arm64 build lane + VCE AVD `vce-api36` on this host | AVD install-and-play run; build lane is not acceptance |
 | macOS / Windows | GitHub CI and dedicated builders only | The builder's run; never a claim from Linux |
 
 ## Order of work
@@ -126,7 +126,7 @@ companion — not a libretro core and never a Web feature.
 Goal: the Android app is proven on a device-class target, not only compiled.
 
 - Read `docs/features/android.md`; load `vce-android-device`.
-- Create one AVD dedicated to VCE (`vce-api35`); never attach to or disturb OR's.
+- Create one AVD dedicated to VCE (`vce-api36`); never attach to or disturb OR's.
   One heavy job at a time, memory/disk checked, bounded timeout, cleanup.
 - Acceptance: install the recorded artifact, run the library → import → play →
   touch → save/load → exit journey, record AVD name/API/image and artifact hash.

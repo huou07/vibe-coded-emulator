@@ -87,9 +87,10 @@ cleanup, and the shared native lock where one applies.
   acceptance.
 - **Web:** run `app.py` on loopback and the canonical browser lane; follow
   `docs/UI_TESTING.md` for evidence classes.
-- **Android:** use a **VCE-dedicated AVD** (for example `vce-api35`). Never attach
-  to, reconfigure or stop the AVD that OR is using. An emulator run is
-  device-class evidence, not packaging acceptance.
+- **Android:** use a **VCE-dedicated AVD** (for example `vce-api36`, built from the
+  installed `android-36` system image). Never attach to, reconfigure or stop the
+  other project's `an3-api36` AVD. An emulator run is device-class evidence, not
+  packaging acceptance.
 - **macOS / Windows:** build and test through GitHub-hosted CI and their dedicated
   builders. Never claim their acceptance from this host.
 
