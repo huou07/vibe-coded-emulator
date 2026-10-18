@@ -253,22 +253,46 @@ iGPU host.
 | Main-thread long tasks | 0 observed, 0ms total | GOOD, same scope |
 | JS heap while playing | 18MB used of a 4192MB limit | GOOD, same scope |
 | No-GPU vs GPU launch flags | **both** report `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)` | GPU path **UNVERIFIED** |
-| Emulated machine advances while displayed | yes: three captures 1s apart differ | GOOD |
+| Emulated machine advances while displayed | yes, and at the game's own pixel: three captures 1s apart differ | GOOD |
 | Emulated frame rate | **not established** (see below) | UNVERIFIED |
 | Native (Linux/macOS/Windows), Android, Switch, physical phones | not measured on this host | UNVERIFIED |
 
 Two limits matter more than the numbers.
 
-**The GPU never engaged.** Chromium accepted `--use-gl=angle --use-angle=gl
---ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy` and still
-reported SwiftShader, so the 60fps above is a software-rasterized compositor on a
-machine that has an Intel iGPU and an accessible `/dev/dri/renderD128` (the
-worker is in the `render` group and opens the node). Software pacing is a source
-regression check, not gameplay acceptance, and it says nothing about the iGPU
-path a real user gets.
+**The GPU now engages, and the earlier claim is corrected.** I had recorded that
+the iGPU never engaged, because `--use-gl=angle --use-angle=gl
+--ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy` still
+reported SwiftShader. That was the wrong flag set, not a platform limit:
+`--use-angle=vulkan --enable-features=Vulkan --ignore-gpu-blocklist` gets
+`ANGLE (Intel, Vulkan 1.4.305 (Intel(R) UHD Graphics 770 (ADL-S GT1)), Intel
+open-source Mesa driver)`, while `--use-gl=egl` and the default both stay on
+SwiftShader. `work/phaseG/gpu-probe.mjs` tests four flag sets and prints the
+renderer each one actually gets, so this is reproducible rather than remembered.
 
-**The emulated rate was not established, and no cause is claimed.** Two attempts
-failed for method reasons, not product reasons. Rasterizing the whole canvas at
+Re-measured on the real GPU against the same workload, both lanes 20s:
+
+| Lane | Renderer | fps | p50 / p90 / p99 / max | late >25ms | dropped >33ms | long tasks | heap |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| default | SwiftShader | 60.07 | 16.67 / 16.67 / 16.67 / 16.67 | 0 | 0 | 0 | 13MB |
+| `--use-angle=vulkan` | **Intel UHD Graphics 770** | 60.04 | 16.67 / 16.67 / 16.67 / 16.67 | 0 | 0 | 0 | 16MB |
+
+Both hold perfect 60Hz compositor pacing on this GBA workload, so the GPU shows no
+advantage *in this measurement* — which is itself the finding: presentation is not
+the bottleneck at this scale, and the next question is the emulated rate, below.
+
+**The emulated machine advances, proven at the pixel; its rate is still not
+established.** The fixture writes its counter to pixel 0 of a mode-3 frame buffer,
+and the GBA image is letterboxed inside the canvas, so sampling canvas (0,0) read
+black border. Sampling the game image's own pixel — x = (canvasWidth - 240/160 *
+canvasHeight) / 2 + 1 — reads a different value in each of three captures taken one
+second apart (`239,186,230`, `82,243,8`, `197,146,181`, canvas 1280x606), while the
+centre stays black because this fixture paints only that one pixel. So the machine
+executes and its output is presented, which was previously UNVERIFIED. The *rate*
+still is not established: `EJS_emulator` exposes no fps or frame counter in this
+build, and the fixture's counter changes too fast to infer a rate from one-second
+samples.
+
+Two earlier attempts failed for method reasons, not product reasons. Rasterizing the whole canvas at
 40x30 and hashing every seventh byte reported 0.7 changes per second — but the
 fixture advances its counter by writing the low halfword of a register to a
 single pixel, so downscaling averages the only changing pixel away; that number
