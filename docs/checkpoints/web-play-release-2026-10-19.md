@@ -490,6 +490,34 @@ So the core-only line predates the current publication tooling. Refreshing it is
 the prerequisite for any GitHub source publication and is not started; the branch
 above carries only the licence fix.
 
+## The app-line reconciliation: what merging would and would not do
+
+The objective asks for the apps branches to be merged where appropriate. The
+measurement says a blanket merge is **not** appropriate, and names the part that is.
+
+The app line is four parallel branches, none containing the others:
+
+| Branch | Unique commits | Relationship to the 3.6.10 tip |
+| --- | --- | --- |
+| `codex/vce-desktop-parity` | 333 | not an ancestor; 292 files differ |
+| `codex/vce-3.6.8-flatpak-version-fix` | 398 | not an ancestor; 353 files differ |
+| `product/3.3.3-release` | 234 | not an ancestor |
+| `codex/vce-optional-features-beta` | 52 | ancestor of the 3.6.10 tip |
+
+The 3.6.10 tip is ahead on product work — it carries `cancel_native_rom_import` and
+`linux_distribution_shell_smoke.py`, which the others lack — while the others carry
+`deploy/` scripts and the publication tooling the tip lacks. Merging them into the
+tip would revert 292 to 353 files of product work to recover a handful of scripts.
+
+So the appropriate action is the port, not the merge, and the port is done on branch
+`public/3.6.10-source-candidate` at `a954b44`: `tools/build-public-snapshot.sh`,
+`tools/publication-check.sh` and `tools/publish-github.sh` are all present there
+now, and the candidate runs its own gates on its own tree —
+`PUBLICATION_CHECK=PASS` with gitleaks at 0 findings and `PUBLICATION_SOURCE=PASS`
+as the core-only public product. Before that, the flow had to be driven from the
+development line against that tree, which is not a property a publication candidate
+should have.
+
 ## Why 3.6.6 and not 3.6.10: that line has never been green
 
 The app line's tip is 3.6.10, and publishing it would be the better release. It
