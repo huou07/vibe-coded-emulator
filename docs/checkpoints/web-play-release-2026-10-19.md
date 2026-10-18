@@ -199,7 +199,35 @@ reading both sides, and rebuild the mirror with `prepare-web.mjs` rather than by
 hand. Then a Linux build and the native guards before it can be called a release
 candidate. That is a bounded task and it is not started.
 
-## The GitHub publication is gated and ready, and has not been run
+## The GitHub publication ran, 2026-10-19 03:16 +07
+
+`tools/publish-github.sh --confirm --adopt-remote --prebuilt --snapshot <candidate>`
+published the core-only source snapshot to `huou07/vibe-coded-emulator`.
+
+| Field | Value |
+| --- | --- |
+| Candidate | built from `core-only/3.6.6-publication-candidate` at `4d9c28c`, 507 files, 14MB |
+| Public `main` head | `77a0250` "Merge the existing remote commit into the initial public release" |
+| Public `app.py` | 142,580 bytes, blob `eae4553c63b1`, **no `/login` route** — the account-free product |
+| Gates before push | `PUBLICATION_CHECK=PASS` (gitleaks 0 findings, patterns clean) and `PUBLICATION_SOURCE=PASS` (RG-155 core-only) |
+| Hosted CI on that SHA | success |
+| Repository | public, default branch `main` |
+| Branch protection | `required_checks=["test"]`, `strict=true`, 0 required reviews |
+| Security settings | secret scanning + push protection, Dependabot alerts, Dependabot security updates, private vulnerability reporting — all enabled |
+
+Two operational facts, both learned the hard way in this round:
+
+- `publish-github.sh` **rebuilds** the snapshot into `--snapshot` unless `--prebuilt`
+  is given. The first invocation omitted it and overwrote the core-only candidate
+  directory with a build of the development tree; the next invocation then
+  correctly refused that directory. The gate caught both states, and the candidate
+  was rebuilt into a fresh directory before publishing. Pass `--prebuilt` with a
+  candidate that has already been gated.
+- The publication enables **branch protection on `main` requiring a PR and the
+  `test` check**. That is a lasting change to how this repository is updated, and
+  it is now in force.
+
+## The publication gate and command (superseded by the section above)
 
 Branch `core-only/3.6.6-publication-candidate` at `4d9c28c` now satisfies every
 gate the release contract names, on the same SHA:
