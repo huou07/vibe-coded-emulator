@@ -16,7 +16,8 @@ never `GOOD`.
 | Field | Value |
 | --- | --- |
 | Branch | `feature/semantic-ui-inspection` |
-| Head | `32b5f191827b89c4f9263f95e7dc40089b6535f5` |
+| Head (workstreams) | `32b5f191827b89c4f9263f95e7dc40089b6535f5` |
+| Head (this record) | `29a3a00`; its hosted run [39143945163](https://github.com/huou07/vibe-coded-emulator/actions/runs/39143945163) is green, and the only change from the workstream head is this file and the docs index |
 | Tree | clean (`git status --porcelain` empty) before and after the release build |
 | Baseline when this track started | `c2fcc881467e56ef7edcc4fc4e0db3dbc24f6cd3` |
 
