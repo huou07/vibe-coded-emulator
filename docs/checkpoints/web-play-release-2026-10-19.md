@@ -171,6 +171,33 @@ Options, none taken yet: serve production over HTTPS (the repository carries
 the installed app for 3DS. The card now states the reason without disabling
 itself, because RG-078 forbids a browser-only 3DS lock.
 
+## LAN Sync: two-peer acceptance, PASS 9/9
+
+LAN Sync was recorded BLOCKED for the same reason as the controller — same-host
+multicast discovery never delivers here — and the same reasoning applies: the peer
+registry is keyed by **device id**, not by address, so two independent peers can be
+driven on one host. `work/phaseC/lan-sync-acceptance.py` does exactly that:
+
+| Step | Result |
+| --- | --- |
+| Peer A announces | 200, registry shows `peer-a-lan-0001` |
+| Peer B announces | 200, and the snapshot returns **both** peers |
+| Peer B publishes a save | `{"ok": true, "stored": 1}` with the content hash |
+| Peer A lists the manifest | the published key is present |
+| Peer A pulls the blob | 200, 31 bytes, sha256 matches the published digest |
+| Invalid device id | 400 |
+| Ineligible kind (`firmware`) | 400 — firmware and keys are not sync-eligible |
+| Content hash that does not match the data | 400 |
+| Unknown blob | 404 |
+
+`LAN_SYNC_ACCEPTANCE=PASS 9/9`. This is the substance of save transfer: a peer
+publishes, another peer discovers it in the manifest and pulls bytes that verify.
+
+What it does **not** establish, stated rather than implied: both peers share one IP
+on this host, so the subnet scoping and any cross-subnet rejection are not
+exercised; multicast discovery stays BLOCKED; the browser surfaces were not driven
+(this is the data plane); and two physical devices remain UNVERIFIED.
+
 ## Phone Controller: two-peer acceptance, PASS 11/11
 
 The feature was recorded BLOCKED because same-host multicast discovery never
