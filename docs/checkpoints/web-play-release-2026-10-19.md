@@ -91,6 +91,58 @@ Options, none taken yet: serve production over HTTPS (the repository carries
 the installed app for 3DS. The card now states the reason without disabling
 itself, because RG-078 forbids a browser-only 3DS lock.
 
+## Performance: what was measured, and what it cannot establish
+
+Probes live in `work/phaseG/perf-probe.mjs`, `perf-core.mjs` and `perf-pixel.mjs`
+and write their raw output to `work/phaseG/perf-*.json`. The procedure followed is
+`.agents/skills/vce-gameplay-performance`, which states plainly that a software
+renderer run, a boot frame or a UI FPS counter is not gameplay acceptance.
+
+Workload: the Web-play surface `http://192.168.1.8:8091/offline`, the synthesized
+GBA fixture `an3-synthetic-gba.gba` (32768 bytes, sha256
+`94ca9e564f01d9871f84a831e7d28f6dc3ae8a0cf0b93d1bd7395b5a73ee6491` — recomputed
+at run time and stored in the JSON), implicit rate 59.7Hz, 20s and 10s sampling,
+Chromium from the repository's Playwright install, on the Intel AlderLake-S GT1
+iGPU host.
+
+| Metric | Result | Class |
+| --- | --- | --- |
+| Compositor frame pacing, 20s | 60.06fps, mean 16.7ms, p50 16.7ms, p90 16.7ms, p99 16.8ms, max 16.8ms | GOOD for this browser on this host |
+| Late frames >25ms / dropped >33ms | 0 / 0 over 1202 frames | GOOD, same scope |
+| Main-thread long tasks | 0 observed, 0ms total | GOOD, same scope |
+| JS heap while playing | 18MB used of a 4192MB limit | GOOD, same scope |
+| No-GPU vs GPU launch flags | **both** report `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)` | GPU path **UNVERIFIED** |
+| Emulated frame rate | **not established** (see below) | UNVERIFIED |
+| Native (Linux/macOS/Windows), Android, Switch, physical phones | not measured on this host | UNVERIFIED |
+
+Two limits matter more than the numbers.
+
+**The GPU never engaged.** Chromium accepted `--use-gl=angle --use-angle=gl
+--ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy` and still
+reported SwiftShader, so the 60fps above is a software-rasterized compositor on a
+machine that has an Intel iGPU and an accessible `/dev/dri/renderD128` (the
+worker is in the `render` group and opens the node). Software pacing is a source
+regression check, not gameplay acceptance, and it says nothing about the iGPU
+path a real user gets.
+
+**The emulated rate was not established, and no cause is claimed.** Two attempts
+failed for method reasons, not product reasons. Rasterizing the whole canvas at
+40x30 and hashing every seventh byte reported 0.7 changes per second — but the
+fixture advances its counter by writing the low halfword of a register to a
+single pixel, so downscaling averages the only changing pixel away; that number
+measures the sampler, not the core. Reading that single pixel directly then
+returned a constant 0 for 600 samples over 10s, which is equally consistent with
+sampling the wrong canvas, with a WebGL drawing buffer that is not preserved
+across the read, or with a stalled core. This probe cannot distinguish those, so
+it establishes nothing about performance, and `EJS_emulator` exposes no `fps` or
+frame counter in this build to fall back on.
+
+What would settle it, in order: a headed Chromium on the iGPU with a GPU process
+report showing ANGLE-on-Intel, and a fixture whose *entire* frame changes each
+VBlank (or a read taken inside the frame callback with the buffer preserved), on
+physical hardware for the native platforms. Until then, per-platform gameplay
+performance stays UNVERIFIED.
+
 ## The apps line and this branch are two histories
 
 `origin/main` is a squashed 2-commit "initial public release" at **3.3.3**. The
