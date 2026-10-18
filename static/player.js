@@ -951,8 +951,39 @@
     }
   };
   let threeDsGateStarted = false;
+  // The repaired Azahar runtime creates its Web Audio context inside the core's
+  // own glue (`RWebAudioInit` -> `new AudioContext()`), so no handle to it is
+  // reachable from `EJS_emulator`. Looking only at `EJS_emulator.audioContext`,
+  // `EJS_emulator.audio.context` and `EJS_audioContext` therefore never found a
+  // context and the playable check could never pass: the 3DS overlay stayed on
+  // "did not reach ... running audio output" while frames were already
+  // presenting. Recording the contexts the platform actually constructs keeps
+  // the requirement real — it still demands a genuinely running AudioContext
+  // created by the emulator — without inventing a second source of truth.
+  const threeDsAudioContexts = [];
+  const recordThreeDsAudioContext = () => {
+    if (globalThis.__AN3AudioContextRecorder) return;
+    const NativeAudioContext = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (typeof NativeAudioContext !== "function") return;
+    const Recorded = function (...args) {
+      const context = new NativeAudioContext(...args);
+      threeDsAudioContexts.push(context);
+      return context;
+    };
+    Recorded.prototype = NativeAudioContext.prototype;
+    try { Object.setPrototypeOf(Recorded, NativeAudioContext); } catch (_) {}
+    globalThis.__AN3AudioContextRecorder = true;
+    globalThis.AudioContext = Recorded;
+    if (globalThis.webkitAudioContext) globalThis.webkitAudioContext = Recorded;
+  };
+  if (threeDsPad) recordThreeDsAudioContext();
   const threeDsAudioContext = () => {
-    const candidates = [window.EJS_emulator?.audioContext, window.EJS_emulator?.audio?.context, window.EJS_audioContext];
+    const candidates = [
+      ...threeDsAudioContexts.slice().reverse(),
+      window.EJS_emulator?.audioContext,
+      window.EJS_emulator?.audio?.context,
+      window.EJS_audioContext,
+    ];
     return candidates.find(context => context && typeof context.state === "string") || null;
   };
   const waitForThreeDsPlayable = () => {
