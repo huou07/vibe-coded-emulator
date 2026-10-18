@@ -199,6 +199,39 @@ reading both sides, and rebuild the mirror with `prepare-web.mjs` rather than by
 hand. Then a Linux build and the native guards before it can be called a release
 candidate. That is a bounded task and it is not started.
 
+## The core-only line now publishes (both gates pass)
+
+The refresh above took the core-only candidate from "cannot build a snapshot" to
+both publication gates green, at revision `72dfff4`, 507 files, 14 MB:
+
+```
+BUILD_SNAPSHOT=PASS work/co361/work/snap4
+PUBLICATION_SOURCE=PASS core-only public product: work/co361/work/snap4
+candidate=work/co361/work/snap4
+gitleaks: 0 findings
+personal-data and infra patterns: clean
+PUBLICATION_CHECK=PASS
+```
+
+Four gaps had to close, and two of them were defects in the toolchain rather than
+in the candidate:
+
+| Gap | Resolution |
+| --- | --- |
+| `tools/publication` held only `.gitleaks.toml` | templates refreshed from the development line, with `disk-preflight.ps1` and the builder |
+| Eight files carried `~/<REDACTED_PATH>`, which the builder's own post-scan rejects | replaced with `/opt/developer/ROMs/game.gba`, which also restores the meaning of the test named "username in paths is removed" |
+| A PEM-header fixture in `tests/test_bug_report.py` matched the checker's secret pattern | assembled at run time, identical input to the scrubber, 20 tests still pass |
+| The `an3-presentation-renderer-v1` allowlist named only `static/player-runtime.js` | the existing path-scoped entry now also names the test that reproduces that identifier |
+
+The first two are worth naming as toolchain faults: a sanitizer that rewrites
+`/Users/<name>/…` into `~/<REDACTED_PATH>` and a post-scan that then rejects every
+`~/` cannot both be right, and the core-only line sat on the wrong side of that
+contradiction. The allowlist change is the one that most needs care — it is a
+secret gate — so it extends an existing identifier-scoped entry to a second path
+instead of adding an exclusion, and the config comment now states that rule.
+
+Branch `core-only/3.6.6-publication-candidate` carries all of it and is pushed.
+
 ## The core-only line exists, and it is stale
 
 `tools/publish-github.sh --check-candidate` tells a refused candidate to "export

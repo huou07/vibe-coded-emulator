@@ -1,6 +1,8 @@
 # Gitleaks configuration.
 #
-# Two exact, path-scoped allowlists cover confirmed non-secret identifiers.
+# Three exact, path-scoped allowlists cover confirmed non-secret identifiers.
+# Each names one identifier and the paths it legitimately appears on; a new path
+# is added only after confirming the same identifier, never as a broad exclusion.
 [extend]
 useDefault = true
 
@@ -11,7 +13,7 @@ id = "generic-api-key"
 [[rules.allowlists]]
 condition = "AND"
 description = "localStorage key-name assignment, not a secret"
-paths = ['static/player-runtime\.js$']
+paths = ['static/player-runtime\.js$', 'tests/test_release_artifact_scan\.py$']
 regexTarget = "match"
 regexes = ['an3-presentation-renderer-v1']
 
