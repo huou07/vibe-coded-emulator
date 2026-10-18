@@ -237,6 +237,12 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
             "allow-pick-and-import-native", "deny-pick-and-import-native",
             "allow-remove-native", "deny-remove-native", "allow-switch-companion",
             "deny-switch-companion", "allow-ui-control", "deny-ui-control",
+            # The ROM import flow gained a cancellable command. Its permission is
+            # in this product's own app ACL and in the generated schemas, but the
+            # scope above did not name it, so the two sets were compared over
+            # different populations and the test failed on a schema that was
+            # already correct.
+            "allow-cancel-native-rom-import", "deny-cancel-native-rom-import",
         )
 
         def constants(value):
