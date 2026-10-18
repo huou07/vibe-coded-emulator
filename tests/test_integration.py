@@ -442,17 +442,19 @@ class ArcadeLibraryIntegrationTests(ServerBackedTestCase):
         self.assertEqual((status, login["redirect"]), (200, "/admin"))
         self.assertEqual(second.request("GET", "/admin")[0], 200)
 
-        for path, marker in (("/offline", b"offline-notice"), ("/service-worker.js", b"an3-arcade-pwa-v31-"), ("/static/default-cover.webp", b"RIFF"), ("/static/fonts/pixelify-sans-latin.woff2", b"wOF2"), ("/static/ui-library-search.svg", b"<svg"), ("/static/manifest.webmanifest", b"Vibe Coded Emulator")):
+        for path, marker in (("/offline", b"offlineGameGrid"), ("/service-worker.js", b"an3-arcade-pwa-v31-"), ("/static/default-cover.webp", b"RIFF"), ("/static/fonts/pixelify-sans-latin.woff2", b"wOF2"), ("/static/ui-library-search.svg", b"<svg"), ("/static/manifest.webmanifest", b"Vibe Coded Emulator")):
             status, response_headers, body = public.request("GET", path)
             self.assertEqual(status, 200)
             self.assertIn(marker, body)
-        # The web offline page is a minimal notice: no browser-local ROM library.
+        # /offline is the Web-play surface again (owner decision 2026-10-18): the
+        # browser-local library and player are served, and the page still needs
+        # no server-side ROM catalog.
         offline_status, _, offline_body = public.request("GET", "/offline")
         self.assertEqual(offline_status, 200)
-        self.assertIn(b"You're offline", offline_body)
-        self.assertNotIn(b"offlineGameForm", offline_body)
-        self.assertNotIn(b"offlineFile", offline_body)
-        self.assertNotIn(b"corePreloadGrid", offline_body)
+        self.assertIn(b"Play games in your browser", offline_body)
+        self.assertIn(b"offlineGameForm", offline_body)
+        self.assertIn(b"offlineFile", offline_body)
+        self.assertIn(b"corePreloadGrid", offline_body)
 
         status, _, body = public.request("GET", "/download-app")
         self.assertEqual(status, 200)

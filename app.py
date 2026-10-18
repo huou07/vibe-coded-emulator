@@ -1464,7 +1464,7 @@ def library_fingerprint(conn):
     return f'{row["changed"]}:{row["games"]}:{row["ratings"]}:{row["score"]}'
 
 
-def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False, auth=False, admin=False, download_current=False):
+def layout(title, content, lang, user=None, csrf="", player=False, offline=False, guide_trigger=False, library=False, auth=False, admin=False, download_current=False, offline_current=False):
     with db() as conn:
         settings = site_settings(conn)
     account = ""
@@ -1524,7 +1524,7 @@ def layout(title, content, lang, user=None, csrf="", player=False, offline=False
 <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png?v={ASSET_VERSION}">
 <link rel="apple-touch-icon" href="/static/icon-192.png?v={ASSET_VERSION}">
 <link rel="stylesheet" href="{versioned_player_asset("site.css") if player else f"/static/site.css?v={ASSET_VERSION}"}">{"" if player else f'<link rel="stylesheet" href="/static/theme-violet.css?v={ASSET_VERSION}">'}</head><body class="{' '.join(body_classes)}">
-<header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-download-app" href="/download-app"{' aria-current="page"' if download_current else ''}>{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
+<header class="site-header"><a class="brand" href="/" aria-label="{esc(SITE_NAME)}"><img class="brand-logo" src="/static/brand-logo.png?v={ASSET_VERSION}" alt="{esc(SITE_NAME)}" width="52" height="52"></a>{stage_badge}<nav id="siteNav" class="site-nav">{"" if ENVIRONMENT == "production" else f'<a class="nav-games" href="/games">{ref_icon("gamepad-2")}{tr(lang,"Trò chơi","Games")}</a>'}<a class="nav-web-play" href="/offline"{' aria-current="page"' if offline_current else ''}>{ref_icon("gamepad-2")}{tr(lang,"Chơi trên web","Web play")}</a><a class="nav-download-app" href="/download-app"{' aria-current="page"' if download_current else ''}>{ref_icon("download")}{tr(lang,"Tải app","Download app")}</a>{guide_nav}{account}</nav><div class="header-actions">{shortcut}{mode}<button id="navToggle" class="nav-toggle" type="button" aria-label="{tr(lang,'Mở menu','Open menu')}" aria-controls="siteNav" aria-expanded="false"><span class="ui-mask ui-menu" aria-hidden="true"></span><span class="nav-toggle-label">{tr(lang,"Menu","Menu")}</span></button></div></header>
 {content}
 <footer class="site-footer"><div><strong>{esc(SITE_NAME)}</strong><span>{tr(lang,"Game chạy trên phần cứng của thiết bị người chơi.","Games run on the player's device.")}</span></div>{contact_block}
 <div class="credits"><span>{tr(lang,"Công cụ và nguồn mở:","Tools and open source:")}</span><a href="https://emulatorjs.org/">EmulatorJS</a><a href="https://www.retroarch.com/">RetroArch</a><a href="https://github.com/mgba-emu/mgba">mGBA</a><a href="https://melonds.kuribo64.net/">melonDS</a><a href="https://github.com/azahar-emu/azahar">Azahar</a><a href="https://www.python.org/">Python</a><a href="https://sqlite.org/">SQLite</a><a href="/licenses">{tr(lang,"Giấy phép","Licenses")}</a></div></footer>
@@ -1907,38 +1907,51 @@ def account_page(lang, user, csrf):
 
 
 def offline_page(lang, user, csrf):
-    """Minimal offline notice.
+    """Web play: the browser-local library and player.
 
-    Local ROM import, library management, core preloading and browser gameplay
-    now live only in the installed Vibe Coded Emulator app, so this page communicates the
-    connection state and points at the app instead of duplicating that UI.
+    The ROM an owner adds here never leaves this browser: it is stored in
+    IndexedDB and emulated on this device's own hardware (WebGL2, or WebGPU when
+    the browser offers it). The server stores and serves this page only, so this
+    surface needs no account and no network after the shell and core are cached.
     """
-    # Retry currently only reloads this notice. The one useful move off a dead
-    # end is the library where an online session can continue, and production
-    # has no public library, so it points at the app download instead.
-    recovery = "/games" if ENVIRONMENT != "production" else "/download-app"
-    recovery_label = (
-        tr(lang, "Mở thư viện trực tuyến", "Open the online library")
-        if ENVIRONMENT != "production"
-        else tr(lang, "Mở trang tải ứng dụng", "Open app downloads")
+    t = lambda vi, en: tr(lang, vi, en)
+    system_options = "".join(
+        f'<option value="{esc(key)}">{esc(label)}</option>'
+        for key, (label, _channel) in SYSTEMS.items()
+        if key != "html5"
     )
-    facts = "".join(
-        f'<li>{ref_icon(icon)}{label}</li>'
-        for icon, label in (
-            ("hard-drive", "Play local games"),
-            ("folder-open", "Use your own ROMs"),
-            ("wifi", "No internet required"),
-        )
+    offline_player_scripts = "".join(
+        f'<script src="{versioned_player_asset(name)}" defer></script>'
+        for name in ("offline.js", "player-ui.js", "player-runtime.js", "renderer-worker.js",
+                     "nds-touch.js", "lan-peer.js", "sync-transfer.js", "player.js")
+    ) + (
+        f'<script src="/static/input-actions.js?v={ASSET_VERSION}" defer></script>'
+        f'<script src="/static/controller-utility.js?v={ASSET_VERSION}" defer></script>'
     )
-    body = f'''<main class="page offline-state-page">
-<section class="offline-notice" aria-labelledby="offlineTitle">
-<span class="offline-notice-icon">{ref_icon("gamepad-2")}</span>
-<h1 id="offlineTitle">You're offline</h1>
-<p>No internet connection. Games already stored on this device can still be played in the Vibe Coded Emulator app.</p>
-<div class="offline-notice-actions"><a class="button primary" href="{recovery}">{ref_icon("arrow-right")}{recovery_label}</a></div>
-<ul class="offline-notice-facts">{facts}</ul>
-</section></main>'''
-    return layout("Offline", body, lang, user, csrf, offline=True)
+    body = f'''<main class="page offline-page offline-play-page">
+<section class="library-head"><div><p class="eyebrow">{t("CHƠI TRÊN WEB","WEB PLAY")}</p><h1>{t("Chơi game trong trình duyệt","Play games in your browser")}</h1><p class="muted">{t("ROM bạn thêm ở đây chỉ nằm trong trình duyệt này và chạy bằng phần cứng của máy bạn. Không tài khoản, không tải lên máy chủ.","ROMs you add here stay in this browser and run on this device's own hardware. No account, nothing uploaded to a server.")}</p></div></section>
+<section class="offline-readiness" aria-labelledby="offlineReadinessTitle"><div class="section-title"><div><p class="eyebrow">{t("Trạng thái thiết bị","Device facts")}</p><h2 id="offlineReadinessTitle">{t("Sẵn sàng chơi","Ready to play")}</h2></div></div>
+<div class="offline-facts">
+<div><span>{t("Kết nối","Connection")}</span><strong id="offlineNetworkState">{t("Đang kiểm tra","Checking")}</strong><small>{t("Chỉ là trạng thái mạng do trình duyệt báo.","Browser-reported network state only.")}</small></div>
+<div><span>{t("Ngữ cảnh an toàn","Secure context")}</span><strong id="offlineSecureState">{t("Đang kiểm tra","Checking")}</strong><small>HTTPS / localhost</small></div>
+<div><span>{t("Vỏ ứng dụng","App shell")}</span><strong id="offlineShellState">{t("Đang kiểm tra","Checking")}</strong><small>{t("Tách biệt với game và core.","Separate from games and cores.")}</small></div>
+<div><span>{t("Game trên máy này","Games on this device")}</span><strong id="offlineGameCount">0</strong><small>{t("ROM chỉ lưu trong trình duyệt này.","ROMs stored only in this browser.")}</small></div>
+<div><span>{t("Core giả lập","Emulator cores")}</span><strong id="offlineCoreState">{t("Chưa kiểm tra","Not checked")}</strong><small>{t("Mở trình quản lý core để xác minh.","Open Core manager to verify.")}</small></div>
+</div></section>
+<section class="offline-library"><div class="section-title"><div><p class="eyebrow">{t("Thư viện","Library")}</p><h2>{t("Game trên trình duyệt này","Games in this browser")}</h2></div></div><div id="offlineGameGrid" class="offline-system-list" aria-live="polite"></div></section>
+<section class="offline-upload" aria-labelledby="offlineAddTitle"><div class="section-title"><div><p class="eyebrow">{t("ROM riêng tư","Private ROM")}</p><h2 id="offlineAddTitle">{t("Thêm game vào trình duyệt này","Add a game to this browser")}</h2></div></div>
+<form id="offlineGameForm">
+<label id="offlineBrowserDropzone" for="offlineFile">{t("Tệp game","Game file")}<input id="offlineFile" name="file" type="file" required></label>
+<button id="offlineNativePicker" class="button" type="button" hidden>{t("Chọn ROM trên thiết bị","Choose ROM from this device")}</button>
+<label>{t("Tên game","Game title")}<input id="offlineTitle" name="title" maxlength="120" required autocomplete="off"></label>
+<label>{t("Hệ máy","System")}<select id="offlineSystem" name="system">{system_options}</select></label>
+<button id="offlineBrowserImport" class="button primary" type="submit">{t("Thêm vào trình duyệt này","Add to this browser")}</button>
+</form><p id="offlineDetection" class="muted" role="status"></p></section>
+<details id="coreManager" class="core-preload"><summary><span><strong>{t("Trình quản lý core","Core manager")}</strong><small>{t("Kiểm tra, tải hoặc xóa core theo từng hệ máy.","Verify, download, or remove cores for individual systems.")}</small></span><span aria-hidden="true">{t("Mở","Open")}</span></summary><div class="core-preload-body"><p class="muted">{t("Core đã tải không có nghĩa ROM đã được lưu; hãy kiểm tra cả danh sách game phía trên.","A downloaded core does not mean a ROM is stored; verify the game list above as well.")}</p><div id="corePreloadGrid" class="core-preload-grid"></div><p id="corePreloadStatus" class="muted" role="status"></p></div></details>
+<button id="offlineShortcut" class="button" type="button" hidden>{t("Cài đặt ứng dụng","Install app")}</button>
+</main>
+{offline_player_scripts}'''
+    return layout(t("Chơi trên web", "Web play"), body, lang, user, csrf, offline=True, offline_current=True)
 
 
 def core_preload_page(system, lang):

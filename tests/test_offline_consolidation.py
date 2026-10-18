@@ -24,11 +24,16 @@ PLAYER_JS = (ROOT / "static" / "player.js").read_text(encoding="utf-8")
 class OfflineConsolidationTests(unittest.TestCase):
     def test_offline_is_the_single_pwa_surface(self):
         source = pathlib.Path(app.__file__).read_text(encoding="utf-8")
-        # The web /offline page is now a minimal connection notice; the local
-        # ROM library lives only in the installed AN3 app.
-        self.assertIn('class="offline-notice"', source)
-        self.assertNotIn('id="offlineGameForm"', source)
-        self.assertNotIn('id="offlineShortcut"', source)
+        # /offline is the single Web-play surface again (owner decision
+        # 2026-10-18): it serves the browser-local library and player instead of
+        # a notice, and there is still exactly one PWA surface — no second
+        # offline-app bundle, and the retirement worker keeps sending the old
+        # scope here.
+        self.assertIn('id="offlineGameGrid"', source)
+        self.assertIn('id="offlineGameForm"', source)
+        self.assertIn('id="offlineBrowserImport"', source)
+        self.assertIn('id="coreManager"', source)
+        self.assertIn('id="offlineShortcut"', source)
         self.assertIn('versioned_player_asset("player.js")', source)
         self.assertIn('path == "/offline-app-service-worker.js"', source)
         self.assertIn('self.registration.unregister()', source)
