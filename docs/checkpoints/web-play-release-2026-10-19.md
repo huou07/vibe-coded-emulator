@@ -97,6 +97,31 @@ frames of event-loop and compositor cost. The fixture ignores input, so the time
 until the game itself reacts cannot be measured with it, and no gameplay-latency
 number is claimed.
 
+## The native display-pacing gap, tested rather than restated
+
+`docs/QUALITY.md` records as its first known gap that the enforced performance
+budget covers the emulator loop and not the display pipeline or audio, and says
+closing it "needs a host with a real display and audio device". I tested that on
+this host instead of repeating it, and the gap splits into three parts, only one of
+which is the host.
+
+| Attempt | Result |
+| --- | --- |
+| Displayed session, `--renderer auto` under Xvfb | `vulkan: No DRI3 support detected - required for presentation` — Xvfb offers no DRI3 |
+| Displayed session with a real audio device | `SDL native audio device failed to open: ALSA: Couldn't open audio device` — `/dev/snd` carries only `seq` and `timer`, no PCM |
+| Displayed session, `--renderer opengl` with an ALSA `null` default | **the session starts**; no initialisation error |
+| Reading metrics from it: `--status-json`, then `--frames 600` | **no output either way**; `--frames` is not honoured in displayed mode and the process had to be killed |
+
+So this host does lack the audio device, as the quality bar says. But a displayed
+session **can** start here with OpenGL and a null ALSA device, and the runtime still
+reports nothing: `strings` shows the binary contains `--status-json` with a
+`"frameMs"` object and display-backend metrics (`LinuxSdlGlBackend::metrics()`,
+`PortableVulkanBackend::renderer_metrics()`), yet neither is surfaced through the
+CLI when a window is open. Part of that gap is therefore in the runtime's displayed
+path, not only in the host, and that is actionable without new hardware: bound the
+displayed run and emit the status the way the headless path already does. Audio
+remains genuinely unmeasurable here and stays UNVERIFIED.
+
 ## UI/UX audit against the design-system contract
 
 `work/phaseA/audit-ui-contract.mjs` measures the non-player shell against
