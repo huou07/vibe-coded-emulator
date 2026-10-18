@@ -34,27 +34,12 @@ tar -xzf "$ARCHIVE" -C "$TMP"
 }
 find "$TMP" -type f -name '._*' -delete
 
-ASSET="$(python3 - "$TMP/static" <<'PY'
-import hashlib
-import os
-import sys
-
-root = sys.argv[1]
-digest = hashlib.sha256()
-for directory, directories, filenames in os.walk(root):
-    directories.sort()
-    for name in sorted(filenames):
-        path = os.path.join(directory, name)
-        if not os.path.isfile(path):
-            continue
-        relative = os.path.relpath(path, root).replace(os.sep, "/")
-        digest.update(relative.encode("utf-8"))
-        with open(path, "rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(chunk)
-print(digest.hexdigest()[:12])
-PY
-)"
+# The fingerprint must be the one the running application will report, so it is
+# computed by the application's own function over the payload rather than by a
+# copy of it here. The previous copy sorted `directories`, which the application
+# does not, so it produced a different value and every release reported FAIL at
+# the health gate while having installed correctly.
+ASSET="$(cd "$TMP" && AN3_DATA_DIR="$TMP/.asset-probe" python3 -c 'import app; print(app.static_asset_version())')"
 [[ "$ASSET" == "$EXPECTED_ASSET" ]] || {
   echo "Archive asset does not match the local preflight." >&2
   exit 1
@@ -70,6 +55,13 @@ install -m 0644 "$TMP/sync_engine.py" "$APP_ROOT/sync_engine.py"
 install -m 0644 "$TMP/qrcodegen.py" "$APP_ROOT/qrcodegen.py"
 install -m 0644 "$TMP/LICENSE" "$APP_ROOT/LICENSE"
 install -m 0644 "$TMP/THIRD_PARTY_NOTICES.md" "$APP_ROOT/THIRD_PARTY_NOTICES.md"
+# Replace the static tree instead of merging into it. A merge leaves every asset
+# the previous release shipped, so the installed tree is the union of two
+# releases: stale files keep being served, and the asset fingerprint the health
+# gate compares can never equal the payload's. Replace it, and the installed
+# tree is exactly the released tree.
+rm -rf "$APP_ROOT/static"
+install -d -m 0755 "$APP_ROOT/static"
 cp -a "$TMP/static/." "$APP_ROOT/static/"
 # The consolidated release intentionally retires only the former offline-app
 # bundle. The application snapshot above retains these files for rollback; no
