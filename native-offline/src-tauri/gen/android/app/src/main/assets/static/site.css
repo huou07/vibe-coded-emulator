@@ -642,6 +642,25 @@ body:not(.player-page) .report-form label{
   font-weight:700;
 }
 body:not(.player-page) #commentForm textarea{min-height:104px}
+body:not(.player-page) .comment header{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+body:not(.player-page) .comment header time{color:var(--ui-muted);font-size:12px}
+body:not(.player-page) .comment p{overflow-wrap:anywhere}
+body:not(.player-page) .comment-delete{
+  min-width:42px;
+  min-height:42px;
+  display:inline-grid;
+  place-items:center;
+  margin-left:auto;
+  padding:6px 10px;
+  border:1px solid var(--ui-danger);
+  border-radius:var(--ui-radius-sm);
+  background:transparent;
+  color:#ffb7b3;
+  font-size:18px;
+  line-height:1;
+  cursor:pointer;
+}
+body:not(.player-page) .comment-delete:hover{background:#1a0d0e}
 body:not(.player-page) .report-form{
   grid-template-columns:minmax(160px,.7fr) minmax(0,1.5fr) auto;
   align-items:end;
@@ -1368,7 +1387,7 @@ body.library-shell .section-heading h2{
 body.library-shell .section-heading .ui-star-outline{color:#91c353}
 body.library-shell .section-heading .ui-gamepad{color:var(--ui-cyan)}
 body.library-shell .section-link{
-  min-height:40px;
+  min-height:44px;
   display:inline-flex;
   align-items:center;
   gap:4px;
@@ -1530,7 +1549,7 @@ body.library-shell .collection-card .badge{font-size:10px}
   body.library-shell .section-heading{gap:9px}
   body.library-shell .section-heading h2{font-size:17px;font-weight:700}
   body.library-shell .section-heading .ui-mask{width:19px;height:19px}
-  body.library-shell .section-link{min-height:20px;padding:0 0 0 6px;font-family:var(--ui-sans);font-size:14px}
+  body.library-shell .section-link{min-height:44px;padding:0 0 0 6px;font-family:var(--ui-sans);font-size:14px}
   body.library-shell .section-link .ui-chevron-right{width:15px;height:15px}
   body.library-shell .recommended-section .game-grid{gap:10px;row-gap:12px}
   body.library-shell .game-card{border-radius:8px}
@@ -1546,20 +1565,21 @@ body.library-shell .collection-card .badge{font-size:10px}
   body.library-shell .recommended-card .card-actions{min-height:29px;margin-top:4px}
   body.library-shell .recommended-card .card-actions .primary{min-height:29px;gap:7px;border-radius:5px;font-size:15px;padding:3px 8px}
   body.library-shell .recommended-card .card-actions .primary .ui-play{width:16px;height:16px}
-  body.library-shell .recommended-card:not(.lead-card) .game-card-body{position:relative;height:auto;min-height:75px;flex:1 1 75px;padding-right:48px;padding-bottom:7px}
+  body.library-shell .recommended-card:not(.lead-card) .game-card-body{position:relative;height:auto;min-height:75px;flex:1 1 75px;padding-right:58px;padding-bottom:7px}
   body.library-shell .recommended-card:not(.lead-card) h2,
   body.library-shell .recommended-card:not(.lead-card) .card-description,
   body.library-shell .recommended-card:not(.lead-card) .game-meta{flex:0 0 auto}
   body.library-shell .recommended-card:not(.lead-card) .card-description{min-height:0}
   body.library-shell .recommended-card:not(.lead-card) .card-actions{position:absolute;right:8px;bottom:7px;margin:0}
-  body.library-shell .card-download{width:30px;height:30px;border-radius:5px}
-  body.library-shell .card-download .ui-download{width:18px;height:18px}
+  body.library-shell .card-download{width:42px;height:42px;min-height:42px;border-radius:8px}
+  body.library-shell .card-download .ui-download{width:20px;height:20px}
   body.library-shell .collection-section{margin-top:11px}
   body.library-shell .library-page .collection-section>.section-title{margin-bottom:3px}
   body.library-shell .collection-section .game-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-bottom:1px}
   body.library-shell .collection-card .game-card-body{padding:7px 8px 9px}
   body.library-shell .collection-card h2{margin-bottom:5px;font-size:13px}
   body.library-shell .collection-card .badge{min-height:18px;padding:0 4px;font-size:8px}
+   body.library-shell .collection-card .card-actions .primary{min-height:44px}
 }
 @media(min-width:768px) and (max-width:820px){
   body.library-shell .site-header{padding:0 24px}

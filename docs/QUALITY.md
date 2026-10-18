@@ -30,7 +30,7 @@ pixel-identical parity across platforms.
 | Accessibility / UX | rendered-tree names/landmarks; design tokens and responsive contract | `tests/test_rendered_ui_accessibility.py`, `inspect-ui.py`, and the browser lane's computed token values, two-tier control height and 360px no-overflow assertions | verify + browser lane | tokens/overflow enforced; the compact control tier is a recorded gap |
 | Security | sanitized snapshot, pinned gitleaks, fail-closed publication gate | `tools/publication-check.sh` | acceptance (candidate) | enforced when a candidate exists |
 | Compatibility | pinned core artifacts per platform | release catalog check | `verify-release-catalog.py` + hosted CI | hosted authority |
-| Maintainability | docs index complete, refs resolve, no orphan scripts | `check-docs-refs.py` | verify | verified |
+| Maintainability | docs index complete, refs resolve, every committed Android asset matches the source it copies | `check-docs-refs.py`, `tools/check-native-mirror.py` | verify | verified |
 | Cost | resource use of a bounded native job | owner limits in AGENTS.md | manual | partially verified |
 
 ## Known gaps, in priority order
@@ -58,6 +58,27 @@ pixel-identical parity across platforms.
    real two-tier contract (primary ≥42px, compact ≥28px) instead of a blanket
    42px, and the doc states the gap; raising the compact tier is a UI change that
    needs its own responsive review.
+
+Closed since the 2026-10-18 review:
+
+- Every local native build dirtied the working tree, so no evidence could bind to
+  a revision: `source-integrity` was `NOT_VERIFIED` and both gates `STALE` at
+  `d94a8b7`. Two causes, both fixed. The tracked `gen/schemas/**` was per-target
+  build output — a desktop `cargo build --release --lib` adds
+  `linux-schema.json`, which the tracked six-file set never contained — and it
+  was found holding `android-schema.json` byte-identical to the desktop schema
+  beside a 0-byte `mobile-schema.json`; it is now untracked and ignored, while
+  the mobile ACL invariant it was meant to protect is already asserted
+  statically against `capabilities/` and `build.rs` in
+  `tests/test_offline_consolidation.py` (RG-157). The Android web-asset mirror
+  under `gen/android/app/src/main/assets/` had drifted from `static/`: the
+  committed `site.css` and `theme-violet.css` were a month behind the Web and
+  desktop sources, and `tools/build-public-snapshot.sh` keeps that `site.css`
+  verbatim, so the stale sheet was publishable. It is re-copied and now enforced
+  by `tools/check-native-mirror.py`, the `native-mirror` check in the source gate
+  (RG-156). Measured afterwards: a desktop build and `npm run prepare-web` leave
+  the tree clean, and `hub.py assess vce` reports `source_integrity VERIFIED`
+  with `verify` and `acceptance` `CURRENT`.
 
 Closed since the 2026-10-17 review:
 

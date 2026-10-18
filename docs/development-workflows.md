@@ -84,7 +84,10 @@ reuse Mach-O libraries on Linux.
 ## Combined deterministic source gate
 
 Run `bash tools/verify-project.sh` to execute the Python suite, Node behavior
-suite, and native JavaScript syntax checks. It runs each gate, reports each
+suite, native JavaScript syntax checks, the documentation-reference check, and
+the native web-asset mirror check (`tools/check-native-mirror.py`, guard RG-156),
+which fails when a committed Android asset no longer matches the `static/` or
+`native-offline/web/` source it must copy. It runs each gate, reports each
 result, and exits nonzero if any gate fails. It ends with
 `VERIFY_SKIPS=<json>` (`tools/verify-skip-manifest.py`), which names every
 skipped test with its reason so a green run cannot hide what it did not run; the

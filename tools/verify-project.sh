@@ -60,6 +60,12 @@ run_check() {
 
 run_check 'Documentation references' 'docs-refs' \
   python3 tools/check-docs-refs.py
+# The Android app is served from committed assets, not from `dist`, so a Web
+# edit that skips the mirror ships a stale stylesheet or script. This compares
+# every mirrored file against the source it must copy and names the entries that
+# are deliberately not copies. Pure file comparison: no build, no device.
+run_check 'Native web-asset mirror' 'native-mirror' \
+  python3 tools/check-native-mirror.py
 # `-v` so unittest reports each skipped test with its reason; the skip manifest
 # reads those lines. Verbosity changes what is printed, never what is asserted.
 run_check 'Web/backend Python tests' 'python' \

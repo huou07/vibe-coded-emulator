@@ -51,6 +51,13 @@ native-offline/src-tauri/gen/android/.gradle/
 native-offline/src-tauri/gen/android/build/
 native-offline/src-tauri/gen/android/app/build/
 native-offline/src-tauri/gen/android/local.properties
+# Tauri writes one capability schema per build target into gen/schemas (a Linux
+# build produces linux-schema.json, an Android build the mobile pair), so the
+# directory is regenerated output, not source. Tauri's own `tauri init` template
+# ignores `/gen/schemas` in `src-tauri/.gitignore` for the same reason. The
+# mobile ACL that RG-128 protected is asserted statically instead, in
+# tests/test_offline_consolidation.py, against capabilities/ and build.rs.
+native-offline/src-tauri/gen/schemas/
 .codegraph/
 
 # Release installer binaries (published via the catalog, not source commits)

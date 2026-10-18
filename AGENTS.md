@@ -30,6 +30,11 @@ without evidence is `UNVERIFIED`, never "should work".
   a `static/` edit is simultaneously a Web change *and* an unreleased native
   change. Keep `static/` runtime-agnostic: branch on `globalThis.AN3Native*`
   adapters, never on `__TAURI__` directly outside `offline.js` and `player.js`.
+  The desktop target embeds that bundle, but **Android serves the committed
+  mirror** `native-offline/src-tauri/gen/android/app/src/main/assets/`, which no
+  build step regenerates; re-copy an edited `static/` or `native-offline/web/`
+  file there too. `tools/check-native-mirror.py` (the `native-mirror` check in
+  `tools/verify-project.sh`, guard RG-156) fails until the mirror matches.
 - `native-offline/` — Tauri 2 shell (`src-tauri/`, Rust), the portable libretro
   player (`native-runtime/`, C++), the native UI (`web/`), and the Android host.
 - `rust-gateway/` — a shadow reverse proxy. **Not wired into `app.py`; its
