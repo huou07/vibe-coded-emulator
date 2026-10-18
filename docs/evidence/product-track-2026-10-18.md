@@ -103,6 +103,60 @@ for two concrete reasons:
 - **Android**: the previously recorded staging APK stays in the hosted artifact
   store; this track published none.
 
+## Production deploy, 2026-10-18 — one gated asset, health-verified
+
+The owner authorized a production deploy on this host with no staging step, and
+chose the sanitized-snapshot route with host `sudo`. What that route turned out
+to require, and what was actually done:
+
+1. **The snapshot gate refused this branch, correctly.**
+   `tools/build-public-snapshot.sh` built a candidate from `2b20f71`, and
+   `tools/publish-github.sh --check-candidate` refused it (RG-155): "app.py still
+   defines the login page route / registration page route / account page route /
+   account API … Export the snapshot from the core-only line (a `core-only/*`
+   branch) rather than the full-featured development branch." No development-line
+   source was installed.
+2. **The prescribed core-only line exists and carries the same defect.** The
+   public line `origin/main` (`72a7a57`, app.py 137,917 bytes, no `/login`) has the
+   identical unsatisfiable 3DS audio gate at `static/player.js:954`. The fix was
+   ported to it as a 33-line change on branch `core-only/web-3ds-audio-gate`
+   (worktree `work/core-only`), commit `da9ba87`, and **verified live there** with
+   the production-shaped seeded cache and the lawful fixture:
+   `SOURCE_CANVAS_AVAILABLE`, `AUDIO_STARTED`, `FIRST_VIDEO_FRAME`,
+   `THREAD_POOL_READY`, `CORE_STARTED`, two canvases, loading text "Ready", no
+   failing emulator asset. (An unrelated pre-existing page error,
+   `queueTvDiscovery is not defined`, was observed on that line and is **not**
+   fixed here.)
+3. **A full-payload install would have downgraded production.** `origin/main`'s
+   tree has no `sync_engine.py`, and its catalog is v3.3.3 while production serves
+   a v3.6.8 catalog whose six installers are all present. `deploy/update-production.sh`
+   requires `sync_engine.py` and every catalog artifact, so installing that
+   payload would have replaced the deployed release with an older line. It was not
+   run.
+4. **What was installed instead** is the single asset that is broken, taken from
+   the gated core-only fix and byte-identical to the file verified in step 2.
+   Nothing else in `/opt/an3-arcade` was touched, so the deployed revision, the
+   catalog and all six installers are unchanged.
+
+| Field | Value |
+| --- | --- |
+| Host | this Debian machine, `an3-arcade.service` (user `tvshare`), `http://192.168.1.8:8091/` |
+| Installed file | `/opt/an3-arcade/static/player.js` |
+| Before | sha256 `25871f21f91f02f360a755960e78b41f28e6ba29cac1a6b6cc4700033ffa9bfd`; `/health` `asset_version b6276e706965`, `release_id production-23702348eab171e2` |
+| Installed | sha256 `033ae12d28ffa602e5066bc81778d598c7cb9065e42e2a15212a1fd8d0f49d77` (identical to the gated payload file) |
+| After | `/health` `ok:true`, `environment production`, `asset_version 1c78b79fe8e8`, `release_id production-3a0f78fe8ea6d7d2`; service `active` |
+| Served asset | `GET /static/player.js` → 200, 131,479 bytes, sha256 matches the installed file, contains the recorder (`threeDsAudioContexts` ×3) |
+| Unchanged | `GET /` 200, `GET /download-app` 200, catalog v3.6.8 and its six installers untouched |
+| Backup | `/opt/an3-arcade-backups/20261018-235054/static/player.js` |
+| Rollback | `sudo -n install -o root -g root -m 0644 /opt/an3-arcade-backups/20261018-235054/static/player.js /opt/an3-arcade/static/player.js && sudo -n systemctl restart an3-arcade.service`; acceptance is `/health` returning `asset_version b6276e706965` and `release_id production-23702348eab171e2` |
+
+**Not claimed:** that production 3DS playback was exercised end to end. Production
+serves no public 3DS game, so the live proof is the byte-identity of the served
+asset with the file that reached `THREAD_POOL_READY` in step 2, plus the seeded
+core on the host being byte-identical to the frozen lock
+(`41297cb0…` / `c8006847…`). A production gameplay check would need a lawful 3DS
+fixture on that host, which is an owner action.
+
 ## Everything still UNVERIFIED or BLOCKED
 
 1. Two-peer LAN Sync (discovery → transfer → hash match → conflict → reconnect)
