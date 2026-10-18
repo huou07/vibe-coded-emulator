@@ -47,7 +47,22 @@ pixel-identical parity across platforms.
    (`audioMeasured:false`). The metrics contract already reserves
    `audio_underruns` (`native-runtime/core/renderer_contract.h`), but
    `LinuxSdlAudioBackend` does not populate it, and closing that needs a host
-   with a real display and audio device, which the gate host does not have. The
+   with a real display and audio device, which the gate host does not have.
+
+   That was tested on 2026-10-19 rather than assumed, and it splits in two. The
+   audio half is the host: `/dev/snd` carries only `seq` and `timer`, so the core
+   fails to initialise against ALSA's default, and a `null` default is a
+   substitute rather than a measurement. The presentation half is **partly the
+   runtime**: with `--renderer opengl` and an ALSA `null` default a displayed
+   session *does* start under Xvfb (Vulkan cannot, for lack of DRI3), but
+   `--status-json` prints nothing there and `--frames` is not honoured, so the run
+   cannot be bounded or read. The binary already contains what is needed —
+   `--status-json` with a `"frameMs"` object, and `LinuxSdlGlBackend::metrics()`
+   and `PortableVulkanBackend::renderer_metrics()` — it is simply not surfaced
+   through the CLI while a window is open. Bounding the displayed run and emitting
+   that status the way the headless path does is therefore actionable without new
+   hardware; audio stays `UNVERIFIED` here. Raw findings:
+   `docs/checkpoints/web-play-release-2026-10-19.md`. The
    same lane carries the assertion once such a host reports the SDL renderer's
    metrics:
 
