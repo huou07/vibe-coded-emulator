@@ -28,7 +28,7 @@ if (!an3MobileNativeShell) {
 // macOS while WebKit finishes injection.
 // Android exposes GBA, NDS, and 3DS in this build. Switch stays hidden unless
 // the platform ships the experimental Eden companion.
-window.AN3NativeIntegratedSystems = an3MobileNativeShell ? (/Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds"] : []) : ["gba", "nds", "3ds"];
+window.AN3NativeIntegratedSystems = an3MobileNativeShell ? ( /Android/i.test(navigator.userAgent) ? ["gba", "nds", "3ds"] : [] ) : ["gba", "nds", "3ds"];
 // Compatibility signal for pre-generic library assets. New code reads the
 // systems list above so GBA and NDS can use the same in-process launch path.
 window.AN3NativeIntegratedThreeDs = !an3MobileNativeShell;
