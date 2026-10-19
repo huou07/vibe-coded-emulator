@@ -323,6 +323,35 @@ fault, when that is the correct desktop grid; and a full-page screenshot taken b
 the measurement resized the viewport internally, so the reading described the capture
 pass rather than the page.
 
+## The apps set on production, and why nothing newer exists
+
+The request was to deploy the newest and best apps build for Linux, macOS, Android and
+Windows. Production already serves exactly that, and this is the measured state:
+
+| Platform | Artifact | Link |
+| --- | --- | --- |
+| macOS | `vibecodedemulator-3.6.8-macos-aarch64.dmg` | 206 |
+| Windows | `vibecodedemulator-3.6.8-windows-x64-staging.exe` | 206 |
+| Linux | `vibecodedemulator-3.6.8-linux-amd64.deb` | 200 |
+| Linux | `an3-offline-3.6.8-linux-amd64-staging.flatpak` | 200 |
+| Android | `vibecodedemulator-3.6.8-android-arm64-staging.apk` | 206 |
+| Android | `vibecodedemulator-3.6.8-android-arm64-staging.aab` | 200 |
+
+Every link on `/download-app` was fetched with a range request and answers. The
+installed catalog is the 3.6.8 set and its six artifacts are the byte-verified ones.
+
+Nothing newer exists to deploy, and the reason is structural rather than a choice. The
+full cross-platform set is produced by `native-release.yml`, which lives on the app
+line and is the only workflow with a write scope. It runs **only on a pushed `v*`
+tag**, builds the five packages through the reusable `native-build.yml`, and creates a
+**draft** release — it never publishes and never deploys by itself. Its two most recent
+runs, on 2026-10-10, ended in `startup_failure`. The 3.6.10 source line on this branch
+never produced installers, and `native-build.yml` here builds only the Android APK and
+says so: "a build lane, not a release candidate and not platform acceptance".
+
+So a newer apps set needs a new tag and a working release lane, not a deploy. The
+builders for macOS, Windows and Android are not on this host.
+
 ## 3DS on the Web: measured diagnosis of the reported slowness and input faults
 
 The owner reported that 3DS cannot be driven from a real keyboard, that the on-screen
