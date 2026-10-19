@@ -298,6 +298,31 @@ tokens 10 of 10, overflow 0 at 360, 390, 768 and 1440 on `/offline`, `/` and
 `/download-app`, 12 interactive elements focused with none lacking an indicator, and
 the 72px header at 1440. `UI_CONTRACT_AUDIT=PASS`.
 
+### The 452px phone layout: a precise reproduction, still open
+
+The captured phone page really is 452px wide — the PNG is 452 by 1796, so this is a
+rendering and not a measurement artifact — and it is reached by one specific path:
+
+| Path | Document width at a 390px viewport |
+| --- | --- |
+| Fresh page, first load at 390 | **390** (facts one column, 284px) |
+| Load at 1440, then resize to 390 without reloading | **390** |
+| Load at 1280, then load again at 390 | **452** (facts five columns of 0px) |
+| Same, with every `.woff2` blocked | **452** |
+
+So it is not the font alone, not the CDN, and not a probe artifact: it needs the
+sequence of a desktop load followed by a phone load. The served stylesheet is
+byte-identical to the local copy — same 186,772 bytes, same sha256 `e23507c9…` — and
+carries the unconditional `auto-fit` rule, and the same probe against the local
+instance reports 390 in every one of those paths. What differs between the two is not
+yet established.
+
+Two of my own measurements were wrong along the way and are worth naming: a probe that
+never set a viewport measured the desktop layout and reported five 155px columns as a
+fault, when that is the correct desktop grid; and a full-page screenshot taken before
+the measurement resized the viewport internally, so the reading described the capture
+pass rather than the page.
+
 ## The visual review, finally done with eyes on the product
 
 The read access was granted, and this is the first time in this work that the product
