@@ -74,6 +74,18 @@ self.addEventListener("fetch", event => {
     return;
   }
   const cacheName=emulatorAsset ? CORE_CACHE : CACHE;
+  // A core binary and its build report are replaced in place when a core is
+  // rebuilt. Cache-first would pin the previous build for as long as the cache
+  // lives, so these two refresh from the network before falling back to the
+  // stored copy that offline play still needs.
+  const refreshableCore = emulatorAsset && /\/cores\/(?:reports\/[^/]+\.json|[^/]+\.data)$/.test(url.pathname);
+  if (refreshableCore) {
+    event.respondWith(caches.open(cacheName).then(cache => fetch(event.request, {cache: "reload"}).then(async response => {
+      if (response.ok || response.type === "opaque") await cache.put(event.request, response.clone()).catch(() => {});
+      return response;
+    }).catch(() => cache.match(event.request).then(cached => cached || fetch(event.request)))));
+    return;
+  }
   // Legacy page assets use ?v=<asset>; the pathname-versioned player boot
   // assets above deliberately bypass this lookup. That means an old worker
   // with a queryless player cache cannot serve an incompatible new runtime.

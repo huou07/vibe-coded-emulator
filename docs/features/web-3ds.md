@@ -54,6 +54,64 @@ Two recorded constraints still hold:
   core cache key `an3-arcade-cores-v1`, and the `data-v2` URL shape are
   unchanged; the Web product stays stdlib-only and never carries Eden.
 
+### Speed: the confirmed causes and what changed (2026-10-19)
+
+Two defects explained the reported slowness, and both were measured before they
+were touched.
+
+1. **The browser ran the DynCom interpreter, not an optimised backend.** The
+   shipped bundle (`azahar` 2.0.3) was built from `EmulatorJS/azahar@62cfcfb`, a
+   February-2026 Azahar with `-DENABLE_GENERIC=ON` and no `src/core/arm/fastinterp`
+   at all. `citra_use_cpu_jit` defaults to *true*, so `Core::System::Init` took the
+   `#if CITRA_ARCH(x86_64) || CITRA_ARCH(arm64)` else-branch, instantiated
+   `ARM_DynCom` and logged "CPU JIT requested, but Dynarmic not available". With
+   `use_cpu_jit` true, the `use_fastinterp` branch was never even reached: the
+   option existed but could not change anything. Upstream FastInterp (PR #2376,
+   `azahar-emu/azahar@98932aee`, first release 2127.0-alpha1) is now compiled in,
+   the build no longer claims a JIT it does not have, and the core logs the
+   backend it selected (`CPU backend: FastInterp`).
+2. **The threaded core was never paced, so its speed was whatever the CPU
+   afforded.** `static/player.js` sets `vsync:"disabled"` for every launch, and
+   the EmulatorJS frontend only waits for a browser frame when VSync is on
+   (`frontend/drivers/platform_emulatorjs.c`). Unpaced, the same build ran at
+   0.72x real time with DynCom and 1.95x with FastInterp on one machine. The core
+   now waits for the 3DS LCD boundary (59.8261 Hz) only when it is *ahead*, so
+   real-time play is restored without adding a stall when the hardware is behind.
+
+Measured on the lawful devkitPro/3ds-hbmenu v2.4.3 fixture, Chromium on the
+Debian x86_64 host, same page and server for every arm; three 20 s trials each,
+mean reported.
+
+| Core | Renderer | Pacing | Emulated rate | Speed of native |
+| --- | --- | --- | --- | --- |
+| DynCom (shipped) | SwiftShader | off | 25.9 fps | 0.43x |
+| DynCom (shipped) | Intel UHD 770 | off | 40.7 fps | 0.68x |
+| DynCom (shipped) | Intel UHD 770 | on | 43.3 fps | 0.72x |
+| FastInterp | SwiftShader | off | 34.7 fps | 0.58x |
+| FastInterp | Intel UHD 770 | off | 116.6 fps | 1.95x |
+| **FastInterp (shipped)** | **Intel UHD 770** | **on** | **59.83 fps** | **1.00x** |
+
+Frame-interval distribution on the software renderer, where the interpreter was
+the limit: p50 37.99 → 27.73 ms, p95 43.45 → 36.77 ms, p99 52.62 → 41.37 ms.
+Startup (navigation to the player clearing its own overlay) 2.61 → 2.54 s. The
+audio context stayed `running` with its clock tracking wall time in every arm,
+and the paced arm's rate is the LCD rate exactly, so the speed of play is correct
+rather than fast-forwarded. A slow device does not lose throughput to the limiter:
+interleaved headless runs measured 34.55/33.06 fps unpaced against 34.42/33.18 fps
+paced.
+
+Instrumented per-frame time on the iGPU (temporary build, not shipped): 8.1 ms per
+frame of which 7.9 ms is the ARM interpreter, so the CPU backend is still the
+largest single cost; a software renderer adds roughly 20 ms per frame on top of it.
+
+**A rebuilt core no longer stays pinned in a returning browser.** The core binary
+and its build report were served `immutable` for a week and the service worker
+answered them cache-first, so a player who had already downloaded a core kept the
+old interpreter. Both now revalidate (`public,max-age=0,must-revalidate`,
+network-first with a cache fallback), verified live: a fresh profile fetched the
+first core, the server's core was replaced in place, and the same profile then
+received and cached the new bytes (`refreshed: true`).
+
 ### Live run, 2026-10-18
 
 ```sh
@@ -75,6 +133,10 @@ distinct colours at mean luma 112.7, 111.6, 111.6.
 
 ### What is still not claimed
 
+- **Real hardware in a real browser window.** The performance arms above ran
+  Chromium either headless (SwiftShader, software GL) or non-headless under Xvfb
+  with ANGLE/Vulkan on this host's Intel UHD 770. Both are the same renderer
+  Chromium uses for a user, but neither is a user's desktop session.
 - **Other browsers and platforms.** Chromium on Debian x86_64 only.
 - **Audible audio.** This host has no sound device; a running audio context is
   not audible output.

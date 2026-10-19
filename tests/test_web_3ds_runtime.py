@@ -198,3 +198,33 @@ class BrowserThreeDsDeliveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CoreRefreshContractTests(unittest.TestCase):
+    """A rebuilt core must not stay pinned in the browser.
+
+    The core binary and its build report are the only emulator assets this
+    service replaces in place. Served `immutable`, a returning player kept the
+    previous interpreter for a week and the service worker's cache-first policy
+    would have kept it longer still, so both now have to revalidate.
+    """
+
+    def test_the_server_makes_core_binaries_revalidate(self):
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn('revisable = relative.endswith(".data") or (', source)
+        self.assertIn('relative.startswith("cores/reports/")', source)
+        self.assertIn('"public,max-age=0,must-revalidate" if revisable', source)
+
+    def test_the_service_worker_refreshes_a_core_before_using_its_cache(self):
+        worker = (ROOT / "static/service-worker.js").read_text(encoding="utf-8")
+        self.assertIn("refreshableCore", worker)
+        self.assertIn(r"/\/cores\/(?:reports\/[^/]+\.json|[^/]+\.data)$/", worker)
+        self.assertIn('fetch(event.request, {cache: "reload"})', worker)
+        # The offline path must survive a failed refresh.
+        self.assertIn("cache.match(event.request).then(cached => cached || fetch(event.request))", worker)
+
+    def test_the_android_mirror_carries_the_same_worker(self):
+        mirror = ROOT / "native-offline/src-tauri/gen/android/app/src/main/assets/static/service-worker.js"
+        if not mirror.exists():
+            self.skipTest("the Android asset mirror is not present in this tree")
+        self.assertEqual(mirror.read_bytes(), (ROOT / "static/service-worker.js").read_bytes())

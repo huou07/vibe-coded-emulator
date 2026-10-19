@@ -29,6 +29,29 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## The browser 3DS core is the optimised backend and a rebuilt core reaches players — RG-161, 2026-10-19
+
+- RG-161.1: the served `azahar-thread-wasm.data` must be the bundle pinned in
+  `native-offline/shared/web-runtime-lock.json` and must be built from the
+  pinned revision in `tools/build-azahar-wasm.sh`. The shipped 2.0.3 bundle had
+  no FastInterp at all and ran DynCom while `citra_use_cpu_jit` was true, which
+  is the confirmed cause of the 3DS slowness.
+- RG-161.2: the core must select FastInterp when Dynarmic is not compiled in.
+  A build may not claim the JIT and then silently run DynCom; the selection logs
+  the backend it chose.
+- RG-161.3: the emulated machine must run at the 3DS LCD rate (59.8261 Hz), not
+  at whatever rate the CPU affords. Failing this is visible as slow motion with a
+  slow backend and as fast-forward with a fast one, both measured on the same
+  machine before the fix.
+- RG-161.4: a core binary and its build report must revalidate, and the service
+  worker must try the network before its cache, or a returning player keeps the
+  previous interpreter for a week. `tests/test_web_3ds_runtime.py`
+  (`CoreRefreshContractTests`) holds the contract; the live two-load check is
+  recorded in `docs/checkpoints/web-3ds-browser.md`.
+- RG-161.5: rebuild with `tools/build-azahar-wasm.sh` and install with
+  `tools/install-azahar-core.py`, which updates the vendored copy, the served
+  report and the lock together. Never swap the binary alone.
+
 ## Browser 3DS reaches the asset stage and a playable frame — RG-160, 2026-10-18
 
 - RG-160: **The repaired `latest/data-v2` Azahar runtime must be reachable by the

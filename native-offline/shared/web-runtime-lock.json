@@ -1,8 +1,8 @@
 {
   "latest/data-v2/compression/extract7z.js": "4ac9933b995a516cb6b3ca4027db860278372a20c21c405d93ceb1998498853a",
   "latest/data-v2/compression/extractzip.js": "3cc825428724213acd43d30552a78008e0869b2326de17dee240dbff9ee2f629",
-  "latest/data-v2/cores/azahar-thread-wasm.data": "f36b949040644b4a086a9e46add5307f928599eb6e8ab29e1a8bc8158de092ea",
-  "latest/data-v2/cores/reports/azahar.json": "c8006847d238bac528860757ff9c6dbbbdd3ae6934b7608319ffe2f7dba642ba",
+  "latest/data-v2/cores/azahar-thread-wasm.data": "64a219e90255a2ccee1c35e2e96862e1d73c5eb106149ae4747fab12192bf9f8",
+  "latest/data-v2/cores/reports/azahar.json": "5ea56393a4620163b7f508911b960eef07606131c5335b11b8ffaa1994a46204",
   "latest/data-v2/emulator.min.css": "6c7b0ae656c00b8f5c2aabd662fa19c5fbf30119634a63782ad7567f9fb95627",
   "latest/data-v2/emulator.min.js": "36b8bfc399a541e39ef66f070167f6b098cefeab1a8268e64bc9ec82afde92e2",
   "latest/data-v2/loader.js": "f1650e3dd703c4e83c30a198365db4f85e6d8eb1e08d730f355c297f66a90572",

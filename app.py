@@ -3801,7 +3801,17 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             else:
                 try:
                     asset = cached_emulator_asset(match.group(1), match.group(2))
-                    self.serve_file(asset, os.path.basename(asset), cache="public,max-age=604800,immutable")
+                    # A core binary and its build report are the only emulator
+                    # assets that are replaced in place when a core is rebuilt, so
+                    # they must revalidate instead of living for a week in the
+                    # browser's HTTP cache. Every other runtime asset keeps the
+                    # immutable lifetime that makes repeat play cheap.
+                    relative = match.group(2)
+                    revisable = relative.endswith(".data") or (
+                        relative.startswith("cores/reports/") and relative.endswith(".json"))
+                    self.serve_file(asset, os.path.basename(asset),
+                                    cache="public,max-age=0,must-revalidate" if revisable
+                                    else "public,max-age=604800,immutable")
                 except ValueError:
                     self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
                 except Exception:

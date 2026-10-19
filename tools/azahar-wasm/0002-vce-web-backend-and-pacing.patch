@@ -1,0 +1,131 @@
+diff --git a/src/citra_libretro/citra_libretro.cpp b/src/citra_libretro/citra_libretro.cpp
+index d7ef6e9..0d75247 100644
+--- a/src/citra_libretro/citra_libretro.cpp
++++ b/src/citra_libretro/citra_libretro.cpp
+@@ -238,6 +238,33 @@ static void UpdateSettings() {
+ /**
+  * libretro callback; Called every game tick.
+  */
++#ifdef __EMSCRIPTEN__
++/// Pace the emulated machine to the 3DS LCD rate.
++///
++/// The EmulatorJS runtime runs a threaded core on a pthread main loop and leaves
++/// it unpaced unless the user turns VSync on, so the achieved frame rate is
++/// whatever the host CPU happens to afford: DynCom managed ~0.7x of real time and
++/// FastInterp ~1.9x on the same machine. Both are wrong speeds. Waiting here only
++/// when the core is *ahead* of the LCD restores real-time play without adding a
++/// stall when the hardware cannot keep up, and it does not depend on the display
++/// refresh rate the frontend happens to report.
++static void LimitFrameRateToLcd() {
++    using Clock = std::chrono::steady_clock;
++    static Clock::time_point next{};
++    constexpr auto period = std::chrono::duration_cast<Clock::duration>(
++        std::chrono::duration<double>(1.0 / 59.8261));
++    const auto now = Clock::now();
++    if (next.time_since_epoch().count() == 0 || now > next + period) {
++        // First frame, or the core fell behind: restart the schedule from now so
++        // a slow frame never triggers a catch-up burst of unthrottled frames.
++        next = now + period;
++        return;
++    }
++    std::this_thread::sleep_until(next);
++    next += period;
++}
++#endif
++
+ void retro_run() {
+     if (!emu_instance || !emu_instance->game_loaded) {
+         return;
+@@ -318,6 +345,10 @@ void retro_run() {
+             LibRetro::DisplayMessage(msg.c_str());
+         }
+     }
++
++#ifdef __EMSCRIPTEN__
++    LimitFrameRateToLcd();
++#endif
+ }
+ 
+ static void setup_memory_maps() {
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 06e9a02..9d7b8a9 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -536,6 +536,12 @@ endif()
+ if (NOT MSVC)
+     target_compile_definitions(citra_core PUBLIC HAVE_FASTINTERP)
+     target_sources(citra_core PRIVATE
++        # FastInterp charges the same per-instruction tick model as the JIT, and
++        # that table lives in the dynarmic sources. A GENERIC build (wasm, 32-bit)
++        # compiles no dynarmic files, so the table must be added explicitly or the
++        # interpreter links against an undefined symbol.
++        arm/dynarmic/arm_tick_counts.cpp
++        arm/dynarmic/arm_tick_counts.h
+         arm/fastinterp/fastinterp.cpp
+         arm/fastinterp/fastinterp.h
+         arm/fastinterp/fastinterp_cache.h
+diff --git a/src/core/arm/fastinterp/fastinterp.h b/src/core/arm/fastinterp/fastinterp.h
+index ef09a22..a07f49c 100644
+--- a/src/core/arm/fastinterp/fastinterp.h
++++ b/src/core/arm/fastinterp/fastinterp.h
+@@ -56,7 +56,9 @@ public:
+     /// Block execution with chaining does not stop at single-instruction
+     /// boundaries, and the PC is not kept current between memory accesses within
+     /// a block, so watchpoints and memory-exception PCs are not exact.
+-    bool HasSingleInstructionBreakAccuracy() override {
++    /// Not a virtual in this tree (the base class gained the hook later), kept
++    /// here as the documented accuracy caveat of block-chained execution.
++    bool HasSingleInstructionBreakAccuracy() const {
+         return false;
+     }
+ 
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+index 6708c74..1f6eb03 100644
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -526,31 +526,37 @@ System::ResultStatus System::Init(Frontend::EmuWindow& emu_window,
+ 
+     exclusive_monitor = MakeExclusiveMonitor(*memory, num_cores);
+     cpu_cores.reserve(num_cores);
+-    if (Settings::values.use_cpu_jit) {
+ #if CITRA_ARCH(x86_64) || CITRA_ARCH(arm64)
++    if (Settings::values.use_cpu_jit.GetValue()) {
+         for (u32 i = 0; i < num_cores; ++i) {
+             cpu_cores.push_back(std::make_shared<ARM_Dynarmic>(
+                 *this, *memory, i, timing->GetTimer(i), *exclusive_monitor));
+         }
++        LOG_INFO(Core, "CPU backend: Dynarmic");
++    } else
+ #else
+-        for (u32 i = 0; i < num_cores; ++i) {
+-            cpu_cores.push_back(
+-                std::make_shared<ARM_DynCom>(*this, *memory, USER32MODE, i, timing->GetTimer(i)));
+-        }
+-        LOG_WARNING(Core, "CPU JIT requested, but Dynarmic not available");
++    // Dynarmic is not compiled for this host, so a JIT request cannot be
++    // honoured. Say so instead of silently running DynCom, and let the
++    // interpreter selection below choose the backend that actually runs.
++    if (Settings::values.use_cpu_jit.GetValue()) {
++        LOG_WARNING(Core, "CPU JIT requested, but Dynarmic not available; using the interpreter");
++    }
+ #endif
+ #ifdef HAVE_FASTINTERP
+-    } else if (Settings::values.use_fastinterp) {
++    if (Settings::values.use_fastinterp.GetValue()) {
+         for (u32 i = 0; i < num_cores; ++i) {
+             cpu_cores.push_back(std::make_shared<FastInterp::ARM_FastInterp>(*this, *memory, i,
+                                                                              timing->GetTimer(i)));
+         }
++        LOG_INFO(Core, "CPU backend: FastInterp");
++    } else
+ #endif
+-    } else {
++    {
+         for (u32 i = 0; i < num_cores; ++i) {
+             cpu_cores.push_back(
+                 std::make_shared<ARM_DynCom>(*this, *memory, USER32MODE, i, timing->GetTimer(i)));
+         }
++        LOG_INFO(Core, "CPU backend: DynCom");
+     }
+     running_core = cpu_cores[0].get();
+ 
