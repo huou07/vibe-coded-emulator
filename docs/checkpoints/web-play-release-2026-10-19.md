@@ -247,6 +247,19 @@ on this host, so the subnet scoping and any cross-subnet rejection are not
 exercised; multicast discovery stays BLOCKED; the browser surfaces were not driven
 (this is the data plane); and two physical devices remain UNVERIFIED.
 
+### The contrast fix is live too
+
+| Item | Value |
+| --- | --- |
+| Source SHA | `710e7a1` — CI `39187614292`, completed success, publication gate included |
+| Asset version | `c5c9626d7271` |
+| Release id | `production-32392aaa52208cb9` |
+| App backup | `/opt/an3-arcade-backups/20261019-085938` |
+| Database backup | `/srv/an3-arcade/backups/arcade-predeploy-20261019-085938.db`, integrity `PASS`, sha256 `42291f52eac6987467ee167ccfd4283fcde66982e6ef102cba3f511d1ce9639c` |
+| Health | `PRODUCTION_RELEASE=PASS`, `PRODUCTION_ASSET=c5c9626d7271` |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-085938` |
+| Re-measured live | `CONTRAST_AUDIT=PASS` — `/offline` 36 checked 0 below AA, `/` 47 checked 0 below AA |
+
 ## A contrast audit of the live surface, and the defect it found
 
 I cannot see the screenshots — `read_image` fails with `EACCES: open '/home'` even
