@@ -364,6 +364,65 @@ builders for macOS, Windows and Android are not on this host.
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-112312` |
 | Re-measured live | `keyboardInput: disabled`, **11 of 12** keys reaching the input path with real key events |
 
+### The thread pool is now sized from the client's hardware, and it is live
+
+The earlier round recorded this as blocked because there is no emscripten, no Azahar
+wasm source and no build recipe on this host. That was right about rebuilding and wrong
+about the fix: the pool size is a **literal in the JavaScript glue**, not something
+baked into the WebAssembly.
+
+The bundle is a 7-zip archive and its `azahar_libretro.js` contains:
+
+```js
+initMainThread(){ var pthreadPoolSize=32; while(pthreadPoolSize--){ PThread.allocateUnusedWorker() } ... }
+```
+
+`PTHREAD_POOL_SIZE` appears nowhere, so the number is not read from `Module` at
+runtime — but it is a plain text file inside an archive this repository vendors, so it
+can be patched. It now reads:
+
+```js
+var pthreadPoolSize=Math.max(2,Math.min((navigator.hardwareConcurrency||4)-1,16));
+```
+
+Measured by presenting different hardware, against **live production**:
+
+| Reported threads | `em-pthread` workers before | after |
+| --- | --- | --- |
+| 20 | 32 | **16** |
+| 4 | 32 | **4** |
+
+The pool follows the client's hardware instead of a fixed 32, and one thread is left for
+the main thread. `core.json` in the same bundle turned out to carry the real provenance
+— the build's cmake arguments and `repo: https://github.com/EmulatorJS/azahar`, version
+2.0.3 — which is what made the glue identifiable.
+
+Two things this exposed. The bundle's sha256 is frozen in
+`native-offline/shared/web-runtime-lock.json`, so the patch updates the lock rather than
+leaving it to drift. And the server **caches the runtime** in
+`DATA_DIR/emulatorjs-cache` without re-validating it against that lock, which is why the
+first patched deploy appeared to do nothing: staging kept serving the cached original.
+The core is not part of the web payload at all — production had no vendored runtime —
+so the patched bundle went in through the designed `deploy/seed-azahar-core.sh`
+(`AZAHAR_CORE_SEED=PASS`, backup `/srv/an3-arcade/emulatorjs-cache/backups/azahar/20261019-113208`),
+with `deploy/rollback-azahar-core.sh` as its inverse.
+
+What is **not** yet shown is a frame-rate gain. The same probe reads ~25 fps before and
+after on this host, inside the 25–48 range the core shows across runs, so the pool was
+wasteful rather than the frame-rate bottleneck, and no fps improvement is claimed.
+
+### Branch consolidation: 54 branches removed, none with unique work
+
+Every branch whose tip is an ancestor of another branch carries no unique commit, so it
+can go without losing anything. 54 met that test — **45 local and 9 remote** — and all
+54 are deleted. Before deleting, every tip SHA was written to
+`work/phaseG/branch-sha-backup.txt`, and the containment pairs to
+`work/phaseG/branch-consolidation.txt`. Spot-checked afterwards: the deleted
+`codex/vce-3.6.10-windows-beta-review` (`e49ca9d`) is still reachable from
+`public/3.6.10-source-candidate`, which survives.
+
+Local branches went from 77 to 32 and remote from 30 to 21.
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word
