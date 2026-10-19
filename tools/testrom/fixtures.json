@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "note": "Lawful AN3 emulator regression fixtures. Developer-generated; no commercial game content, firmware or keys.",
+  "fixtures": [
+    {
+      "system": "gba",
+      "core": "mGBA",
+      "filename": "an3-homebrew-test.gba",
+      "format": "gba",
+      "source": "tools/testrom/gba_homebrew_test.py",
+      "build": "python3 tools/testrom/gba_homebrew_test.py an3-homebrew-test.gba",
+      "size": 512,
+      "sha256": "28ce2a0220d178e4f79b8ae93a0a0aa1316e442f5979edfbeb837af7fa0d61bc",
+      "license": "GPL-3.0-or-later (project-generated)",
+      "provenance": "Generated from source in this repository. No third-party game code or assets; the Nintendo logo is omitted.",
+      "capabilities": {
+        "boot": true,
+        "render": true,
+        "input": true,
+        "save": true,
+        "save_state": "expected"
+      }
+    },
+    {
+      "system": "nds",
+      "core": "melonDS",
+      "format": "nds",
+      "status": "environment-blocked",
+      "reason": "No devkitARM/libnds toolchain is available on this host or the build hosts, and a minimal .nds cannot be hand-assembled safely. Install devkitPro to generate a fixture from source."
+    },
+    {
+      "system": "3ds",
+      "core": "Azahar",
+      "format": "3dsx",
+      "status": "environment-blocked",
+      "reason": "No devkitARM/libctru toolchain is available for .3dsx. Install devkitPro to generate a fixture from source. (The AN3 importer already accepts .3dsx.)"
+    },
+    {
+      "system": "switch",
+      "core": "Eden",
+      "format": "nro",
+      "status": "environment-blocked",
+      "reason": "No devkitA64/libnx toolchain is available for .nro, and Switch homebrew must not require prod.keys/title.keys/firmware. (The AN3 importer already accepts .nro.)"
+    }
+  ]
+}

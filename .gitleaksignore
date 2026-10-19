@@ -1,0 +1,8 @@
+# Historical public renderer-key assignments. Each entry is an exact
+# immutable fingerprint, so new findings remain subject to the default scan.
+70a64cc0ce7204330158ee6449c23358536ed1cb:static/player-runtime.js:generic-api-key:24
+70a64cc0ce7204330158ee6449c23358536ed1cb:tests/test_release_artifact_scan.py:generic-api-key:241
+f3ce4062661003ac5c397f2372f618817e486916:static/player-runtime.js:generic-api-key:21
+b62dfc97bc686bc52f8f2bb8da819c2cec408e7d:static/player-runtime.js:generic-api-key:21
+6e7916c25d707aa2e6e5ba1c0654d5698d7bebea:static/player-runtime.js:generic-api-key:21
+efc67d8781fce3af70f67a978fdaabac374327d1:static/player-runtime.js:generic-api-key:21
