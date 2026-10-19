@@ -563,7 +563,7 @@ Production now carries exactly one `#togglePad`, and its `app.py` hashes to
 | Production download page | offers **3.6.10** on six links, each carrying the catalog digest |
 | GitHub | release **v3.6.10**, 12 assets, plus the published 3.6.10 source on `main` |
 | 3DS core | patched bundle live (`f36b9490…`), pool sized from `navigator.hardwareConcurrency` |
-| Keyboard | 11 of 12 keys reach the core's input path, measured on production |
+| Keyboard | every 3DS button reaches the core's input path with real key events: arrows to D-pad 4/5/6/7, `z` A(8), `x` B(0), `a` X(9), `s` Y(1), `q` L(10), `e` R(11), Enter Start(3), and `v` Select(2), the last confirmed by `simulateInput:[0,2,1]` on press and `[0,2,0]` on release |
 | Pad | both toggles move both ways and persist |
 | Branches | 54 fully contained branches removed, local 77 → 32, remote 30 → 21 |
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-182628` |
