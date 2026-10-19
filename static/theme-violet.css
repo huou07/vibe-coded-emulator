@@ -518,3 +518,16 @@ body:not(.player-page) .offline-notice-actions{margin-top:8px}
 body:not(.player-page) .offline-notice-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 20px;margin:14px 0 0;padding:0;list-style:none}
 body:not(.player-page) .offline-notice-facts li{display:inline-flex;align-items:center;gap:7px;color:var(--v-muted);font-size:13px}
 body:not(.player-page) .offline-notice-facts .ui-mask{width:16px;height:16px;color:var(--v-violet)}
+
+/* The primary button carries white text at 15px/700, which WCAG treats as normal
+   text and therefore needs 4.5:1. White on --v-violet (#8b5cf6) measures 4.23:1,
+   so the four download buttons on the landing page failed AA. This keeps the hue
+   and darkens only the primary button's own surface to 4.87:1; the shared token
+   is left alone so nothing else in the product changes. Measured by
+   work/phaseG/contrast-audit.mjs against the live page. */
+body:not(.player-page) .button.primary{
+  background:#8055e2;
+}
+body:not(.player-page) .button.primary:hover{
+  background:#7348d4;
+}

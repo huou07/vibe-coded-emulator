@@ -247,6 +247,35 @@ on this host, so the subnet scoping and any cross-subnet rejection are not
 exercised; multicast discovery stays BLOCKED; the browser surfaces were not driven
 (this is the data plane); and two physical devices remain UNVERIFIED.
 
+## A contrast audit of the live surface, and the defect it found
+
+I cannot see the screenshots — `read_image` fails with `EACCES: open '/home'` even
+for a file copied to `/tmp`, because the tool resolves through `/home` regardless of
+where the image is, and that is a harness limit rather than a Unix permission one.
+A visual verdict on taste therefore still needs the owner. What does not need eyes is
+contrast, so `work/phaseG/contrast-audit.mjs` walks the live page, resolves each
+visible text node's effective background by climbing ancestors, and computes the
+WCAG ratio against the correct threshold for that text's size and weight.
+
+First run, against production:
+
+| Page | Text checked | Below AA |
+| --- | --- | --- |
+| `/offline` | 36 | **0** |
+| `/` | 47 | **4** |
+
+The four failures were the landing page's primary call to action — "Download for
+macOS", "Windows", "Linux", "Android" — at **4.23:1** against the 4.5:1 that 15px/700
+text needs, because WCAG counts bold only from 18.66px. The cause is white on
+`--v-violet` (`#8b5cf6`), and the hover state was worse still: `--v-violet-2`
+(`#a855f7`) measures 3.96:1.
+
+Fixed at the component rather than the token: the primary button's own surface is now
+`#8055e2` (4.87:1) and its hover `#7348d4` (5.82:1), so nothing else that uses the
+violet token changes. Re-measured: `/offline` 39 checked with 0 below AA and `/` 47
+checked with 0, `CONTRAST_AUDIT=PASS`. The Android mirror was re-copied and the gate
+passes.
+
 ## Release: the experimental switches and the UI convergence are live
 
 Deployed 2026-10-19 from `7733745`, the SHA whose hosted run completed success.
