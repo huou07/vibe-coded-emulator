@@ -260,6 +260,19 @@ exercised; multicast discovery stays BLOCKED; the browser surfaces were not driv
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-085938` |
 | Re-measured live | `CONTRAST_AUDIT=PASS` — `/offline` 36 checked 0 below AA, `/` 47 checked 0 below AA |
 
+### The typography fix is live
+
+| Item | Value |
+| --- | --- |
+| Source SHA | `648ea87` — CI `39188383032`, completed success, publication gate included |
+| Asset version | `4ec2fa8d51e8` |
+| Release id | `production-18680c43a9827083` |
+| App backup | `/opt/an3-arcade-backups/20261019-090939` |
+| Database backup | `/srv/an3-arcade/backups/arcade-predeploy-20261019-090939.db`, integrity `PASS`, sha256 `bde92b0579d7dbe10afbef5e14aef1f39a847add5a46bf47de528f836b6a7747` |
+| Health | `PRODUCTION_RELEASE=PASS`, `PRODUCTION_ASSET=4ec2fa8d51e8` |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-090939` |
+| Re-measured live | `FONT_CONVERGENCE=PASS` — `body=Roboto Condensed 15px/400`, brand Pixelify Sans; `CONTRAST_AUDIT=PASS` — `/offline` 36 checked, `/` 47 checked, 0 below AA |
+
 ## The typography was documented but not applied
 
 `docs/design-system.md` names the faces: "Use the local Pixelify and Roboto Condensed
