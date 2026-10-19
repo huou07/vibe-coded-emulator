@@ -76,8 +76,17 @@ test("native settings and runtime no longer expose Sync controls", () => {
   const kotlinSchema = read("native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativeSettingsSchema.kt");
   const jsModel = read("native-offline/web/native-settings.js");
   assert.equal(schema.global.some(item => item.id === "lan-sync"), false);
-  assert.doesNotMatch(kotlinSchema, /lan-sync|LAN Sync/);
-  assert.doesNotMatch(jsModel, /lan-sync|LAN Sync/);
+  // This test was written when sync was removed wholesale, and its pattern then
+  // caught the local experimental toggle as well. The owner has since asked for
+  // LAN Sync and Phone Controller to exist as user-controlled experimental
+  // features, and tests/native_settings.test.mjs requires exactly those three
+  // entries — so the two tests contradicted each other and no tree could satisfy
+  // both. What this test actually guards is the retired *cloud* surface: a Google
+  // Sync control, the old native-sync bridge, and a sync tab. The local
+  // experimental switch is a different thing and is covered above and by the
+  // settings suite.
+  assert.doesNotMatch(kotlinSchema, /Google Sync|native-sync|cloud sync/);
+  assert.doesNotMatch(jsModel, /Google Sync|native-sync|cloud sync/);
   assert.doesNotMatch(indexHtml, /data-settings-(?:tab|pane)="sync"|nativeSync|LAN Sync|Google Sync/);
   assert.doesNotMatch(indexHtml, /native-sync\.js|sync-transfer\.js/);
 });
