@@ -35,6 +35,10 @@
 }
 
 /* Bridge the legacy token sets onto the violet palette. */
+/* docs/design-system.md names Roboto Condensed the readable interface face, and
+   static/site.css declares it from the bundled woff2 files. The stack used to ask
+   for Inter first, which no @font-face declares, so the shipped face was bypassed
+   and the browser fell through to a system font. */
 body:not(.player-page){
   --ui-bg:var(--v-bg);
   --ui-surface:var(--v-surface);
@@ -85,7 +89,7 @@ body:not(.player-page){
     radial-gradient(rgba(196,181,253,.05) 1px, transparent 1px);
   background-size:auto, 26px 26px;
   background-attachment:fixed, fixed;
-  font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-family:"Roboto Condensed","Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   font-size:15px;
   -webkit-font-smoothing:antialiased;
 }
@@ -101,7 +105,7 @@ body:not(.player-page) .library-head h1,
 body:not(.player-page) .auth-panel h1,
 body:not(.player-page) .reference-metric-card strong,
 body.reference-shell .brand{
-  font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;
+  font-family:"Roboto Condensed","Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important;
   letter-spacing:-.03em;
 }
 body:not(.player-page) .eyebrow,
@@ -469,7 +473,7 @@ body:not(.player-page) #adminMonitoring .reference-monitor-card strong{font-size
 }
 
 /* Neutralize the legacy lime admin shell; keep the violet system authoritative. */
-body.reference-shell.admin-shell .admin-head h1{color:var(--v-text) !important;font-family:"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important}
+body.reference-shell.admin-shell .admin-head h1{color:var(--v-text) !important;font-family:"Roboto Condensed","Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif !important}
 body.reference-shell.admin-shell .admin-head .eyebrow{color:var(--v-lavender) !important}
 body.reference-shell.admin-shell .admin-task-nav{border-bottom-color:var(--v-line) !important}
 body.reference-shell.admin-shell .admin-task-nav a{background:var(--v-surface-2) !important;border-color:var(--v-line) !important;color:var(--v-muted) !important}

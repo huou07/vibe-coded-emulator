@@ -260,6 +260,35 @@ exercised; multicast discovery stays BLOCKED; the browser surfaces were not driv
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-085938` |
 | Re-measured live | `CONTRAST_AUDIT=PASS` — `/offline` 36 checked 0 below AA, `/` 47 checked 0 below AA |
 
+## The typography was documented but not applied
+
+`docs/design-system.md` names the faces: "Use the local Pixelify and Roboto Condensed
+faces already included in the app shell. Pixel type is reserved for the brand and
+display headings; Roboto Condensed is the readable interface face". Both are bundled
+and declared — `static/site.css` has three `@font-face` blocks for `"Roboto
+Condensed"` including the Vietnamese cut, and `static/fonts/` carries the files with
+their OFL texts.
+
+The shell's font stack nevertheless asked for `"Inter"` first, and **no `@font-face`
+anywhere declares Inter**. So the shipped face was bypassed and the browser fell
+through to a system font, while the design system's named interface face went unused.
+Measured on the live page: `body=Inter 15px/400`, and `document.fonts` showed Roboto
+Condensed as declared but not loaded.
+
+The stack now asks for `"Roboto Condensed"` first in all three rules that carried it,
+keeping the system fallbacks behind it. Measured again: the Web play surface renders
+`body=Roboto Condensed 15px/400` with the face reported **loaded**, the brand stays
+Pixelify Sans, and the app shell — which links the same two stylesheets — renders the
+same stack, so `FONT_CONVERGENCE=PASS`. Contrast was re-measured after the change and
+still passes: `/offline` 39 checked with 0 below AA, `/` 47 checked with 0.
+
+One of my own errors is worth recording: the first convergence probe reported
+`DIVERGENT` because the little static server I used for the app shell served only
+`native-offline/web/`, while that page links `/static/site.css` and
+`/static/theme-violet.css`. Its stylesheets never resolved and the measurement read
+Times New Roman — the browser's default. Serving `/static/` from the repository made
+the comparison real.
+
 ## A contrast audit of the live surface, and the defect it found
 
 I cannot see the screenshots — `read_image` fails with `EACCES: open '/home'` even
