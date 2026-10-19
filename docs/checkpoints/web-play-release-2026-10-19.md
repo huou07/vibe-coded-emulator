@@ -273,59 +273,30 @@ exercised; multicast discovery stays BLOCKED; the browser surfaces were not driv
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-090939` |
 | Re-measured live | `FONT_CONVERGENCE=PASS` — `body=Roboto Condensed 15px/400`, brand Pixelify Sans; `CONTRAST_AUDIT=PASS` — `/offline` 36 checked, `/` 47 checked, 0 below AA |
 
-### Open: `/offline` overflows after a width change, though not on a fresh load
+### The intermittent overflow was the hero's `100vw` bleed, and it is now removed
 
-The two overflows above are fixed and verified, but a third behaviour is open and I
-am recording it rather than guessing at it.
+I first recorded this as open. It is resolved, and the way it resolved is worth
+keeping because my first two attempts were wrong.
 
-Measured against production, the same page at 390px gives two different answers
-depending on how the session reached 390:
+The same page at 390px measured two different things depending on the run — 0 in some
+sessions, 62 in others — and the values were identical to the pre-fix numbers, which
+made a stale CDN copy look like the cause. It was not: a probe that navigates at one
+width and then resizes reproduces it in four of five orderings, including a plain
+`390 -> 390`, while a probe that loads once and samples densely sees nothing.
 
-| How 390px was reached | `scrollWidth - clientWidth` |
-| --- | --- |
-| Fresh session, first navigation at 390px | **0** |
-| After the same session had been at 360px | **62** |
-| Dense sampling, 60 reads over 9s at a fresh 390px | **0 of 60** |
+Reading the computed styles in both states settled it. When the document measured 62px
+wide, `section.library-head` was at **full bleed**; when it measured 0, the hero sat
+inside its container at the same width as the page. The bleed is computed from `100vw`
+and switched off by a `max-width:1023px` media query, so whether the fix applied was
+itself intermittent. A condition that can be evaluated late is not a fix.
 
-The same pattern appears at 360px, where a fresh load measures 0 and a session that
-had been at 1440px first measures 92. A width change is what a phone rotation does,
-so this is a real path and not a probe curiosity; what is not yet established is the
-element responsible, because in the overflowing state no element's bounding rect
-exceeds the viewport even though the document's scroll width does. The first two
-fixes above are unaffected — they are measured on a fresh load at all four widths and
-by 60 consecutive samples at 390px.
-
-## The documented UI contract, audited on the live surface
-
-`work/phaseG/ui-contract-audit.mjs` checks what `docs/design-system.md` and
-`docs/ui-page-contract.md` actually require: the ten named token values, the 72px
-desktop header, document-level horizontal overflow at 360, 390, 768 and 1440, the
-control tiers, and keyboard-visible focus, which the page contract demands and
-nothing had measured.
-
-First run found two things and one of them was mine.
-
-**The token probe was wrong, not the product.** It read the custom properties from
-`document.documentElement`, but `theme-violet.css` rebinds them on
-`body:not(.player-page)`, so all ten came back empty. Reading them from `body` gives
-**10 checked, 0 mismatches**.
-
-**`/offline` did overflow, and that was real.** At 390px the document was 452px wide
-against a 390px viewport — a contract violation, since the responsive contract says
-every page must avoid document-level overflow at 360px and 390px. The cause was the
-device-fact grid: it was still five columns of 48.8px inside a 284px box, because the
-five-column rule carries a higher specificity than the media query that tried to
-reduce it, and a fact value cannot shrink below its longest word. A second, smaller
-overflow appeared at 768px where `section.library-head` measured 784px wide with its
-right edge 8px past the viewport: the full-bleed negative margin is computed from
-`100vw`, which counts the scrollbar.
-
-Both are fixed, the first by a narrow-width rule carrying enough specificity to win
-and the second by zeroing that bleed below the container's own maximum, where it buys
-nothing. Re-measured: 360, 390, 768 and 1440 all report `scrollWidth == clientWidth`,
-`UI_CONTRACT_AUDIT=PASS`, header 72px at 1440, and 12 interactive elements focused
-with **0 lacking a visible focus indicator**. Contrast was re-measured after the grid
-change and still passes: `/offline` 39 checked, `/` 47 checked, 0 below AA.
+The bleed is now removed at **every** width rather than switched off below a
+breakpoint, so no ordering or timing can bring it back, and the hero spans the page
+container like every other panel on the page. Verified by three consecutive runs of the
+resize probe over five orderings — **15 of 15 report zero** — and by the full audit:
+tokens 10 of 10, overflow 0 at 360, 390, 768 and 1440 on `/offline`, `/` and
+`/download-app`, 12 interactive elements focused with none lacking an indicator, and
+the 72px header at 1440. `UI_CONTRACT_AUDIT=PASS`.
 
 ## The typography was documented but not applied
 

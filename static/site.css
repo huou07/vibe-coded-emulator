@@ -2884,16 +2884,17 @@ body.offline-shell .offline-library{
   body.reference-shell.offline-shell .offline-facts{grid-template-columns:minmax(0,1fr)}
 }
 
-/* The same no-overflow rule, for the hero. `100vw` counts the scrollbar, so the
-   full-bleed negative margin computed from it pushed section.library-head 8px past
-   a 768px viewport (measured width 784, right edge 776). Below the container's own
-   maximum the bleed buys nothing, so the margins go back to zero and the box stays
-   inside its parent. */
-@media(max-width:1023px){
-  body.reference-shell.offline-shell .offline-page>.library-head{
-    margin-left:0;
-    margin-right:0;
-    max-width:100%;
-    box-sizing:border-box;
-  }
+/* The same no-overflow rule, for the hero, and deliberately unconditional. The
+   full-bleed margin was computed from `100vw`, which counts the scrollbar, and it
+   measured 784px wide with its right edge 8px past a 768px viewport. Worse, whether
+   the rule that zeroed it applied was itself intermittent: the same page at 390px
+   measured 0 in some runs and 62 in others, with the overflowing runs showing the
+   hero at full bleed. A condition that can be evaluated late is not a fix, so the
+   bleed is removed at every width instead of being switched off below a breakpoint.
+   The hero then spans the page container, like every other panel on the page. */
+body.reference-shell.offline-shell .offline-page>.library-head{
+  margin-left:0;
+  margin-right:0;
+  max-width:100%;
+  box-sizing:border-box;
 }
