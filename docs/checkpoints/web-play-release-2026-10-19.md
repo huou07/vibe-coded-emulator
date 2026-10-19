@@ -531,6 +531,43 @@ builders' own hosted runs are the only evidence for those platforms, and no devi
 attached here. The native audio path, the emulated core rate and gameplay latency remain
 unestablished for the same reason.
 
+### The settings-menu pad toggle, and a mistake worth recording
+
+The owner asked for the pad to stay shown or hidden whether it is toggled by the touch
+button **or in the settings menu**. The menu toggle turned out to exist already:
+`app.py` inserts a `#togglePad` button through its `pad_settings.replace` call, and
+`static/player.js` had always bound it. What was broken was only that its state did not
+persist, which the persistence fix addressed.
+
+I then misread that. A grep for `padToggle` — the wrong order — missed the existing
+`togglePad`, so I added a second button with the same id. Two elements sharing one id
+means `getElementById` returns the first in document order, so the button I added could
+never receive the listener or the label sync. It is reverted, and the reverted markup was
+re-verified in the browser on the GBA pad, whose settings path is the same non-NDS branch
+as 3DS:
+
+| Step | `storedVisible` | Pad | Label | `aria-pressed` |
+| --- | --- | --- | --- | --- |
+| start | true | shown | Hide virtual controls | true |
+| click | false | hidden | Show virtual controls | false |
+| click | true | shown | Hide virtual controls | true |
+
+Production now carries exactly one `#togglePad`, and its `app.py` hashes to
+`d493f00267e2d36d`, byte-identical to the committed source.
+
+### Where the release stands
+
+| Surface | State |
+| --- | --- |
+| Production web | `PRODUCTION_RELEASE=PASS`, release `production-b1839e55b503daa3`, health `ok` |
+| Production download page | offers **3.6.10** on six links, each carrying the catalog digest |
+| GitHub | release **v3.6.10**, 12 assets, plus the published 3.6.10 source on `main` |
+| 3DS core | patched bundle live (`f36b9490…`), pool sized from `navigator.hardwareConcurrency` |
+| Keyboard | 11 of 12 keys reach the core's input path, measured on production |
+| Pad | both toggles move both ways and persist |
+| Branches | 54 fully contained branches removed, local 77 → 32, remote 30 → 21 |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-182628` |
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word
