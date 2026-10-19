@@ -2898,3 +2898,33 @@ body.reference-shell.offline-shell .offline-page>.library-head{
   max-width:100%;
   box-sizing:border-box;
 }
+
+/* The device-fact grid must not depend on which face is loaded.
+   With every .woff2 blocked — a slow connection, or the moment before the bundled
+   font arrives — the grid was measured as five columns of 0px, its values spilled
+   outside the panel and the document grew to 452px inside a 390px viewport. The
+   tracks are now sized by available space rather than by a fixed count, the cells
+   may shrink, and a value that is still too long breaks rather than pushes the page
+   wider. Deliberately unconditional: a breakpoint that decides this can be
+   evaluated late, which is what made the fault intermittent.
+   Measured by work/phaseG/overflow-font.mjs. */
+body.reference-shell.offline-shell .offline-facts{
+  grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));
+}
+body.reference-shell.offline-shell .offline-facts>div{min-width:0}
+body.reference-shell.offline-shell .offline-facts strong,
+body.reference-shell.offline-shell .offline-facts span,
+body.reference-shell.offline-shell .offline-facts small{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+/* The `hidden` attribute must win on the play surface.
+   #offlineNativePicker and #offlineShortcut are both marked hidden by the markup
+   and by offline.js, but a display rule on the button defeated the user-agent's
+   [hidden] { display: none }, so the browser rendered two controls for one action —
+   the raw file input plus "Choose ROM from this device" — and an "Install app"
+   button that is only meant to appear when installation is actually offered.
+   Measured by work/phaseG/picker-state.mjs: the picker reported hidden=true with
+   display:flex. Scoped to the offline shell so no other surface changes. */
+body.offline-shell [hidden]{display:none!important}

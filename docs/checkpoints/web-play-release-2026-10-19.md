@@ -298,6 +298,44 @@ tokens 10 of 10, overflow 0 at 360, 390, 768 and 1440 on `/offline`, `/` and
 `/download-app`, 12 interactive elements focused with none lacking an indicator, and
 the 72px header at 1440. `UI_CONTRACT_AUDIT=PASS`.
 
+## The visual review, finally done with eyes on the product
+
+The read access was granted, and this is the first time in this work that the product
+could actually be looked at rather than measured. Four findings, all now fixed, and
+none of them was visible to any of the numeric audits.
+
+**The device-fact grid collapsed while the bundled font was still loading**, and this
+is the fault I had spent two rounds failing to pin down. With every `.woff2` blocked —
+a slow connection, or the moment before Roboto Condensed arrives — the grid became
+five columns of 0px, its values spilled outside the panel and the document grew to
+452px inside a 390px viewport. The screenshot shows it plainly: the cards are thin
+slivers and "Emulator cores / Not checked" sits on top of the panel below. The tracks
+are now sized by available space (`auto-fit` with a minimum) rather than by a fixed
+count, the cells may shrink, and a value that is still too long breaks instead of
+pushing the page wider. Verified with the same font-blocked reproduction: delta 0 and
+one 284px column in both conditions.
+
+**`hidden` was being defeated by CSS on two controls.** `#offlineNativePicker` carried
+`hidden` from its markup and from `offline.js`, yet reported `hidden=true` with
+`display:flex` — so the browser rendered two controls for one action, the raw file
+input *and* "Choose ROM from this device". `#offlineShortcut` had the same fault,
+which is why an "Install app" button sat orphaned at the bottom of a page where
+installation was not being offered. `body.offline-shell [hidden]{display:none}` now
+makes the attribute mean what it says; re-measured, the picker reports `display:none`
+and `visible=false`, and the page is 100px shorter.
+
+The two shells now read as the same product: the same palette, the same card and fact
+treatment, the same face, and the same violet reserved for the primary action. What
+differs is structure — the installed app is a sidebar plus top bar, the Web page is a
+header plus a hero and stacked panels — which is the difference between an application
+and a website rather than a divergence in the design system.
+
+**Still open, and now known to be visible rather than merely measurable:** the
+player's own control bar is EmulatorJS's default — light grey icons and a slider on
+black — and shares nothing with the violet system. `docs/design-system.md` excludes
+the player deliberately, so this is a decision rather than a defect, but it is the
+most visually distinct surface left.
+
 ## Confirmed: `/offline` overflows while the bundled font is still loading
 
 I chased this across two rounds and several probe implementations that disagreed, and
