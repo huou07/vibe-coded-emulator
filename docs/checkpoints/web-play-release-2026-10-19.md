@@ -423,6 +423,28 @@ can go without losing anything. 54 met that test — **45 local and 9 remote** �
 
 Local branches went from 77 to 32 and remote from 30 to 21.
 
+### The most advanced source is published
+
+The publication gates were run on both lines rather than assumed. A snapshot built
+from this development branch fails the core-only contract — `app.py still defines the
+account page route (path == "/account")` — because accounts are *disabled* here in
+production rather than removed, so the public line's own tests reject it. The app line's
+3.6.10 candidate passes both gates, and that is what went out.
+
+| Item | Value |
+| --- | --- |
+| Candidate | `public/3.6.10-source-candidate` at `a954b44`, 515 files, 14 MB |
+| Source gate | `PUBLICATION_SOURCE=PASS` — core-only public product |
+| Content gate | `PUBLICATION_CHECK=PASS` — gitleaks 0 findings, personal-data and infra patterns clean |
+| Published | `main` = `ba1238f` in `huou07/vibe-coded-emulator` |
+| Verified after | version **3.6.10** in the published tree, **0** occurrences of `/account` or `/login` in `app.py`, branch protection requiring the `test` check, secret scanning, push protection, Dependabot alerts and updates, private vulnerability reporting |
+
+The installers are a separate question with one honest answer: the newest complete set
+that exists is still **3.6.8**, already on the production download page and already the
+GitHub release. The 3.6.10 line has source but no packages, because the tag-triggered
+release lane that builds them has failed at startup since 2026-10-10 and the macOS,
+Windows and Android builders are not on this host.
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word
