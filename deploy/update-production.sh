@@ -16,7 +16,10 @@ APP_BACKUPS=/opt/an3-arcade-backups
 DATA_ROOT=/srv/an3-arcade
 UNIT=an3-arcade.service
 HEALTH_URL=http://127.0.0.1:8091/health
-TMP="$(mktemp -d /tmp/an3-production-release.XXXXXX)"
+# Honour TMPDIR: this host's /tmp is a small shared tmpfs that other tenants
+# keep near full, and the payload has to be extracted somewhere with room. The
+# temporary location changes nothing about what is verified below.
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/an3-production-release.XXXXXX")"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 APP_BACKUP="$APP_BACKUPS/$STAMP"
 

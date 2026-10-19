@@ -247,6 +247,44 @@ on this host, so the subnet scoping and any cross-subnet rejection are not
 exercised; multicast discovery stays BLOCKED; the browser surfaces were not driven
 (this is the data plane); and two physical devices remain UNVERIFIED.
 
+## Release: the experimental switches and the UI convergence are live
+
+Deployed 2026-10-19 from `7733745`, the SHA whose hosted run completed success.
+
+| Item | Value |
+| --- | --- |
+| Source SHA | `7733745` — CI `39186454312`, completed success, publication gate included |
+| Asset version | `22dfbbfee950` |
+| Release id | `production-faa2385133b48305` |
+| App backup | `/opt/an3-arcade-backups/20261019-084747` |
+| Database backup | `/srv/an3-arcade/backups/arcade-predeploy-20261019-084747.db`, integrity `PASS`, sha256 `4e2bc7cbacdbf5933b121e0dc4d47b2cca182e7b053de0ed92f59e2a3673f907` |
+| Health | `PRODUCTION_RELEASE=PASS`, `PRODUCTION_ASSET=22dfbbfee950` |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-084747` |
+| Live checks | `/`, `/offline`, `/download-app`, `/licenses` 200; `/login`, `/admin` 404; service active, `NRestarts 0` |
+
+Two obstacles stood in the way and neither was worked around by weakening a gate.
+
+`/tmp` on this host is a 7.7 GB tmpfs that other tenants keep near full — 7.5 GB used
+with 237 MB free — and `update-production.sh` extracted its payload into a literal
+`/tmp` path, so a 720 MB archive could not be unpacked. The script now honours
+`TMPDIR`; the deploy ran with `TMPDIR` on the workspace filesystem, which has 64 GB
+free. That changes where the payload is unpacked and nothing about what is verified.
+
+The release catalog was the real constraint. Both of my trees carry a catalog whose
+named installers are absent — this line's names 3.2.3/3.2.2/2.2.0 artifacts from
+`ad71997`, and the 3.6.10 line names 3.3.3 ones — while the installed production
+tree carries a 3.6.8 catalog whose six artifacts are present and byte-verified. The
+payload therefore reused those six **installed, already verified** artifacts and
+their sidecars rather than inventing any: `tools/verify-release-catalog.py` passed
+on the payload before the deploy, and `update-production.sh` runs it again. The
+native installer set is unchanged at 3.6.8; what advances in this release is the Web
+product. No catalog entry was fabricated and no check was relaxed.
+
+The convergence was then measured on the live surface, not only locally:
+`UI_CONVERGENCE=PASS` against `https://an3tocom.space/offline`, with the readiness
+panel, the device facts and the heading matching the app shell's own computed
+treatment exactly.
+
 ## Phone Controller: two-peer acceptance, PASS 11/11
 
 The feature was recorded BLOCKED because same-host multicast discovery never
