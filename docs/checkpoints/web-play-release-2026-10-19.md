@@ -273,6 +273,38 @@ exercised; multicast discovery stays BLOCKED; the browser surfaces were not driv
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-090939` |
 | Re-measured live | `FONT_CONVERGENCE=PASS` — `body=Roboto Condensed 15px/400`, brand Pixelify Sans; `CONTRAST_AUDIT=PASS` — `/offline` 36 checked, `/` 47 checked, 0 below AA |
 
+## The documented UI contract, audited on the live surface
+
+`work/phaseG/ui-contract-audit.mjs` checks what `docs/design-system.md` and
+`docs/ui-page-contract.md` actually require: the ten named token values, the 72px
+desktop header, document-level horizontal overflow at 360, 390, 768 and 1440, the
+control tiers, and keyboard-visible focus, which the page contract demands and
+nothing had measured.
+
+First run found two things and one of them was mine.
+
+**The token probe was wrong, not the product.** It read the custom properties from
+`document.documentElement`, but `theme-violet.css` rebinds them on
+`body:not(.player-page)`, so all ten came back empty. Reading them from `body` gives
+**10 checked, 0 mismatches**.
+
+**`/offline` did overflow, and that was real.** At 390px the document was 452px wide
+against a 390px viewport — a contract violation, since the responsive contract says
+every page must avoid document-level overflow at 360px and 390px. The cause was the
+device-fact grid: it was still five columns of 48.8px inside a 284px box, because the
+five-column rule carries a higher specificity than the media query that tried to
+reduce it, and a fact value cannot shrink below its longest word. A second, smaller
+overflow appeared at 768px where `section.library-head` measured 784px wide with its
+right edge 8px past the viewport: the full-bleed negative margin is computed from
+`100vw`, which counts the scrollbar.
+
+Both are fixed, the first by a narrow-width rule carrying enough specificity to win
+and the second by zeroing that bleed below the container's own maximum, where it buys
+nothing. Re-measured: 360, 390, 768 and 1440 all report `scrollWidth == clientWidth`,
+`UI_CONTRACT_AUDIT=PASS`, header 72px at 1440, and 12 interactive elements focused
+with **0 lacking a visible focus indicator**. Contrast was re-measured after the grid
+change and still passes: `/offline` 39 checked, `/` 47 checked, 0 below AA.
+
 ## The typography was documented but not applied
 
 `docs/design-system.md` names the faces: "Use the local Pixelify and Roboto Condensed

@@ -2862,3 +2862,38 @@ body.offline-shell .offline-library{
   border-radius:14px;
   background:var(--v-surface-2);
 }
+
+/* docs/design-system.md: "Every page must avoid document-level horizontal
+   overflow at 360px and 390px." The device-fact grid was measured at 390px as
+   five columns of 48.8px inside a 284px box, because the five-column rule carries
+   a higher specificity than the media query that tried to reduce it, and a fact
+   value cannot shrink below its longest word. Measured by
+   work/phaseG/overflow-check.mjs against the live page. */
+@media(max-width:700px){
+  body.reference-shell.offline-shell .offline-facts{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  body.reference-shell.offline-shell .offline-facts>div{min-width:0}
+  body.reference-shell.offline-shell .offline-facts strong,
+  body.reference-shell.offline-shell .offline-facts span,
+  body.reference-shell.offline-shell .offline-facts small{overflow-wrap:anywhere}
+  body.reference-shell.offline-shell .offline-page>.library-head{max-width:100%}
+}
+@media(max-width:430px){
+  body.reference-shell.offline-shell .offline-facts{grid-template-columns:minmax(0,1fr)}
+}
+
+/* The same no-overflow rule, for the hero. `100vw` counts the scrollbar, so the
+   full-bleed negative margin computed from it pushed section.library-head 8px past
+   a 768px viewport (measured width 784, right edge 776). Below the container's own
+   maximum the bleed buys nothing, so the margins go back to zero and the box stays
+   inside its parent. */
+@media(max-width:1023px){
+  body.reference-shell.offline-shell .offline-page>.library-head{
+    margin-left:0;
+    margin-right:0;
+    max-width:100%;
+    box-sizing:border-box;
+  }
+}
