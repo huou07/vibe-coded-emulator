@@ -298,6 +298,34 @@ tokens 10 of 10, overflow 0 at 360, 390, 768 and 1440 on `/offline`, `/` and
 `/download-app`, 12 interactive elements focused with none lacking an indicator, and
 the 72px header at 1440. `UI_CONTRACT_AUDIT=PASS`.
 
+## Confirmed: `/offline` overflows while the bundled font is still loading
+
+I chased this across two rounds and several probe implementations that disagreed, and
+the disagreement is now explained. It is not the CDN and not a measurement race.
+
+`work/phaseG/overflow-font.mjs` loads the same page twice at 390px, once normally and
+once with every `.woff2` request aborted:
+
+| Condition | Document | Device-fact grid |
+| --- | --- | --- |
+| Fonts allowed | `scrollWidth == clientWidth`, delta **0** | one column, 284px |
+| Fonts blocked | delta **62**, `scrollWidth` 452 | **five columns of 0px** |
+
+So the layout depends on the bundled font having loaded. Before Roboto Condensed
+arrives, the fact grid collapses to five zero-width columns whose content cannot fit,
+and the document grows to 452px at any narrow viewport. That is what a user on a slow
+connection sees, and it is the contract violation the responsive contract forbids at
+360px and 390px.
+
+It also explains the probes that disagreed: any measurement taken while the fallback
+face was still in use read 92/62/8, and any taken after the font loaded read 0. My
+earlier settle-on-stable-scroll-width wait does not help, because the collapsed layout
+is perfectly stable.
+
+The two deterministic overflows and the hero bleed are fixed and shipped; **this one is
+not**, and the fix belongs with the layout rather than with the font: the fact grid
+must not depend on which face is available when it computes its tracks.
+
 ## The typography was documented but not applied
 
 `docs/design-system.md` names the faces: "Use the local Pixelify and Roboto Condensed
