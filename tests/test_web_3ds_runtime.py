@@ -219,7 +219,7 @@ class CoreRefreshContractTests(unittest.TestCase):
         worker = (ROOT / "static/service-worker.js").read_text(encoding="utf-8")
         self.assertIn("refreshableCore", worker)
         self.assertIn(r"/\/cores\/(?:reports\/[^/]+\.json|[^/]+\.data)$/", worker)
-        self.assertIn('fetch(event.request, {cache: "reload"})', worker)
+        self.assertIn('fetch(event.request, {cache: "no-cache"})', worker)
         # The offline path must survive a failed refresh.
         self.assertIn("cache.match(event.request).then(cached => cached || fetch(event.request))", worker)
 

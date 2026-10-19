@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import base64
 import binascii
+from email.utils import formatdate, parsedate_to_datetime
 import hashlib
 import hmac
 import html
@@ -2875,7 +2876,33 @@ class Handler(BaseHTTPRequestHandler):
         size = os.path.getsize(path)
         start, end = 0, size - 1
         status = 200
+        # An emulator asset that must revalidate is only cheap if the browser can
+        # ask "has it changed?" and get a 304. Without a validator every play
+        # re-downloads the whole core. The ETag is the file's identity here: size
+        # plus modification time, which changes exactly when the file is replaced.
+        stat = os.stat(path)
+        etag = '"%x-%x"' % (stat.st_size, int(stat.st_mtime_ns))
+        last_modified = formatdate(stat.st_mtime, usegmt=True)
         range_header = self.headers.get("Range", "")
+        if not range_header:
+            if_none_match = self.headers.get("If-None-Match", "")
+            if_modified_since = self.headers.get("If-Modified-Since", "")
+            if if_none_match:
+                fresh = etag in [token.strip() for token in if_none_match.split(",")]
+            elif if_modified_since:
+                try:
+                    fresh = stat.st_mtime <= parsedate_to_datetime(if_modified_since).timestamp()
+                except (TypeError, ValueError):
+                    fresh = False
+            else:
+                fresh = False
+            if fresh:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", cache)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         if range_header.startswith("bytes="):
             match = re.match(r"bytes=(\d*)-(\d*)", range_header)
             if match:
@@ -2894,6 +2921,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.common_headers(mimetypes.guess_type(filename)[0] or "application/octet-stream", length, cache)
         self.send_header("Accept-Ranges", "bytes")
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", last_modified)
         if status == 206:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         disposition = "attachment" if attachment else "inline"

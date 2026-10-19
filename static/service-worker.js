@@ -80,7 +80,7 @@ self.addEventListener("fetch", event => {
   // stored copy that offline play still needs.
   const refreshableCore = emulatorAsset && /\/cores\/(?:reports\/[^/]+\.json|[^/]+\.data)$/.test(url.pathname);
   if (refreshableCore) {
-    event.respondWith(caches.open(cacheName).then(cache => fetch(event.request, {cache: "reload"}).then(async response => {
+    event.respondWith(caches.open(cacheName).then(cache => fetch(event.request, {cache: "no-cache"}).then(async response => {
       if (response.ok || response.type === "opaque") await cache.put(event.request, response.clone()).catch(() => {});
       return response;
     }).catch(() => cache.match(event.request).then(cached => cached || fetch(event.request)))));
