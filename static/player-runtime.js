@@ -81,13 +81,31 @@
     }
   }
 
+  // Probing WebGL costs a live GPU context per canvas, and a browser keeps only a
+  // handful — the emulator's own canvas is one of them. The probe contexts used to
+  // be created on every VideoBackend construction and never released, which is how
+  // a 3DS session ended up holding six. Detect once, and hand each context back.
+  let capabilityCache = null;
+  const detectCapabilities = () => {
+    if (capabilityCache) return capabilityCache;
+    const probe = type => {
+      if (typeof document !== "object") return false;
+      const canvas = document.createElement("canvas");
+      let context = null;
+      try { context = canvas.getContext(type); } catch (_) { context = null; }
+      const available = Boolean(context);
+      try { context?.getExtension?.("WEBGL_lose_context")?.loseContext?.(); } catch (_) {}
+      return available;
+    };
+    // A canvas can expose only one WebGL context family reliably. Probe a
+    // second canvas so WebGL1 capability is not masked by the WebGL2 probe.
+    capabilityCache = { webgl2: probe("webgl2"), webgl: probe("webgl") };
+    return capabilityCache;
+  };
+
   class VideoBackend {
     constructor(preference = queryRendererPreference()) {
-      const probe = typeof document === "object" ? document.createElement("canvas") : null;
-      const webgl2 = Boolean(probe?.getContext?.("webgl2"));
-      // A canvas can expose only one WebGL context family reliably. Probe a
-      // second canvas so WebGL1 capability is not masked by the WebGL2 probe.
-      const webgl = Boolean(typeof document === "object" && document.createElement("canvas").getContext?.("webgl"));
+      const { webgl2, webgl } = detectCapabilities();
       const webgpu = Boolean(globalThis.navigator?.gpu);
       this.requested = preference;
       this.selected = "pending";

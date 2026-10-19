@@ -75,6 +75,17 @@
   const readPlayerStorage = (name, fallback={}) => {
     try { return JSON.parse(localStorage.getItem(name)) || fallback; } catch (_) { return fallback; }
   };
+  // A WebGL probe costs a live GPU context, and a browser keeps only a handful —
+  // the emulator's own canvas is one of them. Every probe here releases its
+  // context again; the capability answer does not need it afterwards.
+  const probeGpuContext = type => {
+    const canvas = document.createElement("canvas");
+    let context = null;
+    try { context = canvas.getContext(type); } catch (_) { context = null; }
+    const available = Boolean(context);
+    try { context?.getExtension?.("WEBGL_lose_context")?.loseContext?.(); } catch (_) {}
+    return available;
+  };
   const numericCapability = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
   const capabilityProbe = Object.freeze({
     hardwareConcurrency:numericCapability(navigator.hardwareConcurrency),
@@ -82,8 +93,8 @@
     devicePixelRatio:numericCapability(window.devicePixelRatio),
     viewport:{width:window.innerWidth||0,height:window.innerHeight||0},
     screen:{width:window.screen?.width||0,height:window.screen?.height||0},
-    webgl:Boolean(document.createElement("canvas").getContext("webgl")),
-    webgl2:Boolean(document.createElement("canvas").getContext("webgl2")),
+    webgl:probeGpuContext("webgl"),
+    webgl2:probeGpuContext("webgl2"),
     wasm:typeof WebAssembly === "object",
     threads:Boolean(window.crossOriginIsolated && typeof SharedArrayBuffer === "function")
   });
@@ -340,7 +351,7 @@
     try {
       const core = primaryCores[config.system];
       if (!core) throw new Error(config.lang === "en" ? "This system does not have an offline core manifest." : "Hệ máy này chưa có danh sách core ngoại tuyến.");
-      const webgl2 = Boolean(document.createElement("canvas").getContext("webgl2"));
+      const webgl2 = probeGpuContext("webgl2");
       const capabilityError=coreCapabilityError();
       if (capabilityError) throw new Error(capabilityError);
       // A core data path is immutable once cached for offline use. Azahar
