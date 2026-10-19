@@ -273,6 +273,28 @@ exercised; multicast discovery stays BLOCKED; the browser surfaces were not driv
 | Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-090939` |
 | Re-measured live | `FONT_CONVERGENCE=PASS` — `body=Roboto Condensed 15px/400`, brand Pixelify Sans; `CONTRAST_AUDIT=PASS` — `/offline` 36 checked, `/` 47 checked, 0 below AA |
 
+### Open: `/offline` overflows after a width change, though not on a fresh load
+
+The two overflows above are fixed and verified, but a third behaviour is open and I
+am recording it rather than guessing at it.
+
+Measured against production, the same page at 390px gives two different answers
+depending on how the session reached 390:
+
+| How 390px was reached | `scrollWidth - clientWidth` |
+| --- | --- |
+| Fresh session, first navigation at 390px | **0** |
+| After the same session had been at 360px | **62** |
+| Dense sampling, 60 reads over 9s at a fresh 390px | **0 of 60** |
+
+The same pattern appears at 360px, where a fresh load measures 0 and a session that
+had been at 1440px first measures 92. A width change is what a phone rotation does,
+so this is a real path and not a probe curiosity; what is not yet established is the
+element responsible, because in the overflowing state no element's bounding rect
+exceeds the viewport even though the document's scroll width does. The first two
+fixes above are unaffected — they are measured on a fresh load at all four widths and
+by 60 consecutive samples at 390px.
+
 ## The documented UI contract, audited on the live surface
 
 `work/phaseG/ui-contract-audit.mjs` checks what `docs/design-system.md` and
