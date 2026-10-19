@@ -450,6 +450,53 @@
       }).catch(() => { versionNode.textContent = "Unavailable in this build"; });
     }
 
+    // Experimental surfaces are user-controlled and off by default: Eden, LAN
+    // Sync and Phone Controller are test features, and a user who only wants to
+    // play GBA, NDS and 3DS must not meet them at all. One source of truth for
+    // the decision (the shared settings model plus the stored snapshot), read
+    // here and applied to the cards and to the destination itself.
+    const experimentalIds = {
+      eden: "experimental-switch-eden",
+      sync: "experimental-lan-sync",
+      controller: "experimental-phone-controller",
+    };
+    const experimentalOn = id => {
+      let stored;
+      try { stored = (JSON.parse(window.AN3AndroidSettings?.all?.() || "{}").global || {})[id]; } catch (_) { stored = undefined; }
+      if (stored === undefined || stored === null || stored === "") {
+        const definition = (window.NativeSettingsModel?.global || []).find(item => item.id === id);
+        stored = definition ? definition.default : "false";
+      }
+      return String(stored).toLowerCase() === "true";
+    };
+    const applyExperimentalSurfaces = () => {
+      const states = {
+        eden: experimentalOn(experimentalIds.eden),
+        sync: experimentalOn(experimentalIds.sync),
+        controller: experimentalOn(experimentalIds.controller),
+      };
+      const syncCard = document.getElementById("nativeAccountSyncCard");
+      if (syncCard && !states.sync) syncCard.hidden = true;
+      const controllerCard = document.getElementById("nativeControllerCard");
+      if (controllerCard && !states.controller) controllerCard.hidden = true;
+      if (!states.eden) {
+        const card = document.getElementById("nativeSwitchCard");
+        if (card) card.hidden = true;
+      }
+      // With every experimental feature off there is nothing on that
+      // destination, so the destination itself goes away rather than opening an
+      // empty page. Settings still lists the three switches, which is the way
+      // back for a user who wants them.
+      const anyOn = states.eden || states.sync || states.controller;
+      // The destination buttons are addressed by data-nav, not by id, and the
+      // shell renders more than one of them.
+      for (const button of document.querySelectorAll('[data-nav="devices"]')) {
+        button.hidden = !anyOn;
+      }
+      return states;
+    };
+    const experimentalStates = applyExperimentalSurfaces();
+
     // Switch is a companion process, not a core, and it exists only on a host
     // whose packaging step bundled one. A host without it must not advertise
     // the destination at all, so the row stays hidden until detection says the
@@ -478,6 +525,7 @@
       let switchAttempts = 0;
       const revealSwitch = () => {
         const detect = window.AN3SwitchDetect;
+        if (!experimentalStates.eden) { switchCard.hidden = true; return; }
         if (detect?.available === true) {
           switchCard.hidden = false;
           if (switchStatus) switchStatus.textContent = "Ready";
