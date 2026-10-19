@@ -112,11 +112,12 @@ class SystemInferenceTests(unittest.TestCase):
         # Platform artifacts are rebuilt independently, so the catalog can
         # truthfully contain different release versions at the same time.
         expected = {
-            "DMG": ("3.2.3", "vibecodedemulator-3.2.3-macos-aarch64.dmg"),
-            "APK": ("3.2.3", "vibecodedemulator-3.2.3-android-arm64-staging.apk"),
-            "DEB": ("3.2.2", "vibecodedemulator-3.2.2-linux-amd64.deb"),
-            "Flatpak": ("3.2.2", "an3-offline-3.2.2-linux-amd64-staging.flatpak"),
-            "EXE": ("2.2.0", "vibecodedemulator-2.2.0-windows-x64-staging.exe"),
+            "DMG": ("3.6.10", "vibecodedemulator-3.6.10-macos-aarch64.dmg"),
+            "APK": ("3.6.10", "vibecodedemulator-3.6.10-android-arm64-staging.apk"),
+            "AAB": ("3.6.10", "vibecodedemulator-3.6.10-android-arm64-staging.aab"),
+            "DEB": ("3.6.10", "vibecodedemulator-3.6.10-linux-amd64.deb"),
+            "Flatpak": ("3.6.10", "an3-offline-3.6.10-linux-amd64-staging.flatpak"),
+            "EXE": ("3.6.10", "vibecodedemulator-3.6.10-windows-x64-staging.exe"),
         }
         self.assertEqual({item["format"] for item in available}, set(expected))
         self.assertEqual(

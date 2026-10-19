@@ -169,16 +169,32 @@ class RenderedPageAccessibilityTests(unittest.TestCase):
                 self.assertIn("Register", labels)
 
     def test_the_download_page_marks_unavailable_builds(self):
-        # The four platform cards are the download page's whole purpose; each
-        # must announce that it is unavailable rather than presenting a dead
-        # control as if it worked.
+        # A platform card must either offer a working download action or say
+        # plainly that it has no verified build; the failure this guards is a
+        # dead control that looks usable. How many cards are unavailable depends
+        # on the release directory — this host holds the 3.6.10 packages, a fresh
+        # clone holds none of them — so the expectation is derived from the same
+        # catalog the page renders from rather than pinned to a count that only
+        # holds on a machine without artifacts.
+        import app
+        items = [item for item in app.native_artifact_manifest()["artifacts"] if item.get("filename")]
+        platforms = {item["platform"] for item in items}
+        available = {
+            item["platform"]
+            for item in items
+            if item["status"] == "available" and item["download_url"]
+        }
         nodes = accessible_nodes("/")
         unavailable = [
             node
             for node in nodes
             if node.role == "button" and "disabled" in node.states()
         ]
-        self.assertEqual(len(unavailable), 4, "expected one card per platform")
+        self.assertEqual(
+            len(unavailable),
+            len(platforms - available),
+            "one disabled control per unavailable platform, and none for an available one",
+        )
         for node in unavailable:
             self.assertTrue(node.accessible_name())
 
