@@ -231,6 +231,39 @@ class MonitoringTests(unittest.TestCase):
         self.assertIn("PRODUCTION_DATABASE_SHA256", production_backup)
         self.assertIn("Refusing to overwrite", production_backup)
 
+    def test_release_artifacts_have_bounded_retention(self):
+        # 2026-10-19: unpruned release history took 90% of the host's disk (51
+        # production snapshots and 169 staging releases). Every writer of a
+        # large release artifact must bound its own history, and the production
+        # snapshotter must never prune the snapshot it just created.
+        def deploy_source(name):
+            with open(os.path.join(ROOT, "deploy", name), encoding="utf-8") as handle:
+                return handle.read()
+
+        production_backup = deploy_source("backup-production-current.sh")
+        self.assertIn("AN3_BACKUP_KEEP", production_backup)
+        self.assertIn("PRODUCTION_PRUNED_BACKUP", production_backup)
+        self.assertIn("Refusing to prune the snapshot created by this run", production_backup)
+
+        staging_update = deploy_source("update-staging.sh")
+        self.assertIn("AN3_STAGING_KEEP", staging_update)
+        self.assertIn("prune_staging_releases()", staging_update)
+        self.assertIn("STAGING_PRUNED_RELEASE", staging_update)
+        self.assertNotIn("It retains every prior staging release", staging_update)
+
+        staging_rebuild = deploy_source("rebuild-staging.sh")
+        self.assertIn("AN3_STAGING_KEEP", staging_rebuild)
+        self.assertIn("STAGING_PRUNED_RELEASE", staging_rebuild)
+
+        rollback = deploy_source("rollback-production.sh")
+        self.assertIn("AN3_FAILED_RELEASE_KEEP", rollback)
+        self.assertIn("PRODUCTION_PRUNED_FAILED_RELEASE", rollback)
+
+        with open(os.path.join(ROOT, "docs", "operations.md"), encoding="utf-8") as handle:
+            operations = handle.read()
+        for variable in ("AN3_BACKUP_KEEP", "AN3_STAGING_KEEP", "AN3_FAILED_RELEASE_KEEP"):
+            self.assertIn(variable, operations)
+
     def test_staging_package_allows_only_current_verified_native_installers(self):
         with open(os.path.join(ROOT, "deploy", "package-staging.sh"), encoding="utf-8") as handle:
             package = handle.read()

@@ -75,6 +75,9 @@ Every release step has a recorded inverse before it starts:
   previous version.
 - Web: the previous deployed revision is known and re-deployable with
   `deploy-production.sh`; the health check is the acceptance of the rollback.
+- Web retention is bounded: only the newest `AN3_BACKUP_KEEP` application
+  snapshots stay on the host, so a rollback target must be one of those named
+  paths, not an assumed history ([operations.md](operations.md)).
 - A rollback is done from evidence, not from memory: name the revision, the
   command and the health result.
 

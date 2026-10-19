@@ -87,6 +87,18 @@ for attempt in $(seq 1 30); do
   HEALTH="$(curl --fail --silent --show-error --connect-timeout 3 "$HEALTH_URL" || true)"
   if [[ "$HEALTH" == *'"environment": "production"'* ]]; then
     ASSET="$(sed -n 's/.*"asset_version": "\([a-f0-9]*\)".*/\1/p' <<<"$HEALTH")"
+    # Bounded retention for failed-release records. Each record carries a whole
+    # application tree, and an unbounded set filled /opt on 2026-10-19. Older
+    # records are pruned only here, after this rollback is verified healthy; a
+    # rollback that fails still keeps its evidence untouched.
+    KEEP="${AN3_FAILED_RELEASE_KEEP:-2}"
+    if [[ "$KEEP" =~ ^[1-9][0-9]*$ ]] && [[ -d "$FAILED_RELEASES" ]]; then
+      mapfile -t FAILED_RECORDS < <(find "$FAILED_RELEASES" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+      for old in "${FAILED_RECORDS[@]:$KEEP}"; do
+        rm -rf -- "${FAILED_RELEASES:?}/$old"
+        printf 'PRODUCTION_PRUNED_FAILED_RELEASE=%s\n' "$old"
+      done
+    fi
     printf 'PRODUCTION_ROLLBACK=PASS\n'
     printf 'PRODUCTION_ROLLBACK_TARGET=%s\n' "$TARGET"
     printf 'PRODUCTION_FAILED_RELEASE=%s\n' "$FAILED"

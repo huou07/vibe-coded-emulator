@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Staging-only release switch. It retains every prior staging release and
+# Staging-only release switch. It keeps the release it switched to, the previous
+# release as the named rollback target, and the newest AN3_STAGING_KEEP releases
+# in total; older timestamped releases are pruned only after a healthy switch. It
 # restores the previous symlink if the new release does not become healthy.
 
 if [[ "$#" -ne 1 ]]; then
@@ -27,6 +29,31 @@ cleanup_candidate() {
   if [[ -n "${CANDIDATE:-}" ]]; then
     rm -rf -- "$CANDIDATE"
   fi
+}
+
+# Bounded retention for release directories. Retaining every staging release
+# filled 54 GiB with 169 trees on 2026-10-19 for no rollback benefit: only
+# `current` and the release it replaced are referenced. This runs after the
+# service is healthy, so a prune problem is reported and never fails a release.
+prune_staging_releases() {
+  local keep="$1" current_name="$2" previous_name="$3" extra old kept=0
+  local -a candidates
+  if [[ ! "$keep" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'STAGING_PRUNE=SKIPPED reason=AN3_STAGING_KEEP-must-be-a-positive-whole-number\n' >&2
+    return 0
+  fi
+  extra=$((keep - 2))
+  (( extra > 0 )) || extra=0
+  mapfile -t candidates < <(find "$STAGING_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -name '2*' -printf '%f\n' | sort -r)
+  for old in "${candidates[@]}"; do
+    [[ "$old" == "$current_name" || "$old" == "$previous_name" ]] && continue
+    if (( kept < extra )); then
+      kept=$((kept + 1))
+      continue
+    fi
+    rm -rf -- "${STAGING_ROOT:?}/releases/$old"
+    printf 'STAGING_PRUNED_RELEASE=%s\n' "$old"
+  done
 }
 
 trap cleanup_candidate EXIT
@@ -81,6 +108,9 @@ for attempt in $(seq 1 15); do
     printf 'STAGING_ASSET=%s\n' "$ASSET"
     printf 'STAGING_RELEASE_PATH=%s\n' "$RELEASE"
     printf 'STAGING_ROLLBACK_TARGET=%s\n' "$PREVIOUS_RELEASE"
+    prune_staging_releases "${AN3_STAGING_KEEP:-3}" \
+      "$(basename "$RELEASE")" "$(basename "$PREVIOUS_RELEASE")" ||
+      printf 'STAGING_PRUNE=FAILED\n' >&2
     exit 0
   fi
   sleep 1

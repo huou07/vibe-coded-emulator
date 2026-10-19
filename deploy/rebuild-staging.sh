@@ -217,5 +217,30 @@ fi
 # It is removed only after the new isolated service is healthy.
 rm -rf -- "$DATA_RETIRED"
 rm -f -- "$ENV_RETIRED"
+
+# Bounded retention, the same rule update-staging.sh applies: the release this
+# script switched to, plus the newest AN3_STAGING_KEEP releases in total. The
+# service is already healthy, so a prune problem is reported without failing the
+# rebuild.
+KEEP="${AN3_STAGING_KEEP:-3}"
+if [[ "$KEEP" =~ ^[1-9][0-9]*$ ]]; then
+  mapfile -t RELEASE_CANDIDATES < <(find "$STAGING_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -name '2*' -printf '%f\n' | sort -r)
+  kept=0
+  for old in "${RELEASE_CANDIDATES[@]}"; do
+    [[ "$old" == "$(basename "$RELEASE")" ]] && continue
+    if (( kept < KEEP - 1 )); then
+      kept=$((kept + 1))
+      continue
+    fi
+    if rm -rf -- "${STAGING_ROOT:?}/releases/$old"; then
+      printf 'STAGING_PRUNED_RELEASE=%s\n' "$old"
+    else
+      printf 'STAGING_PRUNE=FAILED path=%s\n' "$old" >&2
+    fi
+  done
+else
+  printf 'STAGING_PRUNE=SKIPPED reason=AN3_STAGING_KEEP-must-be-a-positive-whole-number\n' >&2
+fi
+
 printf 'STAGING_REBUILD=PASS\n'
 printf 'STAGING_URL=http://%s:%s\n' "$LAN_HOST" "$PORT"
