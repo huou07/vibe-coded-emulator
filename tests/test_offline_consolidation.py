@@ -68,7 +68,12 @@ class OfflineConsolidationTests(unittest.TestCase):
     def test_native_player_keeps_the_requested_performance_defaults(self):
         self.assertIn('vsync:"disabled"', PLAYER_JS)
         self.assertIn('melonds_audio_bitrate:"16-bit"', PLAYER_JS)
-        self.assertIn('keyboardInput:"enabled"', PLAYER_JS)
+        # Measured on the production surface: with keyboardInput "enabled"
+        # EmulatorJS skips its own control table and hands the keys to the core,
+        # and no physical key reached the input path at all — all twelve keys
+        # tested produced zero simulateInput calls. "disabled" lets the table,
+        # which already holds a complete mapping, actually be used.
+        self.assertIn('keyboardInput:"disabled"', PLAYER_JS)
         self.assertIn('window.EJS_disableLocalStorage = ndsPad || threeDsPad;', PLAYER_JS)
 
     def test_library_never_blocks_a_playable_card_and_repairs_missing_native_roms(self):

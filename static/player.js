@@ -1255,9 +1255,15 @@
           // Set it before boot so the core's touchscreen mapping follows the
           // Side by Side framebuffer on wide screens.
           citra_layout_option:dualScreenLayout()==="Left/Right"?"side_by_side":"default",
-          // Azahar declares useKeyboard=true. Explicitly retain that native
-          // default after clearing stale EmulatorJS settings for 3DS.
-          keyboardInput:"enabled"
+          // Direct Keyboard Input must be OFF for 3DS, which is the opposite of
+          // what this line used to say. EmulatorJS only consults its own control
+          // table when keyboardInput is not "enabled"; with it enabled the shell
+          // skips its mapping and hands the keys to the core, and measured on the
+          // production surface no physical key reached the input path at all —
+          // every one of twelve keys produced zero simulateInput calls while the
+          // control table already held a complete mapping (X=B, S=Y, V=Select,
+          // Enter=Start, arrows=D-pad). Disabled lets that mapping be used.
+          keyboardInput:"disabled"
         } : {}),
         ...(ndsPad ? {
           retroarch_core:"melonds",
@@ -1707,7 +1713,13 @@
   const controlScale = id => globalScale()*baseControlScale(id)*buttonScale(id);
   const saveLayout = () => { try { localStorage.setItem(key(),JSON.stringify(positions)); } catch (_) {} };
   const saveSettings = () => { try { localStorage.setItem(settingsKey,JSON.stringify(settings)); } catch (_) {} };
-  if (!hasCurrentSettings && hasLegacySettings) saveSettings();
+  // Persist the starting state even when there is nothing to migrate. The pad's
+  // visibility is a stored boolean, and with no record the default was implicit:
+  // a fresh session showed the pad while nothing was written, so the first press
+  // of the touch toggle hid a pad the user had just asked to see, and the state
+  // did not survive a reload. Writing the default once makes the toggle mean what
+  // its title says and keeps a shown pad shown.
+  if (!hasCurrentSettings) saveSettings();
   const input = (index,value) => {
     if (playerSession) playerSession.inputRouter.setVirtualButton(index, value);
     else { try { window.EJS_emulator?.gameManager?.simulateInput(0,index,value); } catch (_) {} }
