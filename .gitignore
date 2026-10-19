@@ -70,6 +70,9 @@ native-offline/releases/*.dmg
 native-offline/releases/*.flatpak
 native-offline/releases/*.exe
 native-offline/releases/*.idsig
+# The Android bundle is a build output like the APK beside it; without this the
+# builder leaves the tree dirty over a 60 MB binary that is never committed.
+native-offline/releases/*.aab
 # Every builder writes a `<artifact>.sha256` sidecar next to the installer it
 # just produced, so a documented staging build must not leave the tree dirty
 # over a checksum of a binary that is already ignored.

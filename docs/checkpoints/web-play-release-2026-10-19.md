@@ -481,6 +481,56 @@ cloud sync mention — rather than relaxed, and the owner's own instruction is w
 asked for LAN Sync and Phone Controller to exist as user-controlled experimental
 features, which is what the schema implements. Both suites now pass together, 25 of 25.
 
+### Release 3.6.10: GitHub and the production download page
+
+The build that had been failing since 2026-10-10 produced every package this time, from
+one source revision whose hosted CI is green.
+
+| Item | Value |
+| --- | --- |
+| Version | **3.6.10** |
+| Source SHA | `aada24fc0eb47901bd8cfc83425daa2414323663` |
+| Exact-SHA CI | `ci.yml` run [39225415613](https://github.com/huou07/vibe-coded-emulator/actions/runs/39225415613) — **success**, every job including the aggregate `test` |
+| Platform build | `native-build.yml` run [39229968027](https://github.com/huou07/vibe-coded-emulator/actions/runs/39229968027) — **success**, every lane, macOS and Windows included |
+| GitHub release | [v3.6.10](https://github.com/huou07/vibe-coded-emulator/releases/tag/v3.6.10), 12 assets (6 packages and 6 sidecars) |
+| Production | `PRODUCTION_RELEASE=PASS`, asset `f892a9c4bbd7`, release `production-b1839e55b503daa3` |
+| App backup | `/opt/an3-arcade-backups/20261019-175725` |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-175725` |
+| Catalog | `RELEASE_CATALOG=PASS (6 installers)` before the deploy |
+
+Artifact identity, each verified against the sidecar its builder wrote:
+
+| Package | Bytes | SHA-256 |
+| --- | --- | --- |
+| macOS arm64 DMG | 53,416,059 | `a0f787fd570dcbcaa4138fdf5c1287322d4fef2ebceed5022dee5e2d0730e412` |
+| Windows x64 EXE | 57,079,497 | `8a8d1cfbe1b58f20e770908c6bc9dd920d98c1a2bb967a2a620a3f9d5dba32f7` |
+| Linux amd64 DEB | 59,993,560 | `1a6d2b94ef89c69fd203265b2ab8670e47ef64b457a9e497c4a3aef9b3b3baa4` |
+| Linux amd64 Flatpak | 38,766,512 | `82aa9de87f9fbbdfc2571e7d206b4754cea41833051137948dfce47c16c0cf93` |
+| Android arm64 APK | 61,398,051 | `8090e1b286355938e224d44bf2ae1c0fd9a8438469632f226153ef72e967c83f` |
+| Android arm64 AAB | 60,801,375 | `1fe7de58139f4332418ffbd78b444c842936adc1d9c09eea11b4ea5bf70c85b5` |
+
+The production download page offers 3.6.10 on all six links, and each link carries the
+catalog's digest. One package was then fetched in full from production and hashed: the
+Flatpak arrived as 38,766,512 bytes with sha256 `82aa9de8…`, exactly the catalog value,
+so the served bytes are the verified bytes rather than a same-named file.
+
+Two things had to be fixed to get here, and both were recorded rather than worked
+around. The exact-SHA CI was red on 32 gitleaks findings, every one of them a
+non-secret — the fake `AN3_AUTH_PEPPER` line a test writes, generated `hostToken`
+fixtures in a recorded QA log, the Vulkan extension name `VK_NV_win32_keyed_mutex`, and
+the localStorage key name `an3-presentation-renderer-v1`. A `.gitleaks.toml` now names
+those exact strings; the rule is not disabled and no file or directory is excluded, and
+it was verified both ways — the findings fall to 0 while a random 44-character secret is
+still reported. Separately, the first green-CI build had the Windows acceptance job fail
+with the packaged app showing a blue centre pixel instead of the fixture's red frame;
+the only difference between that revision and this one is `.gitleaks.toml`, and the same
+job passed on a re-dispatch, so it is recorded as flaky rather than fixed.
+
+Still `UNVERIFIED`: macOS, Windows and Android acceptance on real hardware — the
+builders' own hosted runs are the only evidence for those platforms, and no device was
+attached here. The native audio path, the emulated core rate and gameplay latency remain
+unestablished for the same reason.
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word

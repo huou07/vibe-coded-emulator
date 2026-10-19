@@ -1,73 +1,106 @@
 {
- "schema_version": 1,
- "source_fingerprint": "f432c759096242d4a17a7afd2761253464b8b365fdc7e348429f9103064fbcc3",
- "artifacts": [
-  {
-   "version": "3.2.3",
-   "platform": "macOS",
-   "architecture": "arm64",
-   "format": "DMG",
-   "filename": "vibecodedemulator-3.2.3-macos-aarch64.dmg",
-   "size": 58209859,
-   "sha256": "6b315534774997c82bbc0e72e7d459f9e8020c75c89a8229f4fdf869d5980d6b",
-   "source_revision": "0021041a8208d29d029a5972f1d181ad981ff2ca",
-   "signature_status": "Ad-hoc signed staging DMG; not notarized.",
-   "runtime_status": "Vibe Coded Emulator 3.2.3 launched and rendered its Play home screen on macOS 27. All six packaged Mach-O files declare minimum macOS 13.4 or earlier and have no Homebrew runtime loads. The pinned Eden Switch companion source build linked at 13.4 and its no-content smoke passed 43 checks. Switch game launch, gameplay, and input are UNVERIFIED because no homebrew fixture or live harness was available. GPL-3.0-or-later app notices and bundled core licenses are included."
-  },
-  {
-   "version": "3.2.3",
-   "platform": "Android",
-   "architecture": "arm64",
-   "format": "APK",
-   "filename": "vibecodedemulator-3.2.3-android-arm64-staging.apk",
-   "size": 50352593,
-   "sha256": "25fed3a499ae3f5e82d2a1e379fedd8a9de560b52cc84f8d5d92de28b630a655",
-   "signature_status": "Android Debug certificate (APK Signature Scheme v2); signer SHA-256 b48f3cdecc39349a75b66817aaad645a861d538be34835f290a2aa570c3beb4b.",
-   "runtime_status": "Android 15 packaged staging smoke passed ROM import through the system picker, NativeGameActivity launch, Quick Save/Load Slot 1, a 60-second active-process soak, clean return to the library, and relaunch with a generated GBA fixture. Full homebrew gameplay and audio acceptance remain unverified."
-  },
-  {
-   "version": "3.2.2",
-   "platform": "Linux",
-   "architecture": "amd64",
-   "format": "DEB",
-   "version": "3.2.2",
-   "platform": "Linux",
-   "architecture": "amd64",
-   "format": "DEB",
-   "filename": "vibecodedemulator-3.2.2-linux-amd64.deb",
-   "size": 46316152,
-   "sha256": "106f796bf8c09f2b8de3e5c6a93eb7ff75aa4ccedd117150c6c284ec1edbff6c",
-   "source_revision": "e054583225f2ba787468ff3126ecf7f8c5ae3d92",
-   "signature_status": "Unsigned local staging DEB; dpkg metadata and SHA-256 sidecar verified.",
-   "runtime_status": "Debian 13 x86_64 extracted-package run: native GTK picker imported the documented lawful 16 MiB GBA fixture; bundled mGBA 0.11-212 rendered Pokémon Emerald title/menu screens; keyboard Start advanced the game; F5 created and F9 reloaded a slot-1 state. The headless host required SDL_AUDIODRIVER=dummy and software rendering. Audible output, physical-GPU performance, apt installation, and battery-save persistence after exit/relaunch remain UNVERIFIED. The DEB includes GPL-3.0-or-later app notices and bundled core licenses."
-  },
-  {
-   "version": "3.2.2",
-   "platform": "Linux",
-   "architecture": "amd64",
-   "format": "Flatpak",
-   "version": "3.2.2",
-   "platform": "Linux",
-   "architecture": "amd64",
-   "format": "Flatpak",
-   "filename": "an3-offline-3.2.2-linux-amd64-staging.flatpak",
-   "size": 29658400,
-   "sha256": "a6a08d4965eccb14905d95582ce411d87c8a9b1087011a34859398a0d6c21477",
-   "source_revision": "e054583225f2ba787468ff3126ecf7f8c5ae3d92",
-   "signature_status": "Unsigned local staging Flatpak bundle; clean per-user installation and SHA-256 sidecar verified.",
-   "runtime_status": "Debian 13 x86_64 clean per-user installation and app launch verified; packaged UI/assets rendered and AppStream reports GPL-3.0-or-later. The headless host document portal could not mount /run/user/1000/doc, so picker import and gameplay are UNVERIFIED for Flatpak. The bundle includes the GPL-3.0-or-later app notices and bundled core licenses."
-  },
-  {
-   "version": "2.2.0",
-   "platform": "Windows",
-   "architecture": "x64",
-   "format": "EXE",
-   "filename": "vibecodedemulator-2.2.0-windows-x64-staging.exe",
-   "size": 47014767,
-   "sha256": "7af7d49a03fef8361024128b7de0b36e7993a208e45517354937103322110a4a",
-   "signature_status": "Windows x64 NSIS build from the shared source; SDK/core integrity gates passed.",
-   "runtime_status": "Vibe Coded Emulator 2.2.0 is licensed GPL-3.0-or-later (Copyright (C) 2026 Vibe Coded Emulator contributors). Every package ships the GPLv3 text (LICENSE) and THIRD_PARTY_NOTICES.md, and the native core license texts are bundled. The app also gains a Licenses / open-source notices surface. Commercial use, modification, redistribution and forks are permitted; forks need not keep the name, logo or UI. Emulator cores keep their own licenses (Azahar GPL-2.0-or-later, melonDS DS GPL-3.0-or-later, mGBA MPL-2.0). 2.1.0 adds an in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the simple Automatic sync / room-code multiplayer surfaces. 2.2.0 is a staging rebuild of the same feature set as 2.1.0: the in-app Phone Controller (library Settings on Android; Settings on desktop) with truthful connection state, automatic GBA/NDS/3DS layouts, NDS/3DS stylus, and the Automatic sync / room-code multiplayer surfaces.",
-   "release_gate": "PASS"
-  }
- ]
+  "schema_version": 1,
+  "source_commit": "aada24fc0eb47901bd8cfc83425daa2414323663",
+  "source_fingerprint": "baa3f044a7b1e37bfea23bd2b845b2d90941321ce0f8bf922ccf48fe6a9085fa",
+  "release_candidate": "3.6.10",
+  "build_id": "source-aada24fc0eb47901",
+  "artifacts": [
+    {
+      "version": "3.6.10",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "AAB",
+      "filename": "vibecodedemulator-3.6.10-android-arm64-staging.aab",
+      "size": 60801375,
+      "sha256": "1fe7de58139f4332418ffbd78b444c842936adc1d9c09eea11b4ea5bf70c85b5",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; staging only.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+    },
+    {
+      "version": "3.6.10",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "APK",
+      "filename": "vibecodedemulator-3.6.10-android-arm64-staging.apk",
+      "size": 61398051,
+      "sha256": "8090e1b286355938e224d44bf2ae1c0fd9a8438469632f226153ef72e967c83f",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; staging only.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+    },
+    {
+      "version": "3.6.10",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "DEB",
+      "filename": "vibecodedemulator-3.6.10-linux-amd64.deb",
+      "size": 59993560,
+      "sha256": "1a6d2b94ef89c69fd203265b2ab8670e47ef64b457a9e497c4a3aef9b3b3baa4",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Unsigned staging package.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+    },
+    {
+      "version": "3.6.10",
+      "platform": "Linux",
+      "architecture": "amd64",
+      "format": "Flatpak",
+      "filename": "an3-offline-3.6.10-linux-amd64-staging.flatpak",
+      "size": 38766512,
+      "sha256": "82aa9de87f9fbbdfc2571e7d206b4754cea41833051137948dfce47c16c0cf93",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Unsigned staging bundle.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+    },
+    {
+      "version": "3.6.10",
+      "platform": "macOS",
+      "architecture": "arm64",
+      "format": "DMG",
+      "filename": "vibecodedemulator-3.6.10-macos-aarch64.dmg",
+      "size": 53416059,
+      "sha256": "a0f787fd570dcbcaa4138fdf5c1287322d4fef2ebceed5022dee5e2d0730e412",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Ad-hoc signed only; not notarized.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+    },
+    {
+      "version": "3.6.10",
+      "platform": "Windows",
+      "architecture": "x64",
+      "format": "EXE",
+      "filename": "vibecodedemulator-3.6.10-windows-x64-staging.exe",
+      "size": 57079497,
+      "sha256": "8a8d1cfbe1b58f20e770908c6bc9dd920d98c1a2bb967a2a620a3f9d5dba32f7",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Unsigned NSIS installer; not Authenticode signed.",
+      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027.",
+      "release_gate": "PASS"
+    }
+  ]
 }
