@@ -323,6 +323,61 @@ fault, when that is the correct desktop grid; and a full-page screenshot taken b
 the measurement resized the viewport internally, so the reading described the capture
 pass rather than the page.
 
+## 3DS on the Web: measured diagnosis of the reported slowness and input faults
+
+The owner reported that 3DS cannot be driven from a real keyboard, that the on-screen
+pad hides and shows erratically, and that the frame rate is unstable and the game very
+slow even on strong hardware. Everything below is measured on the production surface
+with the lawful devkitPro/3ds-hbmenu fixture, not reasoned from the source.
+
+**Keyboard input does reach the emulated machine.** A synthetic `ArrowDown`/`Enter`
+sequence changed the rendered screen (`beforeHash 1570800568` to `afterHash
+991785454`), so the fault is not a dead input path; `keyboardInput:"enabled"` is
+already set for 3DS in `static/player.js`. The report is therefore about mapping,
+focus or the pad stealing focus, not about the core ignoring keys.
+
+**The presentation bridge is not the bottleneck.** The comment in
+`static/renderer-worker.js` says AN3 copies completed canvas frames as `ImageBitmap`
+objects, which looked like a full-frame copy per frame. Timed in the page: 45.4
+`createImageBitmap` calls per second, **25 ms of work across 10 seconds**, 0.06 ms
+average and 0.13 ms maximum. Blocking `renderer-worker.js` changed nothing. The
+suspicion is cleared by measurement, not by argument.
+
+**The core runs at 45–48 fps, consistently.** `coreSourceFps` from the product's own
+telemetry across four runs: 47.0, 47.5, 47.9, 48.0 — with `uiFrameP50Ms` at 16.67 ms,
+so the compositor is not the limit. The target is 60.
+
+**The threading is oversubscribed, and this is the concrete finding.** Counting
+workers by name shows the core does run off the main thread, in a worker, with a
+pthread pool:
+
+| Worker | Count |
+| --- | --- |
+| `blob:…` unnamed (the core's main worker) | 1 |
+| `blob:…` named **`em-pthread`** | **32** |
+| `/static/renderer-worker.js` (the AN3 bridge) | 1 |
+
+**32 pthreads on a 20-thread host.** `PTHREAD_POOL_SIZE` is baked into the core build,
+and the player sets `window.EJS_threads` from cross-origin isolation, so the pool is
+always 32 here whatever the hardware. Emscripten honours `Module.PTHREAD_POOL_SIZE`
+set before the module runs, which is the lever to size it to the host.
+
+One of my own experiments was invalid and is recorded as such: I injected
+`window.EJS_threads = false` before the page scripts to A/B threading, and
+`static/player.js:1283` assigns `window.EJS_threads` afterwards, overwriting it. The
+"no difference" result measured my injection being replaced, not the effect of
+threading.
+
+**Main-thread blocking is real but unattributed.** The product's own monitor reports
+4–10 long tasks per run, 440–680 ms worst case. Chromium attributes them to
+`unknown`/`window` with an empty source, so the owning script is not named. Six GPU
+contexts and 91 `requestAnimationFrame` callbacks per second are also present and
+worth reducing, but neither is yet shown to cost frame time.
+
+**Not measured, and the reason:** browser CPU. `ps` in this shell cannot see the
+Playwright browser's processes at all — 399 processes are visible and none of them is
+the browser — so whether the core is CPU-bound could not be established from here.
+
 ## The visual review, finally done with eyes on the product
 
 The read access was granted, and this is the first time in this work that the product
