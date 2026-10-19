@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-switch-companion-hosted-frame-supported"
+description = "Enables the switch_companion_hosted_frame_supported command without any pre-configured scope."
+commands.allow = ["switch_companion_hosted_frame_supported"]
+
+[[permission]]
+identifier = "deny-switch-companion-hosted-frame-supported"
+description = "Denies the switch_companion_hosted_frame_supported command without any pre-configured scope."
+commands.deny = ["switch_companion_hosted_frame_supported"]

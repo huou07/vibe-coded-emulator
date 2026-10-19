@@ -1,0 +1,25 @@
+{
+  "version": "2126.1.2",
+  "sourceUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.2/azahar-unified-source-2126.1.2.tar.xz",
+  "sourceSha256": "ca0626312af68370e04c70b60eab4dd95e6f3f248d1d1c6a22ee784dfce6b361",
+  "licenseUrl": "https://raw.githubusercontent.com/azahar-emu/azahar/2126.1.2/license.txt",
+  "licenseSha256": "a77e81713ddfe05f9f7f3a3c46de4147f82b5fe9d6e5e24af96e36a6de53f613",
+  "targets": {
+    "linux-x86_64": {
+      "platform": "Linux x86_64",
+      "archiveName": "azahar-libretro-linux-x86_64-2126.1.2.zip",
+      "archiveSha256": "184dcb41d0bbf89b9dffeac1573d0b6f8a16648a33abb86e9350d05c93e3f742",
+      "coreName": "azahar_libretro.so",
+      "coreSha256": "2dd1ca2f1daa1d70234dd4d58bbd27edd81ca9d5cbb3b026fb58bcf618d72538",
+      "size": 47141600
+    },
+    "windows-x64": {
+      "platform": "Windows x64",
+      "archiveName": "azahar-libretro-windows-x86_64-2126.1.2.zip",
+      "archiveSha256": "c3b1c9237fe63bfab23976e3f2e5b219396ea30f88c48d3172bc188f181f63ca",
+      "coreName": "azahar_libretro.dll",
+      "coreSha256": "72d7b1403306fdac07eaf310e0698eca44ed3072cdbd1ec74140b8fdad63bb26",
+      "size": 33744384
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# Gitleaks configuration. Keep each exception bounded by both path and value.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known safe renderer preference and GNOME proxy examples"
+condition = "AND"
+paths = [
+  'static/player-runtime\.js$',
+  'native-offline/src-tauri/gen/android/app/src/main/assets/static/player-runtime\.js$',
+  'tests/test_release_artifact_scan\.py$',
+  '(^|/|!)org\.gnome\.system\.proxy\.gschema\.xml$',
+]
+regexTarget = "match"
+regexes = [
+  'an3-presentation-renderer-v1',
+  '192\.168\.0\.0',
+  '192\.0\.2\.0',
+]
