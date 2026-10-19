@@ -352,6 +352,70 @@ says so: "a build lane, not a release candidate and not platform acceptance".
 So a newer apps set needs a new tag and a working release lane, not a deploy. The
 builders for macOS, Windows and Android are not on this host.
 
+## The three owner directives: what is fixed, what is blocked, what needs a decision
+
+### The keyboard was dead, and the cause was one word
+
+`static/player.js` set `keyboardInput:"enabled"` for 3DS. EmulatorJS consults its own
+control table only when that value is **not** "enabled", so the setting told the shell
+to skip its mapping and hand the keys to the core — and the core delivered nothing.
+Measured with real key events against the production surface: twelve keys, **zero**
+`simulateInput` calls, while the control table already held a complete mapping.
+
+With `"disabled"` the same probe reports **11 of 12** keys reaching the input path:
+
+| Key | Button | Key | Button |
+| --- | --- | --- | --- |
+| arrows | D-pad 4/5/6/7 | `a` / `s` | X(9) / Y(1) |
+| `z` / `x` | A(8) / B(0) | `q` / `e` | L(10) / R(11) |
+| `Enter` | Start(3) | `v` | Select(2) |
+
+Select is on `v` in EmulatorJS's table, not Shift, which is why Shift alone reports
+nothing. `tests/test_offline_consolidation.py` asserted the old, broken value; it now
+asserts the measured one with the measurement written beside it.
+
+### The pad hid itself because its state was never stored
+
+A fresh session showed the pad while `localStorage` held no record at all, so the
+first press of the touch toggle hid a pad the user had just asked to see, and nothing
+survived a reload. The starting state is now persisted once: measured, `storedVisible`
+is `true` with the pad shown before the press and `false` with it hidden after, in both
+directions and across reloads.
+
+### The thread pool is hardcoded at 32 and cannot be rebuilt here
+
+The owner asked for a pool sized to the client's hardware. Measured by presenting a
+different `hardwareConcurrency`: **32 `em-pthread` workers whether the page reports 20
+threads or 4**, so the number is a compile-time constant, not adaptive.
+
+It cannot be changed on this host, and that is a hard blocker rather than a choice:
+there is **no emscripten** (`emcc`/`emcmake` absent, no emsdk), **no Azahar wasm
+source**, and **no build recipe** — the core is a prebuilt `azahar-thread-wasm.data`
+bundle whose only provenance is a report naming its options
+(`requireThreads, requiresWebgl2, supportsMouse, useKeyboard`). The fetch scripts in
+the repository download native libretro cores, not the wasm one.
+
+One thing was fixed in the same area: the capability probes in `player-runtime.js` and
+`player.js` created WebGL contexts and never released them, so a 3DS session held six
+GPU contexts where the emulator needs one. They now hand each context back and cache
+the answer — measured, six created, four released, two live.
+
+### The branches
+
+101 unique branch refs, and **54 of them are fully contained in another branch**, so
+they carry no unique commit. The app line's terminal state turned out to be smaller
+than it looks: `apps/consolidated` and `codex/vce-optional-features-beta` share one tip
+(`d55e5f6`), and the newest app content is the 3.6.10 line at `a954b44`.
+
+The release question has one honest answer. The **most complete source** is 3.6.10, but
+it has **no installers** — they were never built, and the tag-triggered release lane on
+the app line has failed at startup since 2026-10-10. The **most complete releasable**
+version is **3.6.8**, whose six artifacts exist, verify byte-for-byte, are already on
+the production download page and already published as the GitHub release `v3.6.8`.
+
+Deleting the 54 contained branches is a one-way action on the remote, so the list is
+prepared and reported rather than executed unasked.
+
 ## 3DS on the Web: measured diagnosis of the reported slowness and input faults
 
 The owner reported that 3DS cannot be driven from a real keyboard, that the on-screen
