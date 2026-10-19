@@ -104,13 +104,21 @@ Instrumented per-frame time on the iGPU (temporary build, not shipped): 8.1 ms p
 frame of which 7.9 ms is the ARM interpreter, so the CPU backend is still the
 largest single cost; a software renderer adds roughly 20 ms per frame on top of it.
 
+Shipped on production 2026-10-20: release `production-1cb914cc19a4b0bf`, asset
+`7b1e9cecc750`, core sha256 `64a219e9…`. The public page imports the lawful
+fixture, reaches ready in 2.6 s and holds 59.83 fps; a GBA fixture still runs at
+60.24 fps on the same surface. Rollback is
+`deploy/rollback-production.sh /opt/an3-arcade-backups/20261020-013439` plus
+`deploy/rollback-azahar-core.sh /srv/an3-arcade/emulatorjs-cache/backups/azahar/20261020-013454`.
+
 **A rebuilt core no longer stays pinned in a returning browser.** The core binary
 and its build report were served `immutable` for a week and the service worker
 answered them cache-first, so a player who had already downloaded a core kept the
 old interpreter. Both now revalidate (`public,max-age=0,must-revalidate`,
-network-first with a cache fallback), verified live: a fresh profile fetched the
-first core, the server's core was replaced in place, and the same profile then
-received and cached the new bytes (`refreshed: true`).
+network-first with a cache fallback, `ETag` → 304 so a running update costs one
+conditional request rather than a re-download), verified live: a fresh profile
+fetched the first core, the server's core was replaced in place, and the same
+profile then received and cached the new bytes (`refreshed: true`).
 
 ### Live run, 2026-10-18
 

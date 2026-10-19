@@ -59,6 +59,24 @@ for this source), `UNVERIFIED` (the implementation exists, no live check), and
    handles, so any future documentation should read the player's diagnostics, not
    `EJS_emulator`.
 
+## Production, 2026-10-20
+
+| Item | Value |
+| --- | --- |
+| Source | `482a8ba` (core + playback) and `e2766f3` (asset revalidation), branch `feature/semantic-ui-inspection` |
+| CI | `verify` success on `482a8ba`; `native-build` success on `482a8ba` |
+| Local gate | `PROJECT_VERIFY=PASS` — 521 Python tests (19 skipped), 99 JS tests (3 skipped), docs refs, mirror, whitespace |
+| Production release | `PRODUCTION_RELEASE=PASS`, asset `7b1e9cecc750`, release `production-1cb914cc19a4b0bf`, health `ok` |
+| Core seeded | `AZAHAR_CORE_SEED=PASS`, bundle sha256 `b67a830e…` → served core sha256 `64a219e9…`, 4,005,207 bytes |
+| Served to a browser | `azahar-thread-wasm.data` sha256 `64a219e9…`; `Cache-Control: public,max-age=0,must-revalidate`; `ETag` revalidation answers **304** with 0 bytes |
+| Public 3DS play | lawful hbmenu v2.4.3 imported in the browser on `https://an3tocom.space/offline`, player ready in 2.6 s, **59.83 fps**, core fetched = `64a219e9…`, no page error |
+| Public GBA regression | synthetic GBA fixture, ready in 204 ms, **60.24 fps**, 1 dropped frame, no page error |
+| Rollback | app `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261020-013439`; core `sudo bash deploy/rollback-azahar-core.sh /srv/an3-arcade/emulatorjs-cache/backups/azahar/20261020-013454` |
+
+The NDS path is `UNVERIFIED` here — no lawful DS fixture exists on this host — but
+this change touches no DS core or geometry code; only the shared service worker
+and `serve_file` validators changed, and GBA exercises both.
+
 ## Reproduce
 
 ```sh
