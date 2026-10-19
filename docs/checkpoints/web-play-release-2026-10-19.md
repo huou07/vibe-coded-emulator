@@ -352,6 +352,18 @@ says so: "a build lane, not a release candidate and not platform acceptance".
 So a newer apps set needs a new tag and a working release lane, not a deploy. The
 builders for macOS, Windows and Android are not on this host.
 
+### The keyboard and pad fixes are live
+
+| Item | Value |
+| --- | --- |
+| Source SHA | `8f73490` — CI `39198778989`, completed success |
+| Asset version | `f892a9c4bbd7` |
+| Release id | `production-806ca14f2402625f` |
+| App backup | `/opt/an3-arcade-backups/20261019-112312` |
+| Health | `PRODUCTION_RELEASE=PASS` |
+| Rollback | `sudo bash deploy/rollback-production.sh /opt/an3-arcade-backups/20261019-112312` |
+| Re-measured live | `keyboardInput: disabled`, **11 of 12** keys reaching the input path with real key events |
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word
