@@ -445,6 +445,42 @@ GitHub release. The 3.6.10 line has source but no packages, because the tag-trig
 release lane that builds them has failed at startup since 2026-10-10 and the macOS,
 Windows and Android builders are not on this host.
 
+### The frame-rate effect, measured: there is none
+
+The pool change was A/B'd on this host with the same fixture and the same browser
+configuration, swapping the bundle and clearing the server cache between runs. Three
+patched runs reported **47.6, 45.3 and 46.9 fps** with `pthread=16` and `p50=16.67ms`.
+The original bundle's baseline from earlier rounds, measured the same way, was
+**45–48 fps** with 32 workers.
+
+So the pool was pre-spawning 32 workers where the machine could not use them, and
+sizing it from the hardware removes that waste, but it does **not** raise the frame
+rate: the core's own ceiling on this host is ~46–48 fps either way. No fps gain is
+claimed, and the 3DS slowness the owner reports is not explained by the pool.
+
+### The contradiction that blocked every platform build
+
+The cross-platform build dispatched for 3.6.10 failed on macOS at "Run macOS JavaScript
+regression suites", and the log names the pair exactly:
+
+```
+ok 50 - experimental features are globally shared and disabled until explicitly enabled
+not ok 70 - native settings and runtime no longer expose Sync controls
+   location: tests/native_support.test.mjs:74
+```
+
+`native_settings.test.mjs` requires the experimental features to be exactly
+phone-controller, lan-sync and switch-eden; `native_support.test.mjs` forbade the
+generated models from mentioning `lan-sync` at all. Both run on one tree, so no tree
+could pass both — the contradiction recorded earlier, now with a CI failure to match.
+The pattern was written when sync was removed wholesale and caught the local
+experimental toggle together with the retired cloud surface.
+
+It is narrowed to what it guards — a Google Sync control, the old native-sync bridge, a
+cloud sync mention — rather than relaxed, and the owner's own instruction is why: they
+asked for LAN Sync and Phone Controller to exist as user-controlled experimental
+features, which is what the schema implements. Both suites now pass together, 25 of 25.
+
 ## The three owner directives: what is fixed, what is blocked, what needs a decision
 
 ### The keyboard was dead, and the cause was one word
