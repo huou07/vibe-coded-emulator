@@ -1382,6 +1382,9 @@ code with no way to enable it is the same defect one layer down.
 | The packaged Linux app, through its documented token-gated UI bridge | automation DEB `--features ui-control` (`/tree`, `/click`), bridge strings 2 vs 0 in the distribution build | fresh profile: three rows `off`, no `Devices`; LAN Sync on → `Devices`; Devices shows LAN Sync (`Hosting / ready to pair`, real six-digit code) and LAN Multiplayer, hides Phone Controller; Phone Controller on → its card, `controller-start` = `Waiting for device` + code, Stop → `Off`; Switch on → row stays hidden (`detect.available=false`); all off → destination gone; relaunch keeps the choice |
 | The Android package on the VCE AVD (`vce-api36`, Android 16) | `adb install` + screen reads | bottom bar gains `Devices` only after the LAN Sync switch; Settings shows two rows (no Eden switch on Android); Application settings no longer carries a duplicate; LAN Sync card hosts with a pairing code |
 | Every artifact came from the tree this record names | built from the working tree recorded verbatim as `c67eebd`; the catalog commit only writes identities | — |
+| The whole local gate on the released tree | `bash tools/verify-project.sh` at `a05ac35` | `PROJECT_VERIFY=PASS`, exit 0, 22 declared skips, `evidence_class=VERIFIED_SOURCE` |
+| The About screen reports the released version | packaged automation build, `/text?testid=native-app-version` | `3.6.11` |
+| The production payload packages and verifies | `deploy/package-production.sh` | `PRODUCTION_PACKAGE=PASS`, 275 MB, the six catalog installers and their sidecars inside, `static/` present |
 
 ### Artifacts (source `c67eebd`, built on this Linux host)
 
