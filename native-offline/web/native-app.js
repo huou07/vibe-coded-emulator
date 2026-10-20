@@ -450,52 +450,145 @@
       }).catch(() => { versionNode.textContent = "Unavailable in this build"; });
     }
 
-    // Experimental surfaces are user-controlled and off by default: Eden, LAN
-    // Sync and Phone Controller are test features, and a user who only wants to
-    // play GBA, NDS and 3DS must not meet them at all. One source of truth for
-    // the decision (the shared settings model plus the stored snapshot), read
-    // here and applied to the cards and to the destination itself.
-    const experimentalIds = {
-      eden: "experimental-switch-eden",
-      sync: "experimental-lan-sync",
-      controller: "experimental-phone-controller",
+    // Optional surfaces are user-controlled and off by default: Eden, LAN Sync
+    // and Phone Controller add a whole destination, and a user who only wants
+    // GBA, NDS and 3DS must never meet them. The decision belongs to the shell,
+    // not to a platform settings adapter: `native-flags.js` owns it on every
+    // platform, this card is the only UI that writes it, and the surfaces below
+    // are gates rather than disabled controls.
+    const flags = window.AN3ShellFlags;
+    const experimentalBody = document.getElementById("nativeExperimentalBody");
+    const experimentalStatus = document.getElementById("nativeExperimentalStatus");
+    // A surface is offered only where this host can complete it: Android ships
+    // no Eden companion, and a host without the controller bridge cannot host a
+    // phone. Offering the switch anyway would reveal a destination that shows
+    // nothing for that feature, which is the defect this card removes.
+    const surfaceAdapters = {
+      "experimental-switch-eden": () => Boolean(window.AN3NativeSwitch),
+      "experimental-lan-sync": () => Boolean(window.AN3NativeSync),
+      "experimental-phone-controller": () => Boolean(window.AN3NativeController),
     };
-    const experimentalOn = id => {
-      let stored;
-      try { stored = (JSON.parse(window.AN3AndroidSettings?.all?.() || "{}").global || {})[id]; } catch (_) { stored = undefined; }
-      if (stored === undefined || stored === null || stored === "") {
-        const definition = (window.NativeSettingsModel?.global || []).find(item => item.id === id);
-        stored = definition ? definition.default : "false";
-      }
-      return String(stored).toLowerCase() === "true";
+    const surfaceAvailable = id => (surfaceAdapters[id] ? surfaceAdapters[id]() : true);
+    const experimentalNames = {
+      "experimental-switch-eden": "Switch / Eden",
+      "experimental-lan-sync": "LAN Sync",
+      "experimental-phone-controller": "Phone Controller",
     };
+    const sayExperimental = message => { if (experimentalStatus) experimentalStatus.textContent = message || ""; };
+
+    const experimentalStates = {eden: false, sync: false, controller: false};
+
     const applyExperimentalSurfaces = () => {
-      const states = {
-        eden: experimentalOn(experimentalIds.eden),
-        sync: experimentalOn(experimentalIds.sync),
-        controller: experimentalOn(experimentalIds.controller),
-      };
+      const all = flags ? flags.all() : {};
+      const on = id => all[id] === true && surfaceAvailable(id);
+      experimentalStates.eden = on("experimental-switch-eden");
+      experimentalStates.sync = on("experimental-lan-sync");
+      experimentalStates.controller = on("experimental-phone-controller");
       const syncCard = document.getElementById("nativeAccountSyncCard");
-      if (syncCard && !states.sync) syncCard.hidden = true;
+      if (syncCard) syncCard.hidden = !experimentalStates.sync;
       const controllerCard = document.getElementById("nativeControllerCard");
-      if (controllerCard && !states.controller) controllerCard.hidden = true;
-      if (!states.eden) {
+      if (controllerCard) controllerCard.hidden = !experimentalStates.controller;
+      if (!experimentalStates.eden) {
         const card = document.getElementById("nativeSwitchCard");
         if (card) card.hidden = true;
       }
-      // With every experimental feature off there is nothing on that
-      // destination, so the destination itself goes away rather than opening an
-      // empty page. Settings still lists the three switches, which is the way
-      // back for a user who wants them.
-      const anyOn = states.eden || states.sync || states.controller;
+      // With nothing enabled there is nothing on that destination, so the
+      // destination itself goes away rather than opening an empty page. The
+      // Optional features card in Settings is the way back in, and it is always
+      // present on every platform.
+      const anyOn = experimentalStates.eden || experimentalStates.sync || experimentalStates.controller;
       // The destination buttons are addressed by data-nav, not by id, and the
-      // shell renders more than one of them.
+      // shell renders more than one of them (side rail and bottom bar).
       for (const button of document.querySelectorAll('[data-nav="devices"]')) {
         button.hidden = !anyOn;
       }
-      return states;
+      // Never strand the user on a page whose destination just disappeared.
+      if (!anyOn && current === "devices") show("play");
+      // Turning the Switch companion on must reveal its row in the same pass;
+      // waiting for the next launch is the dead-control behaviour this card
+      // exists to remove.
+      if (experimentalStates.eden) refreshSwitchSurface();
+      return experimentalStates;
     };
-    const experimentalStates = applyExperimentalSurfaces();
+
+    // Assigned by the Switch block below once it has wired the card; calling it
+    // before that is a no-op, so the flag store can ask for a re-check at any
+    // time without knowing the wiring order.
+    let refreshSwitchSurface = () => {};
+
+    const renderExperimental = () => {
+      if (!experimentalBody) return;
+      experimentalBody.textContent = "";
+      const definitions = (flags ? flags.definitions() : []).filter(definition => surfaceAvailable(definition.id));
+      if (!definitions.length) {
+        const note = document.createElement("p");
+        note.className = "native-muted";
+        note.textContent = "This host has no optional feature to offer; every one of them needs a companion or a bridge this build does not carry.";
+        experimentalBody.appendChild(note);
+        return;
+      }
+      for (const definition of definitions) {
+        const field = document.createElement("label");
+        field.className = "native-field native-flag-row";
+        field.dataset.experimental = definition.id;
+        // Addressed by the packaged control plane and by the UI tests: the row
+        // is the element a person clicks, so it is the element that carries the
+        // id (the real checkbox inside it stays hidden and labelled by the row).
+        field.dataset.testid = definition.id;
+        const text = document.createElement("span");
+        text.className = "native-flag-text";
+        const caption = document.createElement("strong");
+        caption.textContent = definition.label;
+        text.appendChild(caption);
+        if (definition.note) {
+          const note = document.createElement("small");
+          note.textContent = definition.note;
+          text.appendChild(note);
+        }
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "native-flag-input";
+        input.dataset.experimentalToggle = definition.id;
+        input.checked = flags.get(definition.id);
+        // The row carries the id, so it also carries the machine-readable state
+        // (the packaged UI control plane reads `data-state`); the checkbox keeps
+        // the accessible state.
+        field.dataset.state = input.checked ? "on" : "off";
+        input.addEventListener("change", () => {
+          const wanted = input.checked;
+          const saved = flags.set(definition.id, wanted);
+          if (!saved) {
+            // A refused write must not leave a control that claims a state the
+            // app will not honour on the next launch.
+            input.checked = !wanted;
+            field.dataset.state = input.checked ? "on" : "off";
+            sayExperimental("This build cannot remember the choice; nothing changed.");
+            return;
+          }
+          field.dataset.state = wanted ? "on" : "off";
+          const name = experimentalNames[definition.id] || definition.label;
+          sayExperimental(wanted
+            ? `${name} is on. ${definition.id === "experimental-switch-eden" ? "Open Devices to launch the companion." : "Open Devices to use it."}`
+            : `${name} is off. Its screen and controls are removed.`);
+          applyExperimentalSurfaces();
+        });
+        // A drawn track beside the real input: the checkbox carries the state
+        // and the keyboard behaviour, the track makes that state visible on
+        // every engine.
+        const track = document.createElement("span");
+        track.className = "native-flag-track";
+        track.setAttribute("aria-hidden", "true");
+        field.append(text, input, track);
+        experimentalBody.appendChild(field);
+      }
+    };
+
+    renderExperimental();
+    applyExperimentalSurfaces();
+    // The store is the single writer, so the view cannot drift: any change from
+    // the card (or a future entry point) re-applies the gates at once instead of
+    // asking the user to restart the app.
+    flags?.subscribe(() => applyExperimentalSurfaces());
 
     // Switch is a companion process, not a core, and it exists only on a host
     // whose packaging step bundled one. A host without it must not advertise
@@ -535,6 +628,10 @@
         if (detect?.ok === true || switchAttempts >= 60) return;
         switchAttempts += 1;
         setTimeout(revealSwitch, 250);
+      };
+      refreshSwitchSurface = () => {
+        switchAttempts = 0;
+        revealSwitch();
       };
       revealSwitch();
     }
@@ -664,6 +761,14 @@
           syncStatus.textContent = status.error || (connected ? String(connected) + " direct peer" + (connected === 1 ? "" : "s") + " connected" : connecting ? "Authenticating direct peer" : status.running ? "Hosting / ready to pair" : "Off");
         }
         if (syncCode) syncCode.textContent = status.running && status.code ? status.code : "—";
+        // Hosting starts with the surface (the card is only reachable while LAN
+        // Sync is on), so a "Start Hosting" button that stays available while
+        // the device is already advertising asks the user to repeat an action
+        // that already happened. Show the action that applies to the real state.
+        const startButton = document.getElementById("nativeSyncStart");
+        const stopButton = document.getElementById("nativeSyncStop");
+        if (startButton) startButton.hidden = status.running === true;
+        if (stopButton) stopButton.hidden = status.running !== true;
         renderPeers(status);
         if (status.running) {
           for (const peer of status.peers || []) {

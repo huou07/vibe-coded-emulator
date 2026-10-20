@@ -17,7 +17,8 @@ Skip when: the change is emulation, transport or storage with no visible effect.
 | Web header destinations | `GOOD` | one destination per purpose; the mislabelled `Offline`/`Open app downloads` duplicate chip is gone (`docs/checkpoints/ui-ux-baseline.md`, change A1) |
 | Linux native UI clarity | in progress | owner report 2026-10-18: "giao diện còn khá rối" — a requirement, not a verification. The device-to-device features left the Settings stack for their own `Devices` destination (change A2); the reviewed before/after captures are the remaining step |
 | Android and macOS UI | owner-accepted as a baseline | Owner report 2026-10-18; no formal review recorded |
-| Entry points for Switch, LAN Sync and Phone Controller in the native UI | `GOOD` at source level | one `Devices` destination with one card and one primary action per feature; the Switch card stays hidden until a companion reports `available: true` (`docs/checkpoints/ui-ux-baseline.md`, "The entry pattern") |
+| Entry points for Switch, LAN Sync and Phone Controller in the native UI | `GOOD` for the Linux packaged flow, `UNVERIFIED` on macOS/Windows | one `Devices` destination with one card and one primary action per feature; the Switch card stays hidden until a companion reports `available: true` (`docs/checkpoints/ui-ux-baseline.md`, "The entry pattern") |
+| The switch that reveals that destination | `GOOD` for Linux packaged + browser lane, `UNVERIFIED` on macOS/Windows | one **Optional features** card in Settings, rendered by the shell on every platform from `native-flags.js` (RG-162); the shipped 3.6.10 installers predate it, which is why the published app showed the switches without the screen |
 
 ## Code map
 

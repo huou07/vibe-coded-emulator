@@ -29,6 +29,56 @@ Source contracts are necessary but never sufficient for interactive behaviour.
 A feature is not `GOOD` until its matching behavioural and live acceptance
 checks pass.
 
+## Optional surfaces are reachable from Settings on every platform — RG-162, 2026-10-20
+
+- RG-162.1: **A switch that gates a screen must be reachable on every platform the
+  app ships on.** Eden/Switch, LAN Sync and Phone Controller are shell feature
+  flags, not core settings: `native-offline/web/native-flags.js` owns the decision
+  in one versioned store (`an3-shell-flags-v1`) on Android, Linux, macOS and
+  Windows, the ids/labels/notes stay declared once in the generated settings
+  model, and `native-offline/web/native-app.js` renders the **Optional features**
+  card in Settings on every host. The per-platform settings list must not render
+  a second copy (`game-settings.js` excludes the `experimental` category).
+- RG-162.2: **A flag is a gate, not a disabled control.** With a flag off its card,
+  and the whole destination when nothing on it is enabled, is removed from the
+  page; the destination starts `hidden` in the markup so startup cannot flash an
+  empty page; and a change takes effect without a restart (the store notifies the
+  shell). Turning everything off while standing on Devices returns to Play.
+- RG-162.3: **The control is a real checkbox plus a drawn track.** WebKitGTK 2.54
+  paints an `appearance: none` checkbox with the GTK theme, which rendered this
+  control as a ring in the installed app; the state and keyboard behaviour stay on
+  the native checkbox and a `aria-hidden` track shows the state on every engine.
+  The row carries `data-testid` and `data-state` (`on`/`off`) for the packaged
+  control plane; `tests/native_experimental_gate.test.mjs` and
+  `tests/native_shell_flags.test.mjs` hold the contract.
+- RG-162.4: **An installer that predates these surfaces is not a release of them.**
+  The 3.6.10 installers on the production download page were built from
+  `public/3.6.10-source-candidate` (`aada24f`), a core-only export whose
+  `native-offline/web/` has no `native-sync.js`, `native-account.js`, Devices
+  destination or optional-feature gating, and whose `src-tauri/src/` has no
+  `sync_peer.rs`, `lan_host.rs`, `lan_peer.rs` or `controller_host.rs`. Its
+  settings model still declared the three switches, so the app the owner installed
+  showed three switches that no screen consumed. Reproduced on the published
+  Linux DEB: the switches exist at the bottom of Application settings, Devices is
+  absent from every navigation surface, and toggling them changes nothing. Any
+  installer published to the download page must be built from the line that
+  carries the surfaces, and `native_web_assets`/mirror checks must pass on that
+  exact tree.
+- Evidence for this guard on this host: `node --test
+  tests/native_experimental_gate.test.mjs tests/native_shell_flags.test.mjs`
+  (18 tests) PASS; the Chromium browser lane over `native-offline/dist`
+  (`work/ui-fix/shell-lane.mjs`) drives the real card, keyboard space, immediate
+  reveal, the stranded-page recovery and a reload; the packaged Linux automation
+  build (`npm run tauri -- build --bundles deb --features ui-control`, bridge
+  count 2 vs 0 in the distribution build) confirms the same flow through the real
+  WebView, including the LAN Sync card's real pairing code. **UNVERIFIED**: the
+  packaged macOS and Windows runs, and the two-device peer legs (see
+  [lan-sync](../features/lan-sync.md), [phone-controller](../features/phone-controller.md)).
+- Owners: `native-offline/web/native-flags.js`, `native-offline/web/native-app.js`,
+  `native-offline/web/game-settings.js`, `native-offline/web/index.html`,
+  `native-offline/web/native.css`, the committed Android mirror, and the release
+  catalog under `native-offline/releases/`.
+
 ## The browser 3DS core is the optimised backend and a rebuilt core reaches players — RG-161, 2026-10-19
 
 - RG-161.1: the served `azahar-thread-wasm.data` must be the bundle pinned in

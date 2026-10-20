@@ -15,8 +15,11 @@ body.native-app-shell{
   background:var(--v-bg,#07060c);
   color:var(--v-text,#f3f1fa);
 }
-/* `hidden` must win over the layout display rules below. */
-.native-app [hidden]{display:none !important}
+/* `hidden` must win over the layout display rules below. The bottom
+   navigation lives outside .native-app, so it needs its own rule: without
+   it the gated Devices button stayed visible on a phone even while the
+   attribute said hidden. */
+.native-app [hidden],.native-bottomnav [hidden]{display:none !important}
 
 .native-app{
   display:grid;
@@ -234,6 +237,26 @@ body.native-app-shell{
 .native-settings-field{margin:0}
 .native-settings-field input[type="checkbox"]{justify-self:start;width:20px;height:20px}
 .native-settings-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6)}
+/* Optional features: one row per switch, with the label and its explanation
+   beside a control that is a whole 44px touch target, not a bare 20px box. */
+.native-flag-row{margin:0;padding:10px 12px;border:1px solid var(--v-line,#282238);border-radius:12px;background:var(--v-bg-soft,#0b0912);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-height:44px;cursor:pointer}
+.native-flag-row:hover{border-color:var(--v-line-2,#38304f)}
+.native-flag-row:focus-within{outline:2px solid var(--v-violet,#8b5cf6);outline-offset:2px}
+.native-flag-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.native-flag-text strong{font-size:14px;font-weight:650;color:var(--v-text,#f3f1fa)}
+.native-flag-text small{font-size:12px;line-height:1.45;color:var(--v-muted,#a5a0b6)}
+/* The control is a native checkbox for state and keyboard, with a drawn track
+   so the off and on states look identical in WebKitGTK (the installed app),
+   Chromium and Firefox: WebKit still paints `appearance:none` checkboxes with
+   the GTK theme and rendered this one as a ring. The input stays focusable and
+   the row labels it, so nothing about the semantics changes. */
+.native-flag-input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.native-flag-track{flex:none;position:relative;width:44px;height:26px;margin-top:0;border:1.5px solid var(--v-line-2,#38304f);border-radius:13px;background:var(--v-surface,#131020);transition:background .15s ease,border-color .15s ease}
+.native-flag-track::after{content:"";position:absolute;left:3px;top:50%;width:18px;height:18px;margin-top:-9px;border-radius:50%;background:var(--v-muted,#a5a0b6);transition:transform .15s ease,background .15s ease}
+.native-flag-input:checked+.native-flag-track{border-color:var(--v-violet,#8b5cf6);background:var(--v-violet,#8b5cf6)}
+.native-flag-input:checked+.native-flag-track::after{transform:translateX(18px);background:#fff}
+.native-flag-row:hover .native-flag-track{border-color:var(--v-lavender,#c4b5fd)}
+@media (max-width:560px){.native-flag-row{gap:10px;padding:10px}}
 .native-system-tabs,.native-settings-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .native-system-tab,.native-settings-tab{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--v-line,#282238);background:var(--v-surface-1,#120f1e);color:var(--v-text,#f4f2fb);font-size:13px;font-weight:650;cursor:pointer}
 .native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}

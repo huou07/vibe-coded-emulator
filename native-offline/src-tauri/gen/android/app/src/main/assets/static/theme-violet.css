@@ -291,6 +291,9 @@ body:not(.player-page) .platform-card h3{
 body:not(.player-page) .platform-card .platform-meta{
   margin:5px 0 0;color:var(--v-muted);font-size:13px;line-height:1.4;
 }
+body:not(.player-page) .platform-card .platform-note{
+  display:block;margin-top:6px;color:var(--v-amber);font-size:12px;line-height:1.45;
+}
 body:not(.player-page) .platform-card .platform-action{margin-top:auto}
 body:not(.player-page) .platform-card .button{width:100%;justify-content:center}
 body:not(.player-page) .platform-card.pending{

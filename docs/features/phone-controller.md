@@ -20,6 +20,7 @@ through the operating system (not this feature).
 | Host and phone as two peers on one host over pairing, state and ack | `GOOD` | `work/phaseC/two-peer-acceptance.py`, PASS 11/11 on 2026-10-19: the host creates a session, the phone page renders, the phone pairs with the code, the host observes the pairing, the phone's frame is applied, the host acknowledges it and observes `inputActive`, a stale sequence is not applied, and wrong host token, wrong phone token and unknown code are 403/403/404. `input_active()` needs `ack_sequence > 0` and the host acks through its own endpoint, not by reading state. This is the control plane between two peers on one host and does not replace the two-device row below |
 | Input release on focus loss / disconnect / explicit stop | `GOOD` at source level | Covered by native controller pad tests; device behaviour `UNVERIFIED` |
 
+| Entry point in the installed app | `GOOD` for Linux packaged + browser lane, `UNVERIFIED` on macOS/Windows | one **Optional features** switch in Settings reveals the `Devices` destination on every platform; RG-162, `tests/native_experimental_gate.test.mjs`. The 3.6.10 installers predate the surfaces themselves (built from the core-only candidate line), which is the reported "switch does nothing" defect |
 ## Code map
 
 - `netcode.py` — pairing code generation, token digest, controller state.

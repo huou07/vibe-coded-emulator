@@ -68,6 +68,7 @@ primary action per card, and a state that is honest before the user commits:
 | --- | --- | --- | --- |
 | A1 | Web navigation + offline recovery | One destination per purpose: the header no longer carries the mislabelled `Offline`/`Open app downloads` duplicate, `Download app` points at `/download-app` and marks itself `aria-current="page"` on the download page, and `/offline` recovers to the library (`/games`) instead of to itself — `/download-app` in production, where there is no public library. | `app.py` (`layout`, `offline_page`, `download_app_page`) |
 | A2 | Native new-feature entry points | The Devices destination and its four cards; `Devices` added to the sidebar, the bottom navigation and the Help guide; LAN Sync retitled from `Account & LAN Sync`; Phone Controller documented with the actual join path; the About version read from the running build. | `native-offline/web/index.html`, `native-app.js`, `native-bootstrap.js`, and the committed Android mirror |
+| A3 | The switch that reveals those entry points | One **Optional features** card in Settings on every platform, backed by `native-flags.js` (one store, off by default), applied without a restart; the generic settings list no longer renders a second copy; a drawn track shows the state on every engine (WebKitGTK painted the styled checkbox as a ring); the LAN Sync card shows the action that matches its real hosting state. The 3.6.10 installers showed the three switches without any screen to reveal, which is the owner's report. | `native-offline/web/native-flags.js`, `native-app.js`, `game-settings.js`, `index.html`, `native.css`, the Android mirror; RG-162 |
 
 ## Evidence
 
@@ -83,6 +84,9 @@ primary action per card, and a state that is honest before the user commits:
 | About reports the shipped version | `/text?testid=native-app-version` | `3.2.5`, matching `tauri.conf.json`, instead of the literal `3.2.0` |
 | The sixth navigation item is safe at phone width | `node work/phaseA/measure-native-layout.mjs` | 360 px and 390 px: six items, **52 px** tall each, no truncation, `scrollWidth` == viewport, no horizontal overflow |
 | Android mirror matches its sources | `python3 tools/check-native-mirror.py` | `NATIVE_MIRROR=PASS` |
+| The optional-feature switches exist, gate a screen, and survive a restart | packaged Linux DEB 3.6.11 automation build, `/tree` + `/click` through the token-gated bridge | fresh profile: three rows `off`, `nav-devices` hidden; LAN Sync on → `nav-devices` visible, Devices shows LAN Sync + LAN Multiplayer and hides Phone Controller; Phone Controller on → its card appears and `controller-start` hosts a session with a real six-digit code (`Waiting for device`), Stop returns it to `Off`; Switch on → its row stays hidden because `detect.available=false`; all off → destination gone; a relaunch keeps the choice (`nav-devices` visible, row `on`) |
+| The same flow in a real browser | `work/ui-fix/shell-lane.mjs` over `native-offline/dist` | card, keyboard space, immediate reveal, no stranded Devices page, reload persistence, no page errors |
+| The switch store behaves | `node --test tests/native_experimental_gate.test.mjs tests/native_shell_flags.test.mjs` | 18 tests pass |
 | Whole local gate | `bash tools/verify-project.sh` | `PROJECT_VERIFY=PASS`, exit 0, 22 skips published in `VERIFY_SKIPS` |
 
 Packaged native artifact for the after-state captures: staging DEB

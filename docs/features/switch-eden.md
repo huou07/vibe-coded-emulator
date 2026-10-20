@@ -18,6 +18,7 @@ a GBA/NDS/3DS core change.
 | Switch library/UI surface in the app | `GOOD` for the honesty rule | on a companion-less host the Devices row stays hidden, the capability declaration omits `switch`, and Game Settings offers no Switch tab; a companion host still needs its packaged journey |
 | Web | out of scope | Owner decision 2026-10-18: the web product does not get Eden |
 
+| Entry point in the installed app | `GOOD` for Linux packaged + browser lane, `UNVERIFIED` on macOS/Windows | one **Optional features** switch in Settings reveals the `Devices` destination on every platform; RG-162, `tests/native_experimental_gate.test.mjs`. The 3.6.10 installers predate the surfaces themselves (built from the core-only candidate line), which is the reported "switch does nothing" defect |
 No maintained libretro Switch core exists. The companion is the architecture: a
 separately launched Eden process, never a core embedded in the player, and never
 a firmware/key bundle.

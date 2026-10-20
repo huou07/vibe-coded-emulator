@@ -224,13 +224,23 @@
     const renderApplication = () => {
       appCard.textContent = "";
       if (!bridge) {
+        // A host with no out-of-game settings adapter cannot render or store
+        // these values, so it must not show an empty form or a per-system tab
+        // row that changes nothing. One sentence says where the same settings
+        // really live, and the Game Settings card leaves the page.
+        card.hidden = true;
         const note = document.createElement("p");
         note.className = "native-muted";
-        note.textContent = "Application settings are edited in the in-game menu in this build.";
+        note.textContent = "This build keeps application and per-system settings inside the player: launch a game, then open Menu → General, Graphics or Emulation.";
         appCard.appendChild(note);
         return;
       }
-      renderGroup(appCard, model.externalGlobal(), null);
+      // The optional surfaces (Switch/Eden, LAN Sync, Phone Controller) are
+      // shell feature flags, not core settings: the shell renders them in its
+      // own card from the one store every platform shares. Rendering them here
+      // as well produced a second switch whose value the shell never read,
+      // which is exactly the dead control this change removes.
+      renderGroup(appCard, model.externalGlobal().filter(definition => definition.category !== "experimental"), null);
     };
 
     const reload = () => {

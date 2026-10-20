@@ -23,7 +23,7 @@
         <nav class="native-nav" aria-label="Main">
           <button type="button" class="native-nav-item active" data-nav="play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
           <button type="button" class="native-nav-item" data-nav="library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
-          <button type="button" class="native-nav-item" data-nav="devices" data-testid="nav-devices"><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
+          <button type="button" class="native-nav-item" data-nav="devices" data-testid="nav-devices" hidden><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
           <button type="button" class="native-nav-item" data-nav="settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
           <button type="button" class="native-nav-item" data-nav="help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
           <button type="button" class="native-nav-item" data-nav="about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>
@@ -93,7 +93,7 @@
               </div>
               <p id="nativeSwitchMessage" class="native-status" role="status"></p>
             </div>
-            <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync">
+            <div class="native-card" id="nativeAccountSyncCard" data-testid="account-lan-sync" hidden>
               <h2>LAN Sync</h2>
               <p class="native-muted">Move a save directly to another of your AN3 devices on this network. It is not relayed through the AN3 server, and a guest identity cannot prove the other device is yours, so signing in is required before a transfer is allowed.</p>
               <div class="native-sync-mode" role="group" aria-label="AN3 identity mode">
@@ -219,6 +219,12 @@
               <p class="native-muted">Shared by every system on this device. Core-specific settings live under Game Settings.</p>
               <div id="nativeApplicationSettingsBody" class="native-settings-body"></div>
             </div>
+            <div class="native-card" id="nativeExperimentalCard" data-testid="experimental-features">
+              <h2>Optional features</h2>
+              <p class="native-muted">Off by default. Each one adds a screen or a control to this app; turning it on here makes it available immediately, and turning it off again removes it. Nothing starts listening, advertising or launching until you use the feature.</p>
+              <div id="nativeExperimentalBody" class="native-settings-body"></div>
+              <p id="nativeExperimentalStatus" class="native-status" role="status"></p>
+            </div>
             <div class="native-card" id="nativeGameSettingsCard" data-testid="game-settings">
               <h2>Game Settings</h2>
               <p class="native-muted">Each system this build supports keeps its own Emulation and Graphics settings. Changing one system never changes another. Renderer changes apply on the next launch. Switch appears only when this build bundles the Eden companion.</p>
@@ -283,7 +289,7 @@
     <nav class="native-bottomnav" aria-label="Main">
       <button type="button" class="active" data-nav="play" data-testid="nav-play"><span class="ui-mask ui-play" aria-hidden="true"></span><span>Play</span></button>
       <button type="button" data-nav="library" data-testid="nav-library"><span class="ui-mask ui-ref-gamepad-2" aria-hidden="true"></span><span>Library</span></button>
-      <button type="button" data-nav="devices" data-testid="nav-devices-bottom"><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
+      <button type="button" data-nav="devices" data-testid="nav-devices-bottom" hidden><span class="ui-mask ui-ref-router" aria-hidden="true"></span><span>Devices</span></button>
       <button type="button" data-nav="settings" data-testid="nav-settings"><span class="ui-mask ui-ref-settings" aria-hidden="true"></span><span>Settings</span></button>
       <button type="button" data-nav="help" data-testid="nav-help"><span class="ui-mask ui-ref-book-open" aria-hidden="true"></span><span>Help</span></button>
       <button type="button" data-nav="about" data-testid="nav-about"><span class="ui-mask ui-ref-badge-help" aria-hidden="true"></span><span>About</span></button>
@@ -304,6 +310,7 @@
     <script src="/native-sync.js?v=3.2.0" defer></script>
     <script src="/static/player.js?v=3.2.0" defer></script>
     <script src="/native-settings.js?v=3.2.0" defer></script>
+    <script src="/native-flags.js?v=3.2.0" defer></script>
     <script src="/game-settings.js?v=3.2.0" defer></script>
     <script src="/native-app.js?v=3.2.0" defer></script>
     <script src="/android-staging.js?v=3.2.0" defer></script>

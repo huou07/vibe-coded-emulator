@@ -1597,6 +1597,12 @@ def download_platform_card(platform, items, lang):
             )
             action += f'<span class="platform-status">{extras}</span>'
         meta = f'{esc(primary["architecture"])} · {esc(primary["format"])}'
+        # A platform whose newest build is older than another platform's says so
+        # on its own card. Downloading the current release must never silently
+        # mean "a build that predates the last release of another platform".
+        note = str(primary.get("note") or "").strip()
+        if note:
+            meta += f'<span class="platform-note">{esc(note)}</span>'
     else:
         newest = items[0] if items else None
         status = f'<span class="platform-status">{t("Chưa có bản dựng đã xác minh","No verified build yet")}</span>'

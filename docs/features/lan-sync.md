@@ -18,6 +18,7 @@ or cloud sync (removed; not a product feature).
 | Two independent peers on one host over the registry and blob path | `GOOD` | `work/phaseC/lan-sync-acceptance.py`, PASS 9/9 on 2026-10-19: peer A announces, peer B announces and both appear, peer B publishes a save, peer A finds it in the manifest and pulls bytes whose sha256 matches, and an invalid device id, an ineligible kind, a mismatched hash and an unknown blob are refused. Both peers share one IP, so subnet scoping is not exercised, and this does not replace the row below |
 | Gameplay impact of a transfer in flight | `UNVERIFIED` | No measurement |
 
+| Entry point in the installed app | `GOOD` for Linux packaged + browser lane, `UNVERIFIED` on macOS/Windows | one **Optional features** switch in Settings reveals the `Devices` destination on every platform; RG-162, `tests/native_experimental_gate.test.mjs`. The 3.6.10 installers predate the surfaces themselves (built from the core-only candidate line), which is the reported "switch does nothing" defect |
 ## Code map
 
 - `sync_engine.py` — pure decision engine: transport choice, conflict decisions,

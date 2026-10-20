@@ -41,8 +41,13 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
                          "flatpak-builder", "fetch-linux-gba-nds-libretro.mjs"):
             self.assertIn(required, BUILD)
 
-        self.assertIn('cp -a deb-extract/usr/lib/. /app/lib/', FLATPAK)
-        self.assertNotIn('cp -a deb-extract/usr/lib/. /app/lib/an3-offline-native/', FLATPAK)
+        # The library tree is copied wholesale, never the launcher binary nested
+        # into it. `cp -r` plus an explicit chmod replaces `cp -a`, because a
+        # builder whose source tree carries default ACLs failed inside the
+        # sandbox with "preserving permissions: Invalid argument".
+        self.assertIn('cp -r deb-extract/usr/lib/. /app/lib/', FLATPAK)
+        self.assertIn('chmod -R a+rX /app/lib', FLATPAK)
+        self.assertNotIn('cp -r deb-extract/usr/lib/. /app/lib/an3-offline-native/', FLATPAK)
         self.assertIn('--runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo', BUILD)
         self.assertIn('flatpak_deb_path="$root/releases/$deb_name"', BUILD)
         self.assertIn('The Flatpak source DEB is stale or differs from the selected staged DEB.', BUILD)
