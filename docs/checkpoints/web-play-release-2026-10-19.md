@@ -1322,6 +1322,101 @@ them is the remaining release blocker, and it is a deliberate merge, not a
 fast-forward: pick the highest app version as the base, carry the Web-play and
 no-accounts contract onto it, and re-run both gates before any publication.
 
+## 3.6.11: the optional-feature entry points reach an installer (2026-10-20)
+
+The owner installed the app from the production download page and reported: games
+play, but Switch, LAN Sync and Phone Controller are not exposed in Settings and
+cannot be used. Both halves of that sentence are literal, and they have different
+causes.
+
+### Root cause 1 — the installers came from a line without the surfaces
+
+The six installers on `/download-app` were 3.6.10, built by hosted run
+`39229968027` from `public/3.6.10-source-candidate` (`aada24f`). That tree is a
+**core-only export** of an older development snapshot:
+
+| Check on `aada24f` (the 3.6.10 source) | Result |
+| --- | --- |
+| `native-offline/web/native-sync.js`, `native-account.js` | absent |
+| `native-offline/src-tauri/src/sync_peer.rs`, `lan_host.rs`, `lan_peer.rs`, `controller_host.rs` | absent |
+| `index.html` Devices destination / optional-feature card | absent |
+| settings model `experimental-*` switches | **present**, `external: true` |
+
+So the shipped app rendered three switches whose value nothing on that line
+consumed, and no screen anywhere in the app could be revealed by them. Reproduced
+on the published Linux DEB (`1a6d2b94…b3baa4`): the switches sit at the bottom of
+Application settings, no navigation surface has `Devices`, and toggling them
+changes nothing. The published Android APK carries the same dead switches and no
+`native-sync.js` at all.
+
+### Root cause 2 — on this line the switch needed a platform settings adapter
+
+The development line gates a real `Devices` destination on those switches, but it
+rendered them only through the per-platform settings bridge. Android has the
+Kotlin bridge; this line's desktop shell has none, so on Linux, macOS and Windows
+the Application settings card only said "edited in the in-game menu", and the
+three switches could not be reached from any surface. A feature that exists in
+code with no way to enable it is the same defect one layer down.
+
+### What changed
+
+| Change | Files | Why |
+| --- | --- | --- |
+| Shell feature-flag store, one versioned key on every platform, adopts an Android 3.6.10 value once | `native-offline/web/native-flags.js` (new) | the decision no longer depends on a platform adapter |
+| One **Optional features** card in Settings, rendered on every host, applied without a restart | `native-app.js`, `index.html`, `native.css` | the only way in, and the switch is a gate rather than a disabled control |
+| A switch is offered only where its adapter exists; the destination starts hidden; nothing strands the user | `native-app.js`, `index.html` | Android ships no Eden companion; a phone layout keeps a dead tab if `hidden` loses to a layout rule |
+| The generic settings list stops rendering a second copy of the three switches | `game-settings.js` | one switch, one screen |
+| Drawn switch track beside a real checkbox | `native.css`, `native-app.js` | WebKitGTK 2.54 painted the styled checkbox as a ring in the installed app |
+| LAN Sync offers the action that matches its state (`Stop Hosting` while hosting) | `native-app.js` | the card starts hosting with the surface; "Start" was asking for an action already done |
+| A host with no settings adapter says where those settings live and drops the empty Game Settings card | `game-settings.js` | an empty form is not a feature |
+| Download cards render a per-artifact `note` | `app.py`, `static/theme-violet.css`, `tests/test_download_notes.py` | a platform serving an older build must say so where the user chooses |
+| Version 3.6.11; Flatpak library copy uses `cp -r` + `chmod -R a+rX` | `tauri.conf.json`, `Cargo.toml`, `package.json`, `tauri.android.conf.json`, `space.an3tocom.offline.yml`, metainfo | `cp -a` cannot preserve ACLs inside the flatpak sandbox on a shared workstation |
+
+### Evidence on this host
+
+| Claim | Check | Result |
+| --- | --- | --- |
+| The three switches are one store, off by default, persistent, reject unknown ids, survive a refused write | `node --test tests/native_shell_flags.test.mjs` | 11 tests pass |
+| The shell wires the card, the gate, the immediate reveal, the adapter rule and the single UI | `node --test tests/native_experimental_gate.test.mjs` | 7 tests pass |
+| The same flow in a real browser, including a 390 px phone viewport | `work/ui-fix/shell-lane.mjs` over `native-offline/dist` | rows off by default, space toggles, LAN Sync reveals `Devices`, cards follow their flags, all-off recovers to Play, reload keeps the choice, bottom bar shows `Devices` only when on, zero page errors |
+| The packaged Linux app, through its documented token-gated UI bridge | automation DEB `--features ui-control` (`/tree`, `/click`), bridge strings 2 vs 0 in the distribution build | fresh profile: three rows `off`, no `Devices`; LAN Sync on → `Devices`; Devices shows LAN Sync (`Hosting / ready to pair`, real six-digit code) and LAN Multiplayer, hides Phone Controller; Phone Controller on → its card, `controller-start` = `Waiting for device` + code, Stop → `Off`; Switch on → row stays hidden (`detect.available=false`); all off → destination gone; relaunch keeps the choice |
+| The Android package on the VCE AVD (`vce-api36`, Android 16) | `adb install` + screen reads | bottom bar gains `Devices` only after the LAN Sync switch; Settings shows two rows (no Eden switch on Android); Application settings no longer carries a duplicate; LAN Sync card hosts with a pairing code |
+| Every artifact came from the tree this record names | built from the working tree recorded verbatim as `c67eebd`; the catalog commit only writes identities | — |
+
+### Artifacts (source `c67eebd`, built on this Linux host)
+
+| Platform | Artifact | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| Linux | `vibecodedemulator-3.6.11-linux-amd64.deb` | 46,210,492 | `3029ba8a43b59baf90d50ddcd07febdb8b434989cdc45c3843d220cd82bac910` |
+| Linux | `an3-offline-3.6.11-linux-amd64-staging.flatpak` | 29,572,424 | `335a2df91d3be292b08fbf4b6436b10a7a97099105a29fc16650cb309b442d5a` |
+| Android | `vibecodedemulator-3.6.11-android-arm64-staging.apk` | 50,465,097 | `ae294ad93409725ca6173d7245eb93d5a4825c13d9f159083b656b0ed4df41e3` |
+| Android | `vibecodedemulator-3.6.11-android-arm64-staging.aab` | 49,869,016 | `ab778924b9b838a1b0a45633d896261afa89a94e209e6b9ae02680a311c58635` |
+
+macOS and Windows keep their 3.6.10 packages, and each card now carries a note
+saying so. Not buildable here: no macOS or Windows builder is attached to this
+host, `native-offline/vendor/libretro/macos-arm64/` and `vendor/moltenvk/` hold no
+binaries, and the Windows wrapper needs a Windows host (MSVC, Vulkan SDK, NSIS).
+Those two platforms are **UNVERIFIED** for this release, and the page says which
+build they get instead of pretending the set is uniform.
+
+### Production deployment: not performed from this worker
+
+This worker has no SSH identity for the production host: `tools/ssh/check-staging-key.sh`
+fails with "Known-hosts file is unavailable", and the account's `~/.ssh`
+directory is not readable by this UID. The web deploy path is therefore blocked here, not skipped
+by choice. The exact command, from this checkout (the installers and the catalog
+live outside git on purpose):
+
+```sh
+AN3_PRODUCTION_APPROVED=1 ./deploy-production.sh
+```
+
+The script packages the working tree, runs `tools/verify-release-catalog.py`
+over the catalog, gates the host health check and keeps the previous install as
+its rollback target. Rollback: `sudo an3-arcade-rollback-production <backup dir
+printed by the deploy>`. Until that runs, production still serves the 3.6.10 set
+and this release is **VERIFIED_SOURCE + built artifacts**, not a live release.
+
 ## Still open
 
 - NDS browser play: needs a lawful NDS fixture; no synthetic generator exists in

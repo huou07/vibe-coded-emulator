@@ -1,73 +1,73 @@
 {
   "schema_version": 1,
-  "source_commit": "aada24fc0eb47901bd8cfc83425daa2414323663",
-  "source_fingerprint": "baa3f044a7b1e37bfea23bd2b845b2d90941321ce0f8bf922ccf48fe6a9085fa",
-  "release_candidate": "3.6.10",
-  "build_id": "source-aada24fc0eb47901",
+  "source_commit": "c67eebd",
+  "source_fingerprint": "34569bb19085f039a6099b57c3b4ca3b7d6d49d587c6842ec84adb8f09afc06a",
+  "release_candidate": "3.6.11",
+  "build_id": "source-34569bb19085f039",
   "artifacts": [
     {
-      "version": "3.6.10",
-      "platform": "Android",
-      "architecture": "arm64",
-      "format": "AAB",
-      "filename": "vibecodedemulator-3.6.10-android-arm64-staging.aab",
-      "size": 60801375,
-      "sha256": "1fe7de58139f4332418ffbd78b444c842936adc1d9c09eea11b4ea5bf70c85b5",
-      "core_support": [
-        "mGBA",
-        "melonDS",
-        "Azahar"
-      ],
-      "signature_status": "Signed with the shared Android debug identity; staging only.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
-    },
-    {
-      "version": "3.6.10",
-      "platform": "Android",
-      "architecture": "arm64",
-      "format": "APK",
-      "filename": "vibecodedemulator-3.6.10-android-arm64-staging.apk",
-      "size": 61398051,
-      "sha256": "8090e1b286355938e224d44bf2ae1c0fd9a8438469632f226153ef72e967c83f",
-      "core_support": [
-        "mGBA",
-        "melonDS",
-        "Azahar"
-      ],
-      "signature_status": "Signed with the shared Android debug identity; staging only.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
-    },
-    {
-      "version": "3.6.10",
+      "version": "3.6.11",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "DEB",
-      "filename": "vibecodedemulator-3.6.10-linux-amd64.deb",
-      "size": 59993560,
-      "sha256": "1a6d2b94ef89c69fd203265b2ab8670e47ef64b457a9e497c4a3aef9b3b3baa4",
+      "filename": "vibecodedemulator-3.6.11-linux-amd64.deb",
+      "size": 46210492,
+      "sha256": "3029ba8a43b59baf90d50ddcd07febdb8b434989cdc45c3843d220cd82bac910",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar"
       ],
       "signature_status": "Unsigned staging package.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+      "runtime_status": "Development-line feature build: GBA, NDS and 3DS plus the optional Devices surfaces (Switch companion when this package bundles one, LAN Sync, Phone Controller). Built on the Linux host from c67eebd."
     },
     {
-      "version": "3.6.10",
+      "version": "3.6.11",
       "platform": "Linux",
       "architecture": "amd64",
       "format": "Flatpak",
-      "filename": "an3-offline-3.6.10-linux-amd64-staging.flatpak",
-      "size": 38766512,
-      "sha256": "82aa9de87f9fbbdfc2571e7d206b4754cea41833051137948dfce47c16c0cf93",
+      "filename": "an3-offline-3.6.11-linux-amd64-staging.flatpak",
+      "size": 29572424,
+      "sha256": "335a2df91d3be292b08fbf4b6436b10a7a97099105a29fc16650cb309b442d5a",
       "core_support": [
         "mGBA",
         "melonDS",
         "Azahar"
       ],
       "signature_status": "Unsigned staging bundle.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+      "runtime_status": "Development-line feature build: GBA, NDS and 3DS plus the optional Devices surfaces (Switch companion when this package bundles one, LAN Sync, Phone Controller). Built on the Linux host from c67eebd."
+    },
+    {
+      "version": "3.6.11",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "APK",
+      "filename": "vibecodedemulator-3.6.11-android-arm64-staging.apk",
+      "size": 50465097,
+      "sha256": "ae294ad93409725ca6173d7245eb93d5a4825c13d9f159083b656b0ed4df41e3",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; staging only.",
+      "runtime_status": "Development-line feature build: GBA, NDS and 3DS plus the optional Devices surfaces (Switch companion when this package bundles one, LAN Sync, Phone Controller). Built on the Linux host from c67eebd."
+    },
+    {
+      "version": "3.6.11",
+      "platform": "Android",
+      "architecture": "arm64",
+      "format": "AAB",
+      "filename": "vibecodedemulator-3.6.11-android-arm64-staging.aab",
+      "size": 49869016,
+      "sha256": "ab778924b9b838a1b0a45633d896261afa89a94e209e6b9ae02680a311c58635",
+      "core_support": [
+        "mGBA",
+        "melonDS",
+        "Azahar"
+      ],
+      "signature_status": "Signed with the shared Android debug identity; staging only.",
+      "runtime_status": "Development-line feature build: GBA, NDS and 3DS plus the optional Devices surfaces (Switch companion when this package bundles one, LAN Sync, Phone Controller). Built on the Linux host from c67eebd."
     },
     {
       "version": "3.6.10",
@@ -83,7 +83,8 @@
         "Azahar"
       ],
       "signature_status": "Ad-hoc signed only; not notarized.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027."
+      "runtime_status": "3.6.10 core-only build. It predates the optional-feature entry points, so Switch, LAN Sync and Phone Controller have no screen in this package.",
+      "note": "3.6.10 build: no builder for this platform on the release host, so it predates the optional-feature entry points."
     },
     {
       "version": "3.6.10",
@@ -99,8 +100,9 @@
         "Azahar"
       ],
       "signature_status": "Unsigned NSIS installer; not Authenticode signed.",
-      "runtime_status": "Core-only release; GBA, NDS and 3DS support. Built from source aada24fc0eb47901bd8cfc83425daa2414323663 in hosted CI run 39229968027.",
-      "release_gate": "PASS"
+      "runtime_status": "3.6.10 core-only build. It predates the optional-feature entry points, so Switch, LAN Sync and Phone Controller have no screen in this package.",
+      "release_gate": "PASS",
+      "note": "3.6.10 build: no builder for this platform on the release host, so it predates the optional-feature entry points."
     }
   ]
 }

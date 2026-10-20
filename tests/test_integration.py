@@ -111,12 +111,15 @@ class SystemInferenceTests(unittest.TestCase):
         available = [item for item in app.NATIVE_RELEASE_CATALOG if item["filename"]]
         # Platform artifacts are rebuilt independently, so the catalog can
         # truthfully contain different release versions at the same time.
+        # 3.6.11 rebuilt Linux and Android here; macOS and Windows keep their
+        # 3.6.10 packages because neither builder exists on this host, and their
+        # cards say so (`note`). The mixed set is therefore the truthful one.
         expected = {
             "DMG": ("3.6.10", "vibecodedemulator-3.6.10-macos-aarch64.dmg"),
-            "APK": ("3.6.10", "vibecodedemulator-3.6.10-android-arm64-staging.apk"),
-            "AAB": ("3.6.10", "vibecodedemulator-3.6.10-android-arm64-staging.aab"),
-            "DEB": ("3.6.10", "vibecodedemulator-3.6.10-linux-amd64.deb"),
-            "Flatpak": ("3.6.10", "an3-offline-3.6.10-linux-amd64-staging.flatpak"),
+            "APK": ("3.6.11", "vibecodedemulator-3.6.11-android-arm64-staging.apk"),
+            "AAB": ("3.6.11", "vibecodedemulator-3.6.11-android-arm64-staging.aab"),
+            "DEB": ("3.6.11", "vibecodedemulator-3.6.11-linux-amd64.deb"),
+            "Flatpak": ("3.6.11", "an3-offline-3.6.11-linux-amd64-staging.flatpak"),
             "EXE": ("3.6.10", "vibecodedemulator-3.6.10-windows-x64-staging.exe"),
         }
         self.assertEqual({item["format"] for item in available}, set(expected))
