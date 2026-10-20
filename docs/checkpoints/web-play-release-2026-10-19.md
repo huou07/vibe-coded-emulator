@@ -1385,6 +1385,7 @@ code with no way to enable it is the same defect one layer down.
 | The whole local gate on the released tree | `bash tools/verify-project.sh` at `a05ac35` | `PROJECT_VERIFY=PASS`, exit 0, 22 declared skips, `evidence_class=VERIFIED_SOURCE` |
 | The About screen reports the released version | packaged automation build, `/text?testid=native-app-version` | `3.6.11` |
 | The production payload packages and verifies | `deploy/package-production.sh` | `PRODUCTION_PACKAGE=PASS`, 275 MB, the six catalog installers and their sidecars inside, `static/` present |
+| Hosted CI for the released SHA | `verify` run `39366649251` on `e94ba06` | completed **success** (the `release-gate` aggregate); `native-build` run `39366649379` is the Android build lane on the same SHA |
 
 ### Artifacts (source `c67eebd`, built on this Linux host)
 
