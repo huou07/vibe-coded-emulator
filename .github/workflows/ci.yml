@@ -28,7 +28,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libvulkan-dev
       - name: Python syntax
-        run: python3 -m py_compile app.py netcode.py qrcodegen.py sync_engine.py
+        run: python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py
       - name: Python regression suite
         run: python3 -m unittest discover -s tests -v
 
@@ -49,6 +49,7 @@ jobs:
         run: |
           npm install --global @playwright/cli@0.1.21
           command -v playwright-cli
+          playwright install chromium --with-deps
       - name: Print Node version
         run: node --version
       - name: Native build-script syntax

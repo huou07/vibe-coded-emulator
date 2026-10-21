@@ -1,17 +1,14 @@
-# Native installers release (tags only).
+# Public-test installer publication (tags only).
 #
-# This is the ONLY workflow with a write scope. It runs on tags, builds the
-# five packages through the reusable `native-build.yml` workflow (read-only),
-# and then creates a DRAFT GitHub release with the built-in `GITHUB_TOKEN`.
+# This is the only workflow with write access. It runs after a version tag is
+# pushed, waits for the read-only cross-platform build/test workflow, then
+# publishes the clearly labeled public-test release and exact artifact catalog.
 #
-# Security posture for maintainers:
-#   - Triggered only by a pushed tag (`v*`); it never runs on pull requests.
-#   - The build jobs are read-only because `native-build.yml` declares
-#     `contents: read`. Only the final job raises a single, minimal
-#     `contents: write` scope, which `gh release create` needs.
-#   - The release is created as a draft, so a human decides whether to publish
-#     it; this workflow never publishes automatically and never deploys.
-#   - No signing identity and no `secrets.*` are referenced anywhere.
+# Security posture:
+#   - Triggered only by a pushed version tag; it never runs on pull requests.
+#   - Build jobs retain contents: read; only the final publish job gets
+#     contents: write so it can attach the tested artifacts.
+#   - No signing identity or repository secrets are used.
 #   - Third-party actions are pinned to immutable full commit SHAs.
 name: native-release
 
@@ -27,8 +24,8 @@ jobs:
   build:
     uses: ./.github/workflows/native-build.yml
 
-  draft-release:
-    name: Draft release
+  publish-public-test-release:
+    name: Publish public-test release
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -39,7 +36,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
-      - name: Collect and create draft release
+      - name: Collect and publish public-test release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -70,14 +67,14 @@ jobs:
           python3 tools/build-release-catalog.py \
             --source-commit "$GITHUB_SHA" \
             --releases dist \
-            --release-candidate "$TAG-staging" \
-            --runtime-status "Built by this tag workflow; per-platform runtime acceptance is recorded in the release notes." \
+            --release-candidate "$TAG-public-test" \
+            --runtime-status "Hosted build/smoke results are linked; unexercised behavior remains UNVERIFIED." \
             || { echo 'Catalog generation failed; refusing to publish without it.' >&2; exit 1; }
 
           cat > release-notes.md <<'NOTES'
-          Native installers built from source by GitHub Actions.
+          Vibe Coded Emulator 3.6.11 public-test installers, built from this GitHub source revision.
 
-          **The attached installers are UNSIGNED staging builds.** macOS bundles
+          **These are unfinished, unsigned public-test builds.** macOS bundles
           are ad-hoc signed only and not notarized, Android APKs use the
           auto-generated Android debug key, and the Linux DEB/Flatpak and
           Windows NSIS packages carry no distribution or Authenticode
@@ -107,18 +104,29 @@ jobs:
           | GBA (mGBA) | yes | yes | yes | yes |
           | NDS (melonDS DS) | yes | yes | yes | yes |
           | 3DS (Azahar) | yes | requires Vulkan | requires Vulkan | yes |
-          | Switch homebrew (Eden) | yes | yes | yes | companion built for arm64 |
 
           3DS uses the Azahar hardware renderer and needs a working Vulkan
           driver off macOS; the portable runtime rejects the OpenGL fallback for
           3DS by design. NDS runs melonDS in software-render mode, the accepted
-          default for the pinned core. Switch runs only lawful homebrew through
-          the separate Eden companion process.
+          default for the pinned core. VCE 3.6.11 is an account-free core-only public-test product; Phone Controller,
+          LAN Sync and Switch/Eden gameplay are not enabled or supported by this candidate.
+
+          ## Test coverage
+
+          The GitHub Actions run records package builds and hosted smoke or instrumentation lanes for this source.
+          Unexercised behavior, audible output, sustained gameplay and physical-device coverage remain UNVERIFIED.
+          Those gaps do not block public testing.
+
+          | Platform | Status | Evidence |
+          | --- | --- | --- |
+          | macOS | UNVERIFIED | |
+          | Windows | UNVERIFIED | |
+          | Linux | UNVERIFIED | |
+          | Android | UNVERIFIED | |
           NOTES
           ((${#files[@]})) || { echo 'No installer artifacts were downloaded.' >&2; exit 1; }
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --draft \
-            --title "Vibe Coded Emulator $TAG (unsigned staging builds)" \
+            --title "Vibe Coded Emulator $TAG (public-test builds)" \
             --notes-file release-notes.md \
             "${files[@]}" dist/catalog.json

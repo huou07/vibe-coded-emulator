@@ -129,7 +129,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-nds-fixture:"):WORKFLOW.index("  windows-packaged-nds-smoke:")]
         nds_job = WORKFLOW[WORKFLOW.index("  windows-packaged-nds-smoke:"):WORKFLOW.index("  android-smoke:")]
         self.assertIn("tools/windows-nds-runtime-smoke.ps1", pull_request)
-        self.assertIn('tools/windows-nds-runtime-smoke.ps1" ]] && cp', snapshot_builder)
+        self.assertIn("windows-nds-runtime-smoke.ps1", snapshot_builder)
+        self.assertIn("check-native-mirror.py", snapshot_builder)
+        self.assertIn('cp "$ROOT/tools/$file" "$OUT/tools/"', snapshot_builder)
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''", fixture_job)
         self.assertIn("devkitPro/nds-examples.git", fixture_job)
         self.assertIn("f1ba715a451c6407f8b0f805999d0153062ff552", fixture_job)

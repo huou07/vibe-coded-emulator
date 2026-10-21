@@ -4,6 +4,20 @@
   const shell = document.querySelector("[data-player]");
   if (!shell) return;
   const config = JSON.parse(shell.dataset.player);
+  // EmulatorJS checks its release version only on localhost/debug builds. That
+  // optional cross-origin probe must not surface as an unhandled error offline.
+  const emulatorUpdateCheckUrl = "https://cdn.emulatorjs.org/stable/data/version.json";
+  if (typeof window.fetch === "function" && typeof window.Response === "function") {
+    const fetchBeforeUpdateCheckGuard = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const requestUrl = typeof input === "string" || input instanceof URL ? input : input?.url || "";
+      let absoluteUrl = "";
+      try { absoluteUrl = new URL(requestUrl, location.href).href; } catch (_) {}
+      if (absoluteUrl === emulatorUpdateCheckUrl)
+        return Promise.resolve(new window.Response(null, {status:503}));
+      return fetchBeforeUpdateCheckGuard(input, init);
+    };
+  }
   const emulatorSystem = config.system === "doom" ? "prboom" : config.system;
   const debug3ds = config.system === "3ds" && new URLSearchParams(location.search).get("debug3ds") === "1";
   const debugEvents = [];

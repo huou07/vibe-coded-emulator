@@ -5,14 +5,19 @@ library); the native apps need Rust, Node.js and platform toolchains.
 
 ## Web app
 
+No account is required to launch the Web app or play a locally selected ROM.
+Account, password, cloud-sync and social features are not part of this public
+product surface.
+
 ```bash
-cp .env.example .env          # fill in your own values
+cp .env.example .env          # set only local server values if needed
 python3 app.py                # serves on AN3_HOST:AN3_PORT (default 0.0.0.0:8091)
 python3 -m unittest discover -s tests
 ```
 
-The web player uses EmulatorJS and per-core WebAssembly, loaded from the
-configured EmulatorJS origin and cached in the browser.
+The Web player uses EmulatorJS and per-core WebAssembly. Its checked-in runtime
+assets and license notices are version-locked; the browser can play without an
+account or a runtime CDN update-check request.
 
 ## Native desktop apps (macOS, Windows, Linux)
 
@@ -52,6 +57,15 @@ with Tauri.
 `native/eden-bridge/` is a C ABI bridge to Eden. It builds and its ABI is tested
 without Eden; the Eden-backed backend is not yet runtime-verified. See
 `docs/licensing/eden-integration-feasibility.md` and the bridge README.
+
+## Public testing
+
+This build is an unfinished public-test candidate, not a stable-release claim.
+Accounts are not required. Missing physical-device or OS coverage stays
+`UNVERIFIED` and does not block public testing. Identify the source SHA and
+artifact hashes, retain third-party notices, preserve existing Web user data, and
+run the published security/license checks. A rehearsed rollback is not a gate;
+verify the candidate health and fix forward if it fails.
 
 ## Tests
 

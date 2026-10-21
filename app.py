@@ -100,6 +100,10 @@ COVER_DIR = os.path.join(DATA_DIR, "covers")
 SCREENSHOT_DIR = os.path.join(DATA_DIR, "screenshots")
 CUSTOM_DIR = os.path.join(DATA_DIR, "custom")
 EMULATOR_CACHE_DIR = os.path.join(DATA_DIR, "emulatorjs-cache")
+EMULATOR_VENDORED_RUNTIME = os.path.join(
+    NATIVE_OFFLINE_DIR, "src-tauri", "gen", "android", "app", "src", "main", "assets", "emulatorjs"
+)
+EMULATOR_RUNTIME_LOCK = os.path.join(NATIVE_OFFLINE_DIR, "shared", "web-runtime-lock.json")
 PREPARED_ROM_DIR = os.path.join(DATA_DIR, "prepared-roms")
 DB_PATH = os.path.join(DATA_DIR, "arcade.db")
 HOST = os.environ.get("AN3_HOST", "0.0.0.0")
@@ -412,18 +416,114 @@ def browser_rom_name(game):
     return game["rom_name"]
 
 
-def cached_emulator_asset(channel, relative):
+def emulator_runtime_lock():
+    """Return the pinned latest/data-v2 asset hashes, or an empty map."""
+    try:
+        with open(EMULATOR_RUNTIME_LOCK, "rb") as handle:
+            lock = json.loads(handle.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(lock, dict):
+        return {}
+    return {
+        name: digest
+        for name, digest in lock.items()
+        if isinstance(name, str) and name.startswith("latest/data-v2/") and isinstance(digest, str)
+    }
+
+
+def patch_emulator_update_check(payload, expected_hash):
+    """Make the optional EmulatorJS update probe safe when its CDN is offline."""
+    original = b"})})}versionAsInt(t){"
+    patched = b"})}).catch(()=>{})}versionAsInt(t){"
+    if payload.count(patched) == 1:
+        canonical = payload.replace(patched, original, 1)
+        return payload if hashlib.sha256(canonical).hexdigest() == expected_hash else None
+    if hashlib.sha256(payload).hexdigest() != expected_hash or payload.count(original) != 1:
+        return None
+    return payload.replace(original, patched, 1)
+
+
+def _write_emulator_asset(target, payload):
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    temp = f"{target}.part-{secrets.token_hex(6)}"
+    try:
+        with open(temp, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, target)
+    finally:
+        try:
+            if os.path.exists(temp):
+                os.remove(temp)
+        except OSError:
+            pass
+
+
+def install_vendored_emulator_asset(channel, relative, data_variant):
+    """Install a locked latest/data-v2 runtime into the shared server cache."""
+    if channel != "latest" or data_variant != "-v2":
+        return None
+    lock_key = f"latest/data-v2/{relative}"
+    expected = emulator_runtime_lock().get(lock_key)
+    if not expected:
+        return None
+    source = safe_data_path(EMULATOR_VENDORED_RUNTIME, lock_key)
+    if not os.path.isfile(source):
+        return None
+    try:
+        with open(source, "rb") as handle:
+            source_payload = handle.read()
+    except OSError:
+        return None
+    if relative == "emulator.min.js":
+        payload = patch_emulator_update_check(source_payload, expected)
+        if payload is None:
+            return None
+    else:
+        if hashlib.sha256(source_payload).hexdigest() != expected:
+            return None
+        payload = source_payload
+
+    target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
+    if os.path.isfile(target) and os.path.getsize(target) > 0:
+        try:
+            with open(target, "rb") as handle:
+                cached = handle.read()
+        except OSError:
+            cached = b""
+        if relative == "emulator.min.js":
+            cached_patch = patch_emulator_update_check(cached, expected)
+            if cached_patch is not None:
+                if cached_patch != cached:
+                    _write_emulator_asset(target, cached_patch)
+                return target
+        elif hashlib.sha256(cached).hexdigest() == expected:
+            return target
+    _write_emulator_asset(target, payload)
+    return target
+
+
+def cached_emulator_asset(channel, relative, data_variant=""):
     if channel not in {"stable", "latest"}:
         raise ValueError("unsupported emulator channel")
+    if data_variant and not re.fullmatch(r"-v[1-9][0-9]*", data_variant):
+        raise ValueError("unsupported emulator data version")
     relative = unquote(str(relative or "")).lstrip("/")
     if not relative or ".." in relative.split("/") or not re.fullmatch(r"[A-Za-z0-9._~+@/-]+", relative):
         raise ValueError("invalid emulator asset")
     target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
-    if os.path.isfile(target) and os.path.getsize(target) > 0:
+    pinned_update_script = channel == "latest" and data_variant == "-v2" and relative == "emulator.min.js"
+    if os.path.isfile(target) and os.path.getsize(target) > 0 and not pinned_update_script:
         return target
     with EMULATOR_CACHE_LOCK:
-        asset_lock = EMULATOR_ASSET_LOCKS.setdefault(f"{channel}/{relative}", threading.Lock())
+        asset_lock = EMULATOR_ASSET_LOCKS.setdefault(f"{channel}/{data_variant}/{relative}", threading.Lock())
     with asset_lock:
+        if data_variant == "-v2":
+            vendored = install_vendored_emulator_asset(channel, relative, data_variant)
+            if vendored:
+                return vendored
         if os.path.isfile(target) and os.path.getsize(target) > 0:
             return target
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -2182,13 +2282,15 @@ self.addEventListener("activate", event => event.waitUntil((async () => {
             # Data paths are versioned only when a core needs a repaired
             # binary. They resolve to the same checked server cache while
             # allowing browsers to retain their old offline core downloads.
-            match = re.fullmatch(r"/emulatorjs/(stable|latest)/data(?:-v[1-9][0-9]*)?/(.+)", path)
+            match = re.fullmatch(r"/emulatorjs/(stable|latest)/(data(?:-v[1-9][0-9]*)?)/(.+)", path)
             if not match:
                 self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
             else:
                 try:
-                    asset = cached_emulator_asset(match.group(1), match.group(2))
-                    self.serve_file(asset, os.path.basename(asset), cache="public,max-age=604800,immutable")
+                    data_variant = match.group(2)[4:]
+                    asset = cached_emulator_asset(match.group(1), match.group(3), data_variant)
+                    cache = "public,max-age=0,must-revalidate" if match.group(3) == "emulator.min.js" else "public,max-age=604800,immutable"
+                    self.serve_file(asset, os.path.basename(asset), cache=cache)
                 except ValueError:
                     self.send_bytes(404, b"not found\n", "text/plain; charset=utf-8")
                 except Exception:

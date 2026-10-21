@@ -1,10 +1,12 @@
 # License audit — Vibe Coded Emulator (2026-09-16)
 
-Scope: the combined application distributed by this repository — the Python web
-server (`app.py` + modules), the web client (`static/`), the Tauri desktop
-shells (`native-offline/src-tauri/`), the portable native player
-(`native-offline/native-runtime/`), the Android app, and every bundled,
-linked, or served dependency. Method: repository inspection, bundled license
+Scope: the account-free core-only application distributed by this repository —
+the Python web server (`app.py`, `bug_report.py`, `netcode.py` and
+`qrcodegen.py`), web client (`static/`), Tauri desktop shells
+(`native-offline/src-tauri/`), portable native player
+(`native-offline/native-runtime/`), Android app, and bundled, linked, or served
+dependencies. Account, cloud-sync, CMS/analytics and phone-controller surfaces
+are not part of this product. Method: repository inspection, bundled license
 files, `Cargo.lock`/`package.json`/Gradle metadata, and upstream project/API
 lookups. Ambiguous cases are called out explicitly rather than assumed.
 
@@ -23,7 +25,7 @@ lookups. Ambiguous cases are called out explicitly rather than assumed.
 
 | Component | Source | License | Copyright holder | Compatibility | Required action |
 | --- | --- | --- | --- | --- | --- |
-| Vibe Coded Emulator original code (`app.py`, `netcode.py`, `sync_engine.py`, `google_sync.py`, `static/*`, `native-offline/src-tauri/src/*` except vendor, `native-offline/native-runtime/*` except vendor, `native-runtime/platform/android` Kotlin/C++ hosts) | this repository | GPL-3.0-or-later (owner's choice) | Vibe Coded Emulator project owner | Owner-authorized | Add `LICENSE`, SPDX headers, README/notices |
+| Vibe Coded Emulator original code (`app.py`, `bug_report.py`, `netcode.py`, `qrcodegen.py`, `static/*`, `native-offline/src-tauri/src/*` except vendor, `native-offline/native-runtime/*` except vendor, `native-runtime/platform/android` Kotlin/C++ hosts) | this repository | GPL-3.0-or-later (owner's choice) | Vibe Coded Emulator project owner | Owner-authorized | Add `LICENSE`, SPDX headers, README/notices |
 | `qrcodegen.py` (vendored) | Project Nayuki | MIT | Project Nayuki | Compatible | Keep MIT header; noted in notices |
 | Azahar libretro 2126.1.1 (`azahar_libretro.dylib` / `.so`) | github.com/azahar-emu/azahar @ 2126.1.1 | GPL-2.0-or-later | Azahar Emulator Project | Compatible (GPLv2-or-later → GPLv3) | Preserve notices; ship license text; publish corresponding source offer |
 | melonDS DS libretro 1.3.1 | github.com/JesseTG/melonds-ds @ bc4e4b6… | GPL-3.0-or-later | melonDS DS contributors | Compatible | Same as above |
@@ -42,7 +44,6 @@ lookups. Ambiguous cases are called out explicitly rather than assumed.
 | Lucide icons (`static/ui-*.svg`) | lucide.dev | ISC | Lucide Icons and Contributors | Compatible | `static/LUCIDE-LICENSE.txt` retained |
 | Pixelify Sans, Roboto Condensed (`static/fonts/`) | Google Fonts | SIL OFL 1.1 | respective font authors | Compatible (OFL; fonts not relicensed) | `static/fonts/OFL-*.txt` retained; do not relicense the font files |
 | Brand/icon/artwork assets (`brand-logo.png`, `icon-*.png`, `default-cover.png`, `offline-hero-pixel-v2.png`) | this repository | GPL-3.0-or-later (owner's) | project owner | Owner-authorized | Covered by `LICENSE`; no third-party artwork bundled |
-| Google Drive / OAuth client module (`google_sync.py`) | this repository | GPL-3.0-or-later | project owner | Owner-authorized | Uses Google APIs at runtime only |
 | Python standard library (runtime, not distributed) | CPython | PSF-2.0 | Python Software Foundation | Not distributed | None |
 
 ## Components deliberately not present

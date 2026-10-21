@@ -38,6 +38,7 @@ bash scripts/build-android-runtime.sh
 # inject it explicitly instead of letting the desktop version leak into the APK.
 export AN3_APP_VERSION="$(node -p "require('./src-tauri/tauri.android.conf.json').version")"
 npm run prepare-web
+python3 "$(cd .. && pwd)/tools/check-native-mirror.py"
 # Build the optimized release variant (keeps the shared Android Debug signing
 # identity via build.gradle.kts) so the bundled native shell is small and fast.
 # The previous debug APK shipped a ~149 MB unoptimized shell library, which
