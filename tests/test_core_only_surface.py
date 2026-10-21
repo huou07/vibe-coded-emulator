@@ -198,6 +198,18 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         player_page = (ROOT / "app.py").read_text(encoding="utf-8")
         capabilities = json.loads((TAURI / "capabilities" / "default.json").read_text(encoding="utf-8"))
         android_capabilities = json.loads((TAURI / "capabilities" / "android.json").read_text(encoding="utf-8"))
+        settings_schema = json.loads((ROOT / "native-offline" / "shared" / "native-settings-schema.json").read_text(encoding="utf-8"))
+        retired_settings = {"experimental-phone-controller", "experimental-lan-sync"}
+        self.assertFalse(retired_settings & {entry["id"] for entry in settings_schema["global"]})
+        self.assertFalse(retired_settings & {entry["id"] for entry in json.loads((ROOT / "native-offline" / "shared" / "native-settings-model.json").read_text(encoding="utf-8"))["global"]})
+        for generated_settings in (
+            ROOT / "native-offline" / "web" / "native-settings.js",
+            ANDROID / "src" / "main" / "assets" / "native-settings.js",
+            ANDROID_JAVA / "NativeSettingsSchema.kt",
+        ):
+            generated_text = generated_settings.read_text(encoding="utf-8")
+            for retired_setting in retired_settings:
+                self.assertNotIn(retired_setting, generated_text)
 
         for module in ("controller_host", "controller_utility_queue", "host_actions", "lan_peer", "lan_host", "latency"):
             self.assertFalse((TAURI / "src" / f"{module}.rs").exists(), module)

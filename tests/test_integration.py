@@ -113,9 +113,10 @@ class ReleaseArtifactTests(unittest.TestCase):
         expected names from the release-train naming convention and require one
         single version across every artifact.
         """
-        catalog = json.loads(
-            open(os.path.join(ROOT, "native-offline/releases/catalog.json"), encoding="utf-8").read()
-        )
+        catalog_path = os.path.join(ROOT, "native-offline/releases/catalog.json")
+        if not os.path.isfile(catalog_path):
+            self.skipTest("public source snapshot omits generated release catalogs and artifacts")
+        catalog = json.loads(open(catalog_path, encoding="utf-8").read())
         available = [item for item in catalog["artifacts"] if item["filename"]]
         versions = {item["version"] for item in available}
         self.assertEqual(len(versions), 1, f"catalog mixes versions: {sorted(versions)}")

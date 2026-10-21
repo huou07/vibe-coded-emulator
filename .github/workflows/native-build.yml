@@ -87,6 +87,10 @@ permissions:
   actions: read
   contents: read
 
+env:
+  AN3_REQUIRE_KNOWN_LICENSES: '1'
+  AN3_REQUIRE_CLEAN_ARTIFACTS: '1'
+
 concurrency:
   group: native-build-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

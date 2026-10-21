@@ -188,7 +188,7 @@ emit_release_evidence() {
   require_command python3
   [[ -f "$root/tools/release-evidence.py" ]] || die "tools/release-evidence.py is missing; cannot emit release evidence."
   [[ -d "$evidence_root" ]] || die "Release evidence source tree is unavailable: $evidence_root"
-  local args=(--root "$evidence_root" --out "$out")
+  local args=(--root "$evidence_root" --out "$out" --resolve-cargo-licenses)
   if [[ -n "$artifacts" ]]; then args+=(--artifacts "$artifacts"); fi
   if [[ -n "$timestamp" ]]; then args+=(--timestamp "$timestamp"); fi
   if [[ "${AN3_REQUIRE_KNOWN_LICENSES:-0}" == "1" ]]; then
@@ -269,6 +269,7 @@ PY
     THIRD_PARTY_NOTICES.md \
     native-offline/package-lock.json \
     native-offline/src-tauri/Cargo.lock \
+    native-offline/src-tauri/Cargo.toml \
     native-offline/src-tauri/tauri.conf.json \
     native-offline/src-tauri/tauri.android.conf.json
   emit_release_evidence "$evidence_root" "$freeze_dir" "$freeze_dir" "$evidence_timestamp"

@@ -20,12 +20,12 @@ version reported by `emulator.min.js` (`ejs_version`).
 ## Tauri, Rust, and Android dependencies
 
 The native shells use Tauri 2, `tauri-plugin-dialog` (Apache-2.0 OR MIT),
-`include_dir`, `serde`, and `serde_json` (MIT/Apache-2.0), plus the crates
-pinned in `src-tauri/Cargo.lock`. The Android package also uses AndroidX
+`include_dir`, `serde`, and `serde_json` (per-package licenses resolved from the
+locked `src-tauri/Cargo.lock`). The Android package also uses AndroidX
 WebKit/AppCompat/Activity/Lifecycle (Apache-2.0), Google Material Components
-(Apache-2.0), Apache Commons Compress 1.21 (Apache-2.0), and XZ for Java 1.9
-(public domain). See the repository-root `THIRD_PARTY_NOTICES.md` for the
-project-wide component table.
+1.13.0 (Apache-2.0), Guava ListenableFuture 1.0 (Apache-2.0), Apache Commons
+Compress 1.21 (Apache-2.0), and XZ for Java 1.9 (public domain). See the
+repository-root `THIRD_PARTY_NOTICES.md` for the project-wide component table.
 
 ## Emulator cores
 

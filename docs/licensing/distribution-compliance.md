@@ -82,13 +82,14 @@ way.
    `source.tar.gz`/`dependency-cache.tar.gz` or the collected candidate
    artifacts. Archive the bundle with the release. `tools/release-evidence.py`
    can also be run directly against a candidate artifact directory.
-   Components whose license is only known categorically from
-   `docs/licensing/license-audit.md` (e.g. Cargo crates) remain `UNKNOWN` and
-   must be reconciled before publication.
-3. Publication gate: run the release train with `AN3_REQUIRE_KNOWN_LICENSES=1`.
-   `--fail-on-unknown` then exits non-zero (the train fails) while any
-   component still has no license, naming the ecosystems to reconcile. The
-   default is report-only, because the Cargo inventory is not yet reconciled.
+   Cargo licenses are resolved with `cargo metadata --locked` and joined to
+   each lock entry by exact package name, version, and source. The lockfiles are
+   not rewritten. Missing metadata remains `UNKNOWN`.
+3. Publication gate: `tools/publication-check.sh` runs the inventory with
+   `--fail-on-unknown`, and the public CI `test` aggregate requires its
+   `license-inventory` job. The native-build workflow sets
+   `AN3_REQUIRE_KNOWN_LICENSES=1`; local release-train runs remain report-only
+   unless explicitly enabled. An unknown component fails these gates.
 4. Artifact secret gate: `tools/release-artifact-scan.py` (run by the train,
    writes `SECRET_SCAN.json`) reports any credential or private-data match in
    the evidence bundle or candidate artifacts. Run the train with
@@ -99,4 +100,4 @@ way.
    the built package.
 7. `catalog.json` records the source revision for each artifact.
 8. The Licenses UI opens and shows the notices and the source URL.
-9. Staging deploy passes; production requires explicit owner approval.
+9. The owner-authorized public-test website path preserves live user data and passes its post-update health check. Stable production distribution still requires separate owner authorization.

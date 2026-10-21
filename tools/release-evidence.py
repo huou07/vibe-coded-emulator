@@ -8,15 +8,18 @@ derived from an input that is already committed to the repository:
 
 * ``THIRD_PARTY_NOTICES.md`` tables -> bundled components and their licenses,
 * ``native-offline/package-lock.json`` -> npm dependencies incl. their SPDX license,
-* ``native-offline/src-tauri/Cargo.lock`` and ``rust-gateway/Cargo.lock`` -> crates.
+* Cargo lockfiles plus ``cargo metadata --locked`` -> exact Cargo package
+  license fields joined by name, version and source.
 
 The SBOM deliberately omits a generation timestamp so identical inputs always
 produce byte-identical evidence; pass ``--timestamp`` to record one explicitly
-(ISO-8601 date-time, e.g. ``2026-09-19T00:00:00Z``).
+(ISO-8601 date-time, e.g. ``2026-09-19T00:00:00Z``). Cargo metadata may need
+registry access to resolve crate manifests; it never changes a lockfile.
 
 Usage:
     python3 tools/release-evidence.py --out build/evidence \\
-        [--root .] [--artifacts native-offline/releases] [--timestamp 2026-09-19T00:00:00Z]
+        [--root .] [--resolve-cargo-licenses] [--artifacts native-offline/releases] \\
+        [--timestamp 2026-09-19T00:00:00Z]
 
 Outputs written into ``--out``:
     LICENSE_INVENTORY.json  machine-readable license/dependency inventory
@@ -36,6 +39,7 @@ import binascii
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -87,8 +91,19 @@ def _license_field(text: str):
     alias = LICENSE_ALIASES.get(lowered)
     if alias:
         return {"license": {"id": alias}}
-    tokens = text.split()
-    if tokens and all(
+    tokens = re.sub(r"[()]", " ", text).split()
+    depth = 0
+    balanced = True
+    for character in text:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth < 0:
+                balanced = False
+                break
+    balanced = balanced and depth == 0
+    if balanced and tokens and all(
         _SPDX_TOKEN.match(token) or token in {"AND", "OR", "WITH"} for token in tokens
     ):
         return {"expression": text}
@@ -189,9 +204,61 @@ def parse_npm_lock(path: Path):
 _CARGO_FIELD = re.compile(r'^(name|version|source|checksum)\s*=\s*"([^"]*)"$')
 
 
-def parse_cargo_lock(path: Path):
+def cargo_metadata_licenses(manifest: Path):
+    """Resolve Cargo package license fields for the exact locked dependency graph."""
+    command = [
+        "cargo",
+        "metadata",
+        "--format-version",
+        "1",
+        "--locked",
+        "--manifest-path",
+        str(manifest.resolve()),
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise RuntimeError(f"cannot run cargo metadata for {manifest.name}: {error}") from error
+    if result.returncode:
+        detail = result.stderr.strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RuntimeError(
+            f"cargo metadata failed for {manifest.name} (exit {result.returncode}){suffix}"
+        )
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"cargo metadata returned invalid JSON for {manifest.name}") from error
+
+    packages = metadata.get("packages") if isinstance(metadata, dict) else None
+    if not isinstance(packages, list):
+        raise RuntimeError(f"cargo metadata omitted its package list for {manifest.name}")
+    licenses = {}
+    for package in packages:
+        if not isinstance(package, dict):
+            continue
+        name, version = package.get("name"), package.get("version")
+        if not isinstance(name, str) or not isinstance(version, str):
+            continue
+        license_text = package.get("license")
+        if isinstance(license_text, str) and license_text.strip():
+            license_text = license_text.strip()
+            # Older Cargo manifests commonly use "/" for the same choice that
+            # modern SPDX expressions spell "OR". Normalize only a strict
+            # identifier-only form; all other source text remains visible.
+            if re.fullmatch(
+                r"[A-Za-z0-9][A-Za-z0-9.+-]*(?:\s*/\s*[A-Za-z0-9][A-Za-z0-9.+-]*)+",
+                license_text,
+            ):
+                license_text = re.sub(r"\s*/\s*", " OR ", license_text)
+            licenses[(name, version, package.get("source"))] = license_text
+    return licenses
+
+
+def parse_cargo_lock(path: Path, licenses=None):
     if not path.is_file():
         return []
+    licenses = licenses or {}
     components = []
     current = None
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -212,10 +279,11 @@ def parse_cargo_lock(path: Path):
     for entry in components:
         if not entry.get("name"):
             continue
+        identity = (entry["name"], entry.get("version"), entry.get("source"))
         component = {
             "name": entry["name"],
             "version": entry.get("version"),
-            "license": None,
+            "license": licenses.get(identity),
             "source": entry.get("source"),
             "copyright": None,
             "ecosystem": "cargo",
@@ -227,15 +295,26 @@ def parse_cargo_lock(path: Path):
     return parsed
 
 
-def collect_components(root: Path):
-    """Merge every machine-readable input into one sorted component list."""
+def collect_components(root: Path, resolve_cargo_licenses=False):
+    """Merge committed inputs; optionally resolve Cargo licenses from locked metadata."""
     components = []
     components.extend(parse_notices(root / "THIRD_PARTY_NOTICES.md"))
     components.extend(parse_npm_lock(root / "native-offline" / "package-lock.json"))
-    components.extend(
-        parse_cargo_lock(root / "native-offline" / "src-tauri" / "Cargo.lock")
-    )
-    components.extend(parse_cargo_lock(root / "rust-gateway" / "Cargo.lock"))
+    for manifest, lockfile in (
+        (
+            root / "native-offline" / "src-tauri" / "Cargo.toml",
+            root / "native-offline" / "src-tauri" / "Cargo.lock",
+        ),
+        (root / "rust-gateway" / "Cargo.toml", root / "rust-gateway" / "Cargo.lock"),
+    ):
+        licenses = None
+        if resolve_cargo_licenses and lockfile.is_file():
+            if not manifest.is_file():
+                raise RuntimeError(
+                    f"Cargo manifest is missing for locked dependency graph: {manifest.name}"
+                )
+            licenses = cargo_metadata_licenses(manifest)
+        components.extend(parse_cargo_lock(lockfile, licenses=licenses))
 
     unique = {}
     for component in components:
@@ -410,9 +489,15 @@ def write_sha256sums(artifacts_dir: Path, destination: Path):
     return names
 
 
-def generate(root: Path, out: Path, artifacts=None, timestamp=None):
+def generate(
+    root: Path,
+    out: Path,
+    artifacts=None,
+    timestamp=None,
+    resolve_cargo_licenses=False,
+):
     out.mkdir(parents=True, exist_ok=True)
-    components = collect_components(root)
+    components = collect_components(root, resolve_cargo_licenses=resolve_cargo_licenses)
     inventory = build_license_inventory(components)
     (out / "LICENSE_INVENTORY.json").write_text(
         json.dumps(inventory, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -434,9 +519,14 @@ def main(argv=None):
     parser.add_argument("--artifacts", default=None, help="Directory of release artifacts to checksum.")
     parser.add_argument("--timestamp", default=None, help="Optional fixed SBOM timestamp.")
     parser.add_argument(
+        "--resolve-cargo-licenses",
+        action="store_true",
+        help="Resolve Cargo package license metadata against the locked manifests.",
+    )
+    parser.add_argument(
         "--fail-on-unknown",
         action="store_true",
-        help="Publication gate: exit 3 when any component still has no license.",
+        help="Resolve Cargo metadata and exit 3 when any component has no license.",
     )
     args = parser.parse_args(argv)
     if args.timestamp and not _ISO_TIMESTAMP.match(args.timestamp):
@@ -447,12 +537,17 @@ def main(argv=None):
 
     root = Path(args.root).resolve()
     out = Path(args.out).resolve()
-    inventory, _, checksummed = generate(
-        root,
-        out,
-        artifacts=Path(args.artifacts).resolve() if args.artifacts else None,
-        timestamp=args.timestamp,
-    )
+    try:
+        inventory, _, checksummed = generate(
+            root,
+            out,
+            artifacts=Path(args.artifacts).resolve() if args.artifacts else None,
+            timestamp=args.timestamp,
+            resolve_cargo_licenses=args.resolve_cargo_licenses or args.fail_on_unknown,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"RELEASE_EVIDENCE=ERROR {error}", file=sys.stderr)
+        return 2
     summary = inventory["summary"]
     print(
         f"RELEASE_EVIDENCE=wrote {summary['total']} components "

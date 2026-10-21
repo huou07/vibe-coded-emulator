@@ -29,7 +29,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "release-artifact-scan.py"
-REAL_CONFIG = ROOT / "tools" / "publication" / ".gitleaks.toml"
+PRIVATE_CONFIG = ROOT / "tools" / "publication" / ".gitleaks.toml"
+REAL_CONFIG = PRIVATE_CONFIG if PRIVATE_CONFIG.is_file() else ROOT / ".gitleaks.toml"
 RELEASE_TRAIN = ROOT / "tools" / "release-train.sh"
 
 spec = importlib.util.spec_from_file_location("release_artifact_scan", TOOL)

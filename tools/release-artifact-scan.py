@@ -55,7 +55,9 @@ TOOL_NAME = "release-artifact-scan"
 TOOL_VERSION = "1"
 SCHEMA_VERSION = 1
 
-DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "tools" / "publication" / ".gitleaks.toml"
+ROOT_DIR = Path(__file__).resolve().parents[1]
+PRIVATE_CONFIG = ROOT_DIR / "tools" / "publication" / ".gitleaks.toml"
+DEFAULT_CONFIG = PRIVATE_CONFIG if PRIVATE_CONFIG.is_file() else ROOT_DIR / ".gitleaks.toml"
 
 # (rule id, category, bytes regex)
 #

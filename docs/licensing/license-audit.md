@@ -1,4 +1,4 @@
-# License audit — Vibe Coded Emulator (2026-09-16)
+# License audit — Vibe Coded Emulator (2026-10-21)
 
 Scope: the account-free core-only application distributed by this repository —
 the Python web server (`app.py`, `bug_report.py`, `netcode.py` and
@@ -7,8 +7,11 @@ the Python web server (`app.py`, `bug_report.py`, `netcode.py` and
 (`native-offline/native-runtime/`), Android app, and bundled, linked, or served
 dependencies. Account, cloud-sync, CMS/analytics and phone-controller surfaces
 are not part of this product. Method: repository inspection, bundled license
-files, `Cargo.lock`/`package.json`/Gradle metadata, and upstream project/API
-lookups. Ambiguous cases are called out explicitly rather than assumed.
+files, `cargo metadata --locked` for exact Cargo package license fields, npm
+lock metadata, the Android `armReleaseRuntimeClasspath` and
+`x86ReleaseRuntimeClasspath` reports and cached Maven POM/JAR notices, plus
+upstream license records. Ambiguous cases are called out
+explicitly rather than assumed.
 
 ## Result summary
 
@@ -35,11 +38,13 @@ lookups. Ambiguous cases are called out explicitly rather than assumed.
 | EmulatorJS 4.2.3 (served to the browser and cached by the native shells) | github.com/EmulatorJS/EmulatorJS | GPL-3.0 | EmulatorJS contributors | Compatible | Document; state that the app serves it and where its source is |
 | EmulatorJS-Netplay relay (Docker, separate service) | EmulatorJS/EmulatorJS-Netplay | Apache-2.0 | EmulatorJS contributors | Compatible | Dockerfile already ships the upstream license |
 | Tauri 2 + `tauri-plugin-dialog` | crates.io | Apache-2.0 OR MIT | Tauri contributors | Compatible | Notices only |
-| `include_dir`, `serde`, `serde_json` + 445 transitive crates (`Cargo.lock`) | crates.io | MIT / Apache-2.0 / BSD family | respective authors | Compatible | Notices only; `Cargo.lock` pins exact versions |
+| Native Rust graph (480 package records in `native-offline/src-tauri/Cargo.lock`) | crates.io | Per-package license fields resolved from locked Cargo metadata | respective crate authors | Compatible | Preserve lockfile and generated inventory |
+| Historical `rust-gateway` graph (183 package records; not shipped in app packages) | crates.io | Per-package license fields resolved from locked Cargo metadata | respective crate authors | Compatible | Retain source notices; gateway remains inactive |
 | `@tauri-apps/cli` | npm | Apache-2.0 OR MIT | Tauri contributors | Compatible | Build-time only; notices only |
-| AndroidX (`webkit`, `appcompat`, `activity-ktx`, `lifecycle-process`) | Google Maven | Apache-2.0 | The Android Open Source Project | Compatible | Notices only |
-| Google Material Components | Google Maven | Apache-2.0 | Google LLC | Compatible | Notices only |
-| Apache Commons Compress 1.21 | Apache | Apache-2.0 | The Apache Software Foundation | Compatible | Notices only |
+| AndroidX/Kotlin Android runtime graph (`armReleaseRuntimeClasspath`, `x86ReleaseRuntimeClasspath`) | Google Maven, Maven Central | Apache-2.0; see resolved-graph audit below | respective authors, including AOSP and Google | Compatible | Preserve graph reports and license evidence |
+| Google Material Components 1.13.0 (resolved version) | Google Maven | Apache-2.0 | Google LLC | Compatible | Notices only |
+| Guava ListenableFuture 1.0 | Google Guava | Apache-2.0 | Google | Compatible | Record upstream license source |
+| Apache Commons Compress 1.21 | Apache | Apache-2.0 | The Apache Software Foundation | Compatible | Keep embedded `META-INF/LICENSE.txt` and notice |
 | XZ for Java 1.9 | tukaani.org | Public domain | Lasse Collin | Compatible | Notices only |
 | Lucide icons (`static/ui-*.svg`) | lucide.dev | ISC | Lucide Icons and Contributors | Compatible | `static/LUCIDE-LICENSE.txt` retained |
 | Pixelify Sans, Roboto Condensed (`static/fonts/`) | Google Fonts | SIL OFL 1.1 | respective font authors | Compatible (OFL; fonts not relicensed) | `static/fonts/OFL-*.txt` retained; do not relicense the font files |
@@ -55,19 +60,23 @@ lookups. Ambiguous cases are called out explicitly rather than assumed.
   platform OS frameworks linked by the toolchains (which are not redistributed
   as source).
 
-## Unresolved / requires review
+## Android runtime graph evidence
 
-- **Android Gradle transitive graph** is pinned in `gen/android/build.gradle.kts`
-  (Kotlin/AGP versions) and resolved from Google/Maven Central. The direct
-  dependencies listed above are all Apache-2.0/public-domain; the remaining
-  transitive AndroidX/Kotlin artifacts are Apache-2.0. No incompatible
-  component was found, but a byte-for-byte transitive manifest is not committed;
-  `gradle :app:dependencies` should be archived with the next Android release.
-- **`native-offline/src-tauri/gen/android/app/src/main/assets/emulatorjs/`** is a
-  cached copy of the EmulatorJS distribution. It carries no local license file;
-  EmulatorJS's GPL-3.0 text is not currently bundled next to the cache. Add the
-  EmulatorJS license to the app notices and link its source (done in
-  `THIRD_PARTY_NOTICES.md`).
+On 2026-10-21, the Android `armReleaseRuntimeClasspath` and
+`x86ReleaseRuntimeClasspath` reports each contained 80 unique Maven
+coordinates, including platform constraints, with identical selected coordinate
+sets. POM metadata identified
+Apache-2.0 for 77 coordinates and Public Domain for one. Two POMs omitted license
+metadata: the resolved Commons Compress 1.21 JAR contains its Apache-2.0
+`META-INF/LICENSE.txt`, and Guava ListenableFuture 1.0 is covered by the official
+[Google Guava Apache-2.0 license](https://github.com/google/guava). The graph has
+no unresolved license values. The resolved Material Components version is 1.13.0.
+
+The dependency graph is resolved from Gradle/Maven metadata rather than a checked-in
+Gradle lockfile. Retain the dependency report and corresponding license inventory
+with each Android release; regenerate with
+`./gradlew :app:dependencies --configuration armReleaseRuntimeClasspath` from
+`native-offline/src-tauri/gen/android`.
 
 ## Ownership note
 

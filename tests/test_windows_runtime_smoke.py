@@ -125,7 +125,10 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
 
     def test_targeted_windows_run_builds_lawful_nds_fixture_and_tests_exact_package(self):
         pull_request = WORKFLOW[WORKFLOW.index("  pull_request:"):WORKFLOW.index("  push:")]
-        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
+        snapshot_builder_path = ROOT / "tools/build-public-snapshot.sh"
+        if not snapshot_builder_path.is_file():
+            self.skipTest("public source snapshot intentionally omits its private exporter")
+        snapshot_builder = snapshot_builder_path.read_text(encoding="utf-8")
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-nds-fixture:"):WORKFLOW.index("  windows-packaged-nds-smoke:")]
         nds_job = WORKFLOW[WORKFLOW.index("  windows-packaged-nds-smoke:"):WORKFLOW.index("  android-smoke:")]
         self.assertIn("tools/windows-nds-runtime-smoke.ps1", pull_request)
@@ -154,7 +157,10 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
     def test_targeted_windows_3ds_run_uses_pinned_fixture_and_exact_package(self):
         workflow_dispatch = WORKFLOW[WORKFLOW.index("  workflow_dispatch:"):WORKFLOW.index("  pull_request:")]
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-packaged-3ds-smoke:"):WORKFLOW.index("  android-smoke:")]
-        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
+        snapshot_builder_path = ROOT / "tools/build-public-snapshot.sh"
+        if not snapshot_builder_path.is_file():
+            self.skipTest("public source snapshot intentionally omits its private exporter")
+        snapshot_builder = snapshot_builder_path.read_text(encoding="utf-8")
         smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
         self.assertIn("windows_3ds_artifact_run_id", workflow_dispatch)
         self.assertIn("windows_3ds_expected_source_sha", workflow_dispatch)

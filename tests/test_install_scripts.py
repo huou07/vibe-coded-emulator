@@ -63,9 +63,12 @@ class InstallScriptTests(unittest.TestCase):
                 self.assertNotRegex(text, r"\d+\.\d+\.\d+-(linux|amd64)")
 
     def test_deploy_scripts_package_the_install_scripts(self):
-        # The packaging allowlist ships the whole `scripts` tree; the updater
-        # must then see both installer files by exact path.
-        packaging = (ROOT / "deploy" / "package-production.sh").read_text(encoding="utf-8")
+        # Deployment scripts are intentionally absent from the public source
+        # snapshot; retain this owner-tree check when those files are present.
+        packaging_path = ROOT / "deploy" / "package-production.sh"
+        if not packaging_path.is_file():
+            self.skipTest("public source snapshot omits private deployment scripts")
+        packaging = packaging_path.read_text(encoding="utf-8")
         self.assertRegex(packaging, r"(?m)static deploy README\.md scripts ")
         update = (ROOT / "deploy" / "update-production.sh").read_text(encoding="utf-8")
         for name in ("install-deb.sh", "install-flatpak.sh"):

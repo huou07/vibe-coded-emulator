@@ -105,7 +105,10 @@ class MonitoringTests(unittest.TestCase):
         self.assertNotIn("an3-production-release", release)
 
     def test_production_update_keeps_database_backup_and_rollback(self):
-        with open(os.path.join(ROOT, "deploy", "update-production.sh"), encoding="utf-8") as handle:
+        update_path = os.path.join(ROOT, "deploy", "update-production.sh")
+        if not os.path.isfile(update_path):
+            self.skipTest("public source snapshot omits private deployment scripts")
+        with open(update_path, encoding="utf-8") as handle:
             production_update = handle.read()
         self.assertIn('"$TMP/deploy/rollback-production.sh"', production_update)
         self.assertIn("an3-arcade-rollback-production", production_update)
@@ -127,7 +130,10 @@ class MonitoringTests(unittest.TestCase):
         self.assertIn("Refusing to overwrite", production_backup)
 
     def test_staging_package_allows_only_current_verified_native_installers(self):
-        with open(os.path.join(ROOT, "deploy", "package-staging.sh"), encoding="utf-8") as handle:
+        package_path = os.path.join(ROOT, "deploy", "package-staging.sh")
+        if not os.path.isfile(package_path):
+            self.skipTest("public source snapshot omits private deployment scripts")
+        with open(package_path, encoding="utf-8") as handle:
             package = handle.read()
         self.assertIn("NATIVE_ARTIFACTS=(", package)
         self.assertIn('python3 "$ROOT/tools/verify-release-catalog.py" --print-filenames', package)
