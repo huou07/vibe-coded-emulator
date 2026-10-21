@@ -100,6 +100,35 @@ class WebRuntimeDeliveryTests(unittest.TestCase):
             script_hash,
         )
 
+    def test_cache_path_rejects_symlink_that_escapes_cache_root(self):
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        self.cache.mkdir()
+        try:
+            (self.cache / "latest").symlink_to(outside, target_is_directory=True)
+        except (NotImplementedError, OSError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        with mock.patch.object(app, "EMULATOR_CACHE_DIR", str(self.cache)):
+            with self.assertRaises(ValueError):
+                app.cached_emulator_asset("latest", UPDATE_FILE, "-v2")
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_vendored_runtime_rejects_symlink_that_escapes_vendor_root(self):
+        vendor = Path(self.temp.name) / "vendor"
+        outside = Path(self.temp.name) / "outside-vendor"
+        vendor.mkdir()
+        outside.mkdir()
+        try:
+            (vendor / "latest").symlink_to(outside, target_is_directory=True)
+        except (NotImplementedError, OSError) as error:
+            self.skipTest(f"directory symlinks are unavailable: {error}")
+        with mock.patch.object(app, "EMULATOR_CACHE_DIR", str(self.cache)):
+            with mock.patch.object(app, "EMULATOR_VENDORED_RUNTIME", str(vendor)):
+                with self.assertRaises(ValueError):
+                    app.install_vendored_emulator_asset("latest", UPDATE_FILE, "-v2")
+        self.assertFalse(self.cache.exists())
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_drifted_vendored_script_is_not_installed(self):
         root = Path(self.temp.name) / "vendor"
         source = root / "latest" / "data-v2" / UPDATE_FILE

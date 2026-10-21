@@ -444,23 +444,6 @@ def patch_emulator_update_check(payload, expected_hash):
     return payload.replace(original, patched, 1)
 
 
-def _write_emulator_asset(target, payload):
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    temp = f"{target}.part-{secrets.token_hex(6)}"
-    try:
-        with open(temp, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp, target)
-    finally:
-        try:
-            if os.path.exists(temp):
-                os.remove(temp)
-        except OSError:
-            pass
-
-
 def install_vendored_emulator_asset(channel, relative, data_variant):
     """Install a locked latest/data-v2 runtime into the shared server cache."""
     if channel != "latest" or data_variant != "-v2":
@@ -469,7 +452,10 @@ def install_vendored_emulator_asset(channel, relative, data_variant):
     expected = emulator_runtime_lock().get(lock_key)
     if not expected:
         return None
-    source = safe_data_path(EMULATOR_VENDORED_RUNTIME, lock_key)
+    vendor_root = os.path.realpath(EMULATOR_VENDORED_RUNTIME)
+    source = os.path.realpath(os.path.join(vendor_root, lock_key))
+    if not source.startswith(vendor_root + os.sep):
+        raise ValueError("invalid path")
     if not os.path.isfile(source):
         return None
     try:
@@ -486,7 +472,10 @@ def install_vendored_emulator_asset(channel, relative, data_variant):
             return None
         payload = source_payload
 
-    target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
+    cache_root = os.path.realpath(EMULATOR_CACHE_DIR)
+    target = os.path.realpath(os.path.join(cache_root, channel, relative))
+    if not target.startswith(cache_root + os.sep):
+        raise ValueError("invalid path")
     if os.path.isfile(target) and os.path.getsize(target) > 0:
         try:
             with open(target, "rb") as handle:
@@ -497,11 +486,43 @@ def install_vendored_emulator_asset(channel, relative, data_variant):
             cached_patch = patch_emulator_update_check(cached, expected)
             if cached_patch is not None:
                 if cached_patch != cached:
-                    _write_emulator_asset(target, cached_patch)
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    temp = os.path.join(
+                        os.path.dirname(target),
+                        f".{os.path.basename(target)}.part-{secrets.token_hex(6)}",
+                    )
+                    try:
+                        with open(temp, "wb") as handle:
+                            handle.write(cached_patch)
+                            handle.flush()
+                            os.fsync(handle.fileno())
+                        os.replace(temp, target)
+                    finally:
+                        try:
+                            if os.path.exists(temp):
+                                os.remove(temp)
+                        except OSError:
+                            pass
                 return target
         elif hashlib.sha256(cached).hexdigest() == expected:
             return target
-    _write_emulator_asset(target, payload)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    temp = os.path.join(
+        os.path.dirname(target),
+        f".{os.path.basename(target)}.part-{secrets.token_hex(6)}",
+    )
+    try:
+        with open(temp, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, target)
+    finally:
+        try:
+            if os.path.exists(temp):
+                os.remove(temp)
+        except OSError:
+            pass
     return target
 
 
@@ -513,7 +534,10 @@ def cached_emulator_asset(channel, relative, data_variant=""):
     relative = unquote(str(relative or "")).lstrip("/")
     if not relative or ".." in relative.split("/") or not re.fullmatch(r"[A-Za-z0-9._~+@/-]+", relative):
         raise ValueError("invalid emulator asset")
-    target = safe_data_path(EMULATOR_CACHE_DIR, os.path.join(channel, relative))
+    cache_root = os.path.realpath(EMULATOR_CACHE_DIR)
+    target = os.path.realpath(os.path.join(cache_root, channel, relative))
+    if not target.startswith(cache_root + os.sep):
+        raise ValueError("invalid path")
     pinned_update_script = channel == "latest" and data_variant == "-v2" and relative == "emulator.min.js"
     if os.path.isfile(target) and os.path.getsize(target) > 0 and not pinned_update_script:
         return target
