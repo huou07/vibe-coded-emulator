@@ -761,8 +761,8 @@ def tr(lang, vi, en):
 
 
 def safe_data_path(root, relative):
-    target = os.path.abspath(os.path.join(root, relative or ""))
-    root = os.path.abspath(root)
+    root = os.path.realpath(root)
+    target = os.path.realpath(os.path.join(root, relative or ""))
     if target != root and not target.startswith(root + os.sep):
         raise ValueError("invalid path")
     return target
