@@ -74,6 +74,18 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_public_snapshot_keeps_android_instrumentation_sources(self):
+        android_test_dir = ROOT / "native-offline/src-tauri/gen/android/app/src/androidTest/java/space/an3tocom/offline"
+        for name in ("NativeAppSmokeTest.kt", "NativeGbaSaveTest.kt", "NativeSettingsTabsTest.kt"):
+            with self.subTest(test=name):
+                self.assertTrue((android_test_dir / name).is_file(), f"snapshot omitted {name}")
+        snapshot_builder = ROOT / "tools/build-public-snapshot.sh"
+        if snapshot_builder.is_file():
+            self.assertIn(
+                '"gen/android/app/src/androidTest/java/space/an3tocom/offline"',
+                source(snapshot_builder),
+            )
+
     def test_android_staging_build_initializes_fresh_gradle_project_and_writes_sidecars(self):
         script = source(ANDROID_STAGING_BUILD)
         self.assertIn(

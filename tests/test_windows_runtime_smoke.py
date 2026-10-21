@@ -15,6 +15,13 @@ NDS_SMOKE = (ROOT / "tools/windows-nds-runtime-smoke.ps1").read_text(encoding="u
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
+    def test_public_snapshot_keeps_generated_source_line_endings(self):
+        attributes = ROOT / ".gitattributes"
+        self.assertTrue(attributes.is_file(), "public snapshot must retain generated-file attributes")
+        rules = attributes.read_text(encoding="utf-8")
+        self.assertIn("native-offline/shared/generated/*.h text eol=lf", rules)
+        self.assertIn("native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativePlayerUi.kt text eol=lf", rules)
+
     def test_release_windows_shell_uses_gui_subsystem_but_debug_keeps_console(self):
         main_rs = (ROOT / "native-offline/src-tauri/src/main.rs").read_text(encoding="utf-8")
         self.assertIn('#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]', main_rs)

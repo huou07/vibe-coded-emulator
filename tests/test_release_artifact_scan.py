@@ -551,5 +551,19 @@ class ReleaseTrainWiringTests(unittest.TestCase):
         self.assertIn('run_artifact_secret_scan "$out" "$artifacts"', text)
 
 
+class PublicReleaseWorkflowTests(unittest.TestCase):
+    def test_artifact_scan_fails_closed_before_release_creation(self):
+        template = ROOT / "tools" / "publication" / ".github" / "workflows" / "native-release.yml"
+        workflow = template if template.is_file() else ROOT / ".github" / "workflows" / "native-release.yml"
+        text = workflow.read_text(encoding="utf-8")
+
+        scan_at = text.index("python3 tools/release-artifact-scan.py")
+        publish_at = text.index("gh release create")
+        self.assertLess(scan_at, publish_at)
+        self.assertIn("--config .gitleaks.toml", text)
+        self.assertIn('report["summary"]["skipped"]', text)
+        self.assertIn("release-artifact-security-report", text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -36,6 +36,36 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
+      - name: Scan built artifacts for secrets and private data
+        env:
+          REPORT_JSON: ${{ runner.temp }}/release-artifact-security.json
+        run: |
+          set -euo pipefail
+          python3 tools/release-artifact-scan.py \
+            --config .gitleaks.toml \
+            --json "$REPORT_JSON" \
+            dist
+          python3 - "$REPORT_JSON" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          report = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          skipped = report["summary"]["skipped"]
+          if skipped:
+              print(
+                  f"Artifact scan skipped {skipped} file(s); refusing publication.",
+                  file=sys.stderr,
+              )
+              raise SystemExit(1)
+          PY
+      - name: Retain artifact security report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifact-security-report
+          path: ${{ runner.temp }}/release-artifact-security.json
+          if-no-files-found: ignore
       - name: Collect and publish public-test release
         env:
           GH_TOKEN: ${{ github.token }}
