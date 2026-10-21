@@ -37,7 +37,7 @@ combined application. Applies to every packaged platform.
 | --- | --- | --- |
 | DMG (macOS) | Notarization/signing must not restrict GPL rights. Ad-hoc signing only; source offered in the same download location. | OK. No App Store distribution (GPL + DRM conflict avoided). |
 | EXE (Windows) | NSIS installer must ship the license/notices and not impose extra terms. | OK; notices bundled at `THIRD_PARTY_NOTICES.md`. |
-| DEB (Linux) | Copyright file with license texts (`/usr/share/doc/<pkg>/copyright`). | Action: the DEB's control/copyright must include the GPLv3 text and notices. |
+| DEB (Linux) | DEP-5 copyright file with full license texts and third-party notices at `/usr/share/doc/vibe-coded-emulator/copyright`. | Required by the Linux packaging gate; verified in the built DEB. |
 | Flatpak | GPLv3 text must ship in the bundle; the Flathub submission may require the license metadata. | OK; metainfo carries the release/license. |
 | APK (Android) | Notices inside the app; **GPLv3 §6 Installation Information** for User Products. The APK is sideloaded, not preinstalled on a User Product, and the source is published. | OK with the note below. |
 

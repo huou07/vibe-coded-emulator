@@ -156,6 +156,7 @@ jobs:
           NOTES
           ((${#files[@]})) || { echo 'No installer artifacts were downloaded.' >&2; exit 1; }
           gh release create "$TAG" \
+            --prerelease \
             --repo "$GITHUB_REPOSITORY" \
             --title "Vibe Coded Emulator $TAG (public-test builds)" \
             --notes-file release-notes.md \

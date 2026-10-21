@@ -55,7 +55,8 @@
     "linux": {
       "deb": {
         "files": {
-          "/usr/share/metainfo/space.an3tocom.offline.metainfo.xml": "../flatpak/space.an3tocom.offline.metainfo.xml"
+          "/usr/share/metainfo/space.an3tocom.offline.metainfo.xml": "../flatpak/space.an3tocom.offline.metainfo.xml",
+        "/usr/share/doc/vibe-coded-emulator/copyright": "../work/linux-build/debian-copyright"
         }
       }
     },

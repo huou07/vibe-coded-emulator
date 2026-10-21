@@ -148,9 +148,15 @@ if [[ "$target" == "deb" ]]; then
   # versioned filename and the previous release's DEB otherwise lingers here,
   # which a `find -quit` would happily reuse.
   rm -rf "$root/src-tauri/target/release/bundle/deb"
-  (cd "$root" && npm run prepare-web && npm run tauri -- build --bundles deb)
+  (cd "$root" && npm run prepare-web)
+  node "$root/scripts/generate-linux-debian-copyright.mjs" "$build/debian-copyright"
+  (cd "$root" && npm run tauri -- build --bundles deb)
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
+  dpkg-deb --contents "$tauri_deb" | grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' || {
+    echo 'The DEB is missing /usr/share/doc/vibe-coded-emulator/copyright.' >&2
+    exit 3
+  }
   install -m 0644 "$tauri_deb" "$deb_path"
   sha256sum "$deb_path" > "$deb_path.sha256"
   if [[ "$deb_path" != "$flatpak_deb_path" ]]; then
