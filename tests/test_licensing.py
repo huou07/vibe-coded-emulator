@@ -34,6 +34,14 @@ class LicenseFileTests(unittest.TestCase):
             deb_files["/usr/share/doc/vibe-coded-emulator/copyright"],
             "../work/linux-build/debian-copyright",
         )
+        build_script = (native / "scripts/build-linux-staging.sh").read_text(encoding="utf-8")
+        copyright_check = build_script[
+            build_script.index('deb_contents="$build/deb-contents.txt"'):
+            build_script.index('install -m 0644 "$tauri_deb" "$deb_path"')
+        ]
+        self.assertIn('dpkg-deb --contents "$tauri_deb" > "$deb_contents"', copyright_check)
+        self.assertIn("grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' \"$deb_contents\"", copyright_check)
+        self.assertNotIn("| grep", copyright_check)
 
         with tempfile.TemporaryDirectory(prefix="an3-deb-copyright-") as temporary:
             output = pathlib.Path(temporary) / "copyright"

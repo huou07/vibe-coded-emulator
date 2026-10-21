@@ -153,7 +153,9 @@ if [[ "$target" == "deb" ]]; then
   (cd "$root" && npm run tauri -- build --bundles deb)
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
-  dpkg-deb --contents "$tauri_deb" | grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' || {
+  deb_contents="$build/deb-contents.txt"
+  dpkg-deb --contents "$tauri_deb" > "$deb_contents"
+  grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' "$deb_contents" || {
     echo 'The DEB is missing /usr/share/doc/vibe-coded-emulator/copyright.' >&2
     exit 3
   }
