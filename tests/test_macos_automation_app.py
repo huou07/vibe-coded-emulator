@@ -113,6 +113,7 @@ class MacosAutomationAppTests(unittest.TestCase):
         macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
         self.assertIn("build_macos_candidate:", workflow)
         self.assertIn("inputs.build_macos_candidate", macos_job)
+        self.assertIn("RUSTFLAGS: '--remap-path-prefix=/Users/runner=~'", macos_job)
         self.assertIn("Build canonical macOS package", macos_job)
         self.assertIn("Build source-matched macOS UI-control test app", macos_job)
         self.assertIn("Verify macOS distribution and UI-control bundle separation", macos_job)
