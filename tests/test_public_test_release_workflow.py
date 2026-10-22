@@ -30,6 +30,15 @@ class PublicTestReleaseWorkflowTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/native-release.yml").read_text(encoding="utf-8")
         self.assertIn("--exact-allowlist tools/release-artifact-allowlist.json", workflow)
 
+    def test_switch_release_notes_match_the_packaged_candidate(self):
+        workflow = (ROOT / ".github/workflows/native-release.yml").read_text(encoding="utf-8")
+        self.assertIn("| Switch (Eden, experimental) | companion | companion | companion | no |", workflow)
+        self.assertIn("macOS, Windows and Linux packages include the experimental Switch/Eden", workflow)
+        self.assertIn("does not support Switch in this candidate.", workflow)
+        self.assertIn("Real game compatibility,", workflow)
+        self.assertIn("remain UNVERIFIED", workflow)
+        self.assertIn("This release includes no games, homebrew, firmware or keys.", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

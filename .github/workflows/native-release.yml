@@ -152,12 +152,19 @@ jobs:
           | GBA (mGBA) | yes | yes | yes | yes |
           | NDS (melonDS DS) | yes | yes | yes | yes |
           | 3DS (Azahar) | yes | requires Vulkan | requires Vulkan | yes |
+          | Switch (Eden, experimental) | companion | companion | companion | no |
 
           3DS uses the Azahar hardware renderer and needs a working Vulkan
           driver off macOS; the portable runtime rejects the OpenGL fallback for
           3DS by design. NDS runs melonDS in software-render mode, the accepted
-          default for the pinned core. VCE 3.6.11 is an account-free core-only public-test product; Phone Controller,
-          LAN Sync and Switch/Eden gameplay are not enabled or supported by this candidate.
+          default for the pinned core. VCE 3.6.11 is an account-free core-only public-test product. The
+          macOS, Windows and Linux packages include the experimental Switch/Eden
+          companion as a separate process. Enable it in Settings → Experimental
+          Features before launching a user-supplied `.nro` homebrew file. Android
+          does not support Switch in this candidate. Real game compatibility,
+          saves, sustained play and physical-device behavior remain UNVERIFIED.
+          This release includes no games, homebrew, firmware or keys. Phone
+          Controller and LAN Sync are not supported by this candidate.
 
           ## Test coverage
 
