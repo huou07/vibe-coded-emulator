@@ -33,6 +33,8 @@ fi
   echo "Eden checkout is not pinned to $EDEN_COMMIT" >&2
   exit 2
 }
+python3 "$ROOT/scripts/sanitize-eden-shader-attribution.py" \
+  "$EDEN_ROOT/src/video_core/host_shaders/opengl_smaa.glsl"
 [[ -d "$EDEN_NDK_HOME" ]] || {
   echo "Android NDK 28.2.13676358 is required for the pinned Eden Android build" >&2
   exit 2

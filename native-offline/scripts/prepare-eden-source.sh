@@ -2,6 +2,7 @@
 # Fetch the pinned Eden source and apply AN3's single CMake integration hook.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EDEN_ROOT="${AN3_EDEN_ROOT:?set AN3_EDEN_ROOT to an isolated checkout path}"
 EDEN_COMMIT="${AN3_EDEN_COMMIT:-7bf95be2c29328a4cfeb8b2384ce34c6fb6d890c}"
 EDEN_REPOSITORY="${AN3_EDEN_REPOSITORY:-https://git.eden-emu.dev/eden-emu/eden.git}"
@@ -27,6 +28,12 @@ fi
   echo 'Pinned Eden source or AN3 bridge integration files are missing.' >&2
   exit 2
 }
+shader="$EDEN_ROOT/src/video_core/host_shaders/opengl_smaa.glsl"
+[[ -f "$shader" ]] || {
+  echo 'Pinned Eden SMAA shader attribution source is missing.' >&2
+  exit 2
+}
+python3 "$ROOT/scripts/sanitize-eden-shader-attribution.py" "$shader"
 
 python3 - "$EDEN_ROOT/CMakeLists.txt" "$BRIDGE_ROOT" <<'PY'
 from pathlib import Path
