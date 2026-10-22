@@ -23,6 +23,9 @@ permissions:
 jobs:
   build:
     uses: ./.github/workflows/native-build.yml
+    permissions:
+      actions: read
+      contents: read
 
   publish-public-test-release:
     name: Publish public-test release
