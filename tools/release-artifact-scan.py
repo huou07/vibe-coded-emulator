@@ -12,9 +12,10 @@ artifact is caught without network access or a ``gitleaks`` install.
 * The embedded rule set is a curated subset of the project-specific patterns
   already used by ``tools/publication-check.sh`` plus common credential shapes
   from the gitleaks default set.
-* ``tools/publication/.gitleaks.toml`` stays the single source of truth for
-  suppressions: ``[[allowlists]]`` (``paths`` + ``regexes``) are honoured, and
-  additional ``[[rules]]`` with an inline ``regex`` are merged into the rule set.
+* ``tools/publication/.gitleaks.toml`` stays the source of truth for
+  general suppressions and custom rules. Separately, the exact artifact
+  manifest can suppress one reviewed match only when its member path, rule,
+  offset, length, and full member SHA-256 all match.
 * A matched value is never printed or written to the report. Only the rule id,
   category, path, byte offset, line and match length are recorded.
 * Compressed container members are expanded with the standard library only
@@ -28,8 +29,9 @@ artifact is caught without network access or a ``gitleaks`` install.
   raw-scanned as before (see ``docs/licensing/distribution-compliance.md``).
 
 Usage:
-    python3 tools/release-artifact-scan.py [--config FILE] [--json REPORT]
-        [--max-file-bytes N] TARGET [TARGET ...]
+    python3 tools/release-artifact-scan.py [--config FILE]
+        [--exact-allowlist FILE] [--json REPORT] [--max-file-bytes N]
+        TARGET [TARGET ...]
 
 TARGET is a file or directory (directories are walked recursively). The exit
 status is 0 when clean, 1 when any finding is reported, and 2 on a usage or
@@ -40,6 +42,7 @@ from __future__ import annotations
 import argparse
 import bz2
 import gzip
+import hashlib
 import io
 import json
 import lzma
@@ -52,12 +55,13 @@ import zlib
 from pathlib import Path
 
 TOOL_NAME = "release-artifact-scan"
-TOOL_VERSION = "1"
+TOOL_VERSION = "2"
 SCHEMA_VERSION = 1
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 PRIVATE_CONFIG = ROOT_DIR / "tools" / "publication" / ".gitleaks.toml"
 DEFAULT_CONFIG = PRIVATE_CONFIG if PRIVATE_CONFIG.is_file() else ROOT_DIR / ".gitleaks.toml"
+DEFAULT_EXACT_ALLOWLIST = ROOT_DIR / "tools" / "release-artifact-allowlist.json"
 
 # (rule id, category, bytes regex)
 #
@@ -316,6 +320,91 @@ def parse_gitleaks_config(text: str):
     }
 
 
+def parse_exact_allowlist(data):
+    """Validate exact binary exceptions without ever storing matched bytes."""
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        raise ConfigError("exact artifact allowlist must use schema_version 1")
+    entries = data.get("exceptions")
+    if not isinstance(entries, list):
+        raise ConfigError("exact artifact allowlist exceptions must be a list")
+
+    allowed_keys = {
+        "id",
+        "rule",
+        "path_suffix",
+        "offset",
+        "match_length",
+        "sha256",
+        "source_commit",
+        "reason",
+    }
+    parsed = []
+    seen = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or set(entry) != allowed_keys:
+            raise ConfigError(
+                f"exact artifact allowlist exception {index + 1} has invalid fields"
+            )
+        exception_id = entry["id"]
+        if (
+            not isinstance(exception_id, str)
+            or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", exception_id)
+            or exception_id in seen
+        ):
+            raise ConfigError(
+                f"exact artifact allowlist exception {index + 1} has invalid or duplicate id"
+            )
+        seen.add(exception_id)
+        if not isinstance(entry["rule"], str) or not entry["rule"]:
+            raise ConfigError(f"exact artifact allowlist exception {exception_id} has invalid rule")
+        if (
+            not isinstance(entry["path_suffix"], str)
+            or not entry["path_suffix"].startswith("!")
+            or chr(0) in entry["path_suffix"]
+        ):
+            raise ConfigError(
+                f"exact artifact allowlist exception {exception_id} has invalid path suffix"
+            )
+        for key, minimum in (("offset", 0), ("match_length", 1)):
+            value = entry[key]
+            if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+                raise ConfigError(
+                    f"exact artifact allowlist exception {exception_id} has invalid {key}"
+                )
+        if not isinstance(entry["sha256"], str) or not re.fullmatch(
+            r"[0-9a-f]{64}", entry["sha256"]
+        ):
+            raise ConfigError(
+                f"exact artifact allowlist exception {exception_id} has invalid sha256"
+            )
+        if not isinstance(entry["source_commit"], str) or not re.fullmatch(
+            r"[0-9a-f]{40}", entry["source_commit"]
+        ):
+            raise ConfigError(
+                f"exact artifact allowlist exception {exception_id} has invalid source_commit"
+            )
+        if not isinstance(entry["reason"], str) or not entry["reason"].strip():
+            raise ConfigError(
+                f"exact artifact allowlist exception {exception_id} has no reason"
+            )
+        parsed.append(
+            {
+                **entry,
+                "_exact_artifact_allowlist": True,
+                "_used_count": 0,
+            }
+        )
+    return parsed
+
+
+def load_exact_allowlist(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ConfigError(f"could not read exact artifact allowlist: {error}") from error
+    return parse_exact_allowlist(data)
+
+
 def _allowlist_matches(allowlist, display_path: str, match_bytes: bytes) -> bool:
     paths = allowlist.get("paths") or []
     regexes = allowlist.get("regexes") or []
@@ -368,12 +457,15 @@ def _scan_stream(stream, display, rules, allowlists, max_bytes, findings):
     message when the stream is longer than ``max_bytes``.
     """
     suppressed = 0
+    stream_start = len(findings)
+    stream_hash = hashlib.sha256()
     overlap = max(1, max(len(rule.pattern) for _, _, rule in rules))
     state = {"carry": b"", "newlines": 0, "abs": 0}
     while True:
         chunk = stream.read(CHUNK_BYTES)
         if not chunk:
             break
+        stream_hash.update(chunk)
         window = state["carry"] + chunk
         window_base = state["abs"] - len(state["carry"])
         for rule_id, category, rule in rules:
@@ -407,6 +499,28 @@ def _scan_stream(stream, display, rules, allowlists, max_bytes, findings):
         state["carry"] = window[-overlap:]
         if state["abs"] > max_bytes:
             return suppressed, f"file exceeds --max-file-bytes ({max_bytes} bytes)"
+    digest = stream_hash.hexdigest()
+    retained = []
+    for finding in findings[stream_start:]:
+        exception = next(
+            (
+                entry
+                for entry in allowlists
+                if entry.get("_exact_artifact_allowlist")
+                and finding["rule"] == entry["rule"]
+                and finding["offset"] == entry["offset"]
+                and finding["match_length"] == entry["match_length"]
+                and finding["path"].endswith(entry["path_suffix"])
+                and digest == entry["sha256"]
+            ),
+            None,
+        )
+        if exception is None:
+            retained.append(finding)
+        else:
+            exception["_used_count"] += 1
+            suppressed += 1
+    findings[stream_start:] = retained
     return suppressed, None
 
 
@@ -763,6 +877,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("targets", nargs="+", help="Files or directories to scan.")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG), help="Gitleaks TOML config.")
+    parser.add_argument(
+        "--exact-allowlist",
+        default=str(DEFAULT_EXACT_ALLOWLIST),
+        help="Exact path/offset/length/SHA-256 artifact exceptions JSON.",
+    )
     parser.add_argument("--json", default=None, help="Write a JSON report to this path.")
     parser.add_argument(
         "--max-file-bytes",
@@ -782,7 +901,9 @@ def main(argv=None):
     try:
         config = parse_gitleaks_config(config_path.read_text(encoding="utf-8"))
         rules = _compile_rules(config["rules"])
-        result = scan(args.targets, rules, config["allowlists"], max_bytes=args.max_file_bytes)
+        exact_allowlist = load_exact_allowlist(args.exact_allowlist)
+        allowlists = [*config["allowlists"], *exact_allowlist]
+        result = scan(args.targets, rules, allowlists, max_bytes=args.max_file_bytes)
     except ConfigError as error:
         print(f"RELEASE_ARTIFACT_SCAN=ERROR {error}", file=sys.stderr)
         return 2
@@ -794,7 +915,15 @@ def main(argv=None):
         "tool": {"name": TOOL_NAME, "version": TOOL_VERSION},
         "config": _display_path(config_path),
         "rules": len(rules),
-        "allowlists": len(config["allowlists"]),
+        "allowlists": len(config["allowlists"]) + len(exact_allowlist),
+        "exact_artifact_allowlist": [
+            {
+                "id": entry["id"],
+                "used": entry["_used_count"],
+                "source_commit": entry["source_commit"],
+            }
+            for entry in exact_allowlist
+        ],
         "summary": {
             "files_scanned": result["files_scanned"],
             "bytes_scanned": result["bytes_scanned"],

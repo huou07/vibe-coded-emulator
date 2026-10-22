@@ -528,6 +528,98 @@ class ArchiveExpansionTests(unittest.TestCase):
         self.assertEqual(result["suppressed"], 1)
 
 
+class ExactArtifactAllowlistTests(unittest.TestCase):
+    MEMBER_PATH = "usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
+    MATCH = b"fixture" + b"@outlook.com"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def _entry(self, payload, *, path=None, offset=None, digest=None):
+        data = {
+            "schema_version": 1,
+            "exceptions": [
+                {
+                    "id": "fixture-contact",
+                    "rule": "personal-email",
+                    "path_suffix": "!" + (path or self.MEMBER_PATH),
+                    "offset": payload.index(self.MATCH) if offset is None else offset,
+                    "match_length": len(self.MATCH),
+                    "sha256": mod.hashlib.sha256(payload).hexdigest() if digest is None else digest,
+                    "source_commit": "a" * 40,
+                    "reason": "Synthetic scanner test fixture.",
+                }
+            ],
+        }
+        return mod.parse_exact_allowlist(data)
+
+    def _scan_member(self, payload, exception, *, member_path=None):
+        artifact = self.root / "release.deb"
+        artifact.write_bytes(
+            _zip_bytes({member_path or self.MEMBER_PATH: payload})
+        )
+        return mod.scan([str(artifact)], _default_rules(), exception)
+
+    def test_repository_exact_allowlist_parses_without_match_bytes(self):
+        entries = mod.load_exact_allowlist(ROOT / "tools" / "release-artifact-allowlist.json")
+        self.assertEqual(
+            [entry["id"] for entry in entries],
+            ["eden-upstream-contact-linux-x86_64"],
+        )
+        self.assertNotIn("fixture" + "@outlook.com", json.dumps(entries))
+
+    def test_exact_path_offset_length_and_digest_suppress_one_match(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        entries = self._entry(payload)
+        result = self._scan_member(payload, entries)
+        self.assertEqual(result["findings"], [])
+        self.assertEqual(result["suppressed"], 1)
+        self.assertEqual(entries[0]["_used_count"], 1)
+
+    def test_changed_member_digest_keeps_the_finding(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00original"
+        entries = self._entry(payload)
+        changed = b"prefix\x00" + self.MATCH + b"\x00modified"
+        result = self._scan_member(changed, entries)
+        self.assertEqual([item["rule"] for item in result["findings"]], ["personal-email"])
+        self.assertEqual(result["suppressed"], 0)
+        self.assertEqual(entries[0]["_used_count"], 0)
+
+    def test_wrong_path_or_offset_keeps_the_finding(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        cases = (
+            (self._entry(payload, path="usr/lib/other/an3_switch_companion"), self.MEMBER_PATH),
+            (self._entry(payload, offset=payload.index(self.MATCH) + 1), self.MEMBER_PATH),
+        )
+        for entries, path in cases:
+            with self.subTest(exception=entries[0]):
+                result = self._scan_member(payload, entries, member_path=path)
+                self.assertEqual(
+                    [item["rule"] for item in result["findings"]],
+                    ["personal-email"],
+                )
+                self.assertEqual(result["suppressed"], 0)
+
+    def test_incomplete_stream_does_not_apply_an_exact_exception(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        entries = self._entry(payload)
+        findings = []
+        suppressed, status = mod._scan_stream(
+            io.BytesIO(payload),
+            "release.deb!" + self.MEMBER_PATH,
+            _default_rules(),
+            entries,
+            1,
+            findings,
+        )
+        self.assertEqual(status, "file exceeds --max-file-bytes (1 bytes)")
+        self.assertEqual(suppressed, 0)
+        self.assertEqual([item["rule"] for item in findings], ["personal-email"])
+        self.assertEqual(entries[0]["_used_count"], 0)
+
+
 class ReleaseTrainWiringTests(unittest.TestCase):
     """The scan must run in the train beside the unknown-license gate."""
 
