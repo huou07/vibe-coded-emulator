@@ -32,6 +32,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("core frame count stopped advancing", smoke)
         self.assertIn("Vulkan presentation count stopped advancing", smoke)
         self.assertIn("sustainedProgression", smoke)
+        self.assertIn("progress_lines = queue.Queue()", smoke)
+        self.assertIn('progress_lines.put((time.monotonic(), line))', smoke)
+        self.assertIn("after=progress_started_at", smoke)
 
     def test_smoke_harness_changes_do_not_rebuild_the_all_platform_matrix_on_push(self):
         self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 1)

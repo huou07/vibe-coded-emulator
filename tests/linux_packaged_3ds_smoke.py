@@ -17,6 +17,12 @@ FIXTURE_COMMIT = "e5b13872f0c1207cb9c86e18e710c8f1fa269fb8"
 FIXTURE_SHA256 = "a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050"
 
 
+def raise_and_focus_window(window):
+    # Xvfb's lightweight WM may not implement _NET_ACTIVE_WINDOW.
+    subprocess.run(["xdotool", "windowraise", window], check=True, timeout=10)
+    subprocess.run(["xdotool", "windowfocus", "--sync", window], check=True, timeout=10)
+
+
 class LinuxPackaged3DSSmoke(unittest.TestCase):
     def test_exact_deb_azahar_visible_output_and_a_input(self):
         player = Path(os.environ["AN3_LINUX_3DS_PLAYER"]).resolve()
@@ -130,7 +136,7 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
                     ["xdotool", "getwindowname", window], text=True, capture_output=True, check=False,
                 )
                 if title.returncode == 0 and title.stdout.strip() == "VibeCodedEmulator":
-                    subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+                    raise_and_focus_window(window)
                     time.sleep(1.0)
                     return window
             time.sleep(0.25)
@@ -140,7 +146,7 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
     def capture_window(window, path):
         from PIL import Image
 
-        subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+        raise_and_focus_window(window)
         time.sleep(0.35)
         subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
         with Image.open(path) as image:
