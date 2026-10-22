@@ -17,3 +17,14 @@ regexes = [
   '192\.168\.0\.0',
   '192\.0\.2\.0',
 ]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+condition = "AND"
+description = "Synthetic test credential in one historical fixture commit"
+paths = ['tests/test_publication_gate\.py$']
+commits = ['46011eaeaeea8758cfee6eb638c5b08875cba320']
+regexTarget = "match"
+regexes = ['AN3_AUTH_PEPPER']
