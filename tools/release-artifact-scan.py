@@ -245,6 +245,11 @@ def _statements(lines):
 _KEY_VALUE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", re.DOTALL)
 
 
+# Gitleaks default-rule references are used to scope historical source allowlists.
+# The artifact scanner has no commit context and must not apply those exceptions.
+GITLEAKS_DEFAULT_REFERENCES = frozenset({"generic-api-key"})
+
+
 def parse_gitleaks_config(text: str):
     """Parse the allowlists and inline custom rules from a gitleaks config.
 
@@ -278,6 +283,12 @@ def parse_gitleaks_config(text: str):
                 current = {}
                 custom_rules.append(current)
                 block = "rule"
+            elif name == "rules.allowlists":
+                # These suppressions are scoped to gitleaks' source-history rule;
+                # artifact scanning has no commit identity, so keep them separate
+                # from global artifact allowlists.
+                current = None
+                block = "rule-allowlist"
             else:
                 current = None
                 block = None
@@ -306,6 +317,8 @@ def parse_gitleaks_config(text: str):
         rule_id = rule.get("id") or f"custom-{index + 1}"
         pattern = rule.get("regex")
         if not pattern:
+            if str(rule_id) in GITLEAKS_DEFAULT_REFERENCES:
+                continue
             warnings.append(
                 f"custom rule {rule_id!r} has no inline regex; only inline "
                 "regex rules are supported and this rule was ignored"

@@ -73,6 +73,32 @@ class ConfigTests(unittest.TestCase):
         rule_ids = [rule[0] for rule in config["rules"]]
         self.assertIn("private-key-block", rule_ids)
         self.assertIn("an3-env-secret", rule_ids)
+        # This built-in rule reference only scopes Gitleaks history findings;
+        # it is not a custom rule or an artifact-wide suppression.
+        self.assertNotIn("generic-api-key", rule_ids)
+
+    def test_history_only_builtin_reference_does_not_suppress_artifacts(self):
+        config = mod.parse_gitleaks_config(
+            "[[rules]]\nid = 'generic-api-key'\n"
+            "[[rules.allowlists]]\n"
+            "condition = 'AND'\n"
+            "paths = ['tests/test_publication_gate\\\\.py$']\n"
+            "commits = ['46011eaeaeea8758cfee6eb638c5b08875cba320']\n"
+            "regexes = ['AN3_AUTH_PEPPER']\n"
+        )
+        self.assertEqual(config["warnings"], [])
+        self.assertEqual(config["allowlists"], [])
+        self.assertNotIn("generic-api-key", [rule[0] for rule in config["rules"]])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "test_publication_gate.py"
+            fixture.write_bytes(b"AN3_AUTH_PEPPER=" + b"A" * 8)
+            result = mod.scan(
+                [str(fixture)],
+                mod._compile_rules(config["rules"]),
+                config["allowlists"],
+            )
+        self.assertIn("an3-env-secret", {finding["rule"] for finding in result["findings"]})
 
     def test_inline_custom_rule_is_merged(self):
         text = "[[rules]]\nid = 'canary'\nregex = '''CANARY-[0-9]{4}'''\n"
