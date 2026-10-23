@@ -223,6 +223,10 @@ export class DesktopAdapter {
       return { target, via: "ui-control", clicked: true, testid };
     }
     if (target === "windows") {
+      const holdMs = opts.holdMs === undefined ? 0 : Number(opts.holdMs);
+      if (!Number.isInteger(holdMs) || holdMs < 0 || holdMs > 5000) {
+        throw new An3Error("E_USAGE", "--hold-ms must be an integer from 0 to 5000.");
+      }
       const selector = opts.selector;
       if (!selector) throw new An3Error("E_USAGE", "ui click --target windows requires a semantic selector");
       return this.withWindowsCdp(opts, async (cdp) => {
@@ -260,6 +264,7 @@ export class DesktopAdapter {
         await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
         try {
           await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+          if (holdMs > 0) await new Promise(resolve => setTimeout(resolve, holdMs));
         } finally {
           await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
         }

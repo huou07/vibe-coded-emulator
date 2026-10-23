@@ -7,11 +7,13 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+WORKFLOW_PATH = ROOT / ".github/workflows/native-build.yml"
+WORKFLOW = WORKFLOW_PATH.read_text(encoding="utf-8") if WORKFLOW_PATH.is_file() else ""
 SMOKE = (ROOT / "tests/linux_packaged_3ds_smoke.py").read_text(encoding="utf-8")
 
 
 class LinuxPackaged3DSSmokeTests(unittest.TestCase):
+    @unittest.skipUnless(WORKFLOW_PATH.is_file(), "private native package workflow is intentionally omitted")
     def test_job_uses_exact_deb_and_pinned_lawful_fixture(self):
         job = WORKFLOW[WORKFLOW.index("  linux-packaged-3ds-smoke:"):WORKFLOW.index("  linux-flatpak:")]
         self.assertIn("inputs.linux_3ds_artifact_run_id != ''", job)
@@ -41,7 +43,7 @@ class LinuxPackaged3DSSmokeTests(unittest.TestCase):
         self.assertIn('if last_colors > 16:', SMOKE)
         self.assertIn('self.assertGreater(changed_percent, 1.0', SMOKE)
         self.assertIn("wait_for_visible_frame(window, baseline_path)", SMOKE)
-        self.assertIn("visible 3DS window stayed blank after 15 seconds", SMOKE)
+        self.assertIn("visible 3DS window did not produce three stable captures within 30 seconds", SMOKE)
         self.assertIn('"fixtureLicense": "MIT"', SMOKE)
         self.assertIn('"audio": "SDL dummy driver; audible output UNVERIFIED"', SMOKE)
         self.assertIn('"capture": "visible SDL player window', SMOKE)

@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const scriptDirectory = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const nativeRoot = resolve(scriptDirectory, "..");
 const version = "2126.1.2";
+const sourceCommit = "9e6f523a57fac9564ac0bf8286db3c3702d301ec";
 const assetName = "azahar-libretro-macos-arm64-2126.1.2.zip";
 const assetUrl = `https://github.com/azahar-emu/azahar/releases/download/${version}/${assetName}`;
 const sourceUrl = `https://github.com/azahar-emu/azahar/releases/download/${version}/azahar-unified-source-${version}.tar.xz`;
@@ -36,6 +37,19 @@ async function findFile(directory, name) {
   return null;
 }
 
+async function hasVerifiedPinnedSourceBuild() {
+  try {
+    const manifest = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
+    const core = await readFile(corePath);
+    return manifest.buildMethod === "pinned-source"
+      && manifest.sourceCommit === sourceCommit
+      && manifest.sha256 === sha256(core)
+      && sha256(await readFile(licensePath)) === expectedLicenseSha256;
+  } catch {
+    return false;
+  }
+}
+
 async function hasVerifiedArtifacts() {
   try {
     return sha256(await readFile(corePath)) === expectedCoreSha256
@@ -52,6 +66,16 @@ if (process.platform !== "darwin") {
 
 if (process.arch !== "arm64") {
   throw new Error(`Azahar ${version} is pinned here for macOS arm64; received ${process.arch}. Add and verify the matching upstream core before packaging this architecture.`);
+}
+
+const pinnedSourceBuild = await hasVerifiedPinnedSourceBuild();
+if (process.env.AN3_REQUIRE_AZAHAR_SOURCE_BUILD === "1" && !pinnedSourceBuild) {
+  throw new Error(`A verified Azahar ${sourceCommit} source build is required for this macOS package`);
+}
+if (pinnedSourceBuild) {
+  const manifest = JSON.parse(await readFile(join(destination, "manifest.json"), "utf8"));
+  console.log(`AZAHAR_LIBRETRO=VERIFIED pinned source ${manifest.sha256}`);
+  process.exit(0);
 }
 
 if (!await hasVerifiedArtifacts()) {

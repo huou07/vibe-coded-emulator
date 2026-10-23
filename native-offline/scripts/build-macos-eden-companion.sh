@@ -19,6 +19,13 @@ for tool in cmake ninja autoconf automake glslang; do
   command -v "$tool" >/dev/null || { echo "Missing macOS Eden build prerequisite: $tool" >&2; exit 2; }
 done
 
+bash "$ROOT/scripts/build-macos-azahar-libretro.sh"
+export AN3_REQUIRE_AZAHAR_SOURCE_BUILD=1
+EDEN_PATH_MAP="-ffile-prefix-map=${HOME:?}=/an3-runner"
+if [[ -n "${RUNNER_TEMP:-}" ]]; then
+  EDEN_PATH_MAP+=" -ffile-prefix-map=$RUNNER_TEMP=/an3-runner-temp"
+fi
+
 bash "$ROOT/scripts/prepare-eden-source.sh"
 cmake -S "$EDEN_ROOT" -B "$EDEN_BUILD" -G Ninja \
   -DAN3_EDEN_BRIDGE_DIR="$AN3_EDEN_BRIDGE_ROOT" \
@@ -27,6 +34,8 @@ cmake -S "$EDEN_ROOT" -B "$EDEN_BUILD" -G Ninja \
   -DYUZU_STATIC_BUILD=ON -DYUZU_USE_BUNDLED_OPENSSL=OFF \
   -DCPMUTIL_FORCE_BUNDLED=ON -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=13.4 \
+  "-DCMAKE_C_FLAGS=$EDEN_PATH_MAP" \
+  "-DCMAKE_CXX_FLAGS=$EDEN_PATH_MAP" \
   -DCMAKE_EXE_LINKER_FLAGS="-framework Carbon -framework AppKit -framework UniformTypeIdentifiers" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "$EDEN_BUILD" --target an3_switch_companion -j "$JOBS"

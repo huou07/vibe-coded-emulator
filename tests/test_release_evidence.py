@@ -33,6 +33,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "release-evidence.py"
+if (ROOT / "PROVENANCE.md").is_file() and not TOOL.is_file():
+    raise unittest.SkipTest("private release evidence generator is intentionally omitted")
 
 spec = importlib.util.spec_from_file_location("release_evidence", TOOL)
 mod = importlib.util.module_from_spec(spec)

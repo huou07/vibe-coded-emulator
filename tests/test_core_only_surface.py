@@ -171,11 +171,16 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         if not workflows.is_dir():
             workflows = ROOT / "tools" / "publication" / ".github" / "workflows"
         ci = (workflows / "ci.yml").read_text(encoding="utf-8")
-        native = (workflows / "native-build.yml").read_text(encoding="utf-8")
         self.assertIn("python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py", ci)
         for retired in ("sync_engine.py", "google_sync.py", "3.3.1-performance-candidate"):
             self.assertNotIn(retired, ci)
         self.assertIn("'core-only/**'", ci)
+        native_workflow = workflows / "native-build.yml"
+        if not native_workflow.is_file():
+            self.assertTrue((ROOT / "PROVENANCE.md").is_file())
+            self.assertFalse(any(workflows.glob("native-*.yml")))
+            return
+        native = native_workflow.read_text(encoding="utf-8")
         self.assertIn("'core-only/**'", native)
         self.assertIn("NativeInputActionsTest", native)
         self.assertIn("NativeSettingsTabsTest", native)

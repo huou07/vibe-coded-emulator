@@ -7,6 +7,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if (ROOT / "PROVENANCE.md").is_file() and not (ROOT / ".github/workflows/native-release.yml").is_file():
+    raise unittest.SkipTest("native package release workflow is intentionally omitted")
 
 
 class PublicTestReleaseWorkflowTests(unittest.TestCase):

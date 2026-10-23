@@ -14,6 +14,11 @@ case "$target" in deb|flatpak) ;; *) echo 'Usage: build-linux-staging.sh <deb|fl
 [[ "$(uname -m)" == "x86_64" ]] || { echo 'This staging package currently targets Linux x86_64.' >&2; exit 2; }
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Rust embeds file!()/panic locations from the dependency graph in native
+# binaries even in release mode. Remap the local checkout prefix so Linux
+# artifacts never disclose the builder home directory or account name.
+home_prefix="${HOME%/}"
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=${home_prefix}=/an3-home"
 bash "$(dirname "$root")/tools/disk-preflight.sh" "Linux $target staging package" "$(dirname "$root")"
 build="$root/work/linux-build"
 release="${AN3_RELEASE_DIR:-$root/releases}"
@@ -119,7 +124,9 @@ bash "$root/scripts/build-linux-eden-companion.sh"
 rm -rf "$build"
 mkdir -p "$build" "$release"
 # 1. The bundled native gameplay runtime (SDL window/input/audio + Vulkan/GL).
-"$compiler" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
+# Keep compiler-authored paths independent of the builder account and checkout.
+source_path_map="-ffile-prefix-map=${home_prefix}=/an3-home"
+"$compiler" "$source_path_map" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
   -I"$root/native-runtime" \
   "$root/native-runtime/core/libretro_host.cpp" \
   "$root/native-runtime/core/native_core_session.cpp" \

@@ -12,7 +12,7 @@ const exists = async path => { try { await access(path); return true; } catch { 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 await mkdir(destination, {recursive:true});
 const queue = [join(root, 'work/windows-runtime/an3-native-runtime.exe')];
-const visited = new Set(), files = [];
+const visited = new Set(), files = [], runtimePackages = new Set(), licensePackages = new Set();
 for (let i = 0; i < queue.length; ++i) {
   const file = queue[i], name = basename(file);
   if (visited.has(name.toLowerCase())) continue;
@@ -28,12 +28,31 @@ for (let i = 0; i < queue.length; ++i) {
     }
   }
   await cp(file, join(destination, name));
+  if (file !== queue[0]) {
+    const relative = `/${file.slice(msys.length).replaceAll('\\', '/')}`;
+    const owner = execFileSync(join(msys, 'usr/bin/pacman.exe'), ['-Qqo', relative], {encoding:'utf8'}).trim();
+    if (!owner.startsWith('mingw-w64-ucrt-x86_64-')) throw new Error(`Cannot identify UCRT64 package owner for ${name}: ${owner}`);
+    runtimePackages.add(owner);
+  }
   files.push({name, size:bytes.length, sha256:sha256(bytes)});
 }
-// GTK compiled defaults need schemas for native file pickers/settings. Its
-// fallback theme is embedded in GTK; no system-wide installation is required.
-for (const relative of ['share/glib-2.0/schemas', 'share/licenses']) {
-  await cp(join(msys, 'ucrt64', relative), join(destination, relative), {recursive:true});
+// Carry the license directories for the exact MSYS2 packages that own the
+// copied runtime DLLs. Build tools and unrelated packages stay out of the app.
+const licenseRoot = join(msys, 'ucrt64/share/licenses');
+const bundledLicenses = join(destination, 'share/licenses');
+await mkdir(bundledLicenses, {recursive:true});
+for (const owner of [...runtimePackages].sort()) {
+  const shortName = owner.replace(/^mingw-w64-ucrt-x86_64-/, '');
+  let licenseName;
+  for (const candidate of [owner, shortName]) {
+    if (await exists(join(licenseRoot, candidate))) { licenseName = candidate; break; }
+  }
+  if (!licenseName) throw new Error(`Missing runtime dependency license: ${owner}`);
+  licensePackages.add(licenseName);
+}
+for (const packageName of [...licensePackages].sort()) {
+  const source = join(licenseRoot, packageName);
+  await cp(source, join(bundledLicenses, packageName), {recursive:true});
 }
 await cp(join(root, 'work/windows-runtime/toolchain-packages.txt'), join(destination, 'toolchain-packages.txt'));
 const cores = join(root, 'vendor/libretro/windows-x64');
@@ -55,5 +74,5 @@ async function sourceTree(relative) {
   }
 }
 for (const relative of ['native-runtime/core','native-runtime/video','native-runtime/platform/linux','shared/generated']) await sourceTree(relative);
-await writeFile(join(destination, 'manifest.json'), JSON.stringify({platform:'Windows x64', entry:'an3-native-runtime.exe', files, sources}, null, 2)+'\n');
-console.log(`WINDOWS_NATIVE_RUNTIME=VERIFIED ${files.length} PE files; portable SDL/GTK/Vulkan/OpenGL sources`);
+await writeFile(join(destination, 'manifest.json'), JSON.stringify({platform:'Windows x64', entry:'an3-native-runtime.exe', files, runtimePackages:[...runtimePackages].sort(), runtimeLicensePackages:[...licensePackages].sort(), sources}, null, 2)+'\n');
+console.log(`WINDOWS_NATIVE_RUNTIME=VERIFIED ${files.length} PE files; portable SDL/Vulkan/OpenGL sources`);

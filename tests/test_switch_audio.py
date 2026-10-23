@@ -103,7 +103,7 @@ class SwitchAudioPathTests(unittest.TestCase):
         return ""
 
     def test_90_audio_backend_and_device_are_real(self):
-        self.assertTrue(self._command("status").startswith("AN3CTL_STATUS") or True)
+        self._command("status")  # Keep the companion render loop active while checking audio.
         line = self._command("audio")
         self.assertIn("AN3CTL_AUDIO", line, "the companion did not report audio state")
         payload = json.loads(line[line.index("{"):])

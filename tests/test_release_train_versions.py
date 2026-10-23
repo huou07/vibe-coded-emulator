@@ -17,6 +17,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_TRAIN = ROOT / "tools" / "release-train.sh"
+if (ROOT / "PROVENANCE.md").is_file() and not RELEASE_TRAIN.is_file():
+    raise unittest.SkipTest("private native release train is intentionally omitted")
 
 # Any artifact-like name carrying a literal semver (vibecodedemulator-1.2.3-...).
 HARDCODED_ARTIFACT = re.compile(

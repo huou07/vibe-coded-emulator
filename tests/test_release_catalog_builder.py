@@ -21,6 +21,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "tools" / "build-release-catalog.py"
 CATALOG = ROOT / "native-offline" / "releases" / "catalog.json"
+if (ROOT / "PROVENANCE.md").is_file() and not BUILDER.is_file():
+    raise unittest.SkipTest("private native release catalog builder is intentionally omitted")
 
 FILENAMES = (
     "vibecodedemulator-{v}-macos-aarch64.dmg",

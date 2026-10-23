@@ -87,9 +87,8 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
         .args(["--rom"]).arg(&rom).args(["--system",system,"--layout",layout,"--storage"])
         .arg(&storage).args(settings_args).args(["--control-stdin", "--no-controls"])
         .current_dir(runtime.parent().unwrap())
-        .env("GSETTINGS_SCHEMA_DIR", runtime.parent().unwrap().join("share/glib-2.0/schemas"))
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(errors)
-        .creation_flags(0x08000000) // Hide the console; SDL and GTK create the native GUI.
+        .creation_flags(0x08000000) // Hide the console; SDL owns gameplay, Tauri owns app controls.
         .spawn().map_err(|e| format!("Cannot start the bundled Windows player: {e}"))?;
     let output = child.stdout.take().ok_or("Native startup channel unavailable")?;
     let input = child.stdin.take().ok_or("Native control channel unavailable")?;

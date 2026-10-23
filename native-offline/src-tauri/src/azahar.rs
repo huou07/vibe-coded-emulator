@@ -118,10 +118,13 @@ fn native_moltenvk_path(app: &AppHandle) -> Result<PathBuf, String> {
         if bundled.is_file() {
             return Ok(bundled);
         }
-        let development = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../vendor/moltenvk/macos-arm64/libMoltenVK.dylib");
-        if development.is_file() {
-            return Ok(development);
+        #[cfg(debug_assertions)]
+        {
+            let development = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../vendor/moltenvk/macos-arm64/libMoltenVK.dylib");
+            if development.is_file() {
+                return Ok(development);
+            }
         }
         Err("The bundled MoltenVK runtime is unavailable. Re-run `npm run prepare-moltenvk` before building VibeCodedEmulator.".into())
     }
@@ -146,9 +149,12 @@ fn native_core_path(app: &AppHandle, core: NativeCore) -> Result<PathBuf, String
         // `tauri dev` does not always materialize macOS bundle resources. The
         // verified build artifact is the only development fallback: never
         // search for a separately installed emulator.
-        let development = Path::new(env!("CARGO_MANIFEST_DIR")).join(core.development_path);
-        if development.is_file() {
-            return Ok(development);
+        #[cfg(debug_assertions)]
+        {
+            let development = Path::new(env!("CARGO_MANIFEST_DIR")).join(core.development_path);
+            if development.is_file() {
+                return Ok(development);
+            }
         }
         Err(format!(
             "The bundled {} native core is unavailable. Re-run `{}` before building VibeCodedEmulator.",

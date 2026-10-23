@@ -7,7 +7,10 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+WORKFLOW_PATH = ROOT / ".github/workflows/native-build.yml"
+if (ROOT / "PROVENANCE.md").is_file() and not WORKFLOW_PATH.is_file():
+    raise unittest.SkipTest("private native package workflow is intentionally omitted")
+WORKFLOW = WORKFLOW_PATH.read_text(encoding="utf-8")
 SMOKE = (ROOT / "tests/linux_distribution_shell_smoke.py").read_text(encoding="utf-8")
 
 

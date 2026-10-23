@@ -72,7 +72,7 @@ SOURCE_REPOSITORY = os.environ.get("AN3_SOURCE_REPOSITORY", "https://github.com/
 
 # Shown on /licenses. Each component keeps its own copyright and license.
 LICENSES_THIRD_PARTY = (
-    ("Azahar libretro 2126.1.1", "GPL-2.0-or-later", "Azahar Emulator Project"),
+    ("Azahar libretro 2126.1.2", "GPL-2.0-or-later", "Azahar Emulator Project"),
     ("melonDS DS libretro 1.3.1", "GPL-3.0-or-later", "melonDS DS contributors"),
     ("mGBA libretro 0.11-219", "MPL-2.0", "mGBA contributors"),
     ("EmulatorJS 4.2.3", "GPL-3.0", "EmulatorJS contributors"),

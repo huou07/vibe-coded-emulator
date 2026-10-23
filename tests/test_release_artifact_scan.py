@@ -32,6 +32,8 @@ TOOL = ROOT / "tools" / "release-artifact-scan.py"
 PRIVATE_CONFIG = ROOT / "tools" / "publication" / ".gitleaks.toml"
 REAL_CONFIG = PRIVATE_CONFIG if PRIVATE_CONFIG.is_file() else ROOT / ".gitleaks.toml"
 RELEASE_TRAIN = ROOT / "tools" / "release-train.sh"
+if (ROOT / "PROVENANCE.md").is_file() and not TOOL.is_file():
+    raise unittest.SkipTest("private release artifact scanner is intentionally omitted")
 
 spec = importlib.util.spec_from_file_location("release_artifact_scan", TOOL)
 mod = importlib.util.module_from_spec(spec)
@@ -139,6 +141,7 @@ class DetectionTests(unittest.TestCase):
         "an3-env-secret": "AN3_AUTH_PEPPER=" + "A" * 8,
         "an3-google-client-id": "AN3_GOOGLE_CLIENT_ID=" + "A" * 8,
         "home-directory-path": "/" + "Users/" + "meo" + "meo" + "/roms",
+        "linux-home-directory-path": "/" + "home/" + "alice" + "/roms",
         "windows-home-path": "C:\\Users\\bob\\roms",
         "lan-address": "192." + "168.1.2",
         "personal-email": "test" + "@gmail.com",
@@ -158,6 +161,18 @@ class DetectionTests(unittest.TestCase):
         for rule_id, sample in self.SAMPLES.items():
             with self.subTest(rule=rule_id):
                 self.assertIn(rule_id, self._rules_for(sample.encode("utf-8")))
+
+    def test_generic_ci_runner_path_is_not_a_developer_account(self):
+        generic_runner = b"/" + b"home/" + b"runner/work/repo"
+        actual_account = b"/" + b"home/" + b"alice/work/repo"
+        self.assertNotIn("linux-home-directory-path", self._rules_for(generic_runner))
+        self.assertIn("linux-home-directory-path", self._rules_for(actual_account))
+
+    def test_emscripten_virtual_home_is_not_a_system_account(self):
+        virtual_home = b"/" + b"home/" + b"web_" + b"user/data"
+        lookalike_account = b"/" + b"home/" + b"web_user_extra/data"
+        self.assertNotIn("linux-home-directory-path", self._rules_for(virtual_home))
+        self.assertIn("linux-home-directory-path", self._rules_for(lookalike_account))
 
     def test_clean_payload_has_no_findings(self):
         self.assertEqual(self._rules_for(b"clean release payload\n"), set())
@@ -592,7 +607,13 @@ class ExactArtifactAllowlistTests(unittest.TestCase):
         entries = mod.load_exact_allowlist(ROOT / "tools" / "release-artifact-allowlist.json")
         self.assertEqual(
             [entry["id"] for entry in entries],
-            ["eden-upstream-contact-linux-x86_64"],
+            [
+                "eden-upstream-contact-linux-x86_64",
+                "emulatorjs-virtual-home-latest-19672",
+                "emulatorjs-virtual-home-latest-20657",
+                "emulatorjs-virtual-home-stable-417527",
+                "emulatorjs-virtual-home-stable-418518",
+            ],
         )
         self.assertNotIn("fixture" + "@outlook.com", json.dumps(entries))
 

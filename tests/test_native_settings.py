@@ -273,6 +273,15 @@ class NativeSettingsWorkaroundTests(unittest.TestCase):
         self.assertTrue(any(option["key"] == "melonds_render_mode" for option in registry["systems"]["nds"]["options"]))
 
 
+class NativeSettingsReleasePathTests(unittest.TestCase):
+    def test_development_checkout_paths_are_debug_only(self):
+        azahar = source(NATIVE / "src-tauri/src/azahar.rs")
+        fallback = re.compile(
+            r'\#\[cfg\(debug_assertions\)\]\s*\{\s*let development = Path::new\(env!\("CARGO_MANIFEST_DIR"\)\)'
+        )
+        self.assertEqual(len(fallback.findall(azahar)), 2)
+
+
 class NativeSettingsBehaviorTests(unittest.TestCase):
     def test_behavioral_model_suite_passes(self):
         result = subprocess.run(

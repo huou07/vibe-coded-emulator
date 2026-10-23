@@ -1,4 +1,4 @@
-# License audit — Vibe Coded Emulator (2026-10-21)
+# License audit — Vibe Coded Emulator (2026-10-21; Azahar provenance updated 2026-10-23)
 
 Scope: the account-free core-only application distributed by this repository —
 the Python web server (`app.py`, `bug_report.py`, `netcode.py` and
@@ -30,7 +30,7 @@ explicitly rather than assumed.
 | --- | --- | --- | --- | --- | --- |
 | Vibe Coded Emulator original code (`app.py`, `bug_report.py`, `netcode.py`, `qrcodegen.py`, `static/*`, `native-offline/src-tauri/src/*` except vendor, `native-offline/native-runtime/*` except vendor, `native-runtime/platform/android` Kotlin/C++ hosts) | this repository | GPL-3.0-or-later (owner's choice) | Vibe Coded Emulator project owner | Owner-authorized | Add `LICENSE`, SPDX headers, README/notices |
 | `qrcodegen.py` (vendored) | Project Nayuki | MIT | Project Nayuki | Compatible | Keep MIT header; noted in notices |
-| Azahar libretro 2126.1.1 (`azahar_libretro.dylib` / `.so`) | github.com/azahar-emu/azahar @ 2126.1.1 | GPL-2.0-or-later | Azahar Emulator Project | Compatible (GPLv2-or-later → GPLv3) | Preserve notices; ship license text; publish corresponding source offer |
+| Azahar libretro 2126.1.2 (`azahar_libretro.dylib` / `.so`) | SHA-256-pinned 2126.1.2 release assets; macOS Eden-companion build uses source commit `9e6f523a57fac9564ac0bf8286db3c3702d301ec` | GPL-2.0-or-later | Azahar Emulator Project | Compatible (GPLv2-or-later → GPLv3) | Preserve notices and per-platform manifests; ship license text; publish corresponding source offer |
 | melonDS DS libretro 1.3.1 | github.com/JesseTG/melonds-ds @ bc4e4b6… | GPL-3.0-or-later | melonDS DS contributors | Compatible | Same as above |
 | mGBA libretro 0.11-219-e31759b | github.com/mgba-emu/mgba @ e31759b… | MPL-2.0 | mGBA contributors | Compatible with conditions (MPL file-level copyleft; combined work GPLv3) | Ship MPL-2.0 text; note file-level copyleft |
 | MoltenVK 1.4.2 | KhronosGroup/MoltenVK | Apache-2.0 | The Khronos Group | Compatible | Ship license; keep NOTICE if upstream provides one |

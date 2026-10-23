@@ -16,7 +16,9 @@
 #include "../../video/vulkan/software_backend.h"
 
 #include <SDL2/SDL.h>
+#if !defined(AN3_WINDOWS_TAURI_HOST)
 #include <gtk/gtk.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -57,7 +59,12 @@ struct Options {
     std::vector<std::pair<std::string, std::string>> core_options;
     bool control_stdin = false;
     bool pick = false;
+#if defined(AN3_WINDOWS_TAURI_HOST)
+    // The Windows Tauri shell supplies ROM picking and all app controls.
+    bool no_controls = true;
+#else
     bool no_controls = false;
+#endif
     // Structured, agent-native test control plane (see docs/agent-control-plane.md).
     bool headless = false;
     bool no_audio = false;
@@ -177,6 +184,10 @@ std::string json_escape(const std::string& value) {
 }
 
 std::optional<std::string> choose_rom() {
+#if defined(AN3_WINDOWS_TAURI_HOST)
+    // The Windows application selects ROMs before launching this runtime.
+    return std::nullopt;
+#else
     // GTK uses the XDG desktop portal when Flatpak sets GTK_USE_PORTAL, while
     // remaining a native file picker for the DEB. The path never enters a
     // shell command and is validated as a regular file before core loading.
@@ -204,6 +215,7 @@ std::optional<std::string> choose_rom() {
     gtk_widget_destroy(dialog);
     while (g_main_context_iteration(nullptr, false)) {}
     return selected;
+#endif
 }
 
 std::optional<Options> parse_options(int argc, char** argv) {

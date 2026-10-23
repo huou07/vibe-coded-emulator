@@ -7,7 +7,10 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+WORKFLOW_PATH = ROOT / ".github/workflows/native-build.yml"
+if (ROOT / "PROVENANCE.md").is_file() and not WORKFLOW_PATH.is_file():
+    raise unittest.SkipTest("private native package workflow is intentionally omitted")
+WORKFLOW = WORKFLOW_PATH.read_text(encoding="utf-8")
 SMOKE = (ROOT / "tools/windows-runtime-smoke.ps1").read_text(encoding="utf-8")
 BUILDER = (ROOT / "native-offline/scripts/build-windows-automation.ps1").read_text(encoding="utf-8")
 TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
@@ -25,6 +28,24 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
     def test_release_windows_shell_uses_gui_subsystem_but_debug_keeps_console(self):
         main_rs = (ROOT / "native-offline/src-tauri/src/main.rs").read_text(encoding="utf-8")
         self.assertIn('#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]', main_rs)
+
+    def test_windows_host_runtime_avoids_gtk_and_bundles_runtime_license_closure(self):
+        build = (ROOT / "native-offline/scripts/build-windows-runtime.sh").read_text(encoding="utf-8")
+        runtime = (ROOT / "native-offline/native-runtime/platform/linux/linux_runtime.cpp").read_text(encoding="utf-8")
+        stub = (ROOT / "native-offline/native-runtime/platform/linux/windows_controls_stub.cpp").read_text(encoding="utf-8")
+        bundler = (ROOT / "native-offline/scripts/bundle-windows-runtime.mjs").read_text(encoding="utf-8")
+        self.assertIn("-DAN3_WINDOWS_TAURI_HOST", build)
+        self.assertIn("windows_controls_stub.cpp", build)
+        self.assertNotIn("linux_controls.cpp", build)
+        self.assertNotIn("gtk+-3.0", build)
+        self.assertIn("bool no_controls = true;", runtime)
+        self.assertIn("return std::nullopt;", runtime[runtime.index("std::optional<std::string> choose_rom") :])
+        self.assertIn("Windows native controls are provided by the application shell.", stub)
+        self.assertIn("pacman.exe", bundler)
+        self.assertIn("runtimePackages", bundler)
+        self.assertIn("runtimeLicensePackages", bundler)
+        self.assertIn("Missing runtime dependency license", bundler)
+        self.assertNotIn("cp(join(msys, 'ucrt64/share/licenses'),", bundler)
 
     def test_packaged_3ds_smoke_requires_sustained_core_and_present_progress(self):
         smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
@@ -220,7 +241,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
             self.assertNotIn(f"--testid', 'nav-{section}'", SMOKE)
 
     def test_windows_shell_virtual_input_changes_and_restores_the_visible_frame(self):
-        self.assertIn("'--css', '[data-native-button=\"8\"]'", SMOKE)
+        self.assertIn("'--css', '[data-native-button=\"8\"]', '--hold-ms', '150'", SMOKE)
         self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'red'", SMOKE)
         self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'blue'", SMOKE)
         self.assertIn("virtualAInputFrameStatus = $inputFrameCapture.status", SMOKE)

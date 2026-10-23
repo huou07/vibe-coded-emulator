@@ -98,6 +98,25 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertIn('for release_artifact in "$RELEASE_APK" "$RELEASE_AAB"; do', script)
         self.assertIn('shasum -a 256 "$(basename "$release_artifact")"', script)
 
+    def test_android_eden_build_maps_checkout_paths_before_compilation(self):
+        script = source(ROOT / "native-offline/scripts/build-android-eden.sh")
+        self.assertIn(
+            '"-ffile-prefix-map=${CMAKE_SOURCE_DIR}=/an3-eden-source"',
+            script,
+        )
+        self.assertIn(
+            '"-ffile-prefix-map={bridge.parents[1].as_posix()}=/an3-vce-source"',
+            script,
+        )
+        self.assertIn(
+            "root = root.replace(marker_line, marker_line + path_map, 1)",
+            script,
+        )
+        self.assertLess(
+            script.index("+ path_map"),
+            script.index('+ \'    add_subdirectory("${AN3_EDEN_BRIDGE_DIR}/integration"'),
+        )
+
     def test_macos_ndk_host_tag_uses_the_universal_darwin_directory(self):
         for name, variable in (
             ("build-android-runtime.sh", "an3_ndk_host"),

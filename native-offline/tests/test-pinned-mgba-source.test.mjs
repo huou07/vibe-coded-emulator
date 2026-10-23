@@ -9,6 +9,8 @@ const melonds = JSON.parse(await readFile(new URL("../shared/libretro-source-loc
 const macCoreBuilder = await readFile(new URL("../scripts/fetch-gba-nds-libretro.mjs", import.meta.url), "utf8");
 const linuxCoreBuilder = await readFile(new URL("../scripts/fetch-linux-gba-nds-libretro.mjs", import.meta.url), "utf8");
 const macEdenBuilder = await readFile(new URL("../scripts/build-macos-eden-companion.sh", import.meta.url), "utf8");
+const macAzaharBuilder = await readFile(new URL("../scripts/build-macos-azahar-libretro.sh", import.meta.url), "utf8");
+const macAzaharFetcher = await readFile(new URL("../scripts/fetch-azahar-libretro.mjs", import.meta.url), "utf8");
 const macAutomationBuilder = await readFile(new URL("../scripts/build-macos-automation.sh", import.meta.url), "utf8");
 const uiControl = await readFile(new URL("../src-tauri/src/ui_control.rs", import.meta.url), "utf8");
 const prepareEdenSource = await readFile(new URL("../scripts/prepare-eden-source.sh", import.meta.url), "utf8");
@@ -44,6 +46,17 @@ test("macOS melonDS DS uses the pinned 1.3.1 source at AN3's supported deploymen
   assert.match(macCoreBuilder, /--target", "melondsds_libretro"/);
   assert.match(macCoreBuilder, /CMAKE_OSX_DEPLOYMENT_TARGET=\$\{melonds\.deploymentTarget\}/);
   assert.doesNotMatch(macCoreBuilder, /buildbot\.libretro\.com\/nightly\/apple\/osx\/arm64\/latest/);
+});
+
+test("macOS Azahar uses the pinned source build with sanitized compiler paths", () => {
+  assert.match(macAzaharBuilder, /SOURCE_COMMIT="9e6f523a57fac9564ac0bf8286db3c3702d301ec"/);
+  assert.match(macAzaharBuilder, /--recurse-submodules --branch "\$VERSION"/);
+  assert.match(macAzaharBuilder, /-DENABLE_LIBRETRO=ON/);
+  assert.match(macAzaharBuilder, /--target citra_libretro/);
+  assert.match(macAzaharBuilder, /-ffile-prefix-map=\$\{HOME:\?\}=/);
+  assert.match(macAzaharBuilder, /CMAKE_CXX_FLAGS=\$PATH_MAP/);
+  assert.match(macAzaharFetcher, /AN3_REQUIRE_AZAHAR_SOURCE_BUILD/);
+  assert.match(macAzaharFetcher, /manifest\.buildMethod === "pinned-source"/);
 });
 
 test("macOS Eden companion build targets the app's declared minimum", () => {

@@ -13,7 +13,7 @@ published, official source archives are listed here.
 
 | Component | Version / revision | License | Copyright | Corresponding source |
 | --- | --- | --- | --- | --- |
-| Azahar libretro (`azahar_libretro.dylib`, `libazahar_libretro_android.so`) | 2126.1.1 | GPL-2.0-or-later | Azahar Emulator Project | https://github.com/azahar-emu/azahar/tree/2126.1.1 — releases also publish `azahar-unified-source-2126.1.1.tar.xz` |
+| Azahar libretro (`azahar_libretro.dylib`, `libazahar_libretro_android.so`) | 2126.1.2 | GPL-2.0-or-later | Azahar Emulator Project | https://github.com/azahar-emu/azahar/tree/2126.1.2 — releases also publish `azahar-unified-source-2126.1.2.tar.xz` |
 | melonDS DS libretro (`melondsds_libretro.so`/`.dylib`/`.dll`) | 1.3.1 @ `bc4e4b67d2d470d7c682810a1e892cafd6f9082b` | GPL-3.0-or-later | melonDS DS contributors | https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b |
 | mGBA libretro (`mgba_libretro.so`/`.dylib`/`.dll`) | 0.11-219 @ `e31759b24e7a4e3899285ff720d7b573ac328ae7` | MPL-2.0 | mGBA contributors | https://github.com/mgba-emu/mgba/tree/e31759b24e7a4e3899285ff720d7b573ac328ae7 |
 
