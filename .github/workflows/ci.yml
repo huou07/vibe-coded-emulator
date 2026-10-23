@@ -49,6 +49,7 @@ jobs:
         run: |
           npm install --global @playwright/cli@0.1.21
           command -v playwright-cli
+          playwright-cli install-browser chrome-for-testing --with-deps
       - name: Print Node version
         run: node --version
       - name: Native build-script syntax
