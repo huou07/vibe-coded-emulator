@@ -78,7 +78,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     // that is dropped at the end of the statement (E0716 on Windows).
     command
         .args(["--rom"]).arg(&rom).args(["--system",system,"--layout",layout,"--storage"])
-        .arg(&storage).arg("--control-stdin")
+        .arg(&storage).args(["--control-stdin", "--no-controls"])
         .current_dir(runtime.parent().unwrap())
         .env("GSETTINGS_SCHEMA_DIR", runtime.parent().unwrap().join("share/glib-2.0/schemas"))
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(errors)
@@ -102,7 +102,7 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     *SESSION.lock().map_err(|_| "Native session lock unavailable")? = Some(child);
     match rx.recv_timeout(Duration::from_secs(45)) {
         Ok(renderer) => Ok(NativeStart {active:true, engine:core.engine.into(), renderer,
-            detail:"Native game window opened. Menu: F2 · Pad: F3 · Next Layout: F1".into()}),
+            detail:"Native game window opened. Quick save/load: F5/F9 · Fullscreen: F4 · Exit: Esc".into()}),
         Err(_) => {
             let _ = stop();
             let detail = fs::read_to_string(log).unwrap_or_default();
