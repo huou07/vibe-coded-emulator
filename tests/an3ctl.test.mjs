@@ -154,6 +154,33 @@ test("Linux desktop UI uses the token-protected ui-control bridge", async (t) =>
   assert.equal((await adapter.uiWait({ target: "linux", testid: "pause-toggle", controlFile, timeout: 100 })).found, true);
 });
 
+test("desktop availability checks macOS and Linux control files independently", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "an3ctl-desktop-availability-"));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const macControl = join(temp, "macos-ui-control.json");
+  const linuxControl = join(temp, "linux-ui-control.json");
+  const adapter = new DesktopAdapter(ROOT);
+  adapter.windowsDebugProbe = async () => ({ reachable: false });
+
+  writeFileSync(macControl, "{}");
+  const macOnly = await adapter.available({
+    macos: { controlFile: macControl },
+    linux: { controlFile: linuxControl },
+  });
+  assert.equal(macOnly.targets.macos.available, true);
+  assert.equal(macOnly.targets.linux.available, false);
+
+  rmSync(macControl);
+  writeFileSync(linuxControl, "{}");
+  const linuxOnly = await adapter.available({
+    macos: { controlFile: macControl },
+    linux: { controlFile: linuxControl },
+  });
+  assert.equal(linuxOnly.targets.macos.available, false);
+  assert.equal(linuxOnly.targets.linux.available, true);
+  assert.equal(linuxOnly.available, true);
+});
+
 test("Windows local WebView2 probe uses only the loopback CDP endpoint", async (t) => {
   const server = createServer((request, response) => {
     assert.equal(request.url, "/json/list");

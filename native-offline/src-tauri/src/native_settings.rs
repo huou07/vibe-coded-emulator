@@ -344,31 +344,31 @@ mod tests {
         assert_eq!(all["systems"]["gba"]["renderer"], "opengl");
         assert_eq!(all["systems"]["nds"]["renderer"], "vulkan");
         assert_eq!(all["global"]["volume"], "100");
-        assert_eq!(all["global"]["experimental-phone-controller"], "false");
-        assert_eq!(all["global"]["experimental-lan-sync"], "false");
+        assert!(all["global"].get("experimental-phone-controller").is_none());
+        assert!(all["global"].get("experimental-lan-sync").is_none());
         assert_eq!(all["global"]["experimental-switch-eden"], "false");
         let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn experimental_preferences_are_off_for_a_fresh_profile_and_persist_opt_in() {
+    fn switch_eden_preference_is_off_for_a_fresh_profile_and_persists_opt_in() {
         let path = temp_path();
         let defaults = execute(&path, "all", None, None).unwrap();
-        assert_eq!(defaults["global"]["experimental-phone-controller"], "false");
-        assert!(!experimental_enabled(&path, "experimental-phone-controller").unwrap());
+        assert!(defaults["global"].get("experimental-phone-controller").is_none());
+        assert!(defaults["global"].get("experimental-lan-sync").is_none());
+        assert_eq!(defaults["global"]["experimental-switch-eden"], "false");
+        assert!(!experimental_enabled(&path, "experimental-switch-eden").unwrap());
 
         let edits =
-            serde_json::from_value(json!({"experimental-phone-controller": "true"})).unwrap();
+            serde_json::from_value(json!({"experimental-switch-eden": "true"})).unwrap();
         let saved = execute(&path, "save", None, Some(edits)).unwrap();
         assert_eq!(saved["ok"], true);
-        assert!(experimental_enabled(&path, "experimental-phone-controller").unwrap());
-        assert!(experimental_enabled(&path, "experimental-lan-sync").is_ok_and(|value| !value));
-        assert!(experimental_enabled(&path, "experimental-switch-eden").is_ok_and(|value| !value));
-        let all = execute(&path, "all", None, None).unwrap();
-        assert_eq!(all["global"]["experimental-phone-controller"], "true");
-        assert_eq!(all["global"]["experimental-lan-sync"], "false");
-        assert_eq!(all["global"]["experimental-switch-eden"], "false");
+        assert!(experimental_enabled(&path, "experimental-switch-eden").unwrap());
         assert!(experimental_enabled(&path, "unknown-feature").is_err());
+        let all = execute(&path, "all", None, None).unwrap();
+        assert!(all["global"].get("experimental-phone-controller").is_none());
+        assert!(all["global"].get("experimental-lan-sync").is_none());
+        assert_eq!(all["global"]["experimental-switch-eden"], "true");
         let _ = fs::remove_file(path);
     }
 

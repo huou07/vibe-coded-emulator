@@ -121,6 +121,7 @@ window.AN3OfflineEmulatorOrigin = "";
         const systems = (window.AN3NativeIntegratedSystems || []).filter(system => system !== "switch");
         if (info?.available) systems.push("switch");
         window.AN3NativeIntegratedSystems = systems;
+        if (typeof globalThis.AN3RefreshSystemOptions === "function") globalThis.AN3RefreshSystemOptions();
         if (typeof globalThis.AN3RerenderLibrary === "function") globalThis.AN3RerenderLibrary();
       }).catch(error => {
         window.AN3SwitchDetect = { ok: false, error: String(error) };

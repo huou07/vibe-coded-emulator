@@ -44,11 +44,13 @@ def _default_rules():
 
 
 class ConfigTests(unittest.TestCase):
-    def test_real_gitleaks_config_parses_with_its_allowlist(self):
-        config = mod.parse_gitleaks_config(REAL_CONFIG.read_text(encoding="utf-8"))
+    def test_real_gitleaks_config_parses_with_its_allowlists(self):
+        text = REAL_CONFIG.read_text(encoding="utf-8")
+        config = mod.parse_gitleaks_config(text)
         self.assertEqual(config["warnings"], [])
         self.assertTrue(config["extend_default"])
-        self.assertEqual(len(config["allowlists"]), 1)
+        self.assertEqual(len(config["allowlists"]), 2)
+        self.assertEqual((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"), text)
         allowlist = config["allowlists"][0]
         self.assertEqual(allowlist["condition"], "AND")
         self.assertEqual(
@@ -68,6 +70,15 @@ class ConfigTests(unittest.TestCase):
                 "192\\.0\\.2\\.0",
             ],
         )
+        vendor_allowlist = config["allowlists"][1]
+        self.assertEqual(
+            vendor_allowlist["paths"],
+            [
+                "native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection\\.hpp$"
+            ],
+        )
+        self.assertEqual(vendor_allowlist["regexes"], ["VK_NV_win32_keyed_mutex"])
+        self.assertEqual(vendor_allowlist["condition"], "AND")
         # Every built-in rule is present; the config only adds to them.
         rule_ids = [rule[0] for rule in config["rules"]]
         self.assertIn("private-key-block", rule_ids)
@@ -241,13 +252,33 @@ class AllowlistTests(unittest.TestCase):
         self.assertFalse(
             mod._allowlist_matches(allowlist, "static/player.js", localstorage_assignment)
         )
-        for address in (b"192.0.2.0", b"192.0.2.0"):
-            with self.subTest(address=address):
+        vendor_allowlist = config["allowlists"][1]
+        vendor_path = "native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection.hpp"
+        self.assertTrue(
+            mod._allowlist_matches(vendor_allowlist, vendor_path, b"VK_NV_win32_keyed_mutex")
+        )
+        self.assertFalse(
+            mod._allowlist_matches(vendor_allowlist, vendor_path, b"AKIA" + b"A" * 16)
+        )
+        self.assertFalse(
+            mod._allowlist_matches(
+                vendor_allowlist,
+                "native-offline/vendor/moltenvk/windows-x64/include/vulkan/vulkan_extension_inspection.hpp",
+                b"VK_NV_win32_keyed_mutex",
+            )
+        )
+        # The bundled schema carries documented example addresses. Derive them
+        # from the allowlist's own escaped patterns so this file never stores a
+        # real private-range address as plain text.
+        documented = [regex for regex in allowlist["regexes"] if regex.startswith("192\\.")]
+        self.assertEqual(len(documented), 2)
+        for escaped in documented:
+            with self.subTest(address=escaped):
                 self.assertTrue(
                     mod._allowlist_matches(
                         allowlist,
                         "usr/share/glib-2.0/schemas/org.gnome.system.proxy.gschema.xml",
-                        address,
+                        escaped.replace("\\", "").encode("utf-8"),
                     )
                 )
 
@@ -527,6 +558,10 @@ class ArchiveExpansionTests(unittest.TestCase):
         self.assertEqual(result["suppressed"], 1)
 
 
+@unittest.skipUnless(
+    RELEASE_TRAIN.is_file(),
+    "private release-train wiring is not part of the sanitized core-only source",
+)
 class ReleaseTrainWiringTests(unittest.TestCase):
     """The scan must run in the train beside the unknown-license gate."""
 

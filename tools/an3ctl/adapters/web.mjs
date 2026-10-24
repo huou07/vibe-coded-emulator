@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { An3Error, run, stateDir, httpJson } from "../lib/core.mjs";
-import { domTreeExpression, locateExpression } from "../lib/domtree.mjs";
+import { INTERACTIVE_SELECTOR, domTreeExpression, locateExpression } from "../lib/domtree.mjs";
 
 const SESSION = "an3-web";
 const DEFAULT_PORT = Number(process.env.AN3_WEB_PORT ?? 8099);
@@ -47,7 +47,7 @@ export class WebAdapter {
   }
 
   async available() {
-    const playwright = await run("bash", ["-lc", "command -v playwright-cli"]).catch(() => null);
+    const playwright = await run("playwright-cli", ["--version"], { timeoutMs: 5000 }).catch(() => null);
     const hasPlaywright = playwright?.code === 0;
     const state = this.readState();
     return {
@@ -117,7 +117,7 @@ export class WebAdapter {
       const goto = await this.playwright(["goto", target], { timeoutMs });
       if (goto.code === 0 && !/### Error/.test(goto.stdout)) return;
     }
-    const open = await this.playwright(["open", "--browser=chrome", target], { timeoutMs });
+    const open = await this.playwright(["open", "--browser=chromium", target], { timeoutMs });
     if (open.code !== 0 || /### Error/.test(open.stdout)) {
       throw new An3Error("E_TARGET_UNAVAILABLE", `Could not open the web target: ${(open.stderr || open.stdout).trim().slice(0, 300)}`);
     }
@@ -229,6 +229,27 @@ export class WebAdapter {
     const located = await this.locate(opts);
     if (!located?.found) {
       throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(opts.selector)}`, { selector: opts.selector });
+    }
+    if (action === "fill") {
+      const fileMetadataScript = "async (page) => page.evaluate(({ idx, selector }) => {"
+        + "const all = Array.from(document.querySelectorAll(selector));"
+        + "const el = all[idx];"
+        + "const files = Array.from(document.querySelectorAll('input[type=file]'));"
+        + "return { file: !!el && el.tagName === 'INPUT' && el.type === 'file', fileIndex: files.indexOf(el) };"
+        + "}, " + JSON.stringify({ idx: Number(located.index), selector: INTERACTIVE_SELECTOR }) + ")";
+      const fileMetadata = await this.runCode(fileMetadataScript);
+      if (fileMetadata?.file) {
+        const value = String(opts.value ?? "");
+        const uploadScript = "async (page) => {"
+          + "await page.locator('input[type=file]').nth(" + Number(fileMetadata.fileIndex) + ").setInputFiles(" + JSON.stringify(value) + ");"
+          + "return JSON.stringify({ performed: true, action: 'fill', value: " + JSON.stringify(value) + " });"
+          + "}";
+        const result = await this.runCode(uploadScript);
+        if (!result?.performed) {
+          throw new An3Error("E_ACTION_FAILED", "File upload did not complete.", { selector: opts.selector, result });
+        }
+        return result;
+      }
     }
     const body = actionBody(action, opts);
     const script = `async (page) => {\n  const located = JSON.parse(await page.evaluate(() => ${locateExpression(opts.selector, { nth: opts.nth ?? 0 })}));\n  if (!located.found) return JSON.stringify({ performed: false, reason: 'not-found' });\n  return await (async () => { ${body} })();\n}`;

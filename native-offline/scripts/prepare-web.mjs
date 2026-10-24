@@ -126,3 +126,4 @@ for (const entry of await readdir(destination)) {
   await cp(resolve(destination, entry), resolve(androidAssets, entry), { recursive: true, force: true });
 }
 await cp(resolve(nativeRoot, "shared", "native-layout-schema.json"), resolve(androidAssets, "native-layout-schema.json"), { force: true });
+await cp(resolve(repositoryRoot, "LICENSE"), resolve(androidAssets, "LICENSE"), { force: true });

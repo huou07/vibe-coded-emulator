@@ -2,7 +2,7 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Known safe renderer preference and GNOME proxy examples"
 condition = "AND"
 paths = [
@@ -17,3 +17,10 @@ regexes = [
   '192\.168\.0\.0',
   '192\.0\.2\.0',
 ]
+
+[[allowlists]]
+description = "Vendored Vulkan extension identifier, not a credential"
+condition = "AND"
+paths = ['native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection\.hpp$']
+regexTarget = "match"
+regexes = ['VK_NV_win32_keyed_mutex']

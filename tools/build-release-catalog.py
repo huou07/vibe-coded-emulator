@@ -43,7 +43,8 @@ LAYOUT = (
     ("Windows", "EXE", "x64", "vibecodedemulator-{v}-windows-x64-staging.exe"),
 )
 
-DEFAULT_CORES = ("mGBA", "melonDS", "Azahar", "Eden")
+# Eden is a separately launched companion, not a libretro core.
+DEFAULT_CORES = ("mGBA", "melonDS", "Azahar")
 
 UNSIGNED = {
     "DMG": "Ad-hoc signed only; not notarized.",

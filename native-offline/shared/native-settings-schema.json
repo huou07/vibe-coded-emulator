@@ -129,26 +129,6 @@
       "external": false
     },
     {
-      "id": "experimental-phone-controller",
-      "label": "Phone Controller (Experimental)",
-      "category": "experimental",
-      "type": "bool",
-      "default": "false",
-      "restart": "none",
-      "note": "Allows a paired phone to control games on this device. Hosting and pairing start only when you choose them.",
-      "external": true
-    },
-    {
-      "id": "experimental-lan-sync",
-      "label": "LAN Sync (Experimental)",
-      "category": "experimental",
-      "type": "bool",
-      "default": "false",
-      "restart": "none",
-      "note": "Enables local sync tools. Discovery and transfers start only when you choose Sync.",
-      "external": true
-    },
-    {
       "id": "experimental-switch-eden",
       "label": "Switch / Eden (Experimental)",
       "category": "experimental",

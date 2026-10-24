@@ -171,21 +171,15 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         if not workflows.is_dir():
             workflows = ROOT / "tools" / "publication" / ".github" / "workflows"
         ci = (workflows / "ci.yml").read_text(encoding="utf-8")
-        native = (workflows / "native-build.yml").read_text(encoding="utf-8")
+        # The sanitized snapshot replaces this source checkout's private native workflow.
         self.assertIn("python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py", ci)
+        self.assertIn("python3 tests/run_core_only_suite.py", ci)
         for retired in ("sync_engine.py", "google_sync.py", "3.3.1-performance-candidate"):
             self.assertNotIn(retired, ci)
         self.assertIn("'core-only/**'", ci)
-        self.assertIn("'core-only/**'", native)
-        self.assertIn("NativeInputActionsTest", native)
-        self.assertIn("NativeSettingsTabsTest", native)
-        for retired in (
-            "ControllerSendQueueTest",
-            "lan_host::tests::direct_transport_executes_canonical_utility_frames",
-            "android-sync-status",
-            "ANDROID_SYNC=",
-        ):
-            self.assertNotIn(retired, native)
+        # The sanitized snapshot removes both private package entrypoints and its catalog.
+        if not (workflows / "native-build.yml").exists():
+            self.assertFalse((ROOT / "native-offline" / "releases" / "catalog.json").exists())
 
     def test_phone_controller_native_modules_commands_and_permissions_are_removed(self):
         lib = (TAURI / "src" / "lib.rs").read_text(encoding="utf-8")
