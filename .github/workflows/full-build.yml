@@ -43,14 +43,29 @@ jobs:
       - name: Install JS dependencies
         working-directory: native-offline
         run: npm ci
-      - name: Prepare pinned cores, MoltenVK and web runtime
-        working-directory: native-offline
+      - name: Stage the shipped macOS cores from the public 3.6.10 DMG
         run: |
           set -euo pipefail
-          npm run prepare-azahar
-          npm run prepare-native-cores
-          npm run prepare-moltenvk
-          npm run prepare-web
+          curl --fail --location --retry 3 --silent --show-error             -o "$RUNNER_TEMP/an3-macos-cores.dmg"             https://an3tocom.space/download-app/release/vibecodedemulator-3.6.10-macos-aarch64.dmg
+          mount="$RUNNER_TEMP/an3-macos-cores"
+          mkdir -p "$mount"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$RUNNER_TEMP/an3-macos-cores.dmg"
+          trap 'hdiutil detach "$mount" -quiet || true' EXIT
+          res="$mount/VibeCodedEmulator.app/Contents/Resources"
+          test -f "$res/libretro/macos-arm64/mgba_libretro.dylib"
+          test -f "$res/azahar/macos-arm64/azahar_libretro.dylib"
+          mkdir -p native-offline/vendor/libretro/macos-arm64 native-offline/vendor/azahar/macos-arm64 native-offline/vendor/moltenvk/macos-arm64
+          cp -R "$res/libretro/macos-arm64/." native-offline/vendor/libretro/macos-arm64/
+          cp "$res/azahar/macos-arm64/azahar_libretro.dylib" native-offline/vendor/azahar/macos-arm64/
+          cp "$res/azahar/macos-arm64/manifest.json" native-offline/vendor/azahar/macos-arm64/manifest.json
+          cp "$res/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt" native-offline/vendor/azahar/macos-arm64/LICENSE
+          cp "$res/azahar/macos-arm64/libMoltenVK.dylib" native-offline/vendor/moltenvk/macos-arm64/
+          cp "$res/azahar/macos-arm64/moltenvk-manifest.json" native-offline/vendor/moltenvk/macos-arm64/manifest.json
+          cp "$res/azahar/macos-arm64/MoltenVK-LICENSE" native-offline/vendor/moltenvk/macos-arm64/LICENSE
+          ls -lh native-offline/vendor/libretro/macos-arm64 native-offline/vendor/azahar/macos-arm64
+      - name: Prepare the web runtime from the verified cache
+        working-directory: native-offline
+        run: npm run prepare-web
       - name: Build the macOS app bundle
         working-directory: native-offline
         env:
@@ -134,13 +149,18 @@ jobs:
       - name: Install JS dependencies
         working-directory: native-offline
         run: npm ci
-      - name: Prepare verified Windows core inputs
+      - name: Verify the vendored Windows core set
         shell: pwsh
         run: |
-          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/prepare-windows-cores.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned GBA/NDS core preparation failed.' }
-          node native-offline/scripts/fetch-azahar-desktop.mjs windows-x64
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned Azahar 3DS core preparation failed.' }
+          $root = 'native-offline/vendor/libretro/windows-x64'
+          $manifest = Get-Content "$root/manifest.json" -Raw | ConvertFrom-Json
+          foreach ($entry in $manifest.cores) {
+            $path = Join-Path $root $entry.coreName
+            if (-not (Test-Path $path)) { throw "Vendored core is missing: $($entry.coreName)" }
+            $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $entry.coreSha256) { throw "Vendored core hash mismatch: $($entry.coreName)" }
+          }
+          Write-Output "WINDOWS_VENDORED_CORES=PASS"
       - name: Build and verify Windows native runtime
         shell: pwsh
         env:
