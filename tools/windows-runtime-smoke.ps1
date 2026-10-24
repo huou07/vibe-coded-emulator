@@ -132,6 +132,21 @@ public static class An3WindowCapture {
   throw "No visible native player window displayed the fixture's $ExpectedColor frame; renderer diagnostics screenshot=$diagnosticsScreenshot windows=$(ConvertTo-Json -InputObject $candidates -Compress -Depth 5)"
 }
 
+function Save-DesktopScreenshot([string]$Name) {
+  Add-Type -AssemblyName System.Drawing
+  Add-Type -AssemblyName System.Windows.Forms
+  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  try {
+    $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+    $bitmap.Save((Join-Path $evidence $Name), [System.Drawing.Imaging.ImageFormat]::Png)
+  } finally {
+    $graphics.Dispose()
+    $bitmap.Dispose()
+  }
+}
+
 function Capture-RendererDiagnostics($Windows) {
   $controls = $Windows | Where-Object { $_.Title -match 'Controls$' } | Select-Object -First 1
   if (-not $controls) { return $null }
@@ -583,6 +598,13 @@ try {
     elseif ($nativeLaunchDetail -match '(?i)unavailable|not in the app.s private storage|could not|failed|missing|error') { 'error' }
     else { 'unknown' }
   $launchToastDetail = (Get-WindowsPageDiagnostics).toastText
+  # The shell redirects the player's stderr into the per-game storage. When a
+  # player starts but presents no window, that log names the failing subsystem.
+  $playerLogPath = Join-Path (Join-Path $env:APPDATA 'space.an3tocom.offline.automation') ("native-player/gba/$gameCardRomId/runtime.log")
+  $playerLogTail = if (Test-Path -LiteralPath $playerLogPath) {
+    $text = Get-Content -LiteralPath $playerLogPath -Raw -ErrorAction SilentlyContinue
+    if ($text) { $text.Substring([Math]::Max(0, $text.Length - 4000)) } else { '' }
+  } else { "<no log at $playerLogPath>" }
   Write-Evidence 'launch.json' ([ordered]@{
     sourceSha = $ExpectedSourceSha
     appVersion = $automationVersionMatch.Groups[1].Value.Trim()
@@ -591,6 +613,8 @@ try {
     launchToastDetail = $launchToastDetail
     playerProcessFound = [bool]$launchedPlayer
     nativeStatusTexts = @($nativeStatusNames | Select-Object -Last 6)
+    playerLogPath = $playerLogPath
+    playerLogTail = $playerLogTail
     lastStatusQueryError = $nativeStatusQueryError
   })
   if ($nativeLaunchState -ne 'running') {
@@ -627,7 +651,10 @@ try {
     catch { $frameErrors += $_.Exception.Message; Start-Sleep -Milliseconds 750 }
   }
   if (!$frameCapture) {
-    throw "The bundled Windows player presented no fixture frame within 30 seconds: $($frameErrors | Select-Object -Last 1)"
+    try { Save-DesktopScreenshot 'desktop-at-launch-failure.png' } catch { Write-Evidence 'desktop-capture-error.txt' ([ordered]@{ error = $_.Exception.Message }) }
+    $livePlayer = Get-Process -Id ([int]$runtimeProcess.ProcessId) -ErrorAction SilentlyContinue
+    $playerState = if ($livePlayer) { "alive, threads=$($livePlayer.Threads.Count)" } else { 'exited' }
+    throw "The bundled Windows player presented no fixture frame within 30 seconds ($playerState): $($frameErrors | Select-Object -Last 1)`nPlayer log:`n$playerLogTail"
   }
   $visibleNativeWindows = @([An3WindowCapture]::GetWindowsForProcess([int]$runtimeProcess.ProcessId))
   $controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' } | Select-Object -First 1
