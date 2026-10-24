@@ -447,6 +447,46 @@ try {
   $fixtureHash = (Get-FileHash $fixture -Algorithm SHA256).Hash.ToLowerInvariant()
   $env:AN3_UI_TEST_ROM = $fixture
 
+  # Windows Server hosted runners have no WASAPI endpoint; keep the probe and
+  # the shell-launched player on the dummy audio driver.
+  $env:SDL_AUDIODRIVER = 'dummy'
+  # Run the installed player once without the shell. If a windowed player cannot
+  # start on this runner, its own stdout/stderr and process state say so before
+  # the shell journey adds a second moving part.
+  $probeStorage = Join-Path $evidence 'player-probe-storage'
+  New-Item -ItemType Directory -Force -Path $probeStorage | Out-Null
+  $probeStdout = Join-Path $evidence 'player-probe-stdout.log'
+  $probeStderr = Join-Path $evidence 'player-probe-stderr.log'
+  $probe = Start-Process -FilePath $playerExe `
+    -ArgumentList @('--rom', $fixture, '--system', 'gba', '--control-stdin', '--no-controls', '--storage', $probeStorage) `
+    -WorkingDirectory $playerDir -PassThru `
+    -RedirectStandardOutput $probeStdout -RedirectStandardError $probeStderr
+  $probeDeadline = [DateTime]::UtcNow.AddSeconds(20)
+  while ([DateTime]::UtcNow -lt $probeDeadline) {
+    $probe.Refresh()
+    if ($probe.HasExited) { break }
+    if ((Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue) -match 'AN3_NATIVE_READY') { break }
+    Start-Sleep -Milliseconds 500
+  }
+  $probe.Refresh()
+  $probeReady = (Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue) -match 'AN3_NATIVE_READY'
+  $probeExited = $probe.HasExited
+  $probeMainWindow = $probe.MainWindowHandle
+  $probeThreads = $probe.Threads.Count
+  if (!$probe.HasExited) { & taskkill.exe /PID $probe.Id /T /F | Out-Null; $probe.WaitForExit(5000) | Out-Null }
+  Write-Evidence 'player-probe.json' ([ordered]@{
+    ready = $probeReady
+    exited = $probeExited
+    exitCode = if ($probeExited) { $probe.ExitCode } else { $null }
+    mainWindowHandle = [string]$probeMainWindow
+    threads = $probeThreads
+    stdout = (Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue)
+    stderr = (Get-Content -LiteralPath $probeStderr -Raw -ErrorAction SilentlyContinue)
+  })
+  if (!$probeReady) {
+    throw "The installed player did not reach AN3_NATIVE_READY on its own (exited=$probeExited; stderr=$(Get-Content -LiteralPath $probeStderr -Raw -ErrorAction SilentlyContinue))."
+  }
+
   $env:AN3_NATIVE_RUNTIME_PORT = '38471'
   $env:AN3_WINDOWS_CDP_LOCAL = '1'
   # Windows Server hosted runners have no WASAPI endpoint; keep native launch testable.
