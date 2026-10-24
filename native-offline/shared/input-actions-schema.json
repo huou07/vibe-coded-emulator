@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "description": "Canonical input/action contract shared by the in-game virtual controls, physical controller mapping, and Phone Controller. Gameplay buttons map to the existing libretro joypad ids; utility actions are one-shot host operations (never held bits). The circular D-pad geometry is defined once here and generated into Kotlin and JavaScript so the native overlay and the phone controller cannot drift.",
+  "buttons": {
+    "B": {"wire": "b", "libretro": 0, "label": "B"},
+    "Y": {"wire": "y", "libretro": 1, "label": "Y"},
+    "SELECT": {"wire": "select", "libretro": 2, "label": "Select"},
+    "START": {"wire": "start", "libretro": 3, "label": "Start"},
+    "UP": {"wire": "up", "libretro": 4, "label": "Up"},
+    "DOWN": {"wire": "down", "libretro": 5, "label": "Down"},
+    "LEFT": {"wire": "left", "libretro": 6, "label": "Left"},
+    "RIGHT": {"wire": "right", "libretro": 7, "label": "Right"},
+    "A": {"wire": "a", "libretro": 8, "label": "A"},
+    "X": {"wire": "x", "libretro": 9, "label": "X"},
+    "L": {"wire": "l", "libretro": 10, "label": "L"},
+    "R": {"wire": "r", "libretro": 11, "label": "R"}
+  },
+  "utility": {
+    "QUICK_SAVE": {"wire": "quick_save", "label": "Quick Save"},
+    "SPEED_UP": {"wire": "speed_up", "label": "Speed Up"},
+    "SPEED_DOWN": {"wire": "speed_down", "label": "Speed Down"},
+    "OPEN_MENU": {"wire": "open_menu", "label": "Menu"}
+  },
+  "directionalControls": [
+    {"id": "dpad", "label": "D-Pad"},
+    {"id": "joystick", "label": "Analog Joystick"},
+    {"id": "circular", "label": "Circular D-pad"}
+  ],
+  "speeds": ["0.5", "1", "2", "4", "8"],
+  "circular": {
+    "deadzone": 0.3,
+    "hysteresisDegrees": 6.0,
+    "sectors": [
+      {"id": "E", "center": 0, "actions": ["RIGHT"]},
+      {"id": "NE", "center": 45, "actions": ["UP", "RIGHT"]},
+      {"id": "N", "center": 90, "actions": ["UP"]},
+      {"id": "NW", "center": 135, "actions": ["UP", "LEFT"]},
+      {"id": "W", "center": 180, "actions": ["LEFT"]},
+      {"id": "SW", "center": 225, "actions": ["DOWN", "LEFT"]},
+      {"id": "S", "center": 270, "actions": ["DOWN"]},
+      {"id": "SE", "center": 315, "actions": ["DOWN", "RIGHT"]}
+    ]
+  }
+}

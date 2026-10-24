@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-multiplayer-configure"
+description = "Enables the native_multiplayer_configure command without any pre-configured scope."
+commands.allow = ["native_multiplayer_configure"]
+
+[[permission]]
+identifier = "deny-native-multiplayer-configure"
+description = "Denies the native_multiplayer_configure command without any pre-configured scope."
+commands.deny = ["native_multiplayer_configure"]

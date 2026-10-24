@@ -1,0 +1,96 @@
+# Local runtime data and SQLite WAL files
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Generated Python/runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local scratch and inspection files
+work/
+# AEH quality-interface runtime state: tools/verify-project.sh writes the gate
+# report declared by .aeh/quality.json here. Runtime state, never source.
+.hub/
+# playwright-cli session artifacts when it is invoked from the repo root
+.playwright-cli/
+
+# Local secrets and environment files
+.env
+.env.*
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+
+# OS-generated metadata (never source)
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+
+# Temporary release archives
+*.tgz
+*.tar.gz
+
+# Tauri native-offline build artifacts
+native-offline/dist/
+native-offline/node_modules/
+native-offline/src-tauri/target/
+native-offline/.signing/
+native-offline/src-tauri/gen/android/.gradle/
+native-offline/src-tauri/gen/android/build/
+native-offline/src-tauri/gen/android/app/build/
+native-offline/src-tauri/gen/android/local.properties
+# Tauri writes one capability schema per build target into gen/schemas (a Linux
+# build produces linux-schema.json, an Android build the mobile pair), so the
+# directory is regenerated output, not source. Tauri's own `tauri init` template
+# ignores `/gen/schemas` in `src-tauri/.gitignore` for the same reason. The
+# mobile ACL that RG-128 protected is asserted statically instead, in
+# tests/test_offline_consolidation.py, against capabilities/ and build.rs.
+native-offline/src-tauri/gen/schemas/
+.codegraph/
+# CodeGraph's current index location. It is derived tooling state, exactly like
+# `.codegraph/` above, so a re-index must not dirty the tree.
+.cg/
+
+# Release installer binaries (published via the catalog, not source commits)
+native-offline/releases/*.apk
+native-offline/releases/*.deb
+native-offline/releases/*.dmg
+native-offline/releases/*.flatpak
+native-offline/releases/*.exe
+native-offline/releases/*.idsig
+# The Android bundle is a build output like the APK beside it; without this the
+# builder leaves the tree dirty over a 60 MB binary that is never committed.
+native-offline/releases/*.aab
+# Every builder writes a `<artifact>.sha256` sidecar next to the installer it
+# just produced, so a documented staging build must not leave the tree dirty
+# over a checksum of a binary that is already ignored.
+native-offline/releases/*.sha256
+
+# Cloud credential directories must never be committed from a workstation
+.aws/
+**/.aws/
+.azure/
+.gcloud/
+
+# Editor and merge residue
+*.orig
+*.rej
+*.bak
+*~
+.idea/
+.vscode/
+
+# Flatpak builder cache left by native-offline/scripts/build-linux-staging.sh
+/.flatpak-builder/

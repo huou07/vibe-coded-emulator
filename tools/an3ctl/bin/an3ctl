@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# an3ctl launcher. Keeps the CLI invocable as `an3ctl` while the implementation
+# stays a single zero-dependency Node ESM module.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$here/an3ctl.mjs" "$@"

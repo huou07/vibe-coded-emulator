@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "note": "Lawful local diagnostic fixtures. Generated outputs and upstream binaries are never committed; capabilities describe workload, not accepted emulator behavior.",
+  "fixtures": [
+    {
+      "system": "gba",
+      "core": "mGBA",
+      "filename": "an3-homebrew-test.gba",
+      "format": "gba",
+      "source": "tools/testrom/gba_homebrew_test.py",
+      "source_revision": "b712042dcb8176f4abdd840a36a85e31cb2ad418",
+      "build": "python3 tools/testrom/gba_homebrew_test.py work/verification/homebrew.gba",
+      "size": 512,
+      "sha256": "28ce2a0220d178e4f79b8ae93a0a0aa1316e442f5979edfbeb837af7fa0d61bc",
+      "license": "GPL-3.0-or-later (project-generated)",
+      "provenance": "VCE's own hand-assembled diagnostic source, restored from Git history; no Nintendo logo, game code or assets.",
+      "capabilities": {
+        "boot": true,
+        "render": true,
+        "input": true,
+        "save": true,
+        "save_state": "observe on runtime",
+        "audio": false,
+        "representative_gameplay": false
+      }
+    },
+    {
+      "system": "3ds",
+      "core": "Azahar",
+      "filename": "boot.3dsx",
+      "format": "3dsx",
+      "source": "https://github.com/devkitPro/3ds-hbmenu/tree/958c31bcc7bb2bab30e1acbaab864b563643d3da",
+      "release": "https://github.com/devkitPro/3ds-hbmenu/releases/tag/v2.4.3",
+      "size": 383400,
+      "sha256": "9c95ef995e34f7fce2dab7bf3d6ff19d952837d032586a11256f5ae0b2a3fee6",
+      "license": "Upstream README permits reuse with credit to original authors; no SPDX licence file supplied. Kept locally, not redistributed.",
+      "provenance": "Existing local fixture matched the recorded v2.4.3 checksum; source/tag and author-credit notice inspected 2026-10-20.",
+      "capabilities": {
+        "boot": true,
+        "render": true,
+        "input": "menu only",
+        "save": "emulator state only",
+        "audio": "not established",
+        "representative_gameplay": false
+      }
+    },
+    {
+      "system": "nds",
+      "core": "melonDS",
+      "format": "nds",
+      "status": "NOT RUN",
+      "reason": "Select and verify a lawful homebrew fixture for this lane. Historical SDK/fixture availability is not a current host inventory."
+    },
+    {
+      "system": "switch",
+      "core": "Eden",
+      "format": "nro",
+      "status": "NOT RUN",
+      "reason": "Requires supported-host companion and lawful homebrew without firmware or keys. No new SDK install or binary download implied."
+    }
+  ]
+}

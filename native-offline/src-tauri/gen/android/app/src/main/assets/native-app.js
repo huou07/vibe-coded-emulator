@@ -1,0 +1,1075 @@
+// SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Compact offline-first app shell around the existing local-ROM library.
+// It only switches sections, filters rendered cards and forwards the obvious
+// "Open ROM" action to the import controls that static/offline.js already
+// owns. It never touches the player rendering pipeline.
+(() => {
+  const SECTION_TITLES = {play: "Play", library: "Library", devices: "Devices", settings: "Settings", help: "Help", about: "About"};
+
+  // A Tauri command rejection is a plain string, so `error.message` is
+  // undefined and the user was shown a generic sentence instead of the real
+  // reason a direct-LAN pairing or an action failed. Describe whatever was
+  // actually thrown before falling back.
+  const describeError = (error, fallback) => {
+    const text = typeof error === "string" ? error : (error?.message ?? String(error ?? ""));
+    return String(text || "").trim() || fallback;
+  };
+
+  const start = () => {
+    const app = document.getElementById("nativeApp");
+    // When a ROM launch query is present, offline.js replaces the body with the
+    // player, so there is no shell to wire.
+    if (!app) return;
+
+    const panels = [...document.querySelectorAll("[data-panel]")];
+    const navButtons = [...document.querySelectorAll("[data-nav]")];
+    const title = document.querySelector("[data-section-title]");
+    const back = document.querySelector(".native-back");
+    const searchWrap = document.getElementById("nativeSearchWrap");
+    const search = document.getElementById("nativeSearch");
+    const grid = document.getElementById("offlineGameGrid");
+
+    let current = "play";
+    // Play shows the four most recently added games instead of a second copy of
+    // the navigation. Assigned below, once the recent-game helpers exist.
+    let refreshRecent = () => {};
+
+    const filter = () => {
+      if (!search || !grid) return;
+      const query = search.value.trim().toLowerCase();
+      for (const card of grid.querySelectorAll(".offline-game-card")) {
+        const label = card.querySelector("h4")?.textContent?.toLowerCase() || "";
+        card.hidden = Boolean(query) && !label.includes(query);
+      }
+    };
+
+    const show = name => {
+      if (!SECTION_TITLES[name]) return;
+      current = name;
+      for (const panel of panels) panel.hidden = panel.dataset.panel !== name;
+      for (const button of navButtons) button.classList.toggle("active", button.dataset.nav === name);
+      if (title) title.textContent = SECTION_TITLES[name];
+      if (back) back.hidden = name === "play";
+      if (searchWrap) searchWrap.hidden = name !== "library";
+      document.body.dataset.section = name;
+      if (name === "play") refreshRecent();
+      if (name === "library") {
+        filter();
+        // Typing focus is useful with a mouse, but focusing the field on a
+        // touch device opens the keyboard as soon as Library appears.
+        if (window.matchMedia?.("(pointer:fine)")?.matches) search?.focus({preventScroll: true});
+      }
+    };
+
+    const openRom = () => {
+      show("library");
+      const details = document.getElementById("nativeAddRom");
+      if (details) details.open = true;
+      const picker = document.getElementById("offlineNativePicker");
+      const file = document.getElementById("offlineFile");
+      if (picker && !picker.hidden) picker.click();
+      else file?.click();
+    };
+
+    for (const button of navButtons) {
+      button.addEventListener("click", () => show(button.dataset.nav));
+    }
+    for (const button of document.querySelectorAll("[data-open-rom]")) {
+      button.addEventListener("click", openRom);
+    }
+    // A compact secondary link (About -> Licenses) moves to the destination and
+    // lands keyboard focus on the card it names instead of dumping the user at
+    // the top of a long Settings page.
+    for (const button of document.querySelectorAll("[data-goto]")) {
+      button.addEventListener("click", () => {
+        show(button.dataset.goto);
+        const target = document.getElementById(button.dataset.focusTarget || "");
+        if (!target) return;
+        const reduce = window.matchMedia?.("(prefers-reduced-motion:reduce)")?.matches;
+        target.scrollIntoView({block: "start", behavior: reduce ? "auto" : "smooth"});
+        target.setAttribute("tabindex", "-1");
+        target.focus({preventScroll: true});
+      });
+    }
+
+    // ---- Play: recently added games --------------------------------------
+    // The shell's Play destination is a launcher, not a duplicate nav grid. The
+    // library module owns IndexedDB and the native id recovery, so it exposes a
+    // read-only recent list and this view only renders and launches it.
+    const recentList = document.getElementById("nativeRecentList");
+    const SYSTEM_SHORT = {gba: "GBA", nds: "NDS", "3ds": "3DS", switch: "Switch"};
+    const declaredSystems = () => Array.isArray(window.AN3NativeIntegratedSystems) ? window.AN3NativeIntegratedSystems : [];
+    const systemLabel = system => SYSTEM_SHORT[system] || String(system || "").toUpperCase();
+    const sizeLabel = value => {
+      const size = Number(value) || 0;
+      if (!size) return "";
+      if (size >= 1073741824) return (size / 1073741824).toFixed(1).replace(/\.0$/, "") + " GB";
+      if (size >= 1048576) return (size / 1048576).toFixed(1).replace(/\.0$/, "") + " MB";
+      return Math.max(1, Math.round(size / 1024)) + " KB";
+    };
+    const openInLibrary = title => {
+      show("library");
+      if (search) {
+        search.value = title || "";
+        filter();
+        search.focus({preventScroll: true});
+      }
+    };
+    const canLaunch = game => typeof window.AN3NativeLaunchGame === "function" && Boolean(game.nativeRomId) && declaredSystems().includes(game.system);
+    const launchRecent = async (game, button) => {
+      if (!canLaunch(game)) { openInLibrary(game.title); return; }
+      button.disabled = true;
+      button.textContent = "Starting…";
+      try {
+        await window.AN3NativeLaunchGame(game.nativeRomId, game.system, "preserve", game.size);
+        button.textContent = "Playing";
+      } catch (error) {
+        const message = typeof error === "string" ? error : (error?.message || String(error || ""));
+        window.AN3OfflineToast?.(message || "Could not start the game.", true);
+        button.disabled = false;
+        button.textContent = "Play";
+        openInLibrary(game.title);
+      }
+    };
+    const renderRecent = async () => {
+      if (!recentList) return;
+      let games = [];
+      try { games = (await window.AN3OfflineRecent?.()) || []; } catch (_) { games = []; }
+      recentList.replaceChildren();
+      if (!games.length) {
+        const empty = document.createElement("div");
+        empty.className = "native-recent-empty";
+        const icon = document.createElement("span");
+        icon.className = "ui-mask ui-ref-gamepad-2";
+        icon.setAttribute("aria-hidden", "true");
+        const copy = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = "No games on this device yet.";
+        const span = document.createElement("span");
+        span.textContent = "Add a GBA, NDS or 3DS ROM and it appears here, ready to play offline.";
+        copy.append(strong, span);
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "button primary";
+        add.textContent = "Add your first ROM";
+        add.addEventListener("click", openRom);
+        empty.append(icon, copy, add);
+        recentList.appendChild(empty);
+        return;
+      }
+      for (const game of games.slice(0, 4)) {
+        const row = document.createElement("article");
+        row.className = "native-recent-card";
+        row.dataset.system = game.system || "";
+        const cover = document.createElement("span");
+        cover.className = "native-recent-cover";
+        cover.dataset.system = game.system || "";
+        cover.setAttribute("aria-hidden", "true");
+        const glyph = document.createElement("span");
+        glyph.className = "ui-mask ui-ref-gamepad-2";
+        cover.appendChild(glyph);
+        const copy = document.createElement("span");
+        copy.className = "native-recent-copy";
+        const name = document.createElement("h3");
+        name.textContent = game.title || game.name || "Untitled game";
+        const meta = document.createElement("small");
+        meta.textContent = [systemLabel(game.system), sizeLabel(game.size)].filter(Boolean).join(" · ");
+        copy.append(name, meta);
+        const play = document.createElement("button");
+        play.type = "button";
+        play.className = "button primary";
+        play.textContent = canLaunch(game) ? "Play" : "Open library";
+        play.addEventListener("click", () => launchRecent(game, play));
+        row.append(cover, copy, play);
+        recentList.appendChild(row);
+      }
+    };
+    refreshRecent = renderRecent;
+    window.AN3RerenderRecent = renderRecent;
+    renderRecent();
+
+    // Platform and capability facts come from the running shell, not a literal
+    // that says "GBA · NDS · 3DS" on an Android build without the 3DS host.
+    const platformNode = document.getElementById("nativePlatform");
+    if (platformNode) {
+      const ua = navigator.userAgent;
+      platformNode.textContent = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iOS" : /Macintosh|Mac OS X/i.test(ua) ? "macOS" : /Windows/i.test(ua) ? "Windows" : /Linux/i.test(ua) ? "Linux" : "Desktop";
+    }
+    const systemsNode = document.getElementById("nativePlaySystems");
+    if (systemsNode) {
+      const declared = declaredSystems();
+      systemsNode.textContent = declared.length ? declared.map(systemLabel).join(" · ") : "Bundled cores";
+    }
+
+    search?.addEventListener("input", filter);
+    // offline.js renders the library asynchronously and on every import/remove.
+    if (grid) new MutationObserver(filter).observe(grid, {childList: true, subtree: true});
+
+    document.body.dataset.section = current;
+
+    // Preserve the platform-specific staging label used during Android QA.
+    const envLabel = document.getElementById("nativeEnvLabel");
+    if (envLabel && /Android/i.test(navigator.userAgent)) envLabel.textContent = "Android";
+
+    // Phone controller: the platform host (Rust on desktop, Kotlin on Android)
+    // owns the session and the input injection; this panel only starts/stops it
+    // and reports the truthful state. No token, countdown, or address is shown.
+    const controllerCard = document.getElementById("nativeControllerCard");
+    const controllerButton = document.getElementById("nativeControllerStart");
+    const controllerJoinButton = document.getElementById("nativeControllerJoin");
+    const controllerPairCode = document.getElementById("nativeControllerPairCode");
+    const controllerCode = document.getElementById("nativeControllerCode");
+    const controllerStatus = document.getElementById("nativeControllerStatus");
+    const controllerPad = document.getElementById("nativeControllerPad");
+    const controllerPadHead = document.getElementById("nativeControllerPadHead");
+    const controllerLayout = document.getElementById("nativeControllerLayout");
+    const controllerMovement = document.getElementById("nativeControllerMovement");
+    const controllerPadState = document.getElementById("nativeControllerPadState");
+    const controllerDisconnect = document.getElementById("nativeControllerDisconnect");
+    const controllerTouchscreen = document.getElementById("nativeControllerTouchscreen");
+    const controllerCircular = document.getElementById("nativeControllerCircular");
+    const controllerDpad = controllerPad ? controllerPad.querySelector(".ctrl-dpad") : null;
+    const controllerPadButtons = [...document.querySelectorAll("[data-native-controller-button]")];
+    const controllerSticks = [...document.querySelectorAll("[data-native-controller-stick]")];
+    const controllerUtilities = [...document.querySelectorAll("[data-native-controller-util]")];
+    if (controllerCard && controllerButton && window.AN3NativeController) {
+      controllerCard.hidden = false;
+      // The pad reuses the web Phone Controller structure and the shared
+      // canonical input action model, so the packaged app and the web pad
+      // cannot drift. Only the transport differs (direct LAN frames here).
+      const inputActions = window.AN3InputActions || null;
+      let timer = 0;
+      let sequence = 0;
+      let utilitySequence = 0;
+      let controllerMode = false;
+      let controllerWasPaired = false;
+      let system = "auto";
+      let manualLayout = false;
+      let movement = "dpad";
+      let circularRegion = null;
+      const pressed = new Set();
+      const axes = {lx: 0, ly: 0, rx: 0, ry: 0};
+      const touch = {active: false, x: 0, y: 0};
+      try {
+        const storedMovement = localStorage.getItem("an3-controller-movement");
+        if (storedMovement) movement = storedMovement;
+      } catch (_) {}
+      if (controllerMovement) controllerMovement.value = movement;
+      const setStatus = text => { if (controllerStatus) controllerStatus.textContent = text; };
+      const setPadState = text => { if (controllerPadState) controllerPadState.textContent = text; };
+      const words = status => {
+        if (!status.running) return "Off";
+        if (status.role === "controller") return status.inputActive ? "Connected" : "Connected — waiting for host";
+        if (!status.paired) return "Waiting for device";
+        return status.inputActive ? "Connected" : "Connected — input unavailable";
+      };
+      const layoutFor = value => {
+        if (value !== "auto") return value;
+        if (system === "nds" || system === "3ds" || system === "switch") return system;
+        if (system === "gba" || system === "gbc") return "gba";
+        return "custom";
+      };
+      const applyLayout = () => {
+        const layout = layoutFor(manualLayout && controllerLayout ? controllerLayout.value : "auto");
+        if (controllerPad) controllerPad.dataset.layout = layout;
+        if (controllerTouchscreen) controllerTouchscreen.hidden = !(layout === "nds" || layout === "3ds" || layout === "custom");
+        if (controllerLayout && !manualLayout) controllerLayout.value = layoutFor("auto");
+      };
+      const releaseCircular = () => {
+        let changed = false;
+        ["up", "down", "left", "right"].forEach(dir => { if (pressed.delete(dir)) changed = true; });
+        circularRegion = null;
+        if (controllerCircular) controllerCircular.removeAttribute("data-active");
+        if (changed) sendSnapshot();
+      };
+      const applyMovement = () => {
+        if (controllerMovement) movement = controllerMovement.value;
+        if (controllerDpad) controllerDpad.hidden = movement !== "dpad";
+        if (controllerCircular) controllerCircular.hidden = movement !== "circular";
+        if (movement !== "circular") releaseCircular();
+      };
+      const sendState = payload => {
+        if (!controllerMode || !window.AN3NativeController?.send) return;
+        sequence += 1;
+        const frame = Object.assign({s: sequence, b: [...pressed], a: [axes.lx, axes.ly, axes.rx, axes.ry]}, payload || {});
+        if (touch.active) frame.t = [touch.x, touch.y];
+        Promise.resolve(window.AN3NativeController.send(frame)).catch(error => {
+          setStatus(describeError(error, "Direct controller session ended"));
+        });
+      };
+      const sendSnapshot = () => sendState();
+      const sendUtility = action => {
+        if (!controllerMode || !action) return;
+        utilitySequence += 1;
+        sendState({u: [{action, sequence: utilitySequence}]});
+      };
+      const releaseAll = (transmit = true) => {
+        pressed.clear();
+        axes.lx = 0; axes.ly = 0; axes.rx = 0; axes.ry = 0;
+        touch.active = false; touch.x = 0; touch.y = 0;
+        circularRegion = null;
+        if (controllerCircular) controllerCircular.removeAttribute("data-active");
+        controllerSticks.forEach(stick => {
+          stick.classList.remove("active");
+          stick.style.setProperty("--sx", "0px");
+          stick.style.setProperty("--sy", "0px");
+        });
+        if (transmit) sendSnapshot();
+      };
+      const renderPad = status => {
+        const visible = status?.role === "controller" && status.running;
+        controllerMode = visible;
+        if (controllerPad) controllerPad.hidden = !visible;
+        if (controllerPadHead) controllerPadHead.hidden = !visible;
+        if (status && status.system) system = status.system;
+        if (visible) {
+          applyLayout();
+          applyMovement();
+          setPadState(words(status));
+        } else {
+          releaseAll();
+          controllerPadButtons.forEach(button => button.dataset.active = "false");
+        }
+      };
+      const releaseButton = button => {
+        const name = button.dataset.nativeControllerButton;
+        if (!pressed.delete(name)) return;
+        button.dataset.active = "false";
+        sendSnapshot();
+      };
+      controllerPadButtons.forEach(button => {
+        button.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          try { button.setPointerCapture(event.pointerId); } catch (_) {}
+          const name = button.dataset.nativeControllerButton;
+          if (pressed.has(name)) return;
+          pressed.add(name);
+          button.dataset.active = "true";
+          sendSnapshot();
+        });
+        button.addEventListener("pointerup", event => { event.preventDefault(); releaseButton(button); });
+        button.addEventListener("pointercancel", () => releaseButton(button));
+        button.addEventListener("pointerleave", () => releaseButton(button));
+        button.addEventListener("contextmenu", event => event.preventDefault());
+      });
+      controllerSticks.forEach(stick => {
+        const side = stick.dataset.nativeControllerStick;
+        let pointerId = null;
+        const update = event => {
+          const rect = stick.getBoundingClientRect();
+          const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+          let dx = event.clientX - (rect.left + rect.width / 2);
+          let dy = event.clientY - (rect.top + rect.height / 2);
+          const distance = Math.hypot(dx, dy);
+          if (distance > radius) { dx = dx * radius / distance; dy = dy * radius / distance; }
+          stick.style.setProperty("--sx", dx.toFixed(1) + "px");
+          stick.style.setProperty("--sy", dy.toFixed(1) + "px");
+          const nx = dx / radius, ny = dy / radius;
+          if (side === "left") { axes.lx = nx; axes.ly = ny; } else { axes.rx = nx; axes.ry = ny; }
+          sendSnapshot();
+        };
+        stick.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          pointerId = event.pointerId;
+          stick.classList.add("active");
+          try { stick.setPointerCapture(pointerId); } catch (_) {}
+          update(event);
+        });
+        stick.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          update(event);
+        });
+        const releaseStick = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          stick.classList.remove("active");
+          stick.style.setProperty("--sx", "0px");
+          stick.style.setProperty("--sy", "0px");
+          if (side === "left") { axes.lx = 0; axes.ly = 0; } else { axes.rx = 0; axes.ry = 0; }
+          sendSnapshot();
+        };
+        stick.addEventListener("pointerup", releaseStick);
+        stick.addEventListener("pointercancel", releaseStick);
+      });
+      if (controllerCircular && inputActions) {
+        let pointerId = null;
+        const update = event => {
+          const rect = controllerCircular.getBoundingClientRect();
+          const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+          const dx = (event.clientX - (rect.left + rect.width / 2)) / radius;
+          const dy = (event.clientY - (rect.top + rect.height / 2)) / radius;
+          const result = inputActions.circularDirections(dx, dy, circularRegion);
+          circularRegion = result.region;
+          const next = result.actions.map(action => action.toLowerCase());
+          let changed = false;
+          ["up", "down", "left", "right"].forEach(dir => {
+            const want = next.indexOf(dir) >= 0;
+            const has = pressed.has(dir);
+            if (want && !has) { pressed.add(dir); changed = true; }
+            else if (!want && has) { pressed.delete(dir); changed = true; }
+          });
+          if (next.length) controllerCircular.setAttribute("data-active", next.join(" "));
+          else controllerCircular.removeAttribute("data-active");
+          if (changed) sendSnapshot();
+        };
+        controllerCircular.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          pointerId = event.pointerId;
+          controllerCircular.classList.add("active");
+          try { controllerCircular.setPointerCapture(pointerId); } catch (_) {}
+          update(event);
+        });
+        controllerCircular.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          update(event);
+        });
+        const release = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          controllerCircular.classList.remove("active");
+          releaseCircular();
+        };
+        controllerCircular.addEventListener("pointerup", release);
+        controllerCircular.addEventListener("pointercancel", release);
+      }
+      if (controllerTouchscreen) {
+        let pointerId = null;
+        const map = event => {
+          const rect = controllerTouchscreen.getBoundingClientRect();
+          if (!(rect.width > 0 && rect.height > 0)) return null;
+          return {
+            x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+            y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
+          };
+        };
+        controllerTouchscreen.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          if (pointerId !== null) return;
+          pointerId = event.pointerId;
+          controllerTouchscreen.classList.add("active");
+          try { controllerTouchscreen.setPointerCapture(pointerId); } catch (_) {}
+          const point = map(event);
+          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendSnapshot(); }
+        });
+        controllerTouchscreen.addEventListener("pointermove", event => {
+          if (pointerId === null || event.pointerId !== pointerId) return;
+          event.preventDefault();
+          const point = map(event);
+          if (point) { touch.active = true; touch.x = point.x; touch.y = point.y; sendSnapshot(); }
+        });
+        const release = event => {
+          if (pointerId === null || (event && event.pointerId !== pointerId)) return;
+          pointerId = null;
+          controllerTouchscreen.classList.remove("active");
+          touch.active = false; touch.x = 0; touch.y = 0;
+          sendSnapshot();
+        };
+        controllerTouchscreen.addEventListener("pointerup", release);
+        controllerTouchscreen.addEventListener("pointercancel", release);
+      }
+      controllerUtilities.forEach(button => {
+        button.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          const wire = button.dataset.nativeControllerUtil;
+          const action = inputActions && inputActions.utilityWireToAction ? inputActions.utilityWireToAction[wire] : null;
+          if (!action) return;
+          button.dataset.active = "true";
+          sendUtility(action);
+          setTimeout(() => { button.dataset.active = "false"; }, 120);
+        });
+        button.addEventListener("contextmenu", event => event.preventDefault());
+      });
+      window.addEventListener("blur", () => { if (controllerMode) releaseAll(); });
+      if (controllerMovement) controllerMovement.addEventListener("change", () => {
+        movement = controllerMovement.value;
+        try { localStorage.setItem("an3-controller-movement", movement); } catch (_) {}
+        applyMovement();
+      });
+      if (controllerLayout) controllerLayout.addEventListener("change", () => { manualLayout = true; applyLayout(); });
+      if (controllerDisconnect) controllerDisconnect.addEventListener("click", async () => {
+        try { await window.AN3NativeController.stop(); } catch (_) {}
+        clearInterval(timer);
+        renderPad(null);
+        if (controllerCode) controllerCode.textContent = "\u2014";
+        setStatus("Off");
+      });
+      const refresh = async () => {
+        try {
+          const status = await window.AN3NativeController.status();
+          const controllerDisconnected = status.role === "controller" && controllerWasPaired && !status.paired;
+          if (controllerDisconnected) releaseAll(false);
+          controllerWasPaired = status.role === "controller" && status.paired;
+          controllerButton.textContent = status.running ? "Stop" : "Start Hosting";
+          if (controllerCode) controllerCode.textContent = status.running && status.code ? status.code : "\u2014";
+          if (controllerJoinButton) {
+            controllerJoinButton.textContent = status.canReconnect ? "Reconnect" : "Join Host";
+            controllerJoinButton.disabled = status.role === "controller" && status.paired;
+          }
+          const pairField = controllerPairCode?.closest(".native-field");
+          if (pairField) pairField.hidden = status.role === "controller";
+          renderPad(status);
+          setStatus(status.error ? status.error : words(status));
+        } catch (error) {
+          setStatus("Error");
+          if (controllerCode) controllerCode.textContent = "\u2014";
+          renderPad(null);
+        }
+      };
+      const poll = () => { clearInterval(timer); timer = setInterval(refresh, 1000); refresh(); };
+      controllerButton.addEventListener("click", async () => {
+        try {
+          const running = (await window.AN3NativeController.status()).running;
+          if (running) {
+            await window.AN3NativeController.stop();
+            clearInterval(timer);
+            if (controllerCode) controllerCode.textContent = "\u2014";
+            renderPad(null);
+            setStatus("Off");
+            return;
+          }
+          const session = await window.AN3NativeController.start();
+          if (controllerCode) controllerCode.textContent = session.code || "\u2014";
+          renderPad(session);
+          setStatus("Waiting for device");
+          poll();
+        } catch (error) {
+          setStatus("Error");
+          if (controllerCode) controllerCode.textContent = "\u2014";
+          renderPad(null);
+        }
+      });
+      controllerJoinButton?.addEventListener("click", async () => {
+        const status = await window.AN3NativeController.status().catch(() => ({}));
+        try {
+          let session;
+          if (status.canReconnect && typeof window.AN3NativeController.reconnect === "function") {
+            setStatus("Reconnecting to the paired host…");
+            session = await window.AN3NativeController.reconnect();
+          } else {
+            const code = String(controllerPairCode?.value || "").trim();
+            if (!/^\d{6}$/.test(code)) {
+              setStatus("Enter exactly six decimal digits.");
+              controllerPairCode?.focus();
+              return;
+            }
+            if (typeof window.AN3NativeController.join !== "function") {
+              setStatus("Direct LAN joining is not available in this build.");
+              return;
+            }
+            setStatus("Finding host on the local network…");
+            session = await window.AN3NativeController.join(code);
+          }
+          if (controllerCode) controllerCode.textContent = session.code || "—";
+          renderPad(session);
+          setStatus(session.error || (session.paired ? "Connected directly to host" : words(session)));
+          poll();
+        } catch (error) {
+          setStatus(describeError(error, "Could not join the direct LAN host."));
+        }
+      });
+      refresh();
+    }
+
+    // The About screen reports the version this build carries, so a stale
+    // literal cannot describe a newer package.
+    const versionNode = document.getElementById("nativeAppVersion");
+    if (versionNode && typeof window.AN3NativeAppVersion === "function") {
+      window.AN3NativeAppVersion().then(version => {
+        versionNode.textContent = version || "Unavailable in this build";
+      }).catch(() => { versionNode.textContent = "Unavailable in this build"; });
+    }
+
+    // Optional surfaces are user-controlled and off by default: Eden, LAN Sync
+    // and Phone Controller add a whole destination, and a user who only wants
+    // GBA, NDS and 3DS must never meet them. The decision belongs to the shell,
+    // not to a platform settings adapter: `native-flags.js` owns it on every
+    // platform, this card is the only UI that writes it, and the surfaces below
+    // are gates rather than disabled controls.
+    const flags = window.AN3ShellFlags;
+    const experimentalBody = document.getElementById("nativeExperimentalBody");
+    const experimentalStatus = document.getElementById("nativeExperimentalStatus");
+    // A surface is offered only where this host can complete it: Android ships
+    // no Eden companion, and a host without the controller bridge cannot host a
+    // phone. Offering the switch anyway would reveal a destination that shows
+    // nothing for that feature, which is the defect this card removes.
+    const surfaceAdapters = {
+      "experimental-switch-eden": () => Boolean(window.AN3NativeSwitch),
+      "experimental-lan-sync": () => Boolean(window.AN3NativeSync),
+      "experimental-phone-controller": () => Boolean(window.AN3NativeController),
+    };
+    const surfaceAvailable = id => (surfaceAdapters[id] ? surfaceAdapters[id]() : true);
+    const experimentalNames = {
+      "experimental-switch-eden": "Switch / Eden",
+      "experimental-lan-sync": "LAN Sync",
+      "experimental-phone-controller": "Phone Controller",
+    };
+    const sayExperimental = message => { if (experimentalStatus) experimentalStatus.textContent = message || ""; };
+
+    const experimentalStates = {eden: false, sync: false, controller: false};
+
+    const applyExperimentalSurfaces = () => {
+      const all = flags ? flags.all() : {};
+      const on = id => all[id] === true && surfaceAvailable(id);
+      experimentalStates.eden = on("experimental-switch-eden");
+      experimentalStates.sync = on("experimental-lan-sync");
+      experimentalStates.controller = on("experimental-phone-controller");
+      const syncCard = document.getElementById("nativeLanSyncCard");
+      if (syncCard) syncCard.hidden = !experimentalStates.sync;
+      const controllerCard = document.getElementById("nativeControllerCard");
+      if (controllerCard) controllerCard.hidden = !experimentalStates.controller;
+      if (!experimentalStates.eden) {
+        const card = document.getElementById("nativeSwitchCard");
+        if (card) card.hidden = true;
+      }
+      // With nothing enabled there is nothing on that destination, so the
+      // destination itself goes away rather than opening an empty page. The
+      // Optional features card in Settings is the way back in, and it is always
+      // present on every platform.
+      const anyOn = experimentalStates.eden || experimentalStates.sync || experimentalStates.controller;
+      // The destination buttons are addressed by data-nav, not by id, and the
+      // shell renders more than one of them (side rail and bottom bar).
+      for (const button of document.querySelectorAll('[data-nav="devices"]')) {
+        button.hidden = !anyOn;
+      }
+      // Never strand the user on a page whose destination just disappeared.
+      if (!anyOn && current === "devices") show("play");
+      // Turning the Switch companion on must reveal its row in the same pass;
+      // waiting for the next launch is the dead-control behaviour this card
+      // exists to remove.
+      if (experimentalStates.eden) refreshSwitchSurface();
+      return experimentalStates;
+    };
+
+    // Assigned by the Switch block below once it has wired the card; calling it
+    // before that is a no-op, so the flag store can ask for a re-check at any
+    // time without knowing the wiring order.
+    let refreshSwitchSurface = () => {};
+
+    const renderExperimental = () => {
+      if (!experimentalBody) return;
+      experimentalBody.textContent = "";
+      const definitions = (flags ? flags.definitions() : []).filter(definition => surfaceAvailable(definition.id));
+      if (!definitions.length) {
+        const note = document.createElement("p");
+        note.className = "native-muted";
+        note.textContent = "This host has no optional feature to offer; every one of them needs a companion or a bridge this build does not carry.";
+        experimentalBody.appendChild(note);
+        return;
+      }
+      for (const definition of definitions) {
+        const field = document.createElement("label");
+        field.className = "native-field native-flag-row";
+        field.dataset.experimental = definition.id;
+        // Addressed by the packaged control plane and by the UI tests: the row
+        // is the element a person clicks, so it is the element that carries the
+        // id (the real checkbox inside it stays hidden and labelled by the row).
+        field.dataset.testid = definition.id;
+        const text = document.createElement("span");
+        text.className = "native-flag-text";
+        const caption = document.createElement("strong");
+        caption.textContent = definition.label;
+        text.appendChild(caption);
+        if (definition.note) {
+          const note = document.createElement("small");
+          note.textContent = definition.note;
+          text.appendChild(note);
+        }
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "native-flag-input";
+        input.dataset.experimentalToggle = definition.id;
+        input.checked = flags.get(definition.id);
+        // The row carries the id, so it also carries the machine-readable state
+        // (the packaged UI control plane reads `data-state`); the checkbox keeps
+        // the accessible state.
+        field.dataset.state = input.checked ? "on" : "off";
+        input.addEventListener("change", () => {
+          const wanted = input.checked;
+          const saved = flags.set(definition.id, wanted);
+          if (!saved) {
+            // A refused write must not leave a control that claims a state the
+            // app will not honour on the next launch.
+            input.checked = !wanted;
+            field.dataset.state = input.checked ? "on" : "off";
+            sayExperimental("This build cannot remember the choice; nothing changed.");
+            return;
+          }
+          field.dataset.state = wanted ? "on" : "off";
+          const name = experimentalNames[definition.id] || definition.label;
+          sayExperimental(wanted
+            ? `${name} is on. ${definition.id === "experimental-switch-eden" ? "Open Devices to launch the companion." : "Open Devices to use it."}`
+            : `${name} is off. Its screen and controls are removed.`);
+          applyExperimentalSurfaces();
+        });
+        // A drawn track beside the real input: the checkbox carries the state
+        // and the keyboard behaviour, the track makes that state visible on
+        // every engine.
+        const track = document.createElement("span");
+        track.className = "native-flag-track";
+        track.setAttribute("aria-hidden", "true");
+        field.append(text, input, track);
+        experimentalBody.appendChild(field);
+      }
+    };
+
+    renderExperimental();
+    applyExperimentalSurfaces();
+    // The store is the single writer, so the view cannot drift: any change from
+    // the card (or a future entry point) re-applies the gates at once instead of
+    // asking the user to restart the app.
+    let refreshSyncLifecycle = () => {};
+    flags?.subscribe(() => {
+      applyExperimentalSurfaces();
+      refreshSyncLifecycle();
+    });
+
+    // Switch is a companion process, not a core, and it exists only on a host
+    // whose packaging step bundled one. A host without it must not advertise
+    // the destination at all, so the row stays hidden until detection says the
+    // companion is really there.
+    const switchCard = document.getElementById("nativeSwitchCard");
+    if (switchCard && window.AN3NativeSwitch) {
+      const switchStatus = document.getElementById("nativeSwitchStatus");
+      const switchMessage = document.getElementById("nativeSwitchMessage");
+      const switchStart = document.getElementById("nativeSwitchStart");
+      const switchStop = document.getElementById("nativeSwitchStop");
+      const say = message => { if (switchMessage) switchMessage.textContent = message || ""; };
+      const renderSwitch = () => window.AN3NativeSwitch.status().then(state => {
+        if (!state) return state;
+        if (switchStatus) {
+          switchStatus.textContent = state.running ? "Running" : (state.paused ? "Paused" : "Ready");
+        }
+        if (switchStart) switchStart.disabled = state.running === true;
+        if (switchStop) switchStop.hidden = state.running !== true;
+        say(state.error || state.detail || "");
+        return state;
+      }).catch(error => { say(error?.message || String(error)); return null; });
+      switchStart?.addEventListener("click", () => renderSwitch());
+      switchStop?.addEventListener("click", () => window.AN3NativeSwitch.stop().then(renderSwitch).catch(error => say(error?.message || String(error))));
+      // Detection is asynchronous and retried by native-bootstrap.js; reveal the
+      // row only for the answer that says the companion is actually present.
+      let switchAttempts = 0;
+      const revealSwitch = () => {
+        const detect = window.AN3SwitchDetect;
+        if (!experimentalStates.eden) { switchCard.hidden = true; return; }
+        if (detect?.available === true) {
+          switchCard.hidden = false;
+          if (switchStatus) switchStatus.textContent = "Ready";
+          renderSwitch();
+          return;
+        }
+        if (detect?.ok === true || switchAttempts >= 60) return;
+        switchAttempts += 1;
+        setTimeout(revealSwitch, 250);
+      };
+      refreshSwitchSurface = () => {
+        switchAttempts = 0;
+        revealSwitch();
+      };
+      revealSwitch();
+    }
+
+    const syncCard = document.getElementById("nativeLanSyncCard");
+    if (syncCard && window.AN3NativeSync) {
+      const syncStatus = document.getElementById("nativeSyncStatus");
+      const syncCode = document.getElementById("nativeSyncCode");
+      const syncMessage = document.getElementById("nativeSyncMessage");
+      const peersNode = document.getElementById("nativeSyncPeers");
+      const conflictsNode = document.getElementById("nativeSyncConflicts");
+      const pairCode = document.getElementById("nativeSyncPairCode");
+      const background = document.getElementById("nativeSyncBackground");
+      let discovery = [];
+      const reconnectAttempts = new Map();
+      const reconnectNextAt = new Map();
+      const reconnectPending = new Set();
+
+      const setMessage = message => { if (syncMessage) syncMessage.textContent = message || ""; };
+      const renderConflicts = (result, system, romId) => {
+        if (!conflictsNode) return;
+        conflictsNode.replaceChildren();
+        for (const conflict of result?.conflicts || []) {
+          const row = document.createElement("div");
+          row.className = "native-sync-peer";
+          const label = document.createElement("strong");
+          const set = conflict.local || conflict.remote || {};
+          label.textContent = "Save set conflict · " + (set.memberCount || (set.members || []).length) + " member(s)";
+          const actions = document.createElement("div");
+          actions.className = "native-sync-peer-actions";
+          for (const choice of ["local", "remote", "both"]) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "button";
+            button.textContent = choice === "local" ? "Keep this device" : choice === "remote" ? "Use other device" : "Keep Both";
+            button.addEventListener("click", async () => {
+              actions.querySelectorAll("button").forEach(item => { item.disabled = true; });
+              try {
+                await window.AN3NativeSync.resolveGameConflict(system, romId, conflict, choice);
+                row.remove();
+                setMessage("Save set conflict resolved.");
+              } catch (error) {
+                setMessage(error.message || String(error));
+                actions.querySelectorAll("button").forEach(item => { item.disabled = false; });
+              }
+            });
+            actions.appendChild(button);
+          }
+          row.append(label, actions);
+          conflictsNode.appendChild(row);
+        }
+      };
+      const stateText = peer => ({
+        paired: "Paired / Remembered",
+        available: "Available on this LAN",
+        connecting: "Connecting",
+        connected: "Connected",
+        offline: "Offline / Disconnected",
+        error: "Error / Re-pair required",
+      }[peer.state] || "Available");
+      const renderPeers = status => {
+        if (!peersNode) return;
+        peersNode.replaceChildren();
+        const remembered = new Map((status?.peers || []).map(peer => [peer.deviceId, {...peer, remembered: true}]));
+        for (const peer of discovery || []) {
+          if (!remembered.has(peer.deviceId)) remembered.set(peer.deviceId, {...peer, state: "available", remembered: false});
+        }
+        if (!remembered.size) {
+          peersNode.textContent = "No remembered or available LAN peers.";
+          return;
+        }
+        for (const peer of remembered.values()) {
+          const row = document.createElement("div");
+          row.className = "native-sync-peer";
+          const text = document.createElement("div");
+          const title = document.createElement("strong");
+          title.textContent = peer.name || peer.deviceId;
+          const detail = document.createElement("small");
+          detail.textContent = stateText(peer);
+          text.append(title, detail);
+          const actions = document.createElement("div");
+          actions.className = "native-sync-peer-actions";
+          if (peer.remembered && peer.state !== "connected") {
+            const reconnect = document.createElement("button");
+            reconnect.type = "button";
+            reconnect.className = "button";
+            reconnect.textContent = "Reconnect";
+            reconnect.addEventListener("click", async () => {
+              reconnect.disabled = true;
+              try { await window.AN3NativeSync.reconnect(peer.deviceId); setMessage("Connecting directly to " + (peer.name || "peer") + "…"); }
+              catch (error) { setMessage(error.message || String(error)); }
+              finally { reconnect.disabled = false; }
+            });
+            actions.appendChild(reconnect);
+          }
+          if (peer.remembered) {
+            const forget = document.createElement("button");
+            forget.type = "button";
+            forget.className = "button danger";
+            forget.textContent = "Forget";
+            forget.addEventListener("click", async () => {
+              forget.disabled = true;
+              try { await window.AN3NativeSync.forget(peer.deviceId); reconnectAttempts.delete(peer.deviceId); reconnectNextAt.delete(peer.deviceId); setMessage("Peer forgotten."); }
+              catch (error) { setMessage(error.message || String(error)); }
+              finally { forget.disabled = false; }
+            });
+            actions.appendChild(forget);
+          }
+          row.append(text, actions);
+          peersNode.appendChild(row);
+        }
+      };
+      const renderStatus = async status => {
+        if (!experimentalStates.sync || !status) return;
+        if (syncStatus) {
+          const connected = (status.peers || []).filter(peer => peer.state === "connected").length;
+          const connecting = (status.peers || []).filter(peer => peer.state === "connecting").length;
+          syncStatus.textContent = status.error || (connected ? String(connected) + " direct peer" + (connected === 1 ? "" : "s") + " connected" : connecting ? "Connecting directly to peer" : status.running ? "Hosting / ready to pair" : "Off");
+        }
+        if (syncCode) syncCode.textContent = status.running && status.code ? status.code : "—";
+        // Hosting starts with the surface (the card is only reachable while LAN
+        // Sync is on), so a "Start Hosting" button that stays available while
+        // the device is already advertising asks the user to repeat an action
+        // that already happened. Show the action that applies to the real state.
+        const startButton = document.getElementById("nativeSyncStart");
+        const stopButton = document.getElementById("nativeSyncStop");
+        if (startButton) startButton.hidden = status.running === true;
+        if (stopButton) stopButton.hidden = status.running !== true;
+        renderPeers(status);
+        if (status.running) {
+          for (const peer of status.peers || []) {
+            if (peer.state !== "offline" || reconnectPending.has(peer.deviceId)) continue;
+            const nextAt = reconnectNextAt.get(peer.deviceId) || 0;
+            if (Date.now() < nextAt) continue;
+            const attempt = reconnectAttempts.get(peer.deviceId) || 0;
+            reconnectPending.add(peer.deviceId);
+            reconnectNextAt.set(peer.deviceId, Date.now() + Math.min(60000, 2000 * (2 ** attempt)));
+            window.AN3NativeSync.reconnect(peer.deviceId).then(() => {
+              reconnectAttempts.delete(peer.deviceId);
+              reconnectNextAt.delete(peer.deviceId);
+            }).catch(() => {
+              reconnectAttempts.set(peer.deviceId, Math.min(5, attempt + 1));
+            }).finally(() => reconnectPending.delete(peer.deviceId));
+          }
+        }
+      };
+      const refresh = async () => {
+        if (!experimentalStates.sync) return;
+        try {
+          const current = await window.AN3NativeSync.status();
+          if (!experimentalStates.sync) return;
+          await renderStatus(current);
+        } catch (error) { setMessage(error.message || String(error)); }
+      };
+      const startHosting = async () => {
+        try {
+          setMessage("Starting direct LAN hosting…");
+          await window.AN3NativeSync.start();
+          await refresh();
+          setMessage("Waiting for a direct LAN peer.");
+        } catch (error) { setMessage(error.message || String(error)); }
+      };
+      document.getElementById("nativeSyncStart")?.addEventListener("click", startHosting);
+      document.getElementById("nativeSyncStop")?.addEventListener("click", async () => {
+        try { await window.AN3NativeSync.stop(); }
+        catch (error) { setMessage(error.message || String(error)); }
+        await refresh();
+      });
+      document.getElementById("nativeSyncJoin")?.addEventListener("click", async () => {
+        const code = String(pairCode?.value || "").trim();
+        if (!/^\d{6}$/.test(code)) { setMessage("Enter exactly six decimal digits."); pairCode?.focus(); return; }
+        try { setMessage("Finding the peer directly on the local network…"); await window.AN3NativeSync.join(code); await refresh(); setMessage("Device paired over the direct LAN session."); }
+        catch (error) { setMessage(error.message || String(error)); }
+      });
+      background?.addEventListener("change", () => {
+        window.AN3NativeSync.setBackgroundEnabled(background.checked);
+        setMessage(background.checked ? "Foreground reconnection is enabled; OS background networking is not promised." : "Foreground reconnection remains available.");
+      });
+      const decorateSyncButtons = () => {
+        for (const card of document.querySelectorAll(".offline-game-card[data-rom-id]")) {
+          const actions = card.querySelector(".card-actions");
+          const romId = card.dataset.romId;
+          const system = card.dataset.system;
+          if (!actions || !romId || !system || actions.querySelector("[data-native-sync-game]")) continue;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "button";
+          button.dataset.nativeSyncGame = "1";
+          button.textContent = "Sync save";
+          button.addEventListener("click", async () => {
+            button.disabled = true;
+            button.textContent = "Checking connection…";
+            setMessage("Checking for a paired LAN peer…");
+            try {
+              const result = await window.AN3NativeSync.syncGame(system, romId, "save", message => {
+                button.textContent = message.startsWith("Reading") ? "Reading game file…" : "Syncing save…";
+                setMessage(message);
+              });
+              renderConflicts(result, system, romId);
+              setMessage("Save set sync complete: " + result.counts.uploaded + " sent, " + result.counts.downloaded + " received" + (result.counts.conflicts ? "; conflict needs a choice" : "") + ".");
+            } catch (error) { setMessage(error.message || String(error)); }
+            finally { button.textContent = "Sync save"; button.disabled = false; }
+          });
+          actions.appendChild(button);
+        }
+      };
+      let syncButtonObserver = null;
+      let syncSurfaceEnabled = null;
+      const enableSyncSurface = () => {
+        if (grid && !syncButtonObserver) {
+          syncButtonObserver = new MutationObserver(decorateSyncButtons);
+          syncButtonObserver.observe(grid, {childList: true, subtree: true});
+        }
+        decorateSyncButtons();
+        window.AN3NativeSync.setEnabled(true, {
+          refresh,
+          onDiscovery: peers => { discovery = Array.isArray(peers) ? peers : []; },
+        }).catch(error => setMessage(error.message || String(error)));
+      };
+      const disableSyncSurface = () => {
+        syncButtonObserver?.disconnect();
+        syncButtonObserver = null;
+        grid?.querySelectorAll("[data-native-sync-game]").forEach(button => button.remove());
+        discovery = [];
+        if (syncStatus) syncStatus.textContent = "Off";
+        if (syncCode) syncCode.textContent = "—";
+        if (peersNode) peersNode.textContent = "LAN Sync is off.";
+        conflictsNode?.replaceChildren();
+        window.AN3NativeSync.setEnabled(false).catch(error => setMessage(error.message || String(error)));
+      };
+      refreshSyncLifecycle = () => {
+        const enabled = experimentalStates.sync;
+        if (syncSurfaceEnabled === enabled) return;
+        syncSurfaceEnabled = enabled;
+        if (enabled) enableSyncSurface();
+        else disableSyncSurface();
+      };
+      if (background) background.checked = window.AN3NativeSync.backgroundEnabled();
+      // Force one native stop on the initial off state too: a prior document
+      // in this WebView may have started the process-owned listener.
+      refreshSyncLifecycle();
+      addEventListener("pagehide", () => {
+        syncButtonObserver?.disconnect();
+        window.AN3NativeSync.setEnabled(false).catch(() => {});
+      }, {once: true});
+    }
+
+    const multiplayerCard = document.getElementById("nativeMultiplayerCard");
+    if (multiplayerCard && window.AN3NativeMultiplayer) {
+      const support = document.getElementById("nativeMultiplayerSupport");
+      const statusNode = document.getElementById("nativeMultiplayerStatus");
+      const messageNode = document.getElementById("nativeMultiplayerMessage");
+      const address = document.getElementById("nativeMultiplayerAddress");
+      const port = document.getElementById("nativeMultiplayerPort");
+      const hostButton = document.getElementById("nativeMultiplayerHost");
+      const joinButton = document.getElementById("nativeMultiplayerJoin");
+      const stopButton = document.getElementById("nativeMultiplayerStop");
+      const setMessage = message => { if (messageNode) messageNode.textContent = message || ""; };
+      const render = state => {
+        if (!state) return;
+        if (support) support.textContent = state.available === false ? "Unavailable" : "melonDS DS only";
+        if (statusNode) statusNode.textContent = state.configured ? (state.role === "host" ? "Host configured" : "Join configured") : "Off";
+        if (state.address && address && !address.value) address.value = state.address;
+        if (state.port && port) port.value = String(state.port);
+        if (state.detail && !state.error) setMessage(state.detail);
+      };
+      const configure = async role => {
+        const selectedPort = Number(String(port?.value || "47834").trim());
+        const selectedAddress = String(address?.value || "").trim();
+        if (!Number.isInteger(selectedPort) || selectedPort < 1 || selectedPort > 65535) {
+          setMessage("Enter a valid LAN port.");
+          port?.focus();
+          return;
+        }
+        if (role === "join" && !selectedAddress) {
+          setMessage("Enter the host's current LAN address.");
+          address?.focus();
+          return;
+        }
+        try {
+          setMessage(role === "host" ? "Preparing a direct melonDS LAN host…" : "Preparing a direct melonDS LAN join…");
+          render(await window.AN3NativeMultiplayer.configure(role, selectedAddress, selectedPort));
+          setMessage("Configuration saved. Launch the same NDS game on both devices.");
+        } catch (error) { setMessage(describeError(error, "LAN multiplayer configuration failed.")); }
+      };
+      hostButton?.addEventListener("click", () => configure("host"));
+      joinButton?.addEventListener("click", () => configure("join"));
+      stopButton?.addEventListener("click", async () => {
+        try { render(await window.AN3NativeMultiplayer.stop()); setMessage("LAN multiplayer left."); }
+        catch (error) { setMessage(describeError(error, "Could not leave LAN multiplayer.")); }
+      });
+      const refreshMultiplayer = async () => {
+        try { render(await window.AN3NativeMultiplayer.status()); } catch (error) { setMessage(describeError(error, "LAN multiplayer status unavailable.")); }
+      };
+      refreshMultiplayer();
+      const multiplayerTimer = setInterval(refreshMultiplayer, 2500);
+      addEventListener("pagehide", () => clearInterval(multiplayerTimer), {once: true});
+    }
+
+    show("play");
+  };
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, {once: true});
+  else start();
+})();
