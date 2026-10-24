@@ -327,6 +327,25 @@ try {
     throw 'Installed mGBA core is missing from the bundled libretro directory.'
   }
 
+  # The player loads vulkan-1.dll from its own directory or System32 only. A
+  # real machine gets that loader from its GPU driver; this runner has none, so
+  # the smoke adds the ephemeral package loader beside the player and records it.
+  # It is not part of the shipped artifact.
+  if ($env:AN3_TEST_VULKAN_LOADER) {
+    if (!(Test-Path -LiteralPath $env:AN3_TEST_VULKAN_LOADER)) {
+      throw "Test Vulkan loader is unavailable: $env:AN3_TEST_VULKAN_LOADER"
+    }
+    $loaderTarget = Join-Path $playerDir 'vulkan-1.dll'
+    Copy-Item -LiteralPath $env:AN3_TEST_VULKAN_LOADER -Destination $loaderTarget -Force
+    Write-Evidence 'test-vulkan-loader.json' ([ordered]@{
+      source = $env:AN3_TEST_VULKAN_LOADER
+      sourceSha256 = (Get-FileHash -LiteralPath $env:AN3_TEST_VULKAN_LOADER -Algorithm SHA256).Hash.ToLowerInvariant()
+      installed = $loaderTarget
+      installedSha256 = (Get-FileHash -LiteralPath $loaderTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+      note = 'ephemeral test dependency beside the installed player; not shipped'
+    })
+  }
+
   $distributionShellSha = (Get-FileHash $mainExe -Algorithm SHA256).Hash.ToLowerInvariant()
   $distributionShellBytes = [IO.File]::ReadAllBytes($mainExe)
   if ([Text.Encoding]::ASCII.GetString($distributionShellBytes).Contains('AN3_UI_CONTROL_FILE')) {

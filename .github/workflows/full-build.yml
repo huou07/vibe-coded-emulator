@@ -268,6 +268,7 @@ jobs:
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
           ARTIFACT_RUN_ID: ${{ github.run_id }}
+          AN3_TEST_VULKAN_LOADER: ${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin\vulkan-1.dll
         run: >-
           ./tools/windows-runtime-smoke.ps1
           -ArtifactDirectory artifacts/windows
