@@ -43,10 +43,13 @@ jobs:
       - name: Install JS dependencies
         working-directory: native-offline
         run: npm ci
-      - name: Stage the shipped macOS cores from the public 3.6.10 DMG
+      - name: Stage the shipped macOS cores from the 3.6.10 release DMG
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 --silent --show-error             -o "$RUNNER_TEMP/an3-macos-cores.dmg"             https://an3tocom.space/download-app/release/vibecodedemulator-3.6.10-macos-aarch64.dmg
+          # The website only serves catalog files, and 3.6.10 was replaced
+          # there by 3.6.12, so the immutable release asset is the pinned
+          # source for the shipped core set.
+          curl --fail --location --retry 3 --silent --show-error             -o "$RUNNER_TEMP/an3-macos-cores.dmg"             https://github.com/huou07/vibe-coded-emulator/releases/download/v3.6.10/vibecodedemulator-3.6.10-macos-aarch64.dmg
           mount="$RUNNER_TEMP/an3-macos-cores"
           mkdir -p "$mount"
           hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$RUNNER_TEMP/an3-macos-cores.dmg"
