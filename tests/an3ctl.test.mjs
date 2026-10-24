@@ -182,13 +182,12 @@ test("Windows local WebView2 probe uses only the loopback CDP endpoint", async (
 
 test("Windows UI click holds the real CDP pointer sequence when requested", async () => {
   const adapter = new DesktopAdapter(ROOT);
-  const evaluations = [
-    { found: true, index: 2 },
-    { performed: true, x: 41, y: 27 },
-  ];
+  // One page evaluation returns the located target and its measured point, so
+  // a live re-render cannot move the click to a different element.
+  const point = { found: true, performed: true, x: 41, y: 27 };
   const mouseEvents = [];
   adapter.withWindowsCdp = async (_opts, callback) => callback({
-    evaluateJson: async () => evaluations.shift(),
+    evaluateJson: async () => point,
     send: async (method, params) => mouseEvents.push({ method, params }),
   });
 
@@ -202,17 +201,15 @@ test("Windows UI click holds the real CDP pointer sequence when requested", asyn
   assert.deepEqual(result, { target: "windows", via: "cdp", performed: true, action: "click" });
   assert.deepEqual(mouseEvents.map(({ params }) => params.type), ["mouseMoved", "mousePressed", "mouseReleased"]);
   assert.ok(mouseEvents.every(({ method, params }) => method === "Input.dispatchMouseEvent" && params.x === 41 && params.y === 27));
+  assert.deepEqual(mouseEvents.map(({ params }) => params.buttons), [0, 1, 0]);
 });
 
 test("Windows UI click rejects an obstructed semantic target with hit-test details", async () => {
   const adapter = new DesktopAdapter(ROOT);
-  const evaluations = [
-    { found: true, index: 2 },
-    { performed: false, reason: "obstructed", hit: { testId: "blocking-overlay" } },
-  ];
+  const point = { found: true, performed: false, reason: "obstructed", hit: { testId: "blocking-overlay" } };
   let mouseEvents = 0;
   adapter.withWindowsCdp = async (_opts, callback) => callback({
-    evaluateJson: async () => evaluations.shift(),
+    evaluateJson: async () => point,
     send: async () => { mouseEvents += 1; },
   });
 

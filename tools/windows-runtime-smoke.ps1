@@ -557,24 +557,30 @@ try {
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'game-launch', '--json')
   $nativeStatus = $null
   $nativeStatusQueryError = $null
-  $deadline = [DateTime]::UtcNow.AddSeconds(50)
+  $nativeStatusNames = @()
+  $launchedPlayer = $null
+  $deadline = [DateTime]::UtcNow.AddSeconds(60)
   while ([DateTime]::UtcNow -lt $deadline) {
+    # A live bundled player process is the product's success condition; the
+    # card's status note is a UI hint that a re-render may replace.
+    $launchedPlayer = Get-CimInstance Win32_Process -Filter "Name = 'an3-native-runtime.exe'" |
+      Where-Object { $_.ParentProcessId -eq $mainProcess.Id } | Select-Object -First 1
     try {
       $nativeStatus = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-status', '--json')
       $nativeStatusQueryError = $null
       $currentStatusName = [string]$nativeStatus.data.node.name
+      if ($currentStatusName) { $nativeStatusNames += $currentStatusName }
       $isStarting = $currentStatusName -match '^(Starting native|Đang khởi động)\b'
+      if ($launchedPlayer) { break }
       if ($currentStatusName -and $currentStatusName -ne $initialNativeStatusName -and !$isStarting) { break }
     } catch {
       $nativeStatusQueryError = $_.Exception.Message
-      Start-Sleep -Milliseconds 500
     }
     Start-Sleep -Milliseconds 500
   }
-  $nativeLaunchDetail = if ($nativeStatus) { [string]$nativeStatus.data.node.name } else { '' }
-  $nativeLaunchState = if (!$nativeStatus) { 'unavailable' }
-    elseif ($nativeLaunchDetail -match '(?i)unavailable|not in the app.s private storage|could not|failed|missing') { 'error' }
-    elseif ($nativeLaunchDetail -match '(?i)window opened|is running inside') { 'running' }
+  $nativeLaunchDetail = if ($nativeStatusNames.Count -gt 0) { [string]$nativeStatusNames[-1] } else { '' }
+  $nativeLaunchState = if ($launchedPlayer) { 'running' }
+    elseif ($nativeLaunchDetail -match '(?i)unavailable|not in the app.s private storage|could not|failed|missing|error') { 'error' }
     else { 'unknown' }
   $launchToastDetail = (Get-WindowsPageDiagnostics).toastText
   Write-Evidence 'launch.json' ([ordered]@{
@@ -583,6 +589,8 @@ try {
     launchStatus = $nativeLaunchState
     launchDetail = $nativeLaunchDetail
     launchToastDetail = $launchToastDetail
+    playerProcessFound = [bool]$launchedPlayer
+    nativeStatusTexts = @($nativeStatusNames | Select-Object -Last 6)
     lastStatusQueryError = $nativeStatusQueryError
   })
   if ($nativeLaunchState -ne 'running') {
@@ -608,7 +616,19 @@ try {
   if (!$runtimeProcess -or !$runtimeWindow -or $runtimeWindow.MainWindowHandle -eq 0) {
     throw 'The shell did not retain a live bundled player process with its native game window.'
   }
-  $frameCapture = Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId)
+  # The process exists before its first frame is presented, so retry until the
+  # fixture's blue frame is actually on screen instead of sampling a black
+  # startup window.
+  $frameCapture = $null
+  $frameDeadline = [DateTime]::UtcNow.AddSeconds(30)
+  $frameErrors = @()
+  while ([DateTime]::UtcNow -lt $frameDeadline) {
+    try { $frameCapture = Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId); break }
+    catch { $frameErrors += $_.Exception.Message; Start-Sleep -Milliseconds 750 }
+  }
+  if (!$frameCapture) {
+    throw "The bundled Windows player presented no fixture frame within 30 seconds: $($frameErrors | Select-Object -Last 1)"
+  }
   $visibleNativeWindows = @([An3WindowCapture]::GetWindowsForProcess([int]$runtimeProcess.ProcessId))
   $controlsWindow = $visibleNativeWindows | Where-Object { $_.Title -match 'Controls$' } | Select-Object -First 1
   if ($controlsWindow) {

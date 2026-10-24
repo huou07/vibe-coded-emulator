@@ -233,12 +233,14 @@ export class DesktopAdapter {
       const selector = opts.selector;
       if (!selector) throw new An3Error("E_USAGE", "ui click --target windows requires a semantic selector");
       return this.withWindowsCdp(opts, async (cdp) => {
-        const located = await cdp.evaluateJson(locateExpression(selector, { nth: opts.nth ?? 0 }));
-        if (!located?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
-        const index = Number(located.index);
+        // Locate and measure in one page evaluation. A live list can re-render
+        // between two CDP round trips; an index resolved against the earlier
+        // list would then click whatever element moved into that slot.
         const point = await cdp.evaluateJson(`(() => {
-          const el = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}))[${index}];
-          if (!el || !el.isConnected) return JSON.stringify({ performed: false, reason: 'detached' });
+          const located = JSON.parse((${locateExpression(selector, { nth: opts.nth ?? 0 })}));
+          if (!located.found) return JSON.stringify({ found: false });
+          const el = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}))[located.index];
+          if (!el || !el.isConnected) return JSON.stringify({ found: true, performed: false, reason: 'detached' });
           el.scrollIntoView({ block: 'center' });
           const rect = el.getBoundingClientRect();
           const style = getComputedStyle(el);
@@ -256,6 +258,7 @@ export class DesktopAdapter {
           const enabled = !el.disabled && el.getAttribute('aria-disabled') !== 'true';
           const unobstructed = hit === el || el.contains(hit);
           return JSON.stringify({
+            found: true,
             performed: visible && enabled && unobstructed,
             reason: !visible ? 'not-visible' : !enabled ? 'disabled' : !unobstructed ? 'obstructed' : null,
             x, y,
@@ -263,13 +266,14 @@ export class DesktopAdapter {
             hit: nodeSummary(hit),
           });
         })()`);
-        if (!point?.performed) throw new An3Error("E_ACTION_FAILED", `Windows click target cannot receive input: ${describeSelector(selector)}`, { selector, hitTest: point });
-        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+        if (!point?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
+        if (!point.performed) throw new An3Error("E_ACTION_FAILED", `Windows click target cannot receive input: ${describeSelector(selector)}`, { selector, hitTest: point });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y, buttons: 0 });
         try {
-          await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+          await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1 });
           if (holdMs > 0) await new Promise(resolve => setTimeout(resolve, holdMs));
         } finally {
-          await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
+          await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", buttons: 0, clickCount: 1 });
         }
         return { target, via: "cdp", performed: true, action: "click" };
       });
