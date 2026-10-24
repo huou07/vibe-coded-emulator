@@ -225,6 +225,46 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
         with:
           python-version: '3.12'
+      - name: Install pinned LunarG Vulkan SDK for the loader
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.4.357.0'
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+          $expected = '81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d'
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan-sdk-$version.exe"
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "LunarG SDK checksum mismatch: $actual" }
+          $process = Start-Process -FilePath $installer -ArgumentList @('--root', $sdkRoot, '--accept-licenses', '--default-answer', '--confirm-command', 'install') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "LunarG SDK installer exited $($process.ExitCode)." }
+          "$sdkRoot\Bin" | Add-Content $env:GITHUB_PATH
+      - name: Configure hosted CPU Vulkan ICD
+        shell: pwsh
+        run: |
+          $roots = @(
+            "$env:ProgramFiles\Google\Chrome\Application",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application",
+            "$env:ProgramFiles\Microsoft\Edge\Application",
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application"
+          ) | Where-Object { Test-Path $_ }
+          $icd = $roots | ForEach-Object { Get-ChildItem $_ -Filter vk_swiftshader_icd.json -File -Recurse -ErrorAction SilentlyContinue } | Select-Object -First 1
+          if (!$icd) { throw 'Hosted Windows runner has no SwiftShader Vulkan ICD; the player cannot render without a GPU.' }
+          $manifest = Get-Content $icd.FullName -Raw | ConvertFrom-Json
+          $dll = Join-Path $icd.DirectoryName $manifest.ICD.library_path
+          if (!(Test-Path $dll)) { throw 'SwiftShader ICD library path does not resolve.' }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vce-windows-runtime-smoke" | Out-Null
+          $details = [ordered]@{
+            icd = $icd.FullName
+            icdSha256 = (Get-FileHash $icd.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            library = $dll
+            librarySha256 = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+            source = 'Installed Chromium SwiftShader; ephemeral test dependency only'
+          }
+          $details | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\vce-windows-runtime-smoke\vulkan-environment.json"
+          "VK_ICD_FILENAMES=$($icd.FullName)" | Add-Content $env:GITHUB_ENV
+          "VK_DRIVER_FILES=$($icd.FullName)" | Add-Content $env:GITHUB_ENV
       - name: Install and verify the packaged Windows runtime
         shell: pwsh
         env:
