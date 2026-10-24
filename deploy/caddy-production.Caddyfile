@@ -1,0 +1,60 @@
+# Production reverse-proxy configuration for example.com.
+#
+# READY_FOR_OWNER_ACTION. This file is prepared and reviewed but NOT active:
+# Caddy is not installed on this host, and nothing currently listens on 8088.
+# The live public path is still the Cloudflare Tunnel (cloudflared -> 127.0.0.1:8091).
+# Do not stop the tunnel until the checklist in
+# docs/checkpoints/direct-https-migration.md has been completed end to end.
+#
+# Install and activate (requires root / owner):
+#   apt install caddy
+#   install -m 0644 -o root -g root deploy/caddy-production.Caddyfile /etc/caddy/Caddyfile
+#   systemctl enable --now caddy
+#
+# Router port forwarding (iGate GW040-H), already configured per owner:
+#   WAN TCP 80  -> 192.0.2.8:8088
+#   WAN TCP 443 -> 192.0.2.8:8088
+# Caddy owns both: it terminates TLS on 443 and serves the HTTP->HTTPS redirect
+# on 8088. ACME HTTP-01 validation therefore works without extra ports.
+#
+# Ports 18088 and 3478 must NOT be forwarded to this host. Nothing here serves
+# them, and forwarding them would only expose unrelated services.
+
+{
+	# ACME account contact. Use an address the owner controls. Replace before
+	# installing; do not commit a real mailbox to source control.
+	email YOUR_EMAIL@example.com
+
+	# Caddy listens here instead of :80 so the existing router rule for port 80
+	# keeps working without a conflict with any other local listener.
+	http_port 8088
+}
+
+example.com, www.example.com {
+	encode zstd gzip
+
+	# Upstream is the VCE application. It must be bound to loopback: see
+	# "Bind the backend to loopback" in docs/checkpoints/direct-https-migration.md.
+	# WebSocket upgrades are forwarded transparently; no extra directive needed.
+	reverse_proxy 127.0.0.1:8091 {
+		# Save transfers and LAN payloads can be large and slow. Match the
+		# application's own limits rather than imposing a tighter proxy limit.
+		transport http {
+			read_timeout  0s
+			write_timeout 0s
+		}
+	}
+
+	header {
+		# The application already sets its own security headers; do not
+		# duplicate or weaken them here.
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/an3tocom.access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

@@ -1,0 +1,349 @@
+/* SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/*
+ * AN3 native app shell. Loaded after site.css + theme-violet.css, so it owns
+ * the app layout while reusing the shared violet palette. The in-game player
+ * is untouched: offline.js swaps the whole body for .player-page on launch.
+ */
+
+body.reference-shell .ui-ref-settings{-webkit-mask-image:url("/static/ui-ref-settings.svg");mask-image:url("/static/ui-ref-settings.svg")}
+
+html,body{height:100%}
+body.native-app-shell{
+  margin:0;
+  overflow-x:hidden;
+  background:var(--v-bg,#07060c);
+  color:var(--v-text,#f3f1fa);
+}
+/* `hidden` must win over the layout display rules below. The bottom
+   navigation lives outside .native-app, so it needs its own rule: without
+   it the gated Devices button stayed visible on a phone even while the
+   attribute said hidden. */
+.native-app [hidden],.native-bottomnav [hidden]{display:none !important}
+
+.native-app{
+  display:grid;
+  grid-template-columns:236px minmax(0,1fr);
+  min-height:100dvh;
+}
+
+/* Sidebar (landscape / tablet / desktop) */
+.native-sidebar{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  border-right:1px solid var(--v-line,#282238);
+  background:var(--v-surface-2,#0e0c18);
+  padding:22px 16px;
+}
+.native-brand{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  border:0;
+  background:none;
+  padding:4px 8px;
+  cursor:pointer;
+  color:var(--v-text,#f3f1fa);
+}
+.native-brand-mark{font-size:22px;font-weight:800;letter-spacing:.02em}
+.native-brand-logo{display:block;height:40px;width:auto;max-width:180px;object-fit:contain}
+.native-brand-sub{color:var(--v-violet-2,#a855f7);font-size:10px;font-weight:700;letter-spacing:.24em;text-transform:uppercase}
+.native-nav{display:flex;flex-direction:column;gap:4px}
+.native-nav-item{
+  display:flex;align-items:center;gap:12px;
+  width:100%;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:none;
+  padding:11px 12px;
+  color:var(--v-muted,#a5a0b6);
+  font-size:14px;font-weight:600;
+  text-align:left;cursor:pointer;
+  transition:background .16s ease,color .16s ease,border-color .16s ease;
+}
+.native-nav-item .ui-mask{width:19px;height:19px;color:currentColor}
+.native-nav-item:hover{background:var(--v-surface,#131020);color:var(--v-lavender,#c4b5fd)}
+.native-nav-item.active{background:var(--v-surface-3,#191532);border-color:var(--v-line-2,#38304f);color:#fff}
+.native-nav-item.active .ui-mask{color:var(--v-violet-2,#a855f7)}
+
+/* Main column */
+.native-main{display:flex;flex-direction:column;min-width:0}
+.native-topbar{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:12px;
+  border-bottom:1px solid var(--v-line,#282238);
+  background:rgba(8,7,13,.92);
+  backdrop-filter:blur(14px);
+  padding:14px 22px;
+  /* One bar height on every destination: the Library search must not push the
+     sticky bar 16px taller than the rest and shift content when switching. */
+  min-height:73px;
+}
+.native-title{margin:0;font-size:20px;font-weight:750;letter-spacing:-.02em}
+.native-topbar-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.native-icon-button{
+  display:grid;place-items:center;
+  width:38px;height:38px;
+  border:1px solid var(--v-line-2,#38304f);
+  border-radius:10px;background:var(--v-surface-2,#0e0c18);color:var(--v-lavender,#c4b5fd);cursor:pointer;
+}
+.native-back .ui-mask{width:18px;height:18px;transform:rotate(180deg)}
+.native-open-rom{display:inline-flex;align-items:center;gap:8px}
+.native-open-rom .ui-mask{width:16px;height:16px}
+/* A Play hero already owns the primary Open ROM action; a second copy in the
+   topbar asked the same question twice in the same view. */
+body[data-section="play"] .native-open-rom{display:none}
+/* The sticky topbar's back arrow duplicates the sidebar on desktop and only
+   earns its place once that sidebar collapses. */
+@media(min-width:901px){.native-back{display:none !important}}
+
+.native-content{padding:24px 22px 40px;min-width:0}
+#nativeContent:focus{outline:none}
+
+/* Play: launcher hero plus recently added games. */
+.native-panel-play{display:grid;gap:22px}
+.native-hero{
+  display:grid;grid-template-columns:minmax(0,1.15fr) minmax(260px,.85fr);gap:28px;align-items:end;
+  border:1px solid var(--v-line,#282238);border-radius:18px;
+  background:linear-gradient(120% 140% at 100% 0%, rgba(139,92,246,.2), transparent 58%), var(--v-surface-2,#0e0c18);
+  padding:30px 28px;
+}
+.native-eyebrow{margin:0 0 8px;color:var(--v-violet-2,#a855f7);font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+.native-hero h2{margin:0 0 10px;font-size:clamp(24px,2.3vw,32px);line-height:1.12;letter-spacing:-.025em}
+.native-hero .native-muted{max-width:58ch;margin:0 0 20px;font-size:14px}
+.native-hero-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.native-hero-actions .button{min-height:44px;padding:0 16px}
+.native-hero-actions .ui-mask{width:16px;height:16px}
+.native-hero-facts{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.native-hero-facts li{display:grid;gap:2px;border-left:2px solid var(--v-line-2,#38304f);padding:1px 0 1px 13px}
+.native-hero-facts strong{align-self:end;font-size:17px;font-weight:750;letter-spacing:-.01em}
+.native-hero-facts span{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
+.native-section-head h2{margin:0;font-size:16px;font-weight:750}
+.native-link{border:0;background:none;color:var(--v-lavender,#c4b5fd);font-size:13px;font-weight:650;padding:0 4px;min-height:36px;cursor:pointer}
+.native-link:hover{color:#fff;text-decoration:underline}
+.native-recent-list{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
+.native-recent-card{
+  display:grid;grid-template-columns:78px minmax(0,1fr) auto;align-items:center;gap:12px;
+  border:1px solid var(--v-line,#282238);border-radius:14px;background:var(--v-surface-2,#0e0c18);padding:10px;
+}
+.native-recent-cover{display:grid;place-items:center;width:78px;aspect-ratio:16/10;border:1px solid var(--v-line-2,#38304f);border-radius:9px;background:linear-gradient(135deg,var(--cover-a,#342a6b),var(--cover-b,#17122b));color:#fff}
+.native-recent-cover .ui-mask{width:24px;height:24px}
+.native-recent-copy{display:grid;gap:3px;min-width:0}
+.native-recent-copy h3{margin:0;font-size:14px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.native-recent-copy small{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-recent-card .button{min-height:38px;padding:0 13px;font-size:13px}
+.native-recent-empty{grid-column:1/-1;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border:1px dashed var(--v-line-2,#38304f);border-radius:14px;padding:20px;color:var(--v-muted,#a5a0b6)}
+.native-recent-empty>.ui-mask{width:26px;height:26px;color:var(--v-violet-2,#a855f7);flex:none}
+.native-recent-empty>div{display:grid;gap:3px;flex:1;min-width:200px}
+.native-recent-empty strong{display:block;color:var(--v-text,#f3f1fa);font-size:14px}
+.native-recent-empty div span{font-size:12px;line-height:1.45}
+
+/* Generated local-ROM cover: system-tinted, no fabricated catalogue art. */
+[data-system="gba"]{--cover-a:#4f46e5;--cover-b:#1c1442}
+[data-system="nds"]{--cover-a:#0e7490;--cover-b:#0c2533}
+[data-system="3ds"]{--cover-a:#b91c6b;--cover-b:#2c0f24}
+[data-system="switch"]{--cover-a:#b91c1c;--cover-b:#2a0f12}
+[data-system="gb"]{--cover-a:#4338ca;--cover-b:#171a3a}
+.native-grid .native-card-cover{
+  position:relative;display:flex;align-items:flex-end;aspect-ratio:16/9;padding:12px;overflow:hidden;
+  background:linear-gradient(135deg,var(--cover-a,#4f46e5),var(--cover-b,#1c1442));border-bottom:1px solid var(--v-line,#282238);
+}
+.native-grid .native-card-cover::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.05) 0 1px,transparent 1px 14px);pointer-events:none}
+.native-grid .native-card-cover .ui-mask{position:absolute;right:-8px;bottom:-12px;width:92px;height:92px;color:rgba(255,255,255,.18)}
+.native-grid .native-card-cover-label{position:relative;z-index:1;border:1px solid rgba(255,255,255,.3);border-radius:999px;background:rgba(7,6,12,.62);color:#fff;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+
+/* Cards and facts */
+.native-card{border:1px solid var(--v-line,#282238);border-radius:14px;background:var(--v-surface-2,#0e0c18);padding:20px;scroll-margin-top:94px}
+.native-card h2{margin:0 0 14px;font-size:17px;font-weight:750}
+/* Running copy keeps a readable measure on a wide desktop window instead of
+   stretching a sentence across the full card. */
+.native-card>:is(p,.native-muted,.native-note),.native-steps li{max-width:78ch}
+.native-help-about{display:none}
+.native-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.native-fact{display:flex;flex-direction:column;gap:5px;max-width:420px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);padding:12px 14px}
+.native-fact span{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-fact strong{font-size:15px;font-weight:650;word-break:break-word}
+.native-muted{color:var(--v-muted,#a5a0b6);font-size:14px;line-height:1.55;margin:0 0 16px}
+.native-note{display:flex;align-items:center;gap:8px;margin:16px 0 0;color:var(--v-muted,#a5a0b6);font-size:13px}
+.native-note .ui-mask{width:16px;height:16px;color:var(--v-green,#34d399)}
+.native-steps{display:grid;gap:12px;margin:0;padding:0;list-style:none;counter-reset:step}
+.native-steps li{display:grid;gap:3px;border-left:2px solid var(--v-violet,#8b5cf6);padding-left:14px}
+.native-steps strong{font-size:14px}
+.native-steps span{color:var(--v-muted,#a5a0b6);font-size:13px;line-height:1.5}
+
+/* Library */
+.native-search{display:flex;align-items:center;gap:8px;min-height:44px;border:1px solid var(--v-line,#282238);border-radius:999px;background:var(--v-bg-soft,#0b0912);padding:0 14px}
+.native-search .ui-mask{width:16px;height:16px;color:var(--v-muted,#a5a0b6)}
+.native-search input{border:0;background:none;color:var(--v-text,#f3f1fa);font-size:14px;min-width:150px;min-height:0;height:34px;padding:6px 0;outline:none}
+/* The shared theme gives every input a 44px minimum; inside this 44px pill the
+   field itself must be 34px or the topbar grows 2px only on Library. */
+body:not(.player-page) .native-search input{min-height:0;height:34px;padding:6px 0}
+.native-add{margin-bottom:18px;border:1px solid var(--v-line,#282238);border-radius:14px;background:var(--v-surface-2,#0e0c18);overflow:hidden}
+.native-add>summary{display:flex;align-items:center;gap:10px;padding:15px 18px;cursor:pointer;list-style:none;color:var(--v-text,#f3f1fa);font-size:14px}
+.native-add>summary::-webkit-details-marker{display:none}
+.native-add>summary .ui-mask{width:18px;height:18px;color:var(--v-violet-2,#a855f7)}
+.native-add-hint{margin-left:auto;color:var(--v-muted,#a5a0b6);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.native-form{display:grid;gap:12px;padding:0 18px 18px}
+.native-dropzone{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  border:1px dashed var(--v-line-2,#38304f);border-radius:12px;background:var(--v-bg-soft,#0b0912);
+  padding:22px;color:var(--v-muted,#a5a0b6);font-size:14px;cursor:pointer;text-align:center;
+}
+.native-dropzone:hover{border-color:var(--v-violet,#8b5cf6);color:var(--v-lavender,#c4b5fd)}
+.native-dropzone .ui-mask{width:26px;height:26px;color:var(--v-violet-2,#a855f7)}
+.native-dropzone input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.native-field{display:grid;gap:6px;max-width:520px;color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-field input,.native-field select{
+  border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912);
+  color:var(--v-text,#f3f1fa);padding:11px 12px;font-size:14px;min-height:44px;
+}
+.native-field input:focus,.native-field select:focus{outline:0;border-color:var(--v-violet,#8b5cf6)}
+/* The Phone Controller pad reuses the shared web pad classes (.ctrl-*) from
+   static/site.css so the packaged app and the web player cannot drift. */
+.native-native-picker{justify-content:center;min-height:48px}
+.native-status{margin:0;padding:0 18px 16px;color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-status:empty{display:none}
+
+.native-grid{display:grid;gap:22px}
+.native-grid .offline-system-section{display:grid;gap:12px}
+.native-grid .section-title{display:flex;align-items:center;justify-content:flex-start;gap:8px}
+.native-grid .section-title h3{margin:0;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--v-lavender,#c4b5fd)}
+.native-grid .section-title span{border:1px solid var(--v-line,#282238);border-radius:999px;padding:1px 8px;color:var(--v-muted,#a5a0b6);font-size:11px}
+.native-grid .game-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.native-grid .game-card{
+  display:block;border:1px solid var(--v-line,#282238) !important;border-radius:12px !important;
+  background:var(--v-surface-2,#0e0c18) !important;box-shadow:none !important;overflow:hidden;
+}
+.native-grid .game-card:hover{border-color:var(--v-violet,#8b5cf6) !important}
+.native-grid .game-card-body{display:grid;gap:8px;padding:14px}
+.native-grid .game-meta{margin:0}
+body.native-app-shell .native-grid .game-meta{display:none}
+.native-grid .badge{border:1px solid var(--v-line-2,#38304f);border-radius:999px;background:var(--v-bg-soft,#0b0912);color:var(--v-lavender,#c4b5fd) !important;padding:3px 9px;font-size:11px}
+.native-grid .game-card h4{margin:0;font-size:15px;font-weight:700;color:var(--v-text,#f3f1fa);overflow-wrap:anywhere}
+.native-grid .game-card .muted{color:var(--v-muted,#a5a0b6);font-size:12px}
+.native-grid .card-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.native-grid .card-actions .button{min-height:38px;padding:0 12px;font-size:13px}
+.native-grid .card-actions small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.45;max-width:100%}
+.native-grid .empty-state{grid-column:1/-1;border:1px dashed var(--v-line-2,#38304f);border-radius:12px;padding:26px;text-align:center;color:var(--v-muted,#a5a0b6)}
+.native-grid .empty-state strong{display:block;color:var(--v-text,#f3f1fa);margin-bottom:6px}
+
+/* Bottom navigation (portrait) */
+.native-bottomnav{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  display:none;
+  border-top:1px solid var(--v-line,#282238);
+  background:rgba(8,7,13,.96);
+  backdrop-filter:blur(14px);
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));
+}
+.native-bottomnav button{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  border:0;background:none;padding:6px 2px;color:var(--v-muted,#a5a0b6);
+  font-size:10px;font-weight:600;cursor:pointer;min-width:0;
+}
+.native-bottomnav button .ui-mask{width:20px;height:20px}
+.native-bottomnav button.active{color:var(--v-violet-2,#a855f7)}
+.native-bottomnav button span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* Five is the compact-bar limit; About moves to Help below the sidebar
+   breakpoint instead of crowding a sixth 10px label into 360px. */
+.native-bottomnav [data-nav="about"]{display:none}
+
+@media (max-width:900px){
+  .native-app{grid-template-columns:1fr}
+  .native-sidebar{display:none}
+  .native-bottomnav{display:flex}
+  .native-content{padding:18px 16px calc(84px + env(safe-area-inset-bottom,0px))}
+  .native-topbar{padding:12px 16px;min-height:69px}
+  .native-title{font-size:17px}
+  .native-open-rom span:last-child{display:none}
+  .native-open-rom{padding:0 12px;min-width:44px;justify-content:center}
+  .native-hero{grid-template-columns:1fr;padding:22px 18px;gap:18px}
+  .native-hero h2{font-size:24px}
+  .native-hero-facts{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .native-grid .game-grid{grid-template-columns:1fr}
+  .native-topbar-actions .native-search input{min-width:0;width:100%}
+  .native-topbar-actions .native-search{flex:1}
+  .native-help-about{display:block}
+}
+
+@media (max-width:620px){
+  .native-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .native-hero-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .native-recent-list{grid-template-columns:1fr}
+  .native-recent-card{grid-template-columns:64px minmax(0,1fr)}
+  .native-recent-cover{width:64px}
+  .native-recent-card .button{grid-column:2;justify-self:start}
+}
+
+@media (max-width:560px){
+  /* Library owns "Add ROM" in the page; the global topbar shortcut only made
+     the compact header wrap into a second, half-empty row. */
+  body[data-section="library"] .native-open-rom{display:none}
+  /* With no Open ROM button left on this row, the search should use the full
+     width instead of hugging the right edge of a shrunken action group. */
+  body[data-section="library"] .native-topbar-actions{flex:1 1 auto;margin-left:0}
+  body[data-section="library"] .native-search{width:100%}
+  /* At phone width the section title duplicates the active bottom-nav label;
+     dropping it keeps the Library header on one 69px row with the search. */
+  body[data-section="library"] .native-title{display:none}
+  .native-topbar{gap:8px;flex-wrap:wrap}
+  .native-search{order:3;width:100%}
+  .native-title{flex:1}
+}
+
+/* Two readable columns instead of two full-width help cards on a wide window. */
+@media (min-width:1120px){
+  .native-panel[data-panel="help"]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+}
+
+/* Game Settings / Application settings (canonical per-core settings UI) */
+.native-settings-body{display:grid;gap:10px}
+.native-settings-field{margin:0}
+.native-settings-field input[type="checkbox"]{justify-self:start;width:20px;height:20px}
+.native-settings-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6)}
+/* Optional features: one row per switch, with the label and its explanation
+   beside a control that is a whole 44px touch target, not a bare 20px box. */
+.native-flag-row{margin:0;max-width:none;padding:10px 12px;border:1px solid var(--v-line,#282238);border-radius:12px;background:var(--v-bg-soft,#0b0912);display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:44px;cursor:pointer}
+.native-flag-row:hover{border-color:var(--v-line-2,#38304f)}
+.native-flag-row:focus-within{outline:2px solid var(--v-violet,#8b5cf6);outline-offset:2px}
+.native-flag-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.native-flag-text strong{font-size:14px;font-weight:650;color:var(--v-text,#f3f1fa)}
+.native-flag-text small{max-width:78ch;font-size:12px;line-height:1.45;color:var(--v-muted,#a5a0b6)}
+/* The control is a native checkbox for state and keyboard, with a drawn track
+   so the off and on states look identical in WebKitGTK (the installed app),
+   Chromium and Firefox: WebKit still paints `appearance:none` checkboxes with
+   the GTK theme and rendered this one as a ring. The input stays focusable and
+   the row labels it, so nothing about the semantics changes. */
+.native-flag-input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+.native-flag-track{flex:none;position:relative;width:44px;height:26px;margin-top:0;border:1.5px solid var(--v-line-2,#38304f);border-radius:13px;background:var(--v-surface,#131020);transition:background .15s ease,border-color .15s ease}
+.native-flag-track::after{content:"";position:absolute;left:3px;top:50%;width:18px;height:18px;margin-top:-9px;border-radius:50%;background:var(--v-muted,#a5a0b6);transition:transform .15s ease,background .15s ease}
+.native-flag-input:checked+.native-flag-track{border-color:var(--v-violet,#8b5cf6);background:var(--v-violet,#8b5cf6)}
+.native-flag-input:checked+.native-flag-track::after{transform:translateX(18px);background:#fff}
+.native-flag-row:hover .native-flag-track{border-color:var(--v-lavender,#c4b5fd)}
+@media (max-width:560px){.native-flag-row{gap:10px;padding:10px}}
+.native-system-tabs,.native-settings-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.native-system-tab,.native-settings-tab{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--v-line,#282238);background:var(--v-surface-1,#120f1e);color:var(--v-text,#f4f2fb);font-size:13px;font-weight:650;cursor:pointer}
+.native-system-tab.active,.native-settings-tab.active{border-color:var(--v-violet,#8b5cf6);background:color-mix(in srgb,var(--v-violet,#8b5cf6) 22%,transparent)}
+.native-settings-group{display:grid;gap:12px;margin-top:6px}
+.native-settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.native-sync-mode{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.native-sync-mode label{display:flex;align-items:center;gap:8px;color:var(--v-text,#f3f1fa);font-size:13px}
+.native-sync-mode input{width:18px;height:18px}
+.native-sync-background{display:flex;align-items:center;gap:10px;min-height:44px;margin:12px 0 0;padding:10px 12px;border:1px solid var(--v-line,#282238);border-radius:12px;background:var(--v-bg-soft,#0b0912);color:var(--v-text,#f3f1fa);font-size:13px;cursor:pointer}
+.native-sync-background:hover{border-color:var(--v-line-2,#38304f)}
+.native-sync-background input{width:20px;height:20px;flex:none;accent-color:var(--v-violet,#8b5cf6)}
+.native-sync-login{display:grid;gap:10px;margin:10px 0}
+#nativeLanSyncCard .native-field,#nativeControllerCard .native-field,#nativeMultiplayerCard .native-field{max-width:360px}
+.native-pair-row{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;max-width:560px}
+.native-pair-row .native-field{flex:1 1 220px;max-width:none}
+.native-pair-row .button{flex:none;min-height:44px}
+.native-sync-code{margin:12px 0 4px;color:var(--v-muted,#a5a0b6)}
+.native-sync-code strong{font-size:24px;letter-spacing:.16em;color:var(--v-text,#f3f1fa)}
+.native-sync-peers{display:grid;gap:8px;margin-top:14px}
+.native-sync-peer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--v-line,#282238);border-radius:10px;background:var(--v-bg-soft,#0b0912)}
+.native-sync-peer small{display:block;color:var(--v-muted,#a5a0b6)}
+.native-sync-peer-actions{display:flex;gap:6px;flex-wrap:wrap}
+.native-sync-hint{display:block;font-size:11px;color:var(--v-muted,#a5a0b6);margin:10px 0 0}

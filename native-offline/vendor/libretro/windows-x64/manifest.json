@@ -1,0 +1,53 @@
+{
+  "cores": [
+    {
+      "sourceRevision": "e31759b24e7a4e3899285ff720d7b573ac328ae7",
+      "coreName": "mgba_libretro.dll",
+      "coreSha256": "bbd130b58b37611ea45b7b35cf90f7e42025c7c25a647183b68430861627d68e",
+      "version": "0.11-1-e31759b-dirty",
+      "licenseSha256": "cde215e5b42363eb28ca2462c4558ff4807b38f383c537624c31e44657ac58f4",
+      "size": 2683392,
+      "system": "gba",
+      "sourcePatch": "patches/mgba-msvc-dma-log.patch",
+      "sourceUrl": "https://github.com/mgba-emu/mgba/tree/e31759b24e7a4e3899285ff720d7b573ac328ae7",
+      "sourcePatchSha256": "fc45c7f43e973c63055cfad74f025c13a567d7fae40e4ffcb75a8a2a6e7450aa",
+      "provenance": "Built from pinned source with MSVC x64; logging-only preprocessing compatibility patch",
+      "engine": "mGBA libretro",
+      "licenseName": "mGBA-MPL-2.0.txt",
+      "upstreamVersion": "0.11-219-e31759b"
+    },
+    {
+      "sourceRevision": "bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "coreName": "melondsds_libretro.dll",
+      "coreSha256": "8010c185a33ce955d11d2dd207cb9a7ed6b50248a723ba398092255e386bc828",
+      "version": "1.3.1",
+      "archiveUrl": "https://github.com/JesseTG/melonds-ds/releases/download/v1.3.1/melondsds_libretro-win32-x86_64-Release.zip",
+      "licenseSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "size": 9641951,
+      "system": "nds",
+      "archiveSha256": "ec7ff94ae5be3a6308859ea33ec63ac9d9b12d940b2c93d012e9502f71e57681",
+      "sourceUrl": "https://github.com/JesseTG/melonds-ds/tree/bc4e4b67d2d470d7c682810a1e892cafd6f9082b",
+      "provenance": "Official v1.3.1 Windows x64 release; GitHub API digest verified",
+      "engine": "melonDS DS libretro",
+      "licenseName": "melonDS-DS-GPL-3.0-or-later.txt"
+    },
+    {
+      "system": "3ds",
+      "engine": "Azahar libretro",
+      "version": "2126.1.1",
+      "platform": "Windows x64",
+      "archiveName": "azahar-libretro-windows-x86_64-2126.1.1.zip",
+      "archiveSha256": "5503f28b7754819c1035abda42dc1ad7dc5b8ef948cb875d7bd4141d9a725b38",
+      "coreName": "azahar_libretro.dll",
+      "coreSha256": "7e0f842f159e226d49c130a74435be4af2a64130879a3b96eaed461eec7dd9d3",
+      "size": 33744384,
+      "archiveUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-libretro-windows-x86_64-2126.1.1.zip",
+      "sourceUrl": "https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-unified-source-2126.1.1.tar.xz",
+      "sourceSha256": "023b4b37fe8cbc6b59a7be5270a8c93d9c58f90cd8c6d8e00705b43f4c9ebee1",
+      "license": "GPL-2.0-or-later",
+      "licenseName": "Azahar-GPL-2.0-or-later.txt",
+      "licenseSha256": "a77e81713ddfe05f9f7f3a3c46de4147f82b5fe9d6e5e24af96e36a6de53f613"
+    }
+  ],
+  "platform": "Windows x64"
+}

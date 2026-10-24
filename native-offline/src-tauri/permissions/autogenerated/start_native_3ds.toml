@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-native-3ds"
+description = "Enables the start_native_3ds command without any pre-configured scope."
+commands.allow = ["start_native_3ds"]
+
+[[permission]]
+identifier = "deny-start-native-3ds"
+description = "Denies the start_native_3ds command without any pre-configured scope."
+commands.deny = ["start_native_3ds"]

@@ -1,0 +1,141 @@
+# Portable source checks run independently of native package jobs.
+name: ci
+
+on:
+  push:
+    branches: [main, 'core-only/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install native guard headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan-dev
+      - name: Python syntax
+        run: python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py
+      - name: Python regression suite
+        # Blanket discovery would also load the private release-train modules
+        # whose entrypoints are intentionally absent from this snapshot. The
+        # explicit contract runs the modules that belong to this source and
+        # fails closed when a module is neither included nor excluded with a
+        # reason, so nothing can go unrun quietly.
+        run: python3 tests/run_core_only_suite.py
+
+  node:
+    name: Node regression and native script checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - name: Install native JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Install pinned Playwright CLI for web UI tests
+        run: |
+          npm install --global @playwright/cli@0.1.21
+          command -v playwright-cli
+          playwright-cli install-browser chrome-for-testing --with-deps
+      - name: Print Node version
+        run: node --version
+      - name: Native build-script syntax
+        run: npm --prefix native-offline run check
+      - name: JavaScript regression suites
+        # Only tests/*.test.{js,mjs} hold Node suites here; native-offline/tests
+        # contains C++ and Objective-C++ sources, so a *.test.mjs glob under it
+        # matches nothing and node --test would fail on the empty pattern.
+        run: node --test --test-concurrency=1 tests/*.test.js tests/*.test.mjs
+
+  rust-portable:
+    name: Rust portable tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable toolchain action
+        with:
+          toolchain: '1.88.0'
+      - name: Print Rust versions
+        run: |
+          rustc --version
+          cargo --version
+      - name: Test portable Rust gateway
+        run: cargo test --locked --manifest-path rust-gateway/Cargo.toml
+
+  static-security:
+    name: Static checks and secret scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Check whitespace and conflict markers
+        run: |
+          set -euo pipefail
+          # The public repository is a fresh single-commit snapshot, so `HEAD^`
+          # does not exist there; a push to a long-lived branch adds one. Check
+          # whichever commit exists.
+          #
+          # Vendored third-party bytes (core headers and license texts, the font
+          # licence, the pinned patch file) keep their upstream trailing
+          # whitespace and are independently protected by SHA-256 or by the
+          # licence tests; rewriting them would break that identity. Tauri's
+          # generated Android scaffolding is repository-ignored and reproduced by
+          # the generator. Everything else in the tree is ours and must be clean.
+          excludes=(
+            -- .
+            ':(exclude)native-offline/src-tauri/gen/**'
+            ':(exclude)native-offline/native-runtime/core/vendor/**'
+            ':(exclude)native-offline/vendor/**'
+            ':(exclude)native-offline/patches/**'
+            ':(exclude)qrcodegen.py'
+            ':(exclude)static/fonts/**'
+          )
+          if git rev-parse --verify -q HEAD^ >/dev/null; then
+            git diff --check HEAD^ HEAD "${excludes[@]}"
+          else
+            git show --check --format= --no-renames HEAD "${excludes[@]}"
+          fi
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+
+  test:
+    name: test
+    if: ${{ always() }}
+    needs: [python, node, rust-portable, static-security]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Preserve the protected test status
+        env:
+          PYTHON_RESULT: ${{ needs.python.result }}
+          NODE_RESULT: ${{ needs.node.result }}
+          RUST_RESULT: ${{ needs.rust-portable.result }}
+          SECURITY_RESULT: ${{ needs.static-security.result }}
+        run: |
+          set -euo pipefail
+          test "$PYTHON_RESULT" = success
+          test "$NODE_RESULT" = success
+          test "$RUST_RESULT" = success
+          test "$SECURITY_RESULT" = success

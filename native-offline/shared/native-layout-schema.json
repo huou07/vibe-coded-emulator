@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "description": "The canonical multi-screen layout list for every native adapter. Each id is the persisted preference; coreValue is the exact token the libretro core accepts.",
+  "systems": {
+    "nds": [
+      {"id": "left-right", "label": "Left / Right", "coreOption": "melonds_screen_layout1", "coreValue": "left-right"},
+      {"id": "right-left", "label": "Right / Left", "coreOption": "melonds_screen_layout1", "coreValue": "right-left"},
+      {"id": "top-bottom", "label": "Top / Bottom", "coreOption": "melonds_screen_layout1", "coreValue": "top-bottom"},
+      {"id": "bottom-top", "label": "Bottom / Top", "coreOption": "melonds_screen_layout1", "coreValue": "bottom-top"},
+      {"id": "hybrid-top", "label": "Hybrid (focus top)", "coreOption": "melonds_screen_layout1", "coreValue": "hybrid-top"},
+      {"id": "hybrid-bottom", "label": "Hybrid (focus bottom)", "coreOption": "melonds_screen_layout1", "coreValue": "hybrid-bottom"},
+      {"id": "flipped-hybrid-top", "label": "Flipped hybrid (focus top)", "coreOption": "melonds_screen_layout1", "coreValue": "flipped-hybrid-top"},
+      {"id": "flipped-hybrid-bottom", "label": "Flipped hybrid (focus bottom)", "coreOption": "melonds_screen_layout1", "coreValue": "flipped-hybrid-bottom"},
+      {"id": "largescreen-top", "label": "Large screen (top)", "coreOption": "melonds_screen_layout1", "coreValue": "largescreen-top"},
+      {"id": "largescreen-bottom", "label": "Large screen (bottom)", "coreOption": "melonds_screen_layout1", "coreValue": "largescreen-bottom"},
+      {"id": "flipped-largescreen-top", "label": "Flipped large screen (top)", "coreOption": "melonds_screen_layout1", "coreValue": "flipped-largescreen-top"},
+      {"id": "flipped-largescreen-bottom", "label": "Flipped large screen (bottom)", "coreOption": "melonds_screen_layout1", "coreValue": "flipped-largescreen-bottom"}
+    ],
+    "3ds": [
+      {"id": "left-right", "label": "Side by Side", "coreOption": "citra_layout_option", "coreValue": "side_by_side"},
+      {"id": "top-bottom", "label": "Top / Bottom", "coreOption": "citra_layout_option", "coreValue": "default"},
+      {"id": "single-screen", "label": "Single Screen", "coreOption": "citra_layout_option", "coreValue": "single_screen"},
+      {"id": "large-screen", "label": "Large Screen", "coreOption": "citra_layout_option", "coreValue": "large_screen"}
+    ]
+  }
+}
