@@ -30,7 +30,12 @@ jobs:
       - name: Python syntax
         run: python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py
       - name: Python regression suite
-        run: python3 -m unittest discover -s tests -v
+        # Blanket discovery would also load the private release-train modules
+        # whose entrypoints are intentionally absent from this snapshot. The
+        # explicit contract runs the modules that belong to this source and
+        # fails closed when a module is neither included nor excluded with a
+        # reason, so nothing can go unrun quietly.
+        run: python3 tests/run_core_only_suite.py
 
   node:
     name: Node regression and native script checks

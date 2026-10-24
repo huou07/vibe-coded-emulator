@@ -417,10 +417,11 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertFalse((ANDROID_ACTIVITY.parent / "An3RomContentProvider.kt").exists())
         self.assertIn('const androidThreeDsUnavailable = system =>', library)
         self.assertIn('nativeIntegratedSystem(game.system)', library)
-        # No browser-only lock exists; the Android capability declaration is the
-        # only gate and the play control stays bound to it.
+        # Android's declared package capabilities control the play state,
+        # including the native-only Switch restriction on stale records.
         self.assertNotIn('browserThreeDsUnavailable', library)
-        self.assertIn('play.disabled=game.system==="html5"||androidThreeDsUnavailable(game.system);', library)
+        self.assertIn('play.disabled=game.system==="html5"||androidThreeDsUnavailable(game.system)||switchUnavailable;', library)
+        self.assertIn('!androidNativeShell && nativeIntegratedSystem("switch")', library)
 
     def test_android_library_capability_guard_behavior(self):
         subprocess.run(

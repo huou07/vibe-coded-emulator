@@ -227,6 +227,9 @@ class SwitchCompanionContractTests(unittest.TestCase):
         self.assertIn('switch_companion_launch_rom', bootstrap)
         # Capability is detected at runtime, not claimed statically.
         self.assertIn("AN3NativeSwitch.detect()", bootstrap)
+        self.assertIn("AN3RefreshSystemOptions()", bootstrap)
+        self.assertIn('system !== "switch" || (nativeOfflineApp && !androidNativeShell && nativeIntegratedSystem("switch"))', offline)
+        self.assertIn("!systemAvailable(system)", offline)
         # The rom-id launcher enforces .nro only.
         self.assertIn("Only Nintendo Switch .nro homebrew", self.companion.read_text(encoding="utf-8"))
         self.assertIn("switch_companion_launch_rom", self.lib)

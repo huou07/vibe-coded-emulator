@@ -172,13 +172,18 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
             workflows = ROOT / "tools" / "publication" / ".github" / "workflows"
         ci = (workflows / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py", ci)
+        self.assertIn("python3 tests/run_core_only_suite.py", ci)
         for retired in ("sync_engine.py", "google_sync.py", "3.3.1-performance-candidate"):
             self.assertNotIn(retired, ci)
         self.assertIn("'core-only/**'", ci)
         native_workflow = workflows / "native-build.yml"
         if not native_workflow.is_file():
+            # The sanitized snapshot replaces this source checkout's private
+            # native workflow and removes both private package entrypoints and
+            # the generated catalog that only that train produced.
             self.assertTrue((ROOT / "PROVENANCE.md").is_file())
             self.assertFalse(any(workflows.glob("native-*.yml")))
+            self.assertFalse((ROOT / "native-offline" / "releases" / "catalog.json").exists())
             return
         native = native_workflow.read_text(encoding="utf-8")
         self.assertIn("'core-only/**'", native)

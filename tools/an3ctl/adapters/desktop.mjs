@@ -141,12 +141,15 @@ export class DesktopAdapter {
   }
 
   async available(opts = {}) {
-    const controlFile = this.controlFile(opts, "macos");
-    const linuxControlFile = this.controlFile(opts, "linux");
+    // A caller may point each shell at its own control file; without the
+    // per-target override the env var or the per-target default is used, so the
+    // two targets are checked independently rather than through one path.
+    const controlFile = this.controlFile({ ...opts, ...(opts.macos ?? {}) }, "macos");
+    const linuxControlFile = this.controlFile({ ...opts, ...(opts.linux ?? {}) }, "linux");
     const macosReachable = existsSync(controlFile);
     const linuxReachable = existsSync(linuxControlFile);
     return {
-      available: macosReachable,
+      available: macosReachable || linuxReachable,
       targets: {
         macos: macosReachable
           ? { available: true, via: "ui-control", controlFile, reason: null, next: null }
