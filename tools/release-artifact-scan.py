@@ -242,9 +242,9 @@ _KEY_VALUE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", re.DOTALL)
 def parse_gitleaks_config(text: str):
     """Parse the allowlists and inline custom rules from a gitleaks config.
 
-    Supports the subset of TOML this repository uses plus the common
-    ``[[rules]]``/``regex`` form. Unsupported rule shapes are reported as
-    warnings rather than silently dropped.
+    Supports the subset of TOML this repository uses plus common Gitleaks
+    built-in rule references and inline ``[[rules]]``/``regex`` rules. Unknown
+    rule shapes are reported as warnings rather than silently dropped.
     """
     allowlists = []
     custom_rules = []
@@ -271,6 +271,11 @@ def parse_gitleaks_config(text: str):
                 current = None
                 block = None
             continue
+        if stripped == "[allowlist]":
+            current = {"paths": [], "regexes": [], "condition": "AND"}
+            allowlists.append(current)
+            block = "allowlist"
+            continue
         if stripped.startswith("[") and stripped.endswith("]"):
             block = "extend" if stripped.strip("[]").strip() == "extend" else None
             current = None
@@ -284,6 +289,8 @@ def parse_gitleaks_config(text: str):
             extend_default = bool(value)
         elif block == "allowlist" and current is not None:
             if key in ("paths", "regexes") and isinstance(value, list):
+                current[key] = value
+            elif key == "condition" and value in ("AND", "OR"):
                 current[key] = value
         elif block == "rule" and current is not None:
             current[key] = value
@@ -310,16 +317,22 @@ def parse_gitleaks_config(text: str):
 def _allowlist_matches(allowlist, display_path: str, match_bytes: bytes) -> bool:
     paths = allowlist.get("paths") or []
     regexes = allowlist.get("regexes") or []
-    if not paths:
+    checks = []
+    if paths:
+        checks.append(any(re.search(path, display_path) for path in paths))
+    if regexes:
+        checks.append(any(
+            re.search(regex.encode("utf-8") if isinstance(regex, str) else regex, match_bytes)
+            for regex in regexes
+        ))
+    if not checks:
         return False
-    if not any(re.search(path, display_path) for path in paths):
-        return False
-    if not regexes:
-        return True
-    return any(
-        re.search(regex.encode("utf-8") if isinstance(regex, str) else regex, match_bytes)
-        for regex in regexes
-    )
+    condition = allowlist.get("condition", "AND")
+    if condition == "AND":
+        return all(checks)
+    if condition == "OR":
+        return any(checks)
+    return False
 
 
 def _target_files(targets):

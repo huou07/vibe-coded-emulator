@@ -43,6 +43,7 @@ class ReleaseCatalogGeneratorTests(unittest.TestCase):
             )
         self.tree.mkdir()
         subprocess.run(["tar", "-xf", str(archive), "-C", str(self.tree)], check=True)
+        (self.tree / "tools").mkdir(parents=True, exist_ok=True)
         shutil.copy(BUILDER, self.tree / "tools" / "build-release-catalog.py")
         self.releases = self.tree / "native-offline" / "releases"
         self.releases.mkdir(parents=True, exist_ok=True)

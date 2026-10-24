@@ -45,8 +45,6 @@ object NativeSettingsSchema {
         Definition("show-fps", "Show FPS", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", null, true, false, true, null),
         Definition("start-fullscreen", "Start fullscreen on launch", "display", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "true", emptyList(), null, "app", null, true, false, true, null),
         Definition("key-map", "Keyboard map", "controls", Type.STRING, "string", emptyList(), emptyMap(), null, null, "{}", emptyList(), null, "none", null, false, false, true, null),
-        Definition("experimental-phone-controller", "Phone Controller (Experimental)", "experimental", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", "Allows a paired phone to control games on this device. Hosting and pairing start only when you choose them.", true, false, true, null),
-        Definition("experimental-lan-sync", "LAN Sync (Experimental)", "experimental", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", "Enables local sync tools. Discovery and transfers start only when you choose Sync.", true, false, true, null),
         Definition("experimental-switch-eden", "Switch / Eden (Experimental)", "experimental", Type.BOOL, "bool", emptyList(), emptyMap(), null, null, "false", emptyList(), null, "none", "Allows Switch games to use Eden. Eden starts only when you launch a Switch game.", true, false, true, null)
     )
 

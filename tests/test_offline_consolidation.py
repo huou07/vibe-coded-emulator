@@ -80,12 +80,14 @@ class OfflineConsolidationTests(unittest.TestCase):
         self.assertIn('window.EJS_disableLocalStorage = ndsPad || threeDsPad;', PLAYER_JS)
 
     def test_library_never_blocks_a_playable_card_and_repairs_missing_native_roms(self):
-        # No browser-only lock may be added back: the only remaining gate is the
-        # Android capability declaration, and a missing copied ROM offers a
-        # one-tap re-import instead of a dead end.
+        # Android capability and native-only Switch support are explicit; a
+        # missing copied ROM offers one-tap re-import instead of a dead end.
         self.assertNotIn('browserThreeDsUnavailable', OFFLINE_JS)
         self.assertNotIn('threeDsUnavailable', OFFLINE_JS)
-        self.assertIn('play.disabled=game.system==="html5"||androidThreeDsUnavailable(game.system);', OFFLINE_JS)
+        self.assertIn('play.disabled=game.system==="html5"||androidThreeDsUnavailable(game.system)||switchUnavailable;', OFFLINE_JS)
+        self.assertIn('const systemAvailable = system => system !== "switch" || (nativeOfflineApp && !androidNativeShell && nativeIntegratedSystem("switch"));', OFFLINE_JS)
+        self.assertIn('filter(([key])=>systemAvailable(key))', OFFLINE_JS)
+        self.assertIn('globalThis.AN3RefreshSystemOptions=refreshSystemOptions', OFFLINE_JS)
         self.assertIn('data-repair-native', OFFLINE_JS)
         self.assertIn('repairNativeRom', OFFLINE_JS)
         self.assertIn('/the imported native rom is unavailable/i.test(message)', OFFLINE_JS)
