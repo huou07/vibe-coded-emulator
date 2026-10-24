@@ -171,15 +171,31 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         if not workflows.is_dir():
             workflows = ROOT / "tools" / "publication" / ".github" / "workflows"
         ci = (workflows / "ci.yml").read_text(encoding="utf-8")
-        # The sanitized snapshot replaces this source checkout's private native workflow.
         self.assertIn("python3 -m py_compile app.py bug_report.py netcode.py qrcodegen.py", ci)
         self.assertIn("python3 tests/run_core_only_suite.py", ci)
         for retired in ("sync_engine.py", "google_sync.py", "3.3.1-performance-candidate"):
             self.assertNotIn(retired, ci)
         self.assertIn("'core-only/**'", ci)
-        # The sanitized snapshot removes both private package entrypoints and its catalog.
-        if not (workflows / "native-build.yml").exists():
+        native_workflow = workflows / "native-build.yml"
+        if not native_workflow.is_file():
+            # The sanitized snapshot replaces this source checkout's private
+            # native workflow and removes both private package entrypoints and
+            # the generated catalog that only that train produced.
+            self.assertTrue((ROOT / "PROVENANCE.md").is_file())
+            self.assertFalse(any(workflows.glob("native-*.yml")))
             self.assertFalse((ROOT / "native-offline" / "releases" / "catalog.json").exists())
+            return
+        native = native_workflow.read_text(encoding="utf-8")
+        self.assertIn("'core-only/**'", native)
+        self.assertIn("NativeInputActionsTest", native)
+        self.assertIn("NativeSettingsTabsTest", native)
+        for retired in (
+            "ControllerSendQueueTest",
+            "lan_host::tests::direct_transport_executes_canonical_utility_frames",
+            "android-sync-status",
+            "ANDROID_SYNC=",
+        ):
+            self.assertNotIn(retired, native)
 
     def test_phone_controller_native_modules_commands_and_permissions_are_removed(self):
         lib = (TAURI / "src" / "lib.rs").read_text(encoding="utf-8")
@@ -192,6 +208,18 @@ class RemovedNetworkProductSurfaceTests(unittest.TestCase):
         player_page = (ROOT / "app.py").read_text(encoding="utf-8")
         capabilities = json.loads((TAURI / "capabilities" / "default.json").read_text(encoding="utf-8"))
         android_capabilities = json.loads((TAURI / "capabilities" / "android.json").read_text(encoding="utf-8"))
+        settings_schema = json.loads((ROOT / "native-offline" / "shared" / "native-settings-schema.json").read_text(encoding="utf-8"))
+        retired_settings = {"experimental-phone-controller", "experimental-lan-sync"}
+        self.assertFalse(retired_settings & {entry["id"] for entry in settings_schema["global"]})
+        self.assertFalse(retired_settings & {entry["id"] for entry in json.loads((ROOT / "native-offline" / "shared" / "native-settings-model.json").read_text(encoding="utf-8"))["global"]})
+        for generated_settings in (
+            ROOT / "native-offline" / "web" / "native-settings.js",
+            ANDROID / "src" / "main" / "assets" / "native-settings.js",
+            ANDROID_JAVA / "NativeSettingsSchema.kt",
+        ):
+            generated_text = generated_settings.read_text(encoding="utf-8")
+            for retired_setting in retired_settings:
+                self.assertNotIn(retired_setting, generated_text)
 
         for module in ("controller_host", "controller_utility_queue", "host_actions", "lan_peer", "lan_host", "latency"):
             self.assertFalse((TAURI / "src" / f"{module}.rs").exists(), module)

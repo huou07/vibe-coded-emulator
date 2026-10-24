@@ -17,6 +17,12 @@ FIXTURE_COMMIT = "e5b13872f0c1207cb9c86e18e710c8f1fa269fb8"
 FIXTURE_SHA256 = "a9fac712e9a6e937ec3d3d3228d8031d94030f3bec3462d9048897f3be638050"
 
 
+def raise_and_focus_window(window):
+    # Xvfb's lightweight WM may not implement _NET_ACTIVE_WINDOW.
+    subprocess.run(["xdotool", "windowraise", window], check=True, timeout=10)
+    subprocess.run(["xdotool", "windowfocus", "--sync", window], check=True, timeout=10)
+
+
 class LinuxPackaged3DSSmoke(unittest.TestCase):
     def test_exact_deb_azahar_visible_output_and_a_input(self):
         player = Path(os.environ["AN3_LINUX_3DS_PLAYER"]).resolve()
@@ -50,7 +56,8 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
             shutil.copytree(fixture_game, sd_game)
             command = [
                 str(player), "--rom", str(fixture), "--system", "3ds",
-                "--renderer", "vulkan", "--control-stdin", "--storage", str(storage),
+                "--renderer", "vulkan", "--control-stdin", "--no-controls",
+                "--storage", str(storage),
             ]
             log_path = evidence / "player.log"
             with log_path.open("w", encoding="utf-8") as log:
@@ -130,7 +137,7 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
                     ["xdotool", "getwindowname", window], text=True, capture_output=True, check=False,
                 )
                 if title.returncode == 0 and title.stdout.strip() == "VibeCodedEmulator":
-                    subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
+                    raise_and_focus_window(window)
                     time.sleep(1.0)
                     return window
             time.sleep(0.25)
@@ -140,9 +147,8 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
     def capture_window(window, path):
         from PIL import Image
 
-        subprocess.run(["xdotool", "windowactivate", "--sync", window], check=True, timeout=10)
-        time.sleep(0.35)
-        subprocess.run(["scrot", "-u", "-o", str(path)], check=True, timeout=10)
+        subprocess.run(["xdotool", "getwindowname", window], check=True, capture_output=True, timeout=10)
+        subprocess.run(["scrot", "-w", str(window), "-o", str(path)], check=True, timeout=10)
         with Image.open(path) as image:
             return {"path": path.name, "width": image.width, "height": image.height}
 
@@ -150,9 +156,11 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
     def wait_for_visible_frame(cls, window, target_path):
         from PIL import Image
 
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30
         attempt = 0
         last_colors = 0
+        stable_size = None
+        stable_captures = 0
         while time.monotonic() < deadline:
             attempt += 1
             candidate = target_path.with_name(f"3ds-render-wait-{attempt:02d}.png")
@@ -160,14 +168,27 @@ class LinuxPackaged3DSSmoke(unittest.TestCase):
             with Image.open(candidate) as image:
                 frame = image.convert("RGB").copy()
             last_colors = len(frame.getcolors(maxcolors=frame.width * frame.height) or [])
-            if last_colors > 16:
+            size = frame.size
+            if last_colors > 16 and size == stable_size:
+                stable_captures += 1
+            elif last_colors > 16:
+                stable_size = size
+                stable_captures = 1
+            else:
+                stable_size = None
+                stable_captures = 0
+            if stable_captures >= 3:
                 candidate.replace(target_path)
                 metadata["path"] = target_path.name
-                metadata["visibleWaitSeconds"] = round(15 - max(0, deadline - time.monotonic()), 2)
+                metadata["visibleWaitSeconds"] = round(30 - max(0, deadline - time.monotonic()), 2)
+                metadata["stableCaptures"] = stable_captures
                 return frame, metadata, last_colors
             candidate.unlink(missing_ok=True)
-            time.sleep(1.0)
-        raise AssertionError(f"visible 3DS window stayed blank after 15 seconds ({last_colors} distinct colors)")
+            time.sleep(0.5)
+        raise AssertionError(
+            "visible 3DS window did not produce three stable captures within 30 seconds "
+            f"({last_colors} distinct colors, last size {stable_size})"
+        )
 
 
 if __name__ == "__main__":

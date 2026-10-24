@@ -33,6 +33,8 @@ fi
   echo "Eden checkout is not pinned to $EDEN_COMMIT" >&2
   exit 2
 }
+python3 "$ROOT/scripts/sanitize-eden-shader-attribution.py" \
+  "$EDEN_ROOT/src/video_core/host_shaders/opengl_smaa.glsl"
 [[ -d "$EDEN_NDK_HOME" ]] || {
   echo "Android NDK 28.2.13676358 is required for the pinned Eden Android build" >&2
   exit 2
@@ -49,11 +51,16 @@ root_cmake, android_cmake, bridge = map(Path, sys.argv[1:])
 root = root_cmake.read_text()
 marker = 'if(DEFINED AN3_EDEN_BRIDGE_DIR)'
 assignment = f'set(AN3_EDEN_BRIDGE_DIR "{bridge.as_posix()}")\n'
+path_map = (
+    '    add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=/an3-eden-source" '
+    f'"-ffile-prefix-map={bridge.parents[1].as_posix()}=/an3-vce-source")\n'
+)
 root_changed = False
 insertion = (
     '\nif(DEFINED AN3_EDEN_BRIDGE_DIR)\n'
-    '    add_subdirectory("${AN3_EDEN_BRIDGE_DIR}/integration" an3_eden_bridge)\n'
-    'endif()\n'
+    + path_map
+    + '    add_subdirectory("${AN3_EDEN_BRIDGE_DIR}/integration" an3_eden_bridge)\n'
+    + 'endif()\n'
 )
 if assignment not in root:
     root = assignment + root
@@ -63,6 +70,12 @@ if marker not in root:
     if needle not in root:
         raise SystemExit('Eden root CMakeLists.txt has no source insertion point')
     root = root.replace(needle, insertion + needle, 1)
+    root_changed = True
+if path_map not in root:
+    marker_line = marker + '\n'
+    if marker_line not in root:
+        raise SystemExit('Eden bridge insertion point is malformed')
+    root = root.replace(marker_line, marker_line + path_map, 1)
     root_changed = True
 if root_changed:
     root_cmake.write_text(root)

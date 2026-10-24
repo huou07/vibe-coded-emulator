@@ -29,8 +29,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "release-artifact-scan.py"
-REAL_CONFIG = ROOT / "tools" / "publication" / ".gitleaks.toml"
+PRIVATE_CONFIG = ROOT / "tools" / "publication" / ".gitleaks.toml"
+REAL_CONFIG = PRIVATE_CONFIG if PRIVATE_CONFIG.is_file() else ROOT / ".gitleaks.toml"
 RELEASE_TRAIN = ROOT / "tools" / "release-train.sh"
+if (ROOT / "PROVENANCE.md").is_file() and not TOOL.is_file():
+    raise unittest.SkipTest("private release artifact scanner is intentionally omitted")
 
 spec = importlib.util.spec_from_file_location("release_artifact_scan", TOOL)
 mod = importlib.util.module_from_spec(spec)
@@ -44,13 +47,11 @@ def _default_rules():
 
 
 class ConfigTests(unittest.TestCase):
-    def test_real_gitleaks_config_parses_with_its_allowlists(self):
-        text = REAL_CONFIG.read_text(encoding="utf-8")
-        config = mod.parse_gitleaks_config(text)
+    def test_real_gitleaks_config_parses_with_its_allowlist(self):
+        config = mod.parse_gitleaks_config(REAL_CONFIG.read_text(encoding="utf-8"))
         self.assertEqual(config["warnings"], [])
         self.assertTrue(config["extend_default"])
-        self.assertEqual(len(config["allowlists"]), 2)
-        self.assertEqual((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"), text)
+        self.assertEqual(len(config["allowlists"]), 1)
         allowlist = config["allowlists"][0]
         self.assertEqual(allowlist["condition"], "AND")
         self.assertEqual(
@@ -70,19 +71,36 @@ class ConfigTests(unittest.TestCase):
                 "192\\.0\\.2\\.0",
             ],
         )
-        vendor_allowlist = config["allowlists"][1]
-        self.assertEqual(
-            vendor_allowlist["paths"],
-            [
-                "native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection\\.hpp$"
-            ],
-        )
-        self.assertEqual(vendor_allowlist["regexes"], ["VK_NV_win32_keyed_mutex"])
-        self.assertEqual(vendor_allowlist["condition"], "AND")
         # Every built-in rule is present; the config only adds to them.
         rule_ids = [rule[0] for rule in config["rules"]]
         self.assertIn("private-key-block", rule_ids)
         self.assertIn("an3-env-secret", rule_ids)
+        # This built-in rule reference only scopes Gitleaks history findings;
+        # it is not a custom rule or an artifact-wide suppression.
+        self.assertNotIn("generic-api-key", rule_ids)
+
+    def test_history_only_builtin_reference_does_not_suppress_artifacts(self):
+        config = mod.parse_gitleaks_config(
+            "[[rules]]\nid = 'generic-api-key'\n"
+            "[[rules.allowlists]]\n"
+            "condition = 'AND'\n"
+            "paths = ['tests/test_publication_gate\\\\.py$']\n"
+            "commits = ['46011eaeaeea8758cfee6eb638c5b08875cba320']\n"
+            "regexes = ['AN3_AUTH_PEPPER']\n"
+        )
+        self.assertEqual(config["warnings"], [])
+        self.assertEqual(config["allowlists"], [])
+        self.assertNotIn("generic-api-key", [rule[0] for rule in config["rules"]])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "test_publication_gate.py"
+            fixture.write_bytes(b"AN3_AUTH_PEPPER=" + b"A" * 8)
+            result = mod.scan(
+                [str(fixture)],
+                mod._compile_rules(config["rules"]),
+                config["allowlists"],
+            )
+        self.assertIn("an3-env-secret", {finding["rule"] for finding in result["findings"]})
 
     def test_inline_custom_rule_is_merged(self):
         text = "[[rules]]\nid = 'canary'\nregex = '''CANARY-[0-9]{4}'''\n"
@@ -123,6 +141,7 @@ class DetectionTests(unittest.TestCase):
         "an3-env-secret": "AN3_AUTH_PEPPER=" + "A" * 8,
         "an3-google-client-id": "AN3_GOOGLE_CLIENT_ID=" + "A" * 8,
         "home-directory-path": "/" + "Users/" + "meo" + "meo" + "/roms",
+        "linux-home-directory-path": "/" + "home/" + "alice" + "/roms",
         "windows-home-path": "C:\\Users\\bob\\roms",
         "lan-address": "192." + "168.1.2",
         "personal-email": "test" + "@gmail.com",
@@ -142,6 +161,18 @@ class DetectionTests(unittest.TestCase):
         for rule_id, sample in self.SAMPLES.items():
             with self.subTest(rule=rule_id):
                 self.assertIn(rule_id, self._rules_for(sample.encode("utf-8")))
+
+    def test_generic_ci_runner_path_is_not_a_developer_account(self):
+        generic_runner = b"/" + b"home/" + b"runner/work/repo"
+        actual_account = b"/" + b"home/" + b"alice/work/repo"
+        self.assertNotIn("linux-home-directory-path", self._rules_for(generic_runner))
+        self.assertIn("linux-home-directory-path", self._rules_for(actual_account))
+
+    def test_emscripten_virtual_home_is_not_a_system_account(self):
+        virtual_home = b"/" + b"home/" + b"web_" + b"user/data"
+        lookalike_account = b"/" + b"home/" + b"web_user_extra/data"
+        self.assertNotIn("linux-home-directory-path", self._rules_for(virtual_home))
+        self.assertIn("linux-home-directory-path", self._rules_for(lookalike_account))
 
     def test_clean_payload_has_no_findings(self):
         self.assertEqual(self._rules_for(b"clean release payload\n"), set())
@@ -252,33 +283,13 @@ class AllowlistTests(unittest.TestCase):
         self.assertFalse(
             mod._allowlist_matches(allowlist, "static/player.js", localstorage_assignment)
         )
-        vendor_allowlist = config["allowlists"][1]
-        vendor_path = "native-offline/vendor/moltenvk/macos-arm64/include/vulkan/vulkan_extension_inspection.hpp"
-        self.assertTrue(
-            mod._allowlist_matches(vendor_allowlist, vendor_path, b"VK_NV_win32_keyed_mutex")
-        )
-        self.assertFalse(
-            mod._allowlist_matches(vendor_allowlist, vendor_path, b"AKIA" + b"A" * 16)
-        )
-        self.assertFalse(
-            mod._allowlist_matches(
-                vendor_allowlist,
-                "native-offline/vendor/moltenvk/windows-x64/include/vulkan/vulkan_extension_inspection.hpp",
-                b"VK_NV_win32_keyed_mutex",
-            )
-        )
-        # The bundled schema carries documented example addresses. Derive them
-        # from the allowlist's own escaped patterns so this file never stores a
-        # real private-range address as plain text.
-        documented = [regex for regex in allowlist["regexes"] if regex.startswith("192\\.")]
-        self.assertEqual(len(documented), 2)
-        for escaped in documented:
-            with self.subTest(address=escaped):
+        for address in (b"192.0.2.0", b"192.0.2.0"):
+            with self.subTest(address=address):
                 self.assertTrue(
                     mod._allowlist_matches(
                         allowlist,
                         "usr/share/glib-2.0/schemas/org.gnome.system.proxy.gschema.xml",
-                        escaped.replace("\\", "").encode("utf-8"),
+                        address,
                     )
                 )
 
@@ -558,10 +569,104 @@ class ArchiveExpansionTests(unittest.TestCase):
         self.assertEqual(result["suppressed"], 1)
 
 
-@unittest.skipUnless(
-    RELEASE_TRAIN.is_file(),
-    "private release-train wiring is not part of the sanitized core-only source",
-)
+class ExactArtifactAllowlistTests(unittest.TestCase):
+    MEMBER_PATH = "usr/lib/VibeCodedEmulator/switch/linux-x86_64/an3_switch_companion"
+    MATCH = b"fixture" + b"@outlook.com"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+
+    def _entry(self, payload, *, path=None, offset=None, digest=None):
+        data = {
+            "schema_version": 1,
+            "exceptions": [
+                {
+                    "id": "fixture-contact",
+                    "rule": "personal-email",
+                    "path_suffix": "!" + (path or self.MEMBER_PATH),
+                    "offset": payload.index(self.MATCH) if offset is None else offset,
+                    "match_length": len(self.MATCH),
+                    "sha256": mod.hashlib.sha256(payload).hexdigest() if digest is None else digest,
+                    "source_commit": "a" * 40,
+                    "reason": "Synthetic scanner test fixture.",
+                }
+            ],
+        }
+        return mod.parse_exact_allowlist(data)
+
+    def _scan_member(self, payload, exception, *, member_path=None):
+        artifact = self.root / "release.deb"
+        artifact.write_bytes(
+            _zip_bytes({member_path or self.MEMBER_PATH: payload})
+        )
+        return mod.scan([str(artifact)], _default_rules(), exception)
+
+    def test_repository_exact_allowlist_parses_without_match_bytes(self):
+        entries = mod.load_exact_allowlist(ROOT / "tools" / "release-artifact-allowlist.json")
+        self.assertEqual(
+            [entry["id"] for entry in entries],
+            [
+                "eden-upstream-contact-linux-x86_64",
+                "emulatorjs-virtual-home-latest-19672",
+                "emulatorjs-virtual-home-latest-20657",
+                "emulatorjs-virtual-home-stable-417527",
+                "emulatorjs-virtual-home-stable-418518",
+            ],
+        )
+        self.assertNotIn("fixture" + "@outlook.com", json.dumps(entries))
+
+    def test_exact_path_offset_length_and_digest_suppress_one_match(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        entries = self._entry(payload)
+        result = self._scan_member(payload, entries)
+        self.assertEqual(result["findings"], [])
+        self.assertEqual(result["suppressed"], 1)
+        self.assertEqual(entries[0]["_used_count"], 1)
+
+    def test_changed_member_digest_keeps_the_finding(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00original"
+        entries = self._entry(payload)
+        changed = b"prefix\x00" + self.MATCH + b"\x00modified"
+        result = self._scan_member(changed, entries)
+        self.assertEqual([item["rule"] for item in result["findings"]], ["personal-email"])
+        self.assertEqual(result["suppressed"], 0)
+        self.assertEqual(entries[0]["_used_count"], 0)
+
+    def test_wrong_path_or_offset_keeps_the_finding(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        cases = (
+            (self._entry(payload, path="usr/lib/other/an3_switch_companion"), self.MEMBER_PATH),
+            (self._entry(payload, offset=payload.index(self.MATCH) + 1), self.MEMBER_PATH),
+        )
+        for entries, path in cases:
+            with self.subTest(exception=entries[0]):
+                result = self._scan_member(payload, entries, member_path=path)
+                self.assertEqual(
+                    [item["rule"] for item in result["findings"]],
+                    ["personal-email"],
+                )
+                self.assertEqual(result["suppressed"], 0)
+
+    def test_incomplete_stream_does_not_apply_an_exact_exception(self):
+        payload = b"prefix\x00" + self.MATCH + b"\x00suffix"
+        entries = self._entry(payload)
+        findings = []
+        suppressed, status = mod._scan_stream(
+            io.BytesIO(payload),
+            "release.deb!" + self.MEMBER_PATH,
+            _default_rules(),
+            entries,
+            1,
+            findings,
+        )
+        self.assertEqual(status, "file exceeds --max-file-bytes (1 bytes)")
+        self.assertEqual(suppressed, 0)
+        self.assertEqual([item["rule"] for item in findings], ["personal-email"])
+        self.assertEqual(entries[0]["_used_count"], 0)
+
+
 class ReleaseTrainWiringTests(unittest.TestCase):
     """The scan must run in the train beside the unknown-license gate."""
 
@@ -583,6 +688,20 @@ class ReleaseTrainWiringTests(unittest.TestCase):
         # The scan runs from the shared evidence helper, so freeze and the
         # coordinated build both get it.
         self.assertIn('run_artifact_secret_scan "$out" "$artifacts"', text)
+
+
+class PublicReleaseWorkflowTests(unittest.TestCase):
+    def test_artifact_scan_fails_closed_before_release_creation(self):
+        template = ROOT / "tools" / "publication" / ".github" / "workflows" / "native-release.yml"
+        workflow = template if template.is_file() else ROOT / ".github" / "workflows" / "native-release.yml"
+        text = workflow.read_text(encoding="utf-8")
+
+        scan_at = text.index("python3 tools/release-artifact-scan.py")
+        publish_at = text.index("gh release create")
+        self.assertLess(scan_at, publish_at)
+        self.assertIn("--config .gitleaks.toml", text)
+        self.assertIn('report["summary"]["skipped"]', text)
+        self.assertIn("release-artifact-security-report", text)
 
 
 if __name__ == "__main__":

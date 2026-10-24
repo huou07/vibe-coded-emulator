@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $nativeRoot = Split-Path -Parent $PSScriptRoot
 if ($env:OS -ne 'Windows_NT') { throw 'Windows x64 runtime requires a Windows builder.' }
-if (!(Test-Path "$MsysRoot/ucrt64/bin/g++.exe")) { throw 'Install the official MSYS2 UCRT64 SDL2, GTK3, Vulkan and GCC packages first.' }
+if (!(Test-Path "$MsysRoot/ucrt64/bin/g++.exe")) { throw 'Install the official MSYS2 UCRT64 SDL2, Vulkan and GCC packages first.' }
 & node (Join-Path $PSScriptRoot 'generate-player-ui.mjs') --check
 if ($LASTEXITCODE) { throw 'Shared player model has generated drift.' }
 $env:MSYSTEM = 'UCRT64'

@@ -28,9 +28,13 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "release-evidence.py"
+if (ROOT / "PROVENANCE.md").is_file() and not TOOL.is_file():
+    raise unittest.SkipTest("private release evidence generator is intentionally omitted")
 
 spec = importlib.util.spec_from_file_location("release_evidence", TOOL)
 mod = importlib.util.module_from_spec(spec)
@@ -47,6 +51,10 @@ class LicenseFieldTests(unittest.TestCase):
         self.assertEqual(mod._license_field("MIT"), {"expression": "MIT"})
         self.assertEqual(
             mod._license_field("Apache-2.0 OR MIT"), {"expression": "Apache-2.0 OR MIT"}
+        )
+        self.assertEqual(
+            mod._license_field("(MIT OR Apache-2.0) AND Unicode-3.0"),
+            {"expression": "(MIT OR Apache-2.0) AND Unicode-3.0"},
         )
 
     def test_known_alias_maps_to_spdx_id(self):
@@ -159,6 +167,25 @@ checksum = "ignored-outside-package"
         # A path dependency without a checksum gets no hashes entry.
         self.assertNotIn("hashes", parsed["local-crate"])
 
+    def test_license_joins_only_on_exact_package_identity(self):
+        licenses = {
+            (
+                "serde",
+                "1.0.200",
+                "registry+https://github.com/rust-lang/crates.io-index",
+            ): "MIT OR Apache-2.0",
+            ("local-crate", "0.1.0", None): "GPL-3.0-or-later",
+            ("serde", "1.0.200", "registry+https://example.invalid/index"): "MIT",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Cargo.lock"
+            path.write_text(self.LOCK, encoding="utf-8")
+            parsed = {
+                item["name"]: item for item in mod.parse_cargo_lock(path, licenses=licenses)
+            }
+        self.assertEqual(parsed["serde"]["license"], "MIT OR Apache-2.0")
+        self.assertEqual(parsed["local-crate"]["license"], "GPL-3.0-or-later")
+
     def test_metadata_section_is_not_treated_as_a_package(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "Cargo.lock"
@@ -177,6 +204,71 @@ checksum = "ignored-outside-package"
                 self.assertEqual(
                     components, mod.parse_cargo_lock(ROOT / relative)
                 )
+
+
+class CargoMetadataTests(unittest.TestCase):
+    """Cargo metadata must be locked, exact and fail closed."""
+
+    def test_metadata_license_fields_are_read_by_name_version_and_source(self):
+        payload = {
+            "packages": [
+                {
+                    "name": "serde",
+                    "version": "1.0.200",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "license": "MIT OR Apache-2.0",
+                },
+                {
+                    "name": "local-crate",
+                    "version": "0.1.0",
+                    "source": None,
+                    "license": "GPL-3.0-or-later",
+                },
+                {
+                    "name": "legacy-crate",
+                    "version": "1.2.3",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "license": "MIT/Apache-2.0",
+                },
+                {
+                    "name": "unknown-crate",
+                    "version": "2.0.0",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index",
+                    "license": None,
+                },
+            ]
+        }
+        result = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+        with patch.object(mod.subprocess, "run", return_value=result) as run:
+            licenses = mod.cargo_metadata_licenses(Path("Cargo.toml"))
+        self.assertEqual(
+            licenses[("serde", "1.0.200", "registry+https://github.com/rust-lang/crates.io-index")],
+            "MIT OR Apache-2.0",
+        )
+        self.assertEqual(licenses[("local-crate", "0.1.0", None)], "GPL-3.0-or-later")
+        self.assertEqual(
+            licenses[
+                (
+                    "legacy-crate",
+                    "1.2.3",
+                    "registry+https://github.com/rust-lang/crates.io-index",
+                )
+            ],
+            "MIT OR Apache-2.0",
+        )
+        self.assertNotIn(
+            ("unknown-crate", "2.0.0", "registry+https://github.com/rust-lang/crates.io-index"),
+            licenses,
+        )
+        command = run.call_args.args[0]
+        self.assertIn("--locked", command)
+        self.assertIn("--format-version", command)
+
+    def test_metadata_failure_is_not_reported_as_a_clean_inventory(self):
+        result = SimpleNamespace(returncode=101, stdout="", stderr="registry unavailable")
+        with patch.object(mod.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(RuntimeError, "registry unavailable"):
+                mod.cargo_metadata_licenses(Path("Cargo.toml"))
 
 
 class Sha256SumsTests(unittest.TestCase):

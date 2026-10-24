@@ -42,6 +42,14 @@ if (-not (Test-Path $ninja)) { throw "WINDOWS_EDEN=BLOCKED: missing Ninja at $ni
 $actualCommit = (& git -C $EdenRoot rev-parse HEAD).Trim()
 if ($actualCommit -ne $commit) { throw "WINDOWS_EDEN=BLOCKED: Eden checkout is $actualCommit, expected $commit." }
 
+$shader = Join-Path $EdenRoot 'src/video_core/host_shaders/opengl_smaa.glsl'
+$sanitizer = Join-Path $nativeRoot 'scripts/sanitize-eden-shader-attribution.py'
+if (-not (Test-Path $shader)) { throw 'WINDOWS_EDEN=BLOCKED: pinned SMAA shader source is missing.' }
+$python = Get-Command python -ErrorAction SilentlyContinue
+if (-not $python) { throw 'WINDOWS_EDEN=BLOCKED: Python 3 is required to verify the pinned shader attribution.' }
+& $python.Source $sanitizer $shader
+if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_EDEN=BLOCKED: shader attribution sanitization failed.' }
+
 $env:PATH = "$MsysRoot\ucrt64\bin;$MsysRoot\usr\bin;C:\Program Files\CMake\bin;C:\Program Files\Ninja;$env:PATH"
 $iconvInclude = Join-Path $MsysRoot 'ucrt64\include'
 $iconvHeader = Join-Path $iconvInclude 'iconv.h'

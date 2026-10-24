@@ -13,13 +13,14 @@ The ROM is deterministic and lets an emulator exercise the full pipeline:
   SRAM supports) so mGBA detects an SRAM save, writing a deterministic "AN3B"
   signature plus a boot counter byte at SRAM[4] that increments on every boot;
 * shows green when a persisted save was restored at boot, red on a fresh boot;
-* spins in a stable loop.
+* spins in a stable loop;
+* optionally starts a channel-1 square-wave tone for audio-path diagnostics.
 
-This gives LAN Sync, Phone Controller and save tests the same real ROM identity
-on two devices without shipping any copyrighted content.
+The default fixture remains unchanged; the optional audio fixture is local test
+content without third-party game code or assets.
 
 Usage:
-    python3 tools/testrom/gba_homebrew_test.py [output.gba [title]]
+    python3 tools/testrom/gba_homebrew_test.py [output.gba [title] [--latch-input] [--audio-tone]]
 """
 import struct
 import sys
@@ -47,6 +48,15 @@ LITERALS = [
     0x06000000,  # 12: VRAM (bitmap mode 3)
 ]
 
+AUDIO_LITERALS = [
+    0x04000084,  # SOUND_CNT_X
+    0x00000080,  # enable GBA sound master output
+    0x04000062,  # channel 1 duty/envelope
+    0x0000F080,  # square wave, fixed volume
+    0x04000064,  # channel 1 frequency/trigger
+    0x000086D7,  # trigger a ~441 Hz square wave
+]
+
 
 # The PC-relative offsets for ldr instructions are computed from the final code
 # layout so the optional input-latch instructions keep the literal pool in sync.
@@ -67,8 +77,9 @@ def _add(rd: int, rn: int, imm: int) -> int:
     return 0xE2800000 | (rn << 16) | (rd << 12) | (imm & 0xFFF)
 
 
-def build_code(latch_input: bool = False) -> bytes:
-    code_words = CODE_WORDS_BEFORE_POOL + (3 if latch_input else 0)
+def build_code(latch_input: bool = False, audio_tone: bool = False) -> bytes:
+    code_words = CODE_WORDS_BEFORE_POOL + (3 if latch_input else 0) + (9 if audio_tone else 0)
+    literals = LITERALS + (AUDIO_LITERALS if audio_tone else [])
     pool = ENTRY_OFFSET + code_words * 4
     words: list[int] = []
 
@@ -110,6 +121,18 @@ def build_code(latch_input: bool = False) -> bytes:
         _add(10, 10, 1),    # add r10, r10, #1
         _strb(10, 0, 4),    # strb r10, [r0, #4]
     ])
+    if audio_tone:
+        emit([
+            ldr(0, 13),          # SOUND_CNT_X
+            ldr(1, 14),          # sound master enable
+            0xE1C010B0,           # strh r1, [r0]
+            ldr(0, 15),          # SOUND1CNT_L
+            ldr(1, 16),          # channel 1 square wave volume
+            0xE1C010B0,           # strh r1, [r0]
+            ldr(0, 17),          # SOUND1CNT_X
+            ldr(1, 18),          # trigger channel 1 tone
+            0xE1C010B0,           # strh r1, [r0]
+        ])
     if latch_input:
         words.append(0xE3A0B000)  # mov r11, #0 (initialize input latch)
     emit([
@@ -140,11 +163,11 @@ def build_code(latch_input: bool = False) -> bytes:
     words.extend([0xE1A00000, 0xE1A00000])   # nops (pool alignment)
     assert len(words) == code_words, (len(words), code_words)
     code = b"".join(struct.pack("<I", word) for word in words)
-    code += b"".join(struct.pack("<I", literal) for literal in LITERALS)
+    code += b"".join(struct.pack("<I", literal) for literal in literals)
     return code
 
 
-def build(title: bytes = TITLE, latch_input: bool = False) -> bytes:
+def build(title: bytes = TITLE, latch_input: bool = False, audio_tone: bool = False) -> bytes:
     if not 1 <= len(title) <= 12 or any(
         not (ord("A") <= byte <= ord("Z") or ord("0") <= byte <= ord("9"))
         for byte in title
@@ -162,7 +185,7 @@ def build(title: bytes = TITLE, latch_input: bool = False) -> bytes:
     for byte in header[0xA0:0xBD]:
         checksum = (checksum - byte) & 0xFF
     header[0xBD] = (checksum - 0x19) & 0xFF
-    body = bytes(header) + build_code(latch_input)
+    body = bytes(header) + build_code(latch_input, audio_tone)
     padding = (-len(body)) % 0x200
     return body + b"\0" * padding
 
@@ -170,10 +193,13 @@ def build(title: bytes = TITLE, latch_input: bool = False) -> bytes:
 def main() -> int:
     args = sys.argv[1:]
     latch_input = "--latch-input" in args
+    audio_tone = "--audio-tone" in args
     if latch_input:
         args.remove("--latch-input")
+    if audio_tone:
+        args.remove("--audio-tone")
     if len(args) > 2:
-        print("usage: gba_homebrew_test.py [output.gba [TITLE] [--latch-input]]", file=sys.stderr)
+        print("usage: gba_homebrew_test.py [output.gba [TITLE] [--latch-input] [--audio-tone]]", file=sys.stderr)
         return 2
     out = Path(args[0]) if args else Path("an3-homebrew-test.gba")
     title = TITLE
@@ -184,12 +210,13 @@ def main() -> int:
             print("GBA title must be ASCII", file=sys.stderr)
             return 2
     try:
-        data = build(title, latch_input)
+        data = build(title, latch_input, audio_tone)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
     out.write_bytes(data)
-    print(f"wrote {out} ({len(data)} bytes, title={title.decode('ascii')})")
+    mode = ", audio tone enabled" if audio_tone else ""
+    print(f"wrote {out} ({len(data)} bytes, title={title.decode('ascii')}{mode})")
     return 0
 
 

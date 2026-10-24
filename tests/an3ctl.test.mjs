@@ -208,7 +208,7 @@ test("Windows local WebView2 probe uses only the loopback CDP endpoint", async (
   });
 });
 
-test("Windows UI click dispatches a real CDP mouse sequence for pointer controls", async () => {
+test("Windows UI click holds the real CDP pointer sequence when requested", async () => {
   const adapter = new DesktopAdapter(ROOT);
   const evaluations = [
     { found: true, index: 2 },
@@ -220,10 +220,13 @@ test("Windows UI click dispatches a real CDP mouse sequence for pointer controls
     send: async (method, params) => mouseEvents.push({ method, params }),
   });
 
+  const startedAt = performance.now();
   const result = await adapter.uiClick({
     target: "windows",
     selector: { kind: "testid", value: "native-session-button-a" },
+    holdMs: 30,
   });
+  assert.ok(performance.now() - startedAt >= 25, "pointer release must follow the requested hold interval");
   assert.deepEqual(result, { target: "windows", via: "cdp", performed: true, action: "click" });
   assert.deepEqual(mouseEvents.map(({ params }) => params.type), ["mouseMoved", "mousePressed", "mouseReleased"]);
   assert.ok(mouseEvents.every(({ method, params }) => method === "Input.dispatchMouseEvent" && params.x === 41 && params.y === 27));

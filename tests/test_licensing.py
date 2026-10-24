@@ -1,7 +1,10 @@
 """GPLv3 licensing transition: LICENSE, notices, SPDX headers and the UI route."""
 
 import http.client
+import json
 import pathlib
+import subprocess
+import tempfile
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -22,6 +25,53 @@ class LicenseFileTests(unittest.TestCase):
         self.assertIn("How to Apply These Terms to Your New Programs", text)
         # A truncated or edited license would lose these markers.
         self.assertGreater(len(text), 30000)
+
+    def test_linux_deb_installs_a_dep5_copyright_with_license_texts(self):
+        native = ROOT / "native-offline"
+        config = json.loads((native / "src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+        deb_files = config["bundle"]["linux"]["deb"]["files"]
+        self.assertEqual(
+            deb_files["/usr/share/doc/vibe-coded-emulator/copyright"],
+            "../work/linux-build/debian-copyright",
+        )
+        build_script = (native / "scripts/build-linux-staging.sh").read_text(encoding="utf-8")
+        copyright_check = build_script[
+            build_script.index('deb_contents="$build/deb-contents.txt"'):
+            build_script.index('install -m 0644 "$tauri_deb" "$deb_path"')
+        ]
+        self.assertIn('dpkg-deb --contents "$tauri_deb" > "$deb_contents"', copyright_check)
+        self.assertIn("grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' \"$deb_contents\"", copyright_check)
+        self.assertNotIn("| grep", copyright_check)
+
+        with tempfile.TemporaryDirectory(prefix="an3-deb-copyright-") as temporary:
+            output = pathlib.Path(temporary) / "copyright"
+            generated = subprocess.run(
+                [
+                    "node",
+                    str(native / "scripts/generate-linux-debian-copyright.mjs"),
+                    str(output),
+                ],
+                cwd=native, capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            text = output.read_text(encoding="utf-8")
+
+        for required in (
+            "Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/",
+            "GNU GENERAL PUBLIC LICENSE",
+            "Version 2, June 1991",
+            "Mozilla Public License Version 2.0",
+            "melonDS DS contributors",
+            "Eden Emulator Project",
+            "ISC License",
+            "SIL OPEN FONT LICENSE Version 1.1",
+            "Azahar",
+            "Lucide",
+            "Roboto Condensed",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, text)
+        self.assertGreater(len(text), 100000)
 
     def test_readme_states_the_gpl_terms(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -85,6 +135,7 @@ class LicenseRouteTests(unittest.TestCase):
             patch.object(app, "CUSTOM_DIR", os.path.join(root, "custom")),
             patch.object(app, "EMULATOR_CACHE_DIR", os.path.join(root, "emulatorjs-cache")),
             patch.object(app, "PREPARED_ROM_DIR", os.path.join(root, "prepared-roms")),
+            patch.object(app, "SOURCE_REPOSITORY", "https://github.com/YOUR_GITHUB_USER/vibe-coded-emulator"),
         ]
         for active in self.patches:
             active.start()

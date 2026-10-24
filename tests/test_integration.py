@@ -115,7 +115,7 @@ class ReleaseArtifactTests(unittest.TestCase):
         """
         catalog_path = os.path.join(ROOT, "native-offline/releases/catalog.json")
         if not os.path.isfile(catalog_path):
-            self.skipTest("the sanitized core-only source intentionally omits staged native artifacts")
+            self.skipTest("public source snapshot omits generated release catalogs and artifacts")
         catalog = json.loads(open(catalog_path, encoding="utf-8").read())
         available = [item for item in catalog["artifacts"] if item["filename"]]
         versions = {item["version"] for item in available}

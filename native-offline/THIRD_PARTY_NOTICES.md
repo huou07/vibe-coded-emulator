@@ -20,26 +20,32 @@ version reported by `emulator.min.js` (`ejs_version`).
 ## Tauri, Rust, and Android dependencies
 
 The native shells use Tauri 2, `tauri-plugin-dialog` (Apache-2.0 OR MIT),
-`include_dir`, `serde`, and `serde_json` (MIT/Apache-2.0), plus the crates
-pinned in `src-tauri/Cargo.lock`. The Android package also uses AndroidX
+`include_dir`, `serde`, and `serde_json` (per-package licenses resolved from the
+locked `src-tauri/Cargo.lock`). The Android package also uses AndroidX
 WebKit/AppCompat/Activity/Lifecycle (Apache-2.0), Google Material Components
-(Apache-2.0), Apache Commons Compress 1.21 (Apache-2.0), and XZ for Java 1.9
-(public domain). See the repository-root `THIRD_PARTY_NOTICES.md` for the
-project-wide component table.
+1.13.0 (Apache-2.0), Guava ListenableFuture 1.0 (Apache-2.0), Apache Commons
+Compress 1.21 (Apache-2.0), and XZ for Java 1.9 (public domain). See the
+repository-root `THIRD_PARTY_NOTICES.md` for the project-wide component table.
 
 ## Emulator cores
 
-### Azahar libretro 2126.1.1
+### Azahar libretro 2126.1.2
 
 Azahar is licensed under **GPL-2.0-or-later**. The full license text is
 `native-core-licenses/Azahar-GPL-2.0-or-later.txt`.
 
-- Upstream source: <https://github.com/azahar-emu/azahar/tree/2126.1.1>
+- Upstream source: <https://github.com/azahar-emu/azahar/tree/2126.1.2>
 - Corresponding-source archive:
-  <https://github.com/azahar-emu/azahar/releases/download/2126.1.1/azahar-unified-source-2126.1.1.tar.xz>
+  <https://github.com/azahar-emu/azahar/releases/download/2126.1.2/azahar-unified-source-2126.1.2.tar.xz>
+- Pinned source commit used by the macOS Eden-companion build:
+  <https://github.com/azahar-emu/azahar/tree/9e6f523a57fac9564ac0bf8286db3c3702d301ec>
 
-The macOS and Android cores are the official release builds. The host source
-that loads the core is in `native-offline/src-tauri/src/` and
+The Linux x86_64, Windows x64, Android arm64, and default macOS cores use
+SHA-256-pinned official 2126.1.2 release builds. The
+`build-macos-eden-companion.sh` path instead rebuilds the macOS arm64 core from
+the pinned source commit above and requires that source-built core for the
+package. Per-platform manifests record the core identity and build provenance.
+The host source that loads the core is in `native-offline/src-tauri/src/` and
 `native-offline/native-runtime/`.
 
 ### mGBA libretro

@@ -17,7 +17,8 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+WORKFLOW_PATH = ROOT / ".github/workflows/native-build.yml"
+WORKFLOW = WORKFLOW_PATH.read_text(encoding="utf-8") if WORKFLOW_PATH.is_file() else ""
 LINUX = ROOT / "native-offline/native-runtime/platform/linux"
 BUILD = (ROOT / "native-offline/scripts/build-linux-staging.sh").read_text(encoding="utf-8")
 FLATPAK_INSTALL_VERIFY = (ROOT / "native-offline/scripts/verify-flatpak-install.sh").read_text(encoding="utf-8")
@@ -109,6 +110,8 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
                          "bundle-linux-runtime.mjs", "npm run tauri -- build --bundles deb",
                          "flatpak-builder", "fetch-linux-gba-nds-libretro.mjs"):
             self.assertIn(required, BUILD)
+        self.assertIn('source_path_map="-ffile-prefix-map=${home_prefix}=/an3-home"', BUILD)
+        self.assertIn('"$compiler" "$source_path_map" -std=c++20', BUILD)
 
         self.assertIn('cp -a deb-extract/usr/lib/. /app/lib/', FLATPAK)
         self.assertNotIn('cp -a deb-extract/usr/lib/. /app/lib/an3-offline-native/', FLATPAK)
@@ -131,6 +134,7 @@ class LinuxNativeRuntimeTests(unittest.TestCase):
         self.assertIn('--rom "$smoke_rom"', FLATPAK_INSTALL_VERIFY)
         self.assertIn('FLATPAK_RUNTIME_SMOKE=PASS', FLATPAK_INSTALL_VERIFY)
 
+    @unittest.skipUnless(WORKFLOW_PATH.is_file(), "private native package workflow is intentionally omitted")
     def test_hosted_flatpak_job_clean_installs_and_runs_generated_gba_fixture(self):
         flatpak_job = WORKFLOW[WORKFLOW.index("  linux-flatpak:"):WORKFLOW.index("  windows-exe:")]
         build_step = flatpak_job.index("Build Flatpak from the same DEB artifact")

@@ -1,16 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Vibe Coded Emulator contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Desktop structured adapters. The macOS Tauri/WebKit shell exposes a
+// Desktop structured adapters. The macOS and Linux Tauri shells expose a
 // test-only, token-gated loopback bridge (cargo feature `ui-control`) that
-// dispatches real DOM events on `data-testid` elements, so a UI click exercises
-// the same frontend handler a user would. Windows uses WebView2 CDP. Neither
-// path uses coordinates, OCR or screenshots.
+// dispatches DOM events on `data-testid` elements. Windows uses WebView2 CDP.
+// None uses coordinates, OCR or screenshots.
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { An3Error, CdpSession, httpJson, run } from "../lib/core.mjs";
-import { domTreeExpression, locateExpression } from "../lib/domtree.mjs";
+import { domTreeExpression, locateExpression, INTERACTIVE_SELECTOR } from "../lib/domtree.mjs";
+
+// The native ui-control bridge may wait ten seconds for WebView JavaScript.
+const MACOS_UI_CONTROL_TIMEOUT_MS = 12_000;
+const WINDOWS_RUNTIME_PORT = Number(process.env.AN3_NATIVE_RUNTIME_PORT ?? 38471);
 
 export class DesktopAdapter {
   constructor(root) {
@@ -23,19 +26,17 @@ export class DesktopAdapter {
   }
 
   async windowsDebugProbe({ host = "windows-build-host", port = 9222 } = {}) {
-    // An already-forwarded test/debug socket is inspected on loopback only.
     if (process.env.AN3_WINDOWS_CDP_LOCAL === "1") {
       try {
-        const targets = await httpJson(port, "/json/list", { timeout: 1000 });
-        if (!Array.isArray(targets)) throw new Error("unexpected WebView2 target list");
-        return { host: "127.0.0.1", port, reachable: true, via: "local-cdp" };
-      } catch (error) {
+        const targets = await httpJson(port, "/json/list", { timeout: 1500 });
+        return { host: "127.0.0.1", port, reachable: Array.isArray(targets), via: "local-cdp" };
+      } catch {
         return {
           host: "127.0.0.1",
           port,
           reachable: false,
           via: "local-cdp",
-          instruction: "A test/debug build must expose WebView2 CDP on loopback port " + port + " only.",
+          instruction: "Launch the Windows test app with WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS set to a loopback remote-debugging port.",
         };
       }
     }
@@ -54,17 +55,23 @@ export class DesktopAdapter {
     };
   }
 
-  controlFile(opts = {}) {
-    return opts.controlFile ?? process.env.AN3_UI_CONTROL_FILE ?? `${homedir()}/.an3/ui-control.json`;
+  controlFile(opts = {}, target = "macos") {
+    const envFile = target === "linux"
+      ? process.env.AN3_LINUX_UI_CONTROL_FILE
+      : process.env.AN3_UI_CONTROL_FILE;
+    const fallback = target === "macos"
+      ? `${homedir()}/.an3/ui-control.json`
+      : `${homedir()}/.an3/linux-ui-control.json`;
+    return opts.controlFile ?? envFile ?? fallback;
   }
 
-  readControl(opts = {}) {
-    const target = opts.target ?? "macos";
-    const file = this.controlFile(opts);
+  readControl(opts = {}, target = "macos") {
+    const file = this.controlFile(opts, target);
+    const label = target === "linux" ? "Linux" : "macOS";
     if (!existsSync(file)) {
       throw new An3Error(
         "E_TARGET_UNAVAILABLE",
-        `No ${target} UI control file at ${file}. Launch a test automation build with AN3_UI_CONTROL_FILE set (see \`an3ctl app start --target macos\`).`,
+        `No ${label} UI control file at ${file}. Launch a ui-control automation build and set its ${target === "linux" ? "AN3_LINUX_UI_CONTROL_FILE" : "AN3_UI_CONTROL_FILE"} path.`,
       );
     }
     try {
@@ -72,53 +79,40 @@ export class DesktopAdapter {
       if (!parsed?.port || !parsed?.token) throw new Error("missing port/token");
       return { file, port: parsed.port, token: parsed.token };
     } catch (error) {
-      throw new An3Error("E_TARGET_UNAVAILABLE", `Invalid ${target} UI control file ${file}: ${error.message}`);
+      throw new An3Error("E_TARGET_UNAVAILABLE", `Invalid ${label} UI control file ${file}: ${error.message}`);
     }
   }
 
-  async uiControlCall(opts, route, params = {}) {
-    const { port, token } = this.readControl(opts);
+  async controlCall(opts, target, route, params = {}) {
+    const { port, token } = this.readControl(opts, target);
     const query = new URLSearchParams(params).toString();
     const path = `${route}${query ? `?${query}` : ""}`;
-    return httpJson(port, path, { timeout: 15_000, headers: { "x-an3-token": token } }).catch(error => {
+    return httpJson(port, path, {
+      timeout: MACOS_UI_CONTROL_TIMEOUT_MS,
+      headers: { "x-an3-token": token },
+    }).then(result => {
+      if (typeof result?.error === "string") {
+        const code = result.error.includes("did not answer in time") ? "E_TIMEOUT" : "E_ACTION_FAILED";
+        throw new An3Error(code, result.error);
+      }
+      return result;
+    }).catch(error => {
       if (error instanceof An3Error) throw error;
-      throw new An3Error("E_ACTION_FAILED", `${opts.target ?? "macos"} UI bridge call failed (${path}): ${error.message}`);
+      throw new An3Error("E_ACTION_FAILED", `${target} UI bridge call failed (${path}): ${error.message}`);
     });
   }
 
-  async withWindowsCdp(opts = {}, callback) {
-    const port = Number(opts.windows?.port ?? opts.port ?? 9222);
-    let targets;
-    try {
-      targets = await httpJson(port, "/json/list", { timeout: 1500 });
-    } catch (error) {
-      throw new An3Error(
-        "E_TARGET_UNAVAILABLE",
-        "Windows WebView2 CDP is not reachable on 127.0.0.1:" + port + "; forward the test-only loopback endpoint over SSH first.",
-        { cause: error.message },
-      );
-    }
-    const page = Array.isArray(targets)
-      ? targets.find(target => target.type === "page") ?? targets[0]
-      : null;
-    if (!page?.webSocketDebuggerUrl) {
-      throw new An3Error("E_TARGET_UNAVAILABLE", "Windows WebView2 did not expose a page CDP endpoint.");
-    }
-    const session = await CdpSession.connect(page.webSocketDebuggerUrl);
-    try {
-      return await callback(session);
-    } finally {
-      session.close();
-    }
-  }
-
   async appStart(opts = {}) {
-    if (process.platform !== "darwin") {
-      throw new An3Error("E_TARGET_UNAVAILABLE", "macOS app start requires a macOS ui-control automation build.");
-    }
     const appPath = opts.app ?? process.env.AN3_MACOS_APP;
     if (!appPath || !existsSync(appPath)) {
       throw new An3Error("E_USAGE", "app start --target macos requires AN3_MACOS_APP (or --app) pointing at the built .app");
+    }
+    const executable = `${appPath}/Contents/MacOS/an3-offline-native`;
+    if (!existsSync(executable) || !readFileSync(executable).includes("AN3_UI_CONTROL_FILE")) {
+      throw new An3Error(
+        "E_TARGET_UNAVAILABLE",
+        "app start --target macos requires the ui-control automation build; --home does not isolate WebKit data for a packaged app, so use a copy with a unique bundle identifier",
+      );
     }
     const controlFile = this.controlFile(opts);
     rmSync(controlFile, { force: true });
@@ -147,15 +141,18 @@ export class DesktopAdapter {
   }
 
   async available(opts = {}) {
-    const macosControlFile = this.controlFile({ ...opts, ...(opts.macos ?? {}), target: "macos" });
-    const linuxControlFile = this.controlFile({ ...opts, ...(opts.linux ?? {}), target: "linux" });
-    const macosReachable = existsSync(macosControlFile);
+    // A caller may point each shell at its own control file; without the
+    // per-target override the env var or the per-target default is used, so the
+    // two targets are checked independently rather than through one path.
+    const controlFile = this.controlFile({ ...opts, ...(opts.macos ?? {}) }, "macos");
+    const linuxControlFile = this.controlFile({ ...opts, ...(opts.linux ?? {}) }, "linux");
+    const macosReachable = existsSync(controlFile);
     const linuxReachable = existsSync(linuxControlFile);
     return {
       available: macosReachable || linuxReachable,
       targets: {
         macos: macosReachable
-          ? { available: true, via: "ui-control", controlFile: macosControlFile, reason: null, next: null }
+          ? { available: true, via: "ui-control", controlFile, reason: null, next: null }
           : {
               available: false,
               reason: "No macOS UI control bridge is active. Build the automation app (cargo feature `ui-control`) and start it with AN3_UI_CONTROL_FILE.",
@@ -165,8 +162,8 @@ export class DesktopAdapter {
           ? { available: true, via: "ui-control", controlFile: linuxControlFile, reason: null, next: null }
           : {
               available: false,
-              reason: "No Linux UI control bridge is active. Build with the test-only ui-control feature and set AN3_UI_CONTROL_FILE.",
-              next: "Start the Linux automation build with AN3_UI_CONTROL_FILE set.",
+              reason: "No Linux UI control file is configured. Use a test-only ui-control build and a loopback/SSH-forwarded bridge.",
+              next: "Set AN3_LINUX_UI_CONTROL_FILE to the local control file.",
             },
         windows: await this.windowsDebugProbe(opts.windows ?? {}),
       },
@@ -185,13 +182,15 @@ export class DesktopAdapter {
   async uiTree(opts = {}) {
     const target = opts.target ?? "windows";
     if (target === "macos" || target === "linux") {
-      const result = await this.uiControlCall(opts, "/tree");
+      const result = await this.controlCall(opts, target, "/tree");
       return { target, via: "ui-control", nodes: result.nodes };
     }
     if (target === "windows") {
-      return this.withWindowsCdp(opts, async session => {
-        const tree = await session.evaluateJson(domTreeExpression(Number(opts.limit ?? 120)));
-        return { target, via: "cdp", ...tree };
+      return this.withWindowsCdp(opts, async (cdp, page) => {
+        const limit = Number(opts.limit ?? 120);
+        const tree = await cdp.evaluateJson(domTreeExpression(limit));
+        const section = await cdp.evaluate("document.body?.dataset?.section ?? null");
+        return { target, via: "cdp", ...tree, section, page: { title: page.title, url: page.url }, limit };
       });
     }
     await this.requireStructured(target);
@@ -200,15 +199,17 @@ export class DesktopAdapter {
   async uiQuery(opts = {}) {
     const target = opts.target ?? "windows";
     if (target === "macos" || target === "linux") {
-      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : opts.selector?.kind === "testid" ? opts.selector.value : null);
-      if (!testid) throw new An3Error("E_USAGE", "ui query --target " + target + " requires --testid <id>");
-      const result = await this.uiControlCall(opts, "/query", { testid });
+      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : null);
+      if (!testid) throw new An3Error("E_USAGE", `ui query --target ${target} requires --testid <id>`);
+      const result = await this.controlCall(opts, target, "/query", { testid });
       return { target, via: "ui-control", node: result.node };
     }
     if (target === "windows") {
-      return this.withWindowsCdp(opts, async session => {
-        const result = await session.evaluateJson(locateExpression(opts.selector, { nth: opts.nth ?? 0 }));
-        if (!result?.found) throw new An3Error("E_NOT_FOUND", "No Windows UI element matched the selector.", { selector: opts.selector });
+      const selector = opts.selector;
+      if (!selector) throw new An3Error("E_USAGE", "ui query --target windows requires a semantic selector");
+      return this.withWindowsCdp(opts, async (cdp) => {
+        const result = await cdp.evaluateJson(locateExpression(selector, { nth: opts.nth ?? 0 }));
+        if (!result?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
         return { target, via: "cdp", ...result };
       });
     }
@@ -218,35 +219,58 @@ export class DesktopAdapter {
   async uiClick(opts = {}) {
     const target = opts.target ?? "windows";
     if (target === "macos" || target === "linux") {
-      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : opts.selector?.kind === "testid" ? opts.selector.value : null);
-      if (!testid) throw new An3Error("E_USAGE", "ui click --target " + target + " requires --testid <id>");
-      const result = await this.uiControlCall(opts, "/click", { testid });
-      if (!result.clicked) throw new An3Error("E_SELECTOR_NOT_FOUND", "no element with data-testid=" + testid);
+      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : null);
+      if (!testid) throw new An3Error("E_USAGE", `ui click --target ${target} requires --testid <id>`);
+      const result = await this.controlCall(opts, target, "/click", { testid });
+      if (!result.clicked) throw new An3Error("E_SELECTOR_NOT_FOUND", `no element with data-testid=${testid}`);
       return { target, via: "ui-control", clicked: true, testid };
     }
     if (target === "windows") {
-      return this.withWindowsCdp(opts, async session => {
-        const located = await session.evaluateJson(locateExpression(opts.selector, { nth: opts.nth ?? 0 }));
-        if (!located?.found) throw new An3Error("E_NOT_FOUND", "No Windows UI element matched the selector.", { selector: opts.selector });
-        const hitTest = await session.evaluateJson("(() => {"
-          + "const all=Array.from(document.querySelectorAll('a,button,input,select,textarea,[role],[data-testid],[onclick],[tabindex]'));"
-          + "const el=all[" + Number(located.index) + "];"
-          + "if(!el)return {performed:false,reason:'missing'};"
-          + "el.scrollIntoView({block:'center',inline:'center'});"
-          + "const r=el.getBoundingClientRect(),s=getComputedStyle(el),x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);"
-          + "if(!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||el.disabled||(hit!==el&&!el.contains(hit)){"
-          + "const blocker=hit&&hit.closest('[data-testid]');"
-          + "return {performed:false,reason:'obstructed',hit:{testId:blocker&&blocker.getAttribute('data-testid'),tag:hit&&hit.tagName.toLowerCase()}};"
-          + "}"
-          + "return {performed:true,x,y};"
-          + "})()");
-        if (!hitTest?.performed) {
-          throw new An3Error("E_ACTION_FAILED", "Windows UI target is not actionable.", { selector: opts.selector, hitTest });
+      const holdMs = opts.holdMs === undefined ? 0 : Number(opts.holdMs);
+      if (!Number.isInteger(holdMs) || holdMs < 0 || holdMs > 5000) {
+        throw new An3Error("E_USAGE", "--hold-ms must be an integer from 0 to 5000.");
+      }
+      const selector = opts.selector;
+      if (!selector) throw new An3Error("E_USAGE", "ui click --target windows requires a semantic selector");
+      return this.withWindowsCdp(opts, async (cdp) => {
+        const located = await cdp.evaluateJson(locateExpression(selector, { nth: opts.nth ?? 0 }));
+        if (!located?.found) throw new An3Error("E_NOT_FOUND", `No element matched ${describeSelector(selector)}`, { selector });
+        const index = Number(located.index);
+        const point = await cdp.evaluateJson(`(() => {
+          const el = Array.from(document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}))[${index}];
+          if (!el || !el.isConnected) return JSON.stringify({ performed: false, reason: 'detached' });
+          el.scrollIntoView({ block: 'center' });
+          const rect = el.getBoundingClientRect();
+          const style = getComputedStyle(el);
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          const nodeSummary = node => node ? {
+            tag: node.tagName,
+            id: node.id || null,
+            testId: node.getAttribute('data-testid'),
+            className: typeof node.className === 'string' ? node.className : null,
+            pointerEvents: getComputedStyle(node).pointerEvents,
+          } : null;
+          const visible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+          const enabled = !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+          const unobstructed = hit === el || el.contains(hit);
+          return JSON.stringify({
+            performed: visible && enabled && unobstructed,
+            reason: !visible ? 'not-visible' : !enabled ? 'disabled' : !unobstructed ? 'obstructed' : null,
+            x, y,
+            target: { ...nodeSummary(el), rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, display: style.display, visibility: style.visibility },
+            hit: nodeSummary(hit),
+          });
+        })()`);
+        if (!point?.performed) throw new An3Error("E_ACTION_FAILED", `Windows click target cannot receive input: ${describeSelector(selector)}`, { selector, hitTest: point });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+        try {
+          await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
+          if (holdMs > 0) await new Promise(resolve => setTimeout(resolve, holdMs));
+        } finally {
+          await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
         }
-        const { x, y } = hitTest;
-        await session.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-        await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
-        await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
         return { target, via: "cdp", performed: true, action: "click" };
       });
     }
@@ -256,14 +280,10 @@ export class DesktopAdapter {
   async uiText(opts = {}) {
     const target = opts.target ?? "windows";
     if (target === "macos" || target === "linux") {
-      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : opts.selector?.kind === "testid" ? opts.selector.value : null);
-      if (!testid) throw new An3Error("E_USAGE", "ui text --target " + target + " requires --testid <id>");
-      const result = await this.uiControlCall(opts, "/text", { testid });
+      const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : null);
+      if (!testid) throw new An3Error("E_USAGE", `ui text --target ${target} requires --testid <id>`);
+      const result = await this.controlCall(opts, target, "/text", { testid });
       return { target, via: "ui-control", text: result.text, present: result.present };
-    }
-    if (target === "windows") {
-      const result = await this.uiQuery(opts);
-      return { target, via: "cdp", text: result.node?.name ?? null, present: true };
     }
     await this.requireStructured(target);
   }
@@ -274,8 +294,11 @@ export class DesktopAdapter {
   // rendered output (an advancing counter) without screenshots or coordinates.
   async uiNative(opts = {}) {
     const target = opts.target ?? "macos";
+    if (target === "linux") {
+      throw new An3Error("E_TARGET_UNAVAILABLE", "Linux ui-control exposes DOM actions but not native-process or presented-frame diagnostics.");
+    }
     if (target !== "macos") await this.requireStructured(target);
-    const result = await this.uiControlCall(opts, "/native");
+    const result = await this.controlCall(opts, target, "/native");
     return {
       target,
       via: "ui-control",
@@ -286,21 +309,57 @@ export class DesktopAdapter {
 
   async uiWait(opts = {}) {
     const target = opts.target ?? "windows";
-    if (target !== "macos" && target !== "linux" && target !== "windows") await this.requireStructured(target);
-    const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : opts.selector?.kind === "testid" ? opts.selector.value : null);
-    if (!testid) throw new An3Error("E_USAGE", "ui wait --target " + target + " requires --testid <id>");
+    if (target === "windows") {
+      if (!opts.selector) throw new An3Error("E_USAGE", "ui wait --target windows requires a semantic selector");
+      const timeout = Number(opts.timeout ?? 30_000);
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        try {
+          const result = await this.uiQuery(opts);
+          if (!opts.state || result.node?.state === opts.state) return { target, via: "cdp", found: true, node: result.node };
+        } catch (error) {
+          if (!(error instanceof An3Error) || error.code !== "E_NOT_FOUND") throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+      throw new An3Error("E_TIMEOUT", `ui wait timed out for ${describeSelector(opts.selector)}${opts.state ? ` state=${opts.state}` : ""}`);
+    }
+    if (target !== "macos" && target !== "linux") await this.requireStructured(target);
+    const testid = opts.testid ?? (typeof opts.selector === "string" ? opts.selector : null);
+    if (!testid) throw new An3Error("E_USAGE", `ui wait --target ${target} requires --testid <id>`);
     const timeout = Number(opts.timeout ?? 30_000);
     const deadline = Date.now() + timeout;
     while (Date.now() < deadline) {
-      const result = target === "windows"
-        ? await this.uiQuery(opts)
-        : await this.uiControlCall(opts, "/query", { testid });
-      const node = result.node ?? null;
-      if (node && (opts.state ? node.state === opts.state : true)) {
-        return { target, via: target === "windows" ? "cdp" : "ui-control", found: true, node };
+      const result = await this.controlCall(opts, target, "/query", { testid });
+      if (result.node && (opts.state ? result.node.state === opts.state : true)) {
+        return { target, via: "ui-control", found: true, node: result.node };
       }
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     throw new An3Error("E_TIMEOUT", `ui wait timed out for data-testid=${testid}${opts.state ? ` state=${opts.state}` : ""}`);
   }
+
+  async withWindowsCdp(opts, fn) {
+    const probe = await this.windowsDebugProbe(opts.windows ?? {});
+    if (!probe.reachable) {
+      throw new An3Error("E_TARGET_UNAVAILABLE", `Windows WebView2 DevTools is unavailable on 127.0.0.1:${probe.port}. ${probe.instruction ?? ""}`.trim());
+    }
+    const targets = await httpJson(probe.port, "/json/list").catch((error) => {
+      throw new An3Error("E_TARGET_UNAVAILABLE", `Windows WebView2 DevTools is not reachable on 127.0.0.1:${probe.port}. ${probe.instruction ?? ""}`.trim(), { cause: error.message });
+    });
+    const page = targets.find((entry) => entry.type === "page" && entry.webSocketDebuggerUrl && entry.url?.startsWith(`http://127.0.0.1:${WINDOWS_RUNTIME_PORT}/`));
+    if (!page) throw new An3Error("E_TARGET_UNAVAILABLE", `WebView2 DevTools did not expose the VCE loopback page on port ${WINDOWS_RUNTIME_PORT}.`);
+    const cdp = await CdpSession.connect(page.webSocketDebuggerUrl);
+    try {
+      return await fn(cdp, page);
+    } finally {
+      cdp.close();
+    }
+  }
+}
+
+function describeSelector(selector) {
+  if (!selector) return "(no selector)";
+  if (selector.kind === "role") return `role=${selector.value.role}${selector.value.name ? ` name~${selector.value.name}` : ""}`;
+  return `${selector.kind}=${selector.value}`;
 }

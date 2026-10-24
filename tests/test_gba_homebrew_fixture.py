@@ -7,7 +7,7 @@ import json
 import unittest
 from pathlib import Path
 
-from tools.testrom.gba_homebrew_test import build
+from tools.testrom.gba_homebrew_test import AUDIO_LITERALS, LITERALS, build
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +47,22 @@ class GbaHomebrewFixtureTests(unittest.TestCase):
         self.assertEqual(words[21], 0xE3A0B000)  # clear latch on boot
         self.assertEqual(words[27:29], [0x03A0B001, 0xE35B0001])
         self.assertEqual(words[34:36], [0x1AFFFFFC, 0xEAFFFFF3])
+
+    def test_optional_audio_fixture_writes_gba_sound_registers(self):
+        canonical = build()
+        audio = build(audio_tone=True)
+        words = [int.from_bytes(audio[offset : offset + 4], "little")
+                 for offset in range(0xC0, 0xC0 + 44 * 4, 4)]
+        pool_offset = 0xC0 + 44 * 4
+        pool = [int.from_bytes(audio[offset : offset + 4], "little")
+                for offset in range(pool_offset, pool_offset + len(LITERALS + AUDIO_LITERALS) * 4, 4)]
+
+        self.assertEqual(len(audio), 512)
+        self.assertEqual(len(words), 44)
+        self.assertEqual([words[index] for index in (23, 26, 29)], [0xE1C010B0] * 3)
+        self.assertEqual(pool, LITERALS + AUDIO_LITERALS)
+        self.assertNotEqual(audio, canonical)
+        self.assertEqual(canonical, build(audio_tone=False))
 
     def test_title_rejects_values_that_cannot_fit_a_gba_header(self):
         for title in (b"", b"lowercase", b"AN3-ROM", b"AN3SYNCROM500"):

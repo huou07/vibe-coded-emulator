@@ -93,6 +93,16 @@ class SafeDataPathTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             app.safe_data_path(self.root, "../" + os.path.basename(self.root) + "-evil/x")
 
+    def test_rejects_a_symlink_that_escapes_the_root(self):
+        with tempfile.TemporaryDirectory(prefix="an3-safe-path-outside-") as outside:
+            link = os.path.join(self.root, "outside-link")
+            try:
+                os.symlink(outside, link)
+            except (NotImplementedError, OSError) as exc:
+                self.skipTest(f"symlinks are unavailable: {exc}")
+            with self.assertRaises(ValueError):
+                app.safe_data_path(self.root, "outside-link/secret.bin")
+
 
 class StaticServingTraversalTests(unittest.TestCase):
     def _serve(self, relative):

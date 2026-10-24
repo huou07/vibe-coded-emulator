@@ -14,9 +14,12 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = (ROOT / "app.py").read_text(encoding="utf-8")
-STAGING = (ROOT / "deploy/package-staging.sh").read_text(encoding="utf-8")
-PRODUCTION = (ROOT / "deploy/package-production.sh").read_text(encoding="utf-8")
-UPDATE_PRODUCTION = (ROOT / "deploy/update-production.sh").read_text(encoding="utf-8")
+STAGING_PATH = ROOT / "deploy/package-staging.sh"
+PRODUCTION_PATH = ROOT / "deploy/package-production.sh"
+UPDATE_PRODUCTION_PATH = ROOT / "deploy/update-production.sh"
+STAGING = STAGING_PATH.read_text(encoding="utf-8") if STAGING_PATH.is_file() else None
+PRODUCTION = PRODUCTION_PATH.read_text(encoding="utf-8") if PRODUCTION_PATH.is_file() else None
+UPDATE_PRODUCTION = UPDATE_PRODUCTION_PATH.read_text(encoding="utf-8") if UPDATE_PRODUCTION_PATH.is_file() else None
 
 
 def _imports(source):
@@ -49,11 +52,15 @@ class PackagingImportTests(unittest.TestCase):
         self.assertNotIn("google_sync", modules)
 
     def test_every_local_app_import_is_packaged_for_staging_and_production(self):
+        if STAGING is None or PRODUCTION is None:
+            self.skipTest("public source snapshot omits private deployment scripts")
         for module in sorted(local_modules()):
             self.assertIn(f"{module}.py", STAGING, f"package-staging.sh omits {module}.py")
             self.assertIn(f"{module}.py", PRODUCTION, f"package-production.sh omits {module}.py")
 
     def test_production_updater_installs_every_local_module(self):
+        if UPDATE_PRODUCTION is None:
+            self.skipTest("public source snapshot omits private deployment scripts")
         for module in sorted(local_modules()):
             self.assertRegex(
                 UPDATE_PRODUCTION,

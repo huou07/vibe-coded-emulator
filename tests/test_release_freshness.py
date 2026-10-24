@@ -61,7 +61,11 @@ class ReleaseFreshnessTests(unittest.TestCase):
                     thread.join()
 
     def test_platform_resource_overrides_keep_native_binaries_separate(self):
-        root = Path(__file__).resolve().parents[1] / "native-offline/src-tauri"
+        snapshot_root = Path(__file__).resolve().parents[1]
+        windows_manifest = snapshot_root / "native-offline/vendor/libretro/windows-x64/manifest.json"
+        if (snapshot_root / "PROVENANCE.md").is_file() and not windows_manifest.is_file():
+            self.skipTest("vendored platform manifest is intentionally omitted from the public snapshot")
+        root = snapshot_root / "native-offline/src-tauri"
         common = json.loads((root / "tauri.conf.json").read_text())["bundle"]["resources"]
         mac = json.loads((root / "tauri.macos.conf.json").read_text())["bundle"]["resources"]
         windows = json.loads((root / "tauri.windows.conf.json").read_text())["bundle"]["resources"]

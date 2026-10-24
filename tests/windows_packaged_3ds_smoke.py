@@ -69,14 +69,14 @@ def wait_for_output(lines, prefix, timeout=10):
     raise TimeoutError(f"Native player did not acknowledge {prefix}.")
 
 
-def wait_for_native_progress(lines, timeout=15):
+def wait_for_native_progress(lines, timeout=15, after=None):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            line = lines.get(timeout=min(0.25, deadline - time.monotonic()))
+            observed_at, line = lines.get(timeout=min(0.25, deadline - time.monotonic()))
         except queue.Empty:
             continue
-        if not line.startswith("AN3_NATIVE_STATUS "):
+        if after is not None and observed_at <= after:
             continue
         fields = dict(re.findall(r"(core|present|drops)=([0-9]+)", line))
         if "core" in fields and "present" in fields:
@@ -281,11 +281,14 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True, env=env)
         output_lines = queue.Queue()
+        progress_lines = queue.Queue()
 
         def drain_output():
             for line in process.stdout:
                 log_stream.write(line)
                 log_stream.flush()
+                if line.startswith("AN3_NATIVE_STATUS "):
+                    progress_lines.put((time.monotonic(), line))
                 output_lines.put(line)
 
         reader = threading.Thread(target=drain_output, daemon=True)
@@ -341,6 +344,7 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
             # the Vulkan/core loop continues. Exercise repeated input edges,
             # then require renderer and core counters to advance together over
             # multiple reporting intervals (at least 360 additional frames).
+            progress_started_at = time.monotonic()
             input_transitions = []
             for command_id, pressed in ((2, 0), (3, 1), (4, 0), (5, 1), (6, 0)):
                 process.stdin.write(f"{command_id}\tbutton\t8:{pressed}\n")
@@ -350,7 +354,9 @@ class WindowsPackaged3DSSmoke(unittest.TestCase):
 
             progression = []
             for _ in range(3):
-                sample = wait_for_native_progress(output_lines, timeout=20)
+                sample = wait_for_native_progress(
+                    progress_lines, timeout=20, after=progress_started_at,
+                )
                 if progression:
                     self.assertGreater(sample["core"], progression[-1]["core"],
                                        "core frame count stopped advancing during gameplay")

@@ -91,9 +91,19 @@ for (const relativePath of runtimeFiles) {
   const actualHash = createHash("sha256").update(payload).digest("hex");
   if (actualHash !== runtimeHashes[relativePath]) throw new Error(`Native runtime asset ${relativePath} differs from the frozen dependency lock; refusing an implicit core/runtime update.`);
   await writeFile(cachedPath, payload);
+  let packagedPayload = payload;
+  if (relativePath === "latest/data-v2/emulator.min.js") {
+    const source = Buffer.from(payload).toString("utf8");
+    const original = "})})}versionAsInt(t){";
+    const patched = "})}).catch(()=>{})}versionAsInt(t){";
+    if (source.split(original).length - 1 !== 1) {
+      throw new Error("The locked EmulatorJS update-check call site changed; refusing an unreviewed runtime patch.");
+    }
+    packagedPayload = Buffer.from(source.replace(original, patched), "utf8");
+  }
   const target = resolve(destination, "emulatorjs", relativePath);
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, payload);
+  await writeFile(target, packagedPayload);
 }
 
 // Android WebView recognises WebViewAssetLoader's HTTPS origin as a secure

@@ -7,7 +7,10 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = (ROOT / ".github/workflows/native-build.yml").read_text(encoding="utf-8")
+WORKFLOW_PATH = ROOT / ".github/workflows/native-build.yml"
+if (ROOT / "PROVENANCE.md").is_file() and not WORKFLOW_PATH.is_file():
+    raise unittest.SkipTest("private native package workflow is intentionally omitted")
+WORKFLOW = WORKFLOW_PATH.read_text(encoding="utf-8")
 SMOKE = (ROOT / "tools/windows-runtime-smoke.ps1").read_text(encoding="utf-8")
 BUILDER = (ROOT / "native-offline/scripts/build-windows-automation.ps1").read_text(encoding="utf-8")
 TAURI_LIB = (ROOT / "native-offline/src-tauri/src/lib.rs").read_text(encoding="utf-8")
@@ -15,9 +18,34 @@ NDS_SMOKE = (ROOT / "tools/windows-nds-runtime-smoke.ps1").read_text(encoding="u
 
 
 class WindowsRuntimeSmokeTests(unittest.TestCase):
+    def test_public_snapshot_keeps_generated_source_line_endings(self):
+        attributes = ROOT / ".gitattributes"
+        self.assertTrue(attributes.is_file(), "public snapshot must retain generated-file attributes")
+        rules = attributes.read_text(encoding="utf-8")
+        self.assertIn("native-offline/shared/generated/*.h text eol=lf", rules)
+        self.assertIn("native-offline/src-tauri/gen/android/app/src/main/java/space/an3tocom/offline/NativePlayerUi.kt text eol=lf", rules)
+
     def test_release_windows_shell_uses_gui_subsystem_but_debug_keeps_console(self):
         main_rs = (ROOT / "native-offline/src-tauri/src/main.rs").read_text(encoding="utf-8")
         self.assertIn('#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]', main_rs)
+
+    def test_windows_host_runtime_avoids_gtk_and_bundles_runtime_license_closure(self):
+        build = (ROOT / "native-offline/scripts/build-windows-runtime.sh").read_text(encoding="utf-8")
+        runtime = (ROOT / "native-offline/native-runtime/platform/linux/linux_runtime.cpp").read_text(encoding="utf-8")
+        stub = (ROOT / "native-offline/native-runtime/platform/linux/windows_controls_stub.cpp").read_text(encoding="utf-8")
+        bundler = (ROOT / "native-offline/scripts/bundle-windows-runtime.mjs").read_text(encoding="utf-8")
+        self.assertIn("-DAN3_WINDOWS_TAURI_HOST", build)
+        self.assertIn("windows_controls_stub.cpp", build)
+        self.assertNotIn("linux_controls.cpp", build)
+        self.assertNotIn("gtk+-3.0", build)
+        self.assertIn("bool no_controls = true;", runtime)
+        self.assertIn("return std::nullopt;", runtime[runtime.index("std::optional<std::string> choose_rom") :])
+        self.assertIn("Windows native controls are provided by the application shell.", stub)
+        self.assertIn("pacman.exe", bundler)
+        self.assertIn("runtimePackages", bundler)
+        self.assertIn("runtimeLicensePackages", bundler)
+        self.assertIn("Missing runtime dependency license", bundler)
+        self.assertNotIn("cp(join(msys, 'ucrt64/share/licenses'),", bundler)
 
     def test_packaged_3ds_smoke_requires_sustained_core_and_present_progress(self):
         smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
@@ -25,6 +53,9 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
         self.assertIn("core frame count stopped advancing", smoke)
         self.assertIn("Vulkan presentation count stopped advancing", smoke)
         self.assertIn("sustainedProgression", smoke)
+        self.assertIn("progress_lines = queue.Queue()", smoke)
+        self.assertIn('progress_lines.put((time.monotonic(), line))', smoke)
+        self.assertIn("after=progress_started_at", smoke)
 
     def test_smoke_harness_changes_do_not_rebuild_the_all_platform_matrix_on_push(self):
         self.assertGreaterEqual(WORKFLOW.count("tests/test_windows_runtime_smoke.py"), 1)
@@ -125,11 +156,16 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
 
     def test_targeted_windows_run_builds_lawful_nds_fixture_and_tests_exact_package(self):
         pull_request = WORKFLOW[WORKFLOW.index("  pull_request:"):WORKFLOW.index("  push:")]
-        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
+        snapshot_builder_path = ROOT / "tools/build-public-snapshot.sh"
+        if not snapshot_builder_path.is_file():
+            self.skipTest("public source snapshot intentionally omits its private exporter")
+        snapshot_builder = snapshot_builder_path.read_text(encoding="utf-8")
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-nds-fixture:"):WORKFLOW.index("  windows-packaged-nds-smoke:")]
         nds_job = WORKFLOW[WORKFLOW.index("  windows-packaged-nds-smoke:"):WORKFLOW.index("  android-smoke:")]
         self.assertIn("tools/windows-nds-runtime-smoke.ps1", pull_request)
-        self.assertIn('tools/windows-nds-runtime-smoke.ps1" ]] && cp', snapshot_builder)
+        self.assertIn("windows-nds-runtime-smoke.ps1", snapshot_builder)
+        self.assertIn("check-native-mirror.py", snapshot_builder)
+        self.assertIn('cp "$ROOT/tools/$file" "$OUT/tools/"', snapshot_builder)
         self.assertIn("github.event_name == 'workflow_dispatch' && inputs.windows_artifact_run_id != ''", fixture_job)
         self.assertIn("devkitPro/nds-examples.git", fixture_job)
         self.assertIn("f1ba715a451c6407f8b0f805999d0153062ff552", fixture_job)
@@ -152,7 +188,10 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
     def test_targeted_windows_3ds_run_uses_pinned_fixture_and_exact_package(self):
         workflow_dispatch = WORKFLOW[WORKFLOW.index("  workflow_dispatch:"):WORKFLOW.index("  pull_request:")]
         fixture_job = WORKFLOW[WORKFLOW.index("  windows-packaged-3ds-smoke:"):WORKFLOW.index("  android-smoke:")]
-        snapshot_builder = (ROOT / "tools/build-public-snapshot.sh").read_text(encoding="utf-8")
+        snapshot_builder_path = ROOT / "tools/build-public-snapshot.sh"
+        if not snapshot_builder_path.is_file():
+            self.skipTest("public source snapshot intentionally omits its private exporter")
+        snapshot_builder = snapshot_builder_path.read_text(encoding="utf-8")
         smoke = (ROOT / "tests/windows_packaged_3ds_smoke.py").read_text(encoding="utf-8")
         self.assertIn("windows_3ds_artifact_run_id", workflow_dispatch)
         self.assertIn("windows_3ds_expected_source_sha", workflow_dispatch)
@@ -202,7 +241,7 @@ class WindowsRuntimeSmokeTests(unittest.TestCase):
             self.assertNotIn(f"--testid', 'nav-{section}'", SMOKE)
 
     def test_windows_shell_virtual_input_changes_and_restores_the_visible_frame(self):
-        self.assertIn("'--css', '[data-native-button=\"8\"]'", SMOKE)
+        self.assertIn("'--css', '[data-native-button=\"8\"]', '--hold-ms', '150'", SMOKE)
         self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'red'", SMOKE)
         self.assertIn("Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'blue'", SMOKE)
         self.assertIn("virtualAInputFrameStatus = $inputFrameCapture.status", SMOKE)

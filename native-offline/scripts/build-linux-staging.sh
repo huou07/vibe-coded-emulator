@@ -14,6 +14,11 @@ case "$target" in deb|flatpak) ;; *) echo 'Usage: build-linux-staging.sh <deb|fl
 [[ "$(uname -m)" == "x86_64" ]] || { echo 'This staging package currently targets Linux x86_64.' >&2; exit 2; }
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Rust embeds file!()/panic locations from the dependency graph in native
+# binaries even in release mode. Remap the local checkout prefix so Linux
+# artifacts never disclose the builder home directory or account name.
+home_prefix="${HOME%/}"
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=${home_prefix}=/an3-home"
 bash "$(dirname "$root")/tools/disk-preflight.sh" "Linux $target staging package" "$(dirname "$root")"
 build="$root/work/linux-build"
 release="${AN3_RELEASE_DIR:-$root/releases}"
@@ -119,7 +124,9 @@ bash "$root/scripts/build-linux-eden-companion.sh"
 rm -rf "$build"
 mkdir -p "$build" "$release"
 # 1. The bundled native gameplay runtime (SDL window/input/audio + Vulkan/GL).
-"$compiler" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
+# Keep compiler-authored paths independent of the builder account and checkout.
+source_path_map="-ffile-prefix-map=${home_prefix}=/an3-home"
+"$compiler" "$source_path_map" -std=c++20 -O2 -DNDEBUG -Wall -Wextra -Wpedantic \
   -I"$root/native-runtime" \
   "$root/native-runtime/core/libretro_host.cpp" \
   "$root/native-runtime/core/native_core_session.cpp" \
@@ -148,9 +155,17 @@ if [[ "$target" == "deb" ]]; then
   # versioned filename and the previous release's DEB otherwise lingers here,
   # which a `find -quit` would happily reuse.
   rm -rf "$root/src-tauri/target/release/bundle/deb"
-  (cd "$root" && npm run prepare-web && npm run tauri -- build --bundles deb)
+  (cd "$root" && npm run prepare-web)
+  node "$root/scripts/generate-linux-debian-copyright.mjs" "$build/debian-copyright"
+  (cd "$root" && npm run tauri -- build --bundles deb)
   tauri_deb="$(find "$root/src-tauri/target/release/bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)"
   [[ -f "$tauri_deb" ]] || { echo 'Tauri completed without its expected DEB.' >&2; exit 3; }
+  deb_contents="$build/deb-contents.txt"
+  dpkg-deb --contents "$tauri_deb" > "$deb_contents"
+  grep -Fq 'usr/share/doc/vibe-coded-emulator/copyright' "$deb_contents" || {
+    echo 'The DEB is missing /usr/share/doc/vibe-coded-emulator/copyright.' >&2
+    exit 3
+  }
   install -m 0644 "$tauri_deb" "$deb_path"
   sha256sum "$deb_path" > "$deb_path.sha256"
   if [[ "$deb_path" != "$flatpak_deb_path" ]]; then

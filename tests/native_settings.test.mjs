@@ -33,7 +33,7 @@ test("the model exposes the four canonical systems and labels", () => {
   assert.equal(model.store, "an3-native-game");
 });
 
-test("the core-only native settings expose only the Switch companion feature", () => {
+test("the Switch companion setting is globally shared and disabled until explicitly enabled", () => {
   const model = load();
   const experimental = model.externalGlobal().filter(definition => definition.category === "experimental");
   assert.deepEqual(Array.from(experimental, definition => definition.id), ["experimental-switch-eden"]);
@@ -45,6 +45,8 @@ test("the core-only native settings expose only the Switch companion feature", (
   const edit = model.buildEdit(eden, null, "true");
   store.apply({[edit.key]: edit.value});
   assert.equal(model.coerce(eden, store.get(eden.id)), "true");
+  assert.equal(store.get("experimental-phone-controller"), undefined);
+  assert.equal(store.get("experimental-lan-sync"), undefined);
 });
 
 test("every per-system definition is stored under a system-scoped key", () => {

@@ -351,12 +351,12 @@ mod tests {
     }
 
     #[test]
-    fn switch_eden_preference_is_off_for_a_fresh_profile_and_persists_opt_in() {
+    fn switch_companion_preference_is_off_by_default_and_persists_opt_in() {
         let path = temp_path();
         let defaults = execute(&path, "all", None, None).unwrap();
-        assert!(defaults["global"].get("experimental-phone-controller").is_none());
-        assert!(defaults["global"].get("experimental-lan-sync").is_none());
         assert_eq!(defaults["global"]["experimental-switch-eden"], "false");
+        assert!(experimental_enabled(&path, "experimental-phone-controller").is_err());
+        assert!(experimental_enabled(&path, "experimental-lan-sync").is_err());
         assert!(!experimental_enabled(&path, "experimental-switch-eden").unwrap());
 
         let edits =

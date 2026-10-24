@@ -74,6 +74,18 @@ def between(text: str, start: str, end: str) -> str:
 
 
 class AndroidNativeRuntimeTests(unittest.TestCase):
+    def test_public_snapshot_keeps_android_instrumentation_sources(self):
+        android_test_dir = ROOT / "native-offline/src-tauri/gen/android/app/src/androidTest/java/space/an3tocom/offline"
+        for name in ("NativeAppSmokeTest.kt", "NativeGbaSaveTest.kt", "NativeSettingsTabsTest.kt"):
+            with self.subTest(test=name):
+                self.assertTrue((android_test_dir / name).is_file(), f"snapshot omitted {name}")
+        snapshot_builder = ROOT / "tools/build-public-snapshot.sh"
+        if snapshot_builder.is_file():
+            self.assertIn(
+                '"gen/android/app/src/androidTest/java/space/an3tocom/offline"',
+                source(snapshot_builder),
+            )
+
     def test_android_staging_build_initializes_fresh_gradle_project_and_writes_sidecars(self):
         script = source(ANDROID_STAGING_BUILD)
         self.assertIn(
@@ -85,6 +97,25 @@ class AndroidNativeRuntimeTests(unittest.TestCase):
         self.assertLess(script.index(init), script.index(build))
         self.assertIn('for release_artifact in "$RELEASE_APK" "$RELEASE_AAB"; do', script)
         self.assertIn('shasum -a 256 "$(basename "$release_artifact")"', script)
+
+    def test_android_eden_build_maps_checkout_paths_before_compilation(self):
+        script = source(ROOT / "native-offline/scripts/build-android-eden.sh")
+        self.assertIn(
+            '"-ffile-prefix-map=${CMAKE_SOURCE_DIR}=/an3-eden-source"',
+            script,
+        )
+        self.assertIn(
+            '"-ffile-prefix-map={bridge.parents[1].as_posix()}=/an3-vce-source"',
+            script,
+        )
+        self.assertIn(
+            "root = root.replace(marker_line, marker_line + path_map, 1)",
+            script,
+        )
+        self.assertLess(
+            script.index("+ path_map"),
+            script.index('+ \'    add_subdirectory("${AN3_EDEN_BRIDGE_DIR}/integration"'),
+        )
 
     def test_macos_ndk_host_tag_uses_the_universal_darwin_directory(self):
         for name, variable in (

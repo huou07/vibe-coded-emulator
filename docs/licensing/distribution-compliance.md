@@ -37,7 +37,7 @@ combined application. Applies to every packaged platform.
 | --- | --- | --- |
 | DMG (macOS) | Notarization/signing must not restrict GPL rights. Ad-hoc signing only; source offered in the same download location. | OK. No App Store distribution (GPL + DRM conflict avoided). |
 | EXE (Windows) | NSIS installer must ship the license/notices and not impose extra terms. | OK; notices bundled at `THIRD_PARTY_NOTICES.md`. |
-| DEB (Linux) | Copyright file with license texts (`/usr/share/doc/<pkg>/copyright`). | Action: the DEB's control/copyright must include the GPLv3 text and notices. |
+| DEB (Linux) | DEP-5 copyright file with full license texts and third-party notices at `/usr/share/doc/vibe-coded-emulator/copyright`. | Required by the Linux packaging gate; verified in the built DEB. |
 | Flatpak | GPLv3 text must ship in the bundle; the Flathub submission may require the license metadata. | OK; metainfo carries the release/license. |
 | APK (Android) | Notices inside the app; **GPLv3 §6 Installation Information** for User Products. The APK is sideloaded, not preinstalled on a User Product, and the source is published. | OK with the note below. |
 
@@ -82,13 +82,14 @@ way.
    `source.tar.gz`/`dependency-cache.tar.gz` or the collected candidate
    artifacts. Archive the bundle with the release. `tools/release-evidence.py`
    can also be run directly against a candidate artifact directory.
-   Components whose license is only known categorically from
-   `docs/licensing/license-audit.md` (e.g. Cargo crates) remain `UNKNOWN` and
-   must be reconciled before publication.
-3. Publication gate: run the release train with `AN3_REQUIRE_KNOWN_LICENSES=1`.
-   `--fail-on-unknown` then exits non-zero (the train fails) while any
-   component still has no license, naming the ecosystems to reconcile. The
-   default is report-only, because the Cargo inventory is not yet reconciled.
+   Cargo licenses are resolved with `cargo metadata --locked` and joined to
+   each lock entry by exact package name, version, and source. The lockfiles are
+   not rewritten. Missing metadata remains `UNKNOWN`.
+3. Publication gate: `tools/publication-check.sh` runs the inventory with
+   `--fail-on-unknown`, and the public CI `test` aggregate requires its
+   `license-inventory` job. The native-build workflow sets
+   `AN3_REQUIRE_KNOWN_LICENSES=1`; local release-train runs remain report-only
+   unless explicitly enabled. An unknown component fails these gates.
 4. Artifact secret gate: `tools/release-artifact-scan.py` (run by the train,
    writes `SECRET_SCAN.json`) reports any credential or private-data match in
    the evidence bundle or candidate artifacts. Run the train with
@@ -99,4 +100,4 @@ way.
    the built package.
 7. `catalog.json` records the source revision for each artifact.
 8. The Licenses UI opens and shows the notices and the source URL.
-9. Staging deploy passes; production requires explicit owner approval.
+9. The owner-authorized public-test website path preserves live user data and passes its post-update health check. Stable production distribution still requires separate owner authorization.

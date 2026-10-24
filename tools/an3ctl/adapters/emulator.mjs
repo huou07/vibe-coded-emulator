@@ -9,7 +9,7 @@
 // The player binary is a shared control boundary: the same commands work for a
 // locally built player and for the packaged Linux/Windows players over SSH.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { An3Error, run, runChecked, sha256, stateDir } from "../lib/core.mjs";
 
 const REMOTE_TARGETS = {
@@ -83,7 +83,8 @@ export class EmulatorAdapter {
   async invoke(target, opts) {
     const args = this.buildArgs(opts);
     if (target.kind === "local") {
-      const result = await run(target.player, args, { timeoutMs: Number(opts.timeoutMs ?? 180000) });
+      const env = target.libdir ? { AN3_OFFLINE_LIBDIR: target.libdir } : undefined;
+      const result = await run(target.player, args, { timeoutMs: Number(opts.timeoutMs ?? 180000), env });
       return { code: result.code, stdout: result.stdout, stderr: result.stderr };
     }
     if (target.kind === "remote") {
@@ -159,8 +160,8 @@ export class EmulatorAdapter {
       await runChecked("scp", ["-o", "BatchMode=yes", `${target.host}:${rawPath}`, localRaw], { errorCode: "E_ACTION_FAILED" });
       await run("ssh", ["-o", "BatchMode=yes", target.host, `rm -f '${pngPath}' '${rawPath}'`]);
     } else {
-      await run("cp", [pngPath, localPng]);
-      await run("cp", [rawPath, localRaw]);
+      copyFileSync(pngPath, localPng);
+      copyFileSync(rawPath, localRaw);
     }
     const pngBytes = readFileSync(localPng);
     const rawBytes = readFileSync(localRaw);

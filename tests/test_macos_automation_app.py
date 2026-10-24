@@ -108,11 +108,27 @@ def _runtime_port_free() -> bool:
 
 
 class MacosAutomationAppTests(unittest.TestCase):
+    def _require_native_build_workflow(self):
+        if NATIVE_BUILD_WORKFLOW.is_file():
+            return
+        if (ROOT / "PROVENANCE.md").is_file():
+            self.skipTest("the private native build workflow is omitted from the sanitized public source")
+        self.fail("the native build workflow is missing from the source checkout")
+
     def test_hosted_macos_job_builds_and_retains_source_matched_test_app(self):
+        self._require_native_build_workflow()
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
         self.assertIn("build_macos_candidate:", workflow)
         self.assertIn("inputs.build_macos_candidate", macos_job)
+        rustflags_line = next(
+            (line.strip() for line in macos_job.splitlines() if line.strip().startswith("RUSTFLAGS:")),
+            "",
+        )
+        self.assertRegex(
+            rustflags_line,
+            r"RUSTFLAGS: ['\"]--remap-path-prefix=[^=]+=~['\"]",
+        )
         self.assertIn("Build canonical macOS package", macos_job)
         self.assertIn("Build source-matched macOS UI-control test app", macos_job)
         self.assertIn("Verify macOS distribution and UI-control bundle separation", macos_job)
@@ -123,6 +139,7 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertIn("retention-days: 7", macos_job)
 
     def test_candidate_dispatch_gates_android_and_linux_to_their_own_inputs(self):
+        self._require_native_build_workflow()
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         macos_job = workflow[workflow.index("  macos-dmg:"):workflow.index("  android-apk:")]
         android_job = workflow[workflow.index("  android-apk:"):workflow.index("  linux-deb:")]
@@ -144,6 +161,7 @@ class MacosAutomationAppTests(unittest.TestCase):
             self.assertNotIn("inputs.build_windows_candidate", job)
 
     def test_macos_automation_refresh_reuses_a_verified_prior_dmg(self):
+        self._require_native_build_workflow()
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         refresh = workflow[
             workflow.index("  macos-ui-control-refresh:"):workflow.index("  android-apk:")
@@ -172,6 +190,7 @@ class MacosAutomationAppTests(unittest.TestCase):
         self.assertNotIn("el.click()", bridge)
 
     def test_workflow_only_pushes_use_portable_ci_without_native_matrix(self):
+        self._require_native_build_workflow()
         workflow = NATIVE_BUILD_WORKFLOW.read_text(encoding="utf-8")
         push = workflow[workflow.index("  push:"):workflow.index("permissions:")]
         self.assertNotIn(".github/workflows/**", push)
