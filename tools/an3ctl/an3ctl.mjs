@@ -164,6 +164,7 @@ async function uiCommand(adapters, action, flags) {
     testid: flags.testid,
     controlFile: flags["control-file"],
     timeout: flags.timeout !== undefined ? Number(flags.timeout) : undefined,
+    holdMs: flags["hold-ms"] !== undefined ? Number(flags["hold-ms"]) : undefined,
     serial: flags.serial,
     target,
     windows: { host: flags.windowsHost, port: flags.port !== undefined ? Number(flags.port) : undefined },
@@ -190,6 +191,8 @@ async function uiCommand(adapters, action, flags) {
       return adapter.uiWait(opts);
     case "text":
       return adapter.uiText(opts);
+    case "native":
+      return adapter.uiNative(opts);
     case "value":
       return adapter.uiValue(opts);
     default:

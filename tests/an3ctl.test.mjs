@@ -13,11 +13,13 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
 import { canCreateUnder, daemonCacheOverride } from "../tools/an3ctl/adapters/web.mjs";
+import { DesktopAdapter } from "../tools/an3ctl/adapters/desktop.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = `${ROOT}/tools/an3ctl/bin/an3ctl`;
@@ -122,6 +124,103 @@ test("web: the Playwright daemon cache moves only when the shared one cannot hos
   // Other platforms resolve the daemon base somewhere else, so they are untouched.
   assert.equal(daemonCacheOverride({ ...base, platform: "darwin", creatable: () => false }), undefined);
   assert.equal(daemonCacheOverride({ ...base, platform: "win32", creatable: () => false }), undefined);
+});
+
+test("desktop availability checks macOS and Linux control files independently", async (t) => {
+  const temp = mkdtempSync(join(tmpdir(), "an3ctl-desktop-availability-"));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const macControl = join(temp, "macos-ui-control.json");
+  const linuxControl = join(temp, "linux-ui-control.json");
+  const adapter = new DesktopAdapter(ROOT);
+  adapter.windowsDebugProbe = async () => ({ reachable: false });
+
+  writeFileSync(macControl, "{}");
+  const macOnly = await adapter.available({
+    macos: { controlFile: macControl },
+    linux: { controlFile: linuxControl },
+  });
+  assert.equal(macOnly.targets.macos.available, true);
+  assert.equal(macOnly.targets.linux.available, false);
+
+  rmSync(macControl);
+  writeFileSync(linuxControl, "{}");
+  const linuxOnly = await adapter.available({
+    macos: { controlFile: macControl },
+    linux: { controlFile: linuxControl },
+  });
+  assert.equal(linuxOnly.targets.macos.available, false);
+  assert.equal(linuxOnly.targets.linux.available, true);
+  assert.equal(linuxOnly.available, true);
+});
+
+test("Windows local WebView2 probe uses only the loopback CDP endpoint", async (t) => {
+  const server = createHttpServer((request, response) => {
+    assert.equal(request.url, "/json/list");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify([{ type: "page", title: "Vibe Coded Emulator", url: "http://127.0.0.1:38471/" }]));
+  });
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.once("error", rejectPromise);
+    server.listen(0, "127.0.0.1", resolvePromise);
+  });
+  t.after(() => new Promise((resolvePromise) => server.close(resolvePromise)));
+  const previous = process.env.AN3_WINDOWS_CDP_LOCAL;
+  process.env.AN3_WINDOWS_CDP_LOCAL = "1";
+  t.after(() => {
+    if (previous === undefined) delete process.env.AN3_WINDOWS_CDP_LOCAL;
+    else process.env.AN3_WINDOWS_CDP_LOCAL = previous;
+  });
+
+  const result = await new DesktopAdapter(ROOT).windowsDebugProbe({ port: server.address().port });
+  assert.deepEqual(result, {
+    host: "127.0.0.1",
+    port: server.address().port,
+    reachable: true,
+    via: "local-cdp",
+  });
+});
+
+test("Windows UI click holds the real CDP pointer sequence when requested", async () => {
+  const adapter = new DesktopAdapter(ROOT);
+  const evaluations = [
+    { found: true, index: 2 },
+    { performed: true, x: 41, y: 27 },
+  ];
+  const mouseEvents = [];
+  adapter.withWindowsCdp = async (_opts, callback) => callback({
+    evaluateJson: async () => evaluations.shift(),
+    send: async (method, params) => mouseEvents.push({ method, params }),
+  });
+
+  const startedAt = performance.now();
+  const result = await adapter.uiClick({
+    target: "windows",
+    selector: { kind: "testid", value: "native-session-button-a" },
+    holdMs: 30,
+  });
+  assert.ok(performance.now() - startedAt >= 25, "pointer release must follow the requested hold interval");
+  assert.deepEqual(result, { target: "windows", via: "cdp", performed: true, action: "click" });
+  assert.deepEqual(mouseEvents.map(({ params }) => params.type), ["mouseMoved", "mousePressed", "mouseReleased"]);
+  assert.ok(mouseEvents.every(({ method, params }) => method === "Input.dispatchMouseEvent" && params.x === 41 && params.y === 27));
+});
+
+test("Windows UI click rejects an obstructed semantic target with hit-test details", async () => {
+  const adapter = new DesktopAdapter(ROOT);
+  const evaluations = [
+    { found: true, index: 2 },
+    { performed: false, reason: "obstructed", hit: { testId: "blocking-overlay" } },
+  ];
+  let mouseEvents = 0;
+  adapter.withWindowsCdp = async (_opts, callback) => callback({
+    evaluateJson: async () => evaluations.shift(),
+    send: async () => { mouseEvents += 1; },
+  });
+
+  await assert.rejects(
+    adapter.uiClick({ target: "windows", selector: { kind: "testid", value: "native-session-button-a" } }),
+    (error) => error.code === "E_ACTION_FAILED" && error.details.hitTest.hit.testId === "blocking-overlay",
+  );
+  assert.equal(mouseEvents, 0);
 });
 
 test("web: launch, inspect, act, read back, and shut down cleanly", async (t) => {
