@@ -232,25 +232,37 @@ jobs:
           update: false
           install: >-
             mingw-w64-ucrt-x86_64-mesa
-      - name: Configure a CPU OpenGL driver for the runner
+      - name: Configure a CPU Vulkan device for the runner
         shell: pwsh
         env:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           $bin = Join-Path $env:MSYS2_LOCATION 'ucrt64/bin'
-          $opengl = Join-Path $bin 'opengl32.dll'
-          if (!(Test-Path $opengl)) { throw 'Mesa opengl32.dll is missing from the UCRT64 toolchain.' }
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vce-windows-runtime-smoke" | Out-Null
+          $lavapipe = Join-Path $bin 'vulkan_lvp.dll'
+          $loader = Join-Path $bin 'vulkan-1.dll'
+          if (!(Test-Path $lavapipe)) { throw 'Mesa lavapipe ICD is missing from the UCRT64 toolchain.' }
+          if (!(Test-Path $loader)) { throw 'The Vulkan loader is missing from the UCRT64 toolchain.' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'vce-windows-runtime-smoke'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          # The packaged ICD manifest does not resolve on this layout, so name
+          # the ICD explicitly. This is an ephemeral CPU device for the smoke.
+          $icd = Join-Path $evidence 'lavapipe_icd.x86_64.json'
           @{
-            opengl = $opengl
-            openglSha256 = (Get-FileHash $opengl -Algorithm SHA256).Hash.ToLowerInvariant();
-            source = 'MSYS2 mingw-w64-ucrt-x86_64-mesa (llvmpipe); ephemeral test dependency only'
-          } | ConvertTo-Json | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\vce-windows-runtime-smoke\opengl-environment.json"
-          "SDL_OPENGL_LIBRARY=$opengl" | Add-Content $env:GITHUB_ENV
+            file_format_version = '1.0.0'
+            ICD = @{ library_path = ($lavapipe -replace '\\', '/'); api_version = '1.3.0' }
+          } | ConvertTo-Json | Set-Content -Encoding utf8 $icd
+          @{
+            icd = $icd
+            icdSha256 = (Get-FileHash $icd -Algorithm SHA256).Hash.ToLowerInvariant()
+            library = $lavapipe
+            librarySha256 = (Get-FileHash $lavapipe -Algorithm SHA256).Hash.ToLowerInvariant()
+            loader = $loader
+            loaderSha256 = (Get-FileHash $loader -Algorithm SHA256).Hash.ToLowerInvariant()
+            source = 'MSYS2 mingw-w64-ucrt-x86_64-mesa (lavapipe); ephemeral test dependency only'
+          } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $evidence 'vulkan-environment.json')
+          "VK_ICD_FILENAMES=$icd" | Add-Content $env:GITHUB_ENV
+          "VK_DRIVER_FILES=$icd" | Add-Content $env:GITHUB_ENV
           "$bin" | Add-Content $env:GITHUB_PATH
-          "GALLIUM_DRIVER=llvmpipe" | Add-Content $env:GITHUB_ENV
-          "LIBGL_ALWAYS_SOFTWARE=1" | Add-Content $env:GITHUB_ENV
-          "MESA_GL_VERSION_OVERRIDE=4.5" | Add-Content $env:GITHUB_ENV
       - name: Install and verify the packaged Windows runtime
         shell: pwsh
         env:
