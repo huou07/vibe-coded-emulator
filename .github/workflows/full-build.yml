@@ -59,13 +59,13 @@ jobs:
           cp "$res/azahar/macos-arm64/azahar_libretro.dylib" native-offline/vendor/azahar/macos-arm64/
           cp "$res/azahar/macos-arm64/manifest.json" native-offline/vendor/azahar/macos-arm64/manifest.json
           cp "$res/azahar/macos-arm64/Azahar-GPL-2.0-or-later.txt" native-offline/vendor/azahar/macos-arm64/LICENSE
-          cp "$res/azahar/macos-arm64/libMoltenVK.dylib" native-offline/vendor/moltenvk/macos-arm64/
-          cp "$res/azahar/macos-arm64/moltenvk-manifest.json" native-offline/vendor/moltenvk/macos-arm64/manifest.json
-          cp "$res/azahar/macos-arm64/MoltenVK-LICENSE" native-offline/vendor/moltenvk/macos-arm64/LICENSE
           ls -lh native-offline/vendor/libretro/macos-arm64 native-offline/vendor/azahar/macos-arm64
-      - name: Prepare the web runtime from the verified cache
+      - name: Prepare MoltenVK headers and the web runtime from verified inputs
         working-directory: native-offline
-        run: npm run prepare-web
+        run: |
+          set -euo pipefail
+          npm run prepare-moltenvk
+          npm run prepare-web
       - name: Build the macOS app bundle
         working-directory: native-offline
         env:
