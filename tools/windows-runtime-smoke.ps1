@@ -364,8 +364,14 @@ try {
   }
   $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="settings"]', '--json')
-  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
-  if (!$settings.data.node.visible) { throw 'The packaged shell Settings page did not show Game Settings.' }
+  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'application-settings', '--json')
+  if (!$settings.data.node.visible -or $settings.data.node.name -notmatch 'In-game settings') {
+    throw 'The packaged shell Settings page did not show its reviewed In-game settings card.'
+  }
+  $gameSettingsForm = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
+  if ($gameSettingsForm.data.node.visible) {
+    throw 'The packaged shell rendered a Game Settings form on a host with no settings bridge.'
+  }
   $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="about"]', '--json')
   $distributionVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '[data-app-version]', '--json')
@@ -401,7 +407,8 @@ try {
     sha256 = $distributionShellSha
     sections = $distributionSections
     emptyLibraryVisible = $true
-    gameSettingsVisible = $true
+    inGameSettingsVisible = $true
+    gameSettingsFormHidden = $true
     appVersion = $distributionVersion.data.node.name
     cdpAddress = '127.0.0.1:9222'
     runtimeAndCdpPortsReleased = $true
@@ -479,8 +486,14 @@ try {
   if ($librarySection -ne 'library') { throw "Library navigation ended on '$librarySection'." }
 
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="settings"]', '--json')
-  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
-  if (!$settings.data.node.visible) { throw 'The installed shell Settings page did not show Game Settings.' }
+  $settings = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'application-settings', '--json')
+  if (!$settings.data.node.visible -or $settings.data.node.name -notmatch 'In-game settings') {
+    throw 'The installed shell Settings page did not show its reviewed In-game settings card.'
+  }
+  $gameSettingsForm = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'game-settings', '--json')
+  if ($gameSettingsForm.data.node.visible) {
+    throw 'The installed shell rendered a Game Settings form on a host with no settings bridge.'
+  }
   $settingsSection = (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
   if ($settingsSection -ne 'settings') { throw "Settings navigation ended on '$settingsSection'." }
 
@@ -498,7 +511,8 @@ try {
     cdpAddress = '127.0.0.1:9222'
     sections = @('play', $librarySection, $settingsSection, $aboutSection)
     emptyLibraryVisible = $true
-    gameSettingsVisible = $true
+    inGameSettingsVisible = $true
+    gameSettingsFormHidden = $true
     appVersion = $aboutVersion.data.node.name
   })
 
@@ -572,30 +586,11 @@ try {
   if ($nativeLaunchState -ne 'running') {
     throw "The shell game card did not start the bundled Windows runtime (state=$nativeLaunchState; detail=$nativeLaunchDetail; queryError=$nativeStatusQueryError)."
   }
-  $nativeSession = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-session', '--json')
-  if (!$nativeSession.data.node.visible) {
-    throw 'The Windows Play page did not take ownership of the active game controls.'
-  }
-  $waitForSessionStatus = {
-    param([string]$Expected)
-    $sessionStatusText = ''
-    $sessionDeadline = [DateTime]::UtcNow.AddSeconds(15)
-    while ([DateTime]::UtcNow -lt $sessionDeadline) {
-      try {
-        $status = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '#nativeSessionStatus', '--json')
-        $sessionStatusText = [string]$status.data.node.name
-        if ($sessionStatusText -match [regex]::Escape($Expected)) { return $sessionStatusText }
-      } catch {}
-      Start-Sleep -Milliseconds 250
-    }
-    throw "The Windows Play page did not report '$Expected' (last status: $sessionStatusText)."
-  }
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'native-session-pause', '--json')
-  $pauseStatus = & $waitForSessionStatus 'Game paused.'
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'native-session-pause', '--json')
-  $resumeStatus = & $waitForSessionStatus 'Game resumed.'
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'native-session-save', '--json')
-  $saveStatus = & $waitForSessionStatus 'Quick save 1 completed.'
+  # The full-feature 3.6.12 shell is a launcher: it opens the bundled player in
+  # its own window and owns no in-page pause/save card (that card exists only on
+  # the core-only shell line). Input, quick-save and quick-load are exercised
+  # against the installed player below, so this journey keeps only what the
+  # shipped shell really offers.
   $runtimeProcess = $null
   $runtimeWindow = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(20)
@@ -621,19 +616,13 @@ try {
     $windowTitles = @($visibleNativeWindows | ForEach-Object { $_.Title }) -join ', '
     throw "The native player must show exactly one visible game window; found $($visibleNativeWindows.Count): $windowTitles"
   }
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '[data-native-button="8"]', '--json')
-  $inputFrameCapture = Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'red'
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'native-session-load', '--json')
-  $loadStatus = & $waitForSessionStatus 'Quick load 1 completed.'
-  $restoredFrameCapture = Capture-NativePlayerWindow ([int]$runtimeProcess.ProcessId) 'blue'
-  Write-Evidence 'windows-shell-session-controls.json' ([ordered]@{
-    sessionCardVisible = $true
-    pause = $pauseStatus
-    resume = $resumeStatus
-    quickSave = $saveStatus
-    virtualAInput = $inputFrameCapture.status
-    quickLoad = $loadStatus
-    restoredFrame = $restoredFrameCapture.status
+  Write-Evidence 'windows-shell-launch.json' ([ordered]@{
+    shellKind = 'full-feature launcher (no in-page session card)'
+    launchStatus = $nativeLaunchState
+    launchDetail = $nativeLaunchDetail
+    playerWindowTitle = $runtimeWindow.MainWindowTitle
+    videoFrame = $frameCapture.status
+    visibleNativeWindowCount = $visibleNativeWindows.Count
   })
   Write-Evidence 'shell-game.json' ([ordered]@{
     sourceSha = $ExpectedSourceSha
@@ -655,12 +644,6 @@ try {
     videoFrameHeight = $frameCapture.height
     centerPixel = $frameCapture.centerPixel
     videoFrameScreenshot = $frameCapture.screenshot
-    virtualAInputFrameStatus = $inputFrameCapture.status
-    virtualAInputCenterPixel = $inputFrameCapture.centerPixel
-    virtualAInputScreenshot = $inputFrameCapture.screenshot
-    restoredFrameStatus = $restoredFrameCapture.status
-    restoredFrameCenterPixel = $restoredFrameCapture.centerPixel
-    restoredFrameScreenshot = $restoredFrameCapture.screenshot
     visiblePlayerWindows = $frameCapture.candidateWindows
     visibleNativeWindowCount = $visibleNativeWindows.Count
     visibleNativeWindowTitles = @($visibleNativeWindows | ForEach-Object { $_.Title })
