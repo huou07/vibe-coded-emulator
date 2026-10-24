@@ -501,6 +501,11 @@ try {
     threads = $probeThreads
     stdout = (Get-Content -LiteralPath $probeStdout -Raw -ErrorAction SilentlyContinue)
     stderr = (Get-Content -LiteralPath $probeStderr -Raw -ErrorAction SilentlyContinue)
+    environment = [ordered]@{
+      VK_ICD_FILENAMES = $env:VK_ICD_FILENAMES
+      VK_DRIVER_FILES = $env:VK_DRIVER_FILES
+      VK_LOADER_DEBUG = $env:VK_LOADER_DEBUG
+    }
   })
   if (!$probeReady) {
     throw "The installed player did not reach AN3_NATIVE_READY on its own (exited=$probeExited; stderr=$(Get-Content -LiteralPath $probeStderr -Raw -ErrorAction SilentlyContinue))."

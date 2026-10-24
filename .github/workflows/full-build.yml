@@ -262,6 +262,7 @@ jobs:
           } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $evidence 'vulkan-environment.json')
           "VK_ICD_FILENAMES=$icd" | Add-Content $env:GITHUB_ENV
           "VK_DRIVER_FILES=$icd" | Add-Content $env:GITHUB_ENV
+          "VK_LOADER_DEBUG=error,warn" | Add-Content $env:GITHUB_ENV
           "$bin" | Add-Content $env:GITHUB_PATH
       - name: Install and verify the packaged Windows runtime
         shell: pwsh
