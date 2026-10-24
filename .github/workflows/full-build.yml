@@ -260,6 +260,11 @@ jobs:
             loaderSha256 = (Get-FileHash $loader -Algorithm SHA256).Hash.ToLowerInvariant()
             source = 'MSYS2 mingw-w64-ucrt-x86_64-mesa (lavapipe); ephemeral test dependency only'
           } | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $evidence 'vulkan-environment.json')
+          # GitHub's Windows runner is elevated, and an elevated process may
+          # not take ICD paths from the environment. Register the test ICD for
+          # the machine instead; the registration is discarded with the runner.
+          New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null
+          New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name $icd -PropertyType DWord -Value 0 -Force | Out-Null
           "VK_ICD_FILENAMES=$icd" | Add-Content $env:GITHUB_ENV
           "VK_DRIVER_FILES=$icd" | Add-Content $env:GITHUB_ENV
           "VK_LOADER_DEBUG=error,warn" | Add-Content $env:GITHUB_ENV
