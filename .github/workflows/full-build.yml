@@ -1,0 +1,173 @@
+# Full-feature macOS/Windows package build for the 3.6.12 public-test release.
+# Builds the sanitized full-feature source on GitHub-hosted runners. The Switch
+# companion is intentionally not bundled: no prebuilt companion exists in this
+# source and the release omits it rather than shipping an unreviewed binary.
+name: full-build
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/**']
+    paths:
+      - '.github/workflows/full-build.yml'
+      - 'native-offline/**'
+permissions:
+  contents: read
+env:
+  AN3_REQUIRE_DEPENDENCY_CACHE: '1'
+concurrency:
+  group: full-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  macos-dmg:
+    name: macOS ARM64 DMG
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - name: Restore verified web runtime cache
+        run: |
+          set -euo pipefail
+          mkdir -p native-offline/work
+          tar -xzf .ci/web-runtime-cache.tar.gz -C native-offline/work
+          test "$(find native-offline/work/dependency-cache -type f | wc -l | tr -d ' ')" = 22
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.88.0'
+      - name: Install macOS build prerequisites
+        run: brew install cmake ninja autoconf automake libtool glslang ffmpeg
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Prepare pinned cores, MoltenVK and web runtime
+        working-directory: native-offline
+        run: |
+          set -euo pipefail
+          npm run prepare-azahar
+          npm run prepare-native-cores
+          npm run prepare-moltenvk
+          npm run prepare-web
+      - name: Build the macOS app bundle
+        working-directory: native-offline
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '13.4'
+        run: npx tauri build --bundles app
+      - name: Package the DMG
+        working-directory: native-offline
+        run: bash scripts/package-macos.sh
+      - name: Hash and label the DMG
+        run: |
+          set -euo pipefail
+          dmg="$(find native-offline/releases -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          (cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")" > "$(basename "$dmg").sha256")
+          printf 'macOS DMG: ad-hoc signed only; not notarized. Source revision: %s\n' "$GITHUB_SHA" > native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-dmg
+          path: |
+            native-offline/releases/*.dmg
+            native-offline/releases/*.dmg.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-exe:
+    name: Windows x64 EXE
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+      - name: Restore verified web runtime cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p native-offline/work
+          tar -xzf .ci/web-runtime-cache.tar.gz -C native-offline/work
+          test "$(find native-offline/work/dependency-cache -type f | wc -l | tr -d ' ')" = 22
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: native-offline/package-lock.json
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: '1.88.0'
+          targets: x86_64-pc-windows-msvc
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        id: msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-libiconv
+            mingw-w64-ucrt-x86_64-zstd
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+      - name: Install pinned LunarG Vulkan SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '1.4.357.0'
+          $url = "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe"
+          $expected = '81f474711e9042f4cd22b31b2f7a8870db2e428b21586fb43dd80150be97310d'
+          $installer = Join-Path $env:RUNNER_TEMP "vulkan-sdk-$version.exe"
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK\$version"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "LunarG SDK checksum mismatch: $actual" }
+          $process = Start-Process -FilePath $installer -ArgumentList @('--root', $sdkRoot, '--accept-licenses', '--default-answer', '--confirm-command', 'install') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "LunarG SDK installer exited $($process.ExitCode)." }
+          "VULKAN_SDK=$sdkRoot" | Add-Content $env:GITHUB_ENV
+          "$sdkRoot\Bin" | Add-Content $env:GITHUB_PATH
+      - name: Install JS dependencies
+        working-directory: native-offline
+        run: npm ci
+      - name: Prepare verified Windows core inputs
+        shell: pwsh
+        run: |
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/prepare-windows-cores.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned GBA/NDS core preparation failed.' }
+          node native-offline/scripts/fetch-azahar-desktop.mjs windows-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Azahar 3DS core preparation failed.' }
+      - name: Build and verify Windows native runtime
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-runtime.ps1 -MsysRoot $env:MSYS2_LOCATION
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native runtime build failed.' }
+      - name: Build the Windows installer
+        shell: pwsh
+        run: |
+          & powershell -NoProfile -ExecutionPolicy Bypass -File native-offline/scripts/build-windows-staging.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed.' }
+      - name: Hash and label the EXE
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem native-offline/releases -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw 'Windows EXE was not produced.' }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -Encoding ascii "$($installer.FullName).sha256"
+          "Windows EXE: unsigned NSIS installer; not Authenticode-signed. Source revision: $env:GITHUB_SHA" |
+            Set-Content -Encoding ascii native-offline/releases/BUILD_LABELS.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-exe
+          path: |
+            native-offline/releases/*.exe
+            native-offline/releases/*.exe.sha256
+            native-offline/releases/BUILD_LABELS.txt
+          if-no-files-found: error
+          retention-days: 14
