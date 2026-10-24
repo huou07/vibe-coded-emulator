@@ -1,0 +1,24 @@
+[Application]
+name=space.an3tocom.offline
+runtime=org.gnome.Platform/x86_64/49
+sdk=org.gnome.Sdk/x86_64/49
+command=an3-offline-native
+
+[Context]
+shared=network;ipc;
+sockets=x11;wayland;pulseaudio;fallback-x11;
+devices=dri;
+
+[Session Bus Policy]
+org.freedesktop.portal.Desktop=talk
+
+[Environment]
+GTK_USE_PORTAL=1
+
+[Extension space.an3tocom.offline.Debug]
+directory=lib/debug
+autodelete=true
+no-autodownload=true
+
+[Build]
+built-extensions=space.an3tocom.offline.Debug;

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Categories=Game;
+Comment=A native local-ROM offline player
+Exec=an3-offline-native
+StartupWMClass=an3-offline-native
+Icon=space.an3tocom.offline
+Name=VibeCodedEmulator
+Terminal=false
+Type=Application

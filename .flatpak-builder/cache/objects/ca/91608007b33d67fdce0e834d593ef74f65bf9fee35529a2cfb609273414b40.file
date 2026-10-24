@@ -1,0 +1,51 @@
+{
+  "id" : "space.an3tocom.offline",
+  "runtime" : "org.gnome.Platform",
+  "runtime-version" : "49",
+  "runtime-commit" : "56c74fabc56c768711b02af74e202229ccf184474e1bea7d71c0fa8980d664d2",
+  "sdk" : "org.gnome.Sdk",
+  "sdk-commit" : "1df084a5492fbcd01f4d9af1084ade350919de069bbc9974d6dfdb04f47ab60f",
+  "command" : "an3-offline-native",
+  "modules" : [
+    {
+      "name" : "vibecodedemulator",
+      "buildsystem" : "simple",
+      "sources" : [
+        {
+          "path" : "../releases/vibecodedemulator-3.6.12-linux-amd64.deb",
+          "type" : "file"
+        },
+        {
+          "path" : "space.an3tocom.offline.metainfo.xml",
+          "type" : "file"
+        },
+        {
+          "path" : "an3-native-player.sh",
+          "type" : "file"
+        }
+      ],
+      "build-commands" : [
+        "ar -x vibecodedemulator-3.6.12-linux-amd64.deb",
+        "mkdir -p deb-extract",
+        "data_archive=$(find . -maxdepth 1 -name 'data.tar.*' -print -quit); test -n \"$data_archive\"; tar -C deb-extract -xf \"$data_archive\"",
+        "install -Dm755 deb-extract/usr/bin/an3-offline-native /app/bin/an3-offline-native",
+        "if [ -d deb-extract/usr/lib ]; then mkdir -p /app/lib; cp -r deb-extract/usr/lib/. /app/lib/; chmod -R a+rX /app/lib; fi",
+        "install -Dm755 an3-native-player.sh /app/bin/an3-native-player",
+        "desktop_file=$(find deb-extract/usr/share/applications -name '*.desktop' -print -quit); test -n \"$desktop_file\"; sed 's/^Icon=.*/Icon=space.an3tocom.offline/;s#^Exec=.*#Exec=an3-offline-native#' \"$desktop_file\" > space.an3tocom.offline.desktop; install -Dm644 space.an3tocom.offline.desktop /app/share/applications/space.an3tocom.offline.desktop",
+        "icon_file=$(find deb-extract/usr/share/icons -name 'an3-offline-native.png' -print -quit); test -n \"$icon_file\"; install -Dm644 \"$icon_file\" /app/share/icons/hicolor/256x256/apps/space.an3tocom.offline.png",
+        "install -Dm644 space.an3tocom.offline.metainfo.xml /app/share/metainfo/space.an3tocom.offline.metainfo.xml"
+      ]
+    }
+  ],
+  "finish-args" : [
+    "--share=network",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--socket=pulseaudio",
+    "--device=dri",
+    "--env=GTK_USE_PORTAL=1",
+    "--talk-name=org.freedesktop.portal.Desktop"
+  ],
+  "source-date-epoch" : 1792833981
+}

@@ -1,0 +1,5 @@
+[Runtime]
+name=space.an3tocom.offline.Debug
+
+[ExtensionOf]
+ref=app/space.an3tocom.offline/x86_64/master

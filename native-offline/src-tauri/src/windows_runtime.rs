@@ -72,7 +72,11 @@ pub(super) fn start(app: &AppHandle, rom_id: &str, system: &str, layout: Option<
     let log = storage.join("runtime.log");
     let errors = fs::File::create(&log).map_err(|e| e.to_string())?;
     let layout = match layout { Some("left-right" | "side_by_side") => "left-right", Some("top-bottom" | "top_bottom") => "top-bottom", _ => "preserve" };
-    let mut command = Command::new(&runtime)
+    let mut command = Command::new(&runtime);
+    // `creation_flags` takes `&mut self` and returns `&mut Command`; binding the
+    // chained result directly to `command` would keep a borrow of a temporary
+    // that is dropped at the end of the statement (E0716 on Windows).
+    command
         .args(["--rom"]).arg(&rom).args(["--system",system,"--layout",layout,"--storage"])
         .arg(&storage).arg("--control-stdin")
         .current_dir(runtime.parent().unwrap())
