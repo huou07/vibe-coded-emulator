@@ -374,7 +374,7 @@ try {
   }
   $distributionSections += (Invoke-An3ctl @('ui', 'tree', '--target', 'windows', '--limit', '120', '--json')).data.section
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="about"]', '--json')
-  $distributionVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '[data-app-version]', '--json')
+  $distributionVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-app-version', '--json')
   if (!$distributionVersion.data.node.visible -or !$distributionVersion.data.node.name -or $distributionVersion.data.node.name -match '__AN3_VERSION__') {
     throw 'The packaged shell About page did not show a substituted app version.'
   }
@@ -498,7 +498,7 @@ try {
   if ($settingsSection -ne 'settings') { throw "Settings navigation ended on '$settingsSection'." }
 
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="about"]', '--json')
-  $aboutVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--css', '[data-app-version]', '--json')
+  $aboutVersion = Invoke-An3ctl @('ui', 'query', '--target', 'windows', '--testid', 'native-app-version', '--json')
   if (!$aboutVersion.data.node.visible -or !$aboutVersion.data.node.name -or $aboutVersion.data.node.name -match '__AN3_VERSION__') {
     throw 'The installed shell About page did not show a substituted app version.'
   }
@@ -517,7 +517,9 @@ try {
   })
 
   $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-sidebar [data-nav="play"]', '--json')
-  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--testid', 'open-rom', '--json')
+  # The topbar Open ROM is hidden on Play by design; the hero action is the
+  # visible one and runs the same real import handler.
+  $null = Invoke-An3ctl @('ui', 'click', '--target', 'windows', '--css', '.native-hero-open', '--json')
   $gameCard = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   while ([DateTime]::UtcNow -lt $deadline) {
